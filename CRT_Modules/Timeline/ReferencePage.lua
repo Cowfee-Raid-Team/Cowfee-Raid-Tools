@@ -400,8 +400,13 @@ CRT.TimelineAbilityMenu = AbilityMenu
 function AbilityMenu.Fill(root, boss, row, hideName)
     local spellID = boss and row.spellID and row.spellID ~= 0 and row.spellID or nil
     local Timeline = CRT.Timeline
+    -- what the ability shows with (yours over the boss file's); mine is only yours, for the buttons that clear it
     local function get(field)
         local a = spellID and Timeline:Ability(boss, spellID)
+        return a and a[field]
+    end
+    local function mine(field)
+        local a = spellID and Timeline:OwnAbility(boss, spellID)
         return a and a[field]
     end
     root:CreateTitle((get("name") or row.name or "") .. (get("name") and (" (" .. (row.name or "") .. ")") or ""))
@@ -455,7 +460,7 @@ function AbilityMenu.Fill(root, boss, row, hideName)
                 Timeline:SetAbility(boss, spellID, "tags", out)
             end)
         end
-        if type(get("tags")) == "table" then
+        if type(mine("tags")) == "table" then
             tags:CreateButton(TEXT_MENU.journalTags, function()
                 Timeline:SetAbility(boss, spellID, "tags", nil)
             end)
@@ -463,7 +468,7 @@ function AbilityMenu.Fill(root, boss, row, hideName)
         root:CreateButton(TEXT_MENU.rename, function()
             askAbilityName(boss, { name = row.name, spellID = spellID }, get("name"))
         end)
-        if get("name") then
+        if mine("name") then
             root:CreateButton(TEXT_MENU.unname, function()
                 Timeline:SetAbility(boss, spellID, "name", nil)
             end)

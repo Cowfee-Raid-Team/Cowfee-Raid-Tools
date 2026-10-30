@@ -128,8 +128,8 @@ end
 -- CRT.Dev), whether or not /crt dev is open. A packaged build leaves them out. Asked when needed, never at
 -- load, since the Dev files load after the modules. A packaged build doesn't read your own timeline layers,
 -- which only the Advanced tab manages: hidden Journal rows (Journal:IsHidden), rows hidden by name (Lanes),
--- your own spells (Journal:Rows) and your ability labels (Timeline:Ability, ApplyAbilities). Nothing saved
--- is removed: a developer build reads it all again.
+-- your own spells (Journal:Rows) and your own ability labels (ownLabels, below: the boss file's labels still
+-- apply). Nothing saved is removed: a developer build reads it all again.
 function Timeline.DevBuild()
     return rawget(CRT, "Dev") ~= nil
 end
@@ -280,23 +280,95 @@ function Timeline:WithoutHidden(lanes, encounterID)
     return shown
 end
 
--- Your labels for a boss's Encounter Journal abilities, set from the Advanced tab's Journal list: per boss
--- by spell ID, timeline.abilities[boss][spellID] = { row = true, type = "raid", name = "Tank buster",
--- tags = { "tank", "magic" } }.
--- row gives the ability a row of its own on the timeline even when nothing has a time for it, type colors
--- its row as a reference type does, and name shows instead of the Journal's. Only what you see, like
--- ignored mechanics: no reference, note or anything shared changes.
+-- Ability labels: what a boss's Encounter Journal abilities show as on the Timeline, per spell ID, { row = true,
+-- type = "raid", name = "Tank buster", tags = { "tank", "magic" } }. row gives the ability a row of its own on
+-- the timeline even when nothing has a time for it, type colors its row (and its alerts) as a reference type
+-- does, name shows instead of the Journal's, and tags are the Journal's icons it shows. Two layers, read field
+-- by field: your own first, then the boss file's, then (on a reference row) the ability timeline's own (type ...).
+--   Your own: set from the right-click menu of an ability (Advanced tab; Review and the pop-out with /crt dev
+--     open), saved per boss as timeline.abilities[boss][spellID]. Only what you see, like ignored mechanics,
+--     and read in a developer build only (Timeline.DevBuild). /crt dev labels (Dev/AbilityLabels.lua) exports
+--     them in the boss-file format and clears them once they ship.
+--   The boss file's: its abilities field (Bosses:Abilities, Registry.lua), shipped to everyone, every build.
+-- Ability gives both laid together; OwnAbility and OwnAbilities only yours.
 
-function Timeline:Ability(encounterID, spellID)
+local LABEL_FIELDS = { "row", "type", "name", "tags" }
+
+-- Your labels for a boss (a developer build only), by spell ID, or nil.
+local function ownLabels(encounterID)
     if not Timeline.DevBuild() then
         return nil
     end
     local all = tdb().abilities
-    local list = all and all[tostring(encounterID)]
-    return list and list[spellID] or nil
+    return all and all[tostring(encounterID)] or nil
 end
 
--- field: "row", "type" or "name"; nil (or "") clears it.
+-- The boss file's labels for a boss, by spell ID, or nil. A boss listed only by its reference (a text key) has none.
+local function shippedLabels(encounterID)
+    local Bosses = CRT.Bosses
+    local id = tonumber(encounterID)
+    return id and Bosses and Bosses.Abilities and Bosses:Abilities(id) or nil
+end
+
+-- One ability's label from both layers, each field yours when you set it, else the boss file's; nil for neither.
+local function layered(own, shipped)
+    if own == nil and shipped == nil then
+        return nil
+    end
+    local out = {}
+    for _, field in ipairs(LABEL_FIELDS) do
+        local v = own and own[field]
+        if v == nil and shipped then
+            v = shipped[field]
+        end
+        out[field] = v
+    end
+    return out
+end
+
+-- The label an ability shows with, both layers laid together (a new table), or nil.
+function Timeline:Ability(encounterID, spellID)
+    local own, shipped = ownLabels(encounterID), shippedLabels(encounterID)
+    return layered(own and own[spellID], shipped and shipped[spellID])
+end
+
+-- Only your own label for an ability (nil in a packaged build).
+function Timeline:OwnAbility(encounterID, spellID)
+    local own = ownLabels(encounterID)
+    return own and own[spellID] or nil
+end
+
+-- All your own labels for a boss, by spell ID, or nil (nil in a packaged build).
+function Timeline:OwnAbilities(encounterID)
+    return ownLabels(encounterID)
+end
+
+-- Every label of a boss, both layers laid together, by spell ID (empty for none).
+function Timeline:Labels(encounterID)
+    local own, shipped = ownLabels(encounterID), shippedLabels(encounterID)
+    local out = {}
+    for spellID, s in pairs(shipped or {}) do
+        out[spellID] = layered(own and own[spellID], s)
+    end
+    for spellID, o in pairs(own or {}) do
+        if out[spellID] == nil then
+            out[spellID] = layered(o, nil)
+        end
+    end
+    return out
+end
+
+-- Drops all your own labels for a boss, so it shows the boss file's (/crt dev labels, once they ship).
+function Timeline:ClearAbilities(encounterID)
+    local all = tdb().abilities
+    if encounterID == nil or not (all and all[tostring(encounterID)]) then
+        return
+    end
+    all[tostring(encounterID)] = nil
+    self:Fire()
+end
+
+-- Sets one field of your own label. field: "row", "type", "name" or "tags"; nil (or "") clears it.
 function Timeline:SetAbility(encounterID, spellID, field, value)
     if encounterID == nil or type(spellID) ~= "number" then
         return
@@ -317,16 +389,13 @@ function Timeline:SetAbility(encounterID, spellID, field, value)
     self:Fire()
 end
 
--- lanes with your labels laid on: each lane of an ability you labelled takes its name and type, and
--- each ability you gave a row and that has no lane yet gets an empty one (after the boss's rows, kind
--- "journal"). rows are the boss's Journal rows (Journal:Rows). Returns the new list.
+-- lanes with the ability labels laid on (Labels: yours, then the boss file's, field by field): each lane of a
+-- labelled ability takes its name, type and icons over the lane's own (an ability timeline's (type ...)), and
+-- each ability given a row that has no lane yet gets an empty one (after the boss's rows, kind "journal").
+-- rows are the boss's Journal rows (Journal:Rows). Returns the new list.
 function Timeline:ApplyAbilities(lanes, encounterID, rows)
-    if not Timeline.DevBuild() then
-        return lanes
-    end
-    local all = tdb().abilities
-    local list = all and all[tostring(encounterID)]
-    if not list then
+    local list = self:Labels(encounterID)
+    if next(list) == nil then
         return lanes
     end
     local Reference = CRT.TimelineReference

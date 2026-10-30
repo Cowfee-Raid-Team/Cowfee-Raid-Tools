@@ -9,6 +9,14 @@ local ADDON, CRT = ...
 --   markers     -> CRT.MarkerDisplayDB.displays  (marker displays)
 --   markerHelp  -> CRT.MarkerDisplayDB.help      (how the marker calls work on the boss, one string)
 --   pace        -> CRT.PaceDB.bosses             (pace plans)
+--   abilities   -> Bosses:Abilities(encounterID) (the Timeline's ability labels for everyone, below Build)
+--                  abilities = { [spellID] = { type = "raid", name = "Adds", row = true, tags = { "tank", "magic" } } }:
+--                  by spell ID (a number), every field optional. type is an ability type's key (Reference.TYPES in
+--                  Timeline/Reference.lua) and colors the row and its alerts; name shows instead of the Journal's;
+--                  row = true gives the ability a row even with no time; tags are the Journal icons it shows
+--                  (Reference.TAGS). One type only: a label has no second type. A player's own labels win field by
+--                  field (Timeline:ApplyAbilities); /crt dev labels exports them in this format. An entry, type, tag
+--                  or field that doesn't read is left out, with a chat line in developer builds.
 -- Two fields are read where they are used, through Bosses:Get, not copied here:
 --   special     -> CRT.AlertSpecial (Alerts/Special.lua: the boss's scripted special alerts, on Mech Alerts'
 --                  Special list), a list of { key, label, help, type, difficulty, default, when = { row |
@@ -28,7 +36,7 @@ local ADDON, CRT = ...
 -- the current season only, by default, or all. See the vault note "Cowfee Raid Tools - Boss Library
 -- Design".
 
-local Bosses = { seasons = {}, bosses = {}, order = {}, topics = {}, stores = {} }
+local Bosses = { seasons = {}, bosses = {}, order = {}, topics = {}, stores = {}, abilities = {} }
 CRT.Bosses = Bosses
 
 -- Per-boss stores ----------------------------------------------------------------------------
@@ -356,6 +364,78 @@ function Bosses:Loaded(encounterID)
     return def and seasonLoaded(def.season) or false
 end
 
+-- Shipped ability labels --------------------------------------------------------------------------
+-- A boss file's abilities field (the format is in the header), read once by Build into Bosses.abilities.
+
+-- A chat line in developer builds only (the CRT_Dev files make CRT.Dev); players never see it.
+local function devWarn(msg)
+    if rawget(CRT, "Dev") ~= nil and CRT.Print then
+        CRT:Print(msg)
+    end
+end
+
+local LABEL_KEYS = { type = true, name = true, row = true, tags = true }
+
+-- One ability's label as written, or nil when nothing in it reads. say(what) reports a part left out.
+local function readLabel(spellID, def, say)
+    local Reference = CRT.TimelineReference
+    local label = {}
+    for key in pairs(def) do
+        if not LABEL_KEYS[key] then
+            say(string.format("field %s of spell %d", tostring(key), spellID))
+        end
+    end
+    if def.type ~= nil then
+        if type(def.type) == "string" and (not Reference or Reference.TYPES[def.type]) then
+            label.type = def.type
+        else
+            say(string.format("type %s of spell %d (not an ability type)", tostring(def.type), spellID))
+        end
+    end
+    if type(def.name) == "string" and def.name ~= "" then
+        label.name = def.name
+    end
+    if def.row == true then
+        label.row = true
+    end
+    if type(def.tags) == "table" then
+        label.tags = {}
+        for _, tag in ipairs(def.tags) do
+            if type(tag) == "string" and (not Reference or Reference.TAGS[tag]) then
+                label.tags[#label.tags + 1] = tag
+            else
+                say(string.format("tag %s of spell %d", tostring(tag), spellID))
+            end
+        end
+    end
+    return next(label) and label or nil
+end
+
+-- A boss file's abilities field read into { [spellID] = { type, name, row, tags } }, or nil for none. What doesn't
+-- read is left out, never an error.
+function Bosses.ReadAbilities(raw, encounterID)
+    if type(raw) ~= "table" then
+        return nil
+    end
+    local function say(what)
+        devWarn(string.format("Boss %s, abilities: %s left out.", tostring(encounterID), what))
+    end
+    local out = {}
+    for spellID, def in pairs(raw) do
+        if type(spellID) ~= "number" or type(def) ~= "table" then
+            say(string.format("entry %s (a spell ID is a number, its label a table)", tostring(spellID)))
+        else
+            out[spellID] = readLabel(spellID, def, say)
+        end
+    end
+    return next(out) and out or nil
+end
+
+-- The boss file's ability labels of a loaded boss, by spell ID, or nil.
+function Bosses:Abilities(encounterID)
+    return encounterID and self.abilities[encounterID] or nil
+end
+
 -- Fills each feature's shipped table from the loaded bosses, in route order, so lists built from those
 -- tables (Tattlebot's mechanics) follow the route too. Runs once, after every file loads.
 function Bosses:Build()
@@ -388,6 +468,9 @@ function Bosses:Build()
             end
             if pace and def.pace then
                 pace[id] = def.pace
+            end
+            if def.abilities ~= nil then
+                self.abilities[id] = Bosses.ReadAbilities(def.abilities, id)
             end
         end
     end
