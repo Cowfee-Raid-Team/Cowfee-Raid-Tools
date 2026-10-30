@@ -201,6 +201,15 @@ check("NSRT and MRT: an assignment block's assign: marker is left out, its headi
   assert(parsed.lines[1] == "Ravenous Feast" and #parsed.timers == 1, "CRT reads the heading as its name")
 end)
 
+-- a spec word (a healer slot, Notes/SpecWords.lua) is sent as written, a name to both
+check("NSRT and MRT: spec words go out raw", function()
+  local note = "EncounterID:3001;Name:Boss\\ntime:110;ph:1;tag:RestoDruid2;spellid:740;\\ntime:20;ph:1;tag:DiscPriest;spellid:62618;"
+  local text = NSRT.ToNSRTText(note)
+  assert(text:find("time:110;ph:1;tag:RestoDruid2;spellid:740;", 1, true) and text:find("tag:DiscPriest;", 1, true), "NSRT: " .. text)
+  local mrt = MRT.ToMRTText(note)
+  assert(mrt:find("{time:1:50} {spell:740} RestoDruid2", 1, true) and mrt:find("{spell:62618} DiscPriest", 1, true), "MRT: " .. mrt)
+end)
+
 if checks.failed then error(checks.failed .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

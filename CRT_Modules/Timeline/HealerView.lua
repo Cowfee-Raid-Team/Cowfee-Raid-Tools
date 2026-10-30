@@ -15,7 +15,11 @@ local ADDON, CRT = ...
 -- The healers are the roster's players (Alerts/Roster.lua: the active Raid Groups layout, else the group)
 -- whose role is healer: a role set by hand (Groups.HandRole) wins, else the game's role in the group; a
 -- player whose role is unknown is left out. Anyone the raid note gives a listed cooldown gets rows too.
--- Your own spec is the game's; nobody else's is known, so they get every major cooldown of their class.
+-- Your own spec is the game's; anyone else's is the spec seen last (Groups.CachedSpec: an inspect, CRT's hello),
+-- else not known, and then they get every major cooldown of their class.
+-- Under them, the boss's healer slots (Timeline/HealerSlots.lua): a healer planned by spec, with that spec's major
+-- cooldowns only, and the + Add healer row (Timeline/HealerPanel.lua). A slot's assigned player who is on the roster
+-- shows once, as the slot. Note lines tagged with a spec word ("RestoDruid2", Notes/SpecWords.lua) go on their slot.
 -- The casts are the raid note's cooldown lines for the boss and difficulty shown (the view's
 -- NoteAndReminderMarks, which places its flags), each on the row of its player and spell, with its cooldown
 -- shown with no selection needed: a filled band after it and an outlined one before it, red where the next
@@ -155,15 +159,15 @@ local function hasSpec(e, spec)
 end
 
 -- The major healing cooldowns of a class, in list order: those of spec (a SpecializationID) when given and
--- the class has some for it, else all of the class's.
-function HV.Majors(class, spec)
+-- the class has some for it, else all of the class's; with strict (a healer slot), that spec's only.
+function HV.Majors(class, spec, strict)
     local out = {}
     for _, e in ipairs(list()) do
         if e.major and e.class == class and (spec == nil or hasSpec(e, spec)) then
             out[#out + 1] = e
         end
     end
-    if spec ~= nil and #out == 0 then
+    if spec ~= nil and #out == 0 and not strict then
         return HV.Majors(class, nil)
     end
     return out
@@ -218,7 +222,7 @@ function HV.Options(who)
     local class = usable(who.class) and who.class or nil
     if class then
         if who.p.role == "HEALER" then
-            for _, e in ipairs(HV.Majors(class, who.p.spec)) do
+            for _, e in ipairs(HV.Majors(class, who.p.spec, who.strict)) do
                 add(e, true)
             end
         end
@@ -282,7 +286,7 @@ end
 
 -- The roster's players (AlertRoster:Players) with their role: { key, name, class, role, hand, spec, me }.
 -- role is the role set by hand, else the game's role while they are in the group, else nil; hand says it
--- was set by hand. spec is known for you only.
+-- was set by hand. spec is the game's for you, the spec seen last for anyone else (Groups.CachedSpec), or nil.
 function HV.Players()
     local Roster, Groups = CRT.AlertRoster, CRT.Groups
     local live = {}
@@ -304,6 +308,8 @@ function HV.Players()
         local q = { key = p.key, name = p.name, class = p.class, role = hand or game, hand = hand ~= nil }
         if me and p.key:lower() == me then
             q.me, q.spec = true, playerSpec()
+        elseif Groups and Groups.CachedSpec then
+            q.spec = Groups.CachedSpec(p.key)
         end
         out[#out + 1] = q
     end
@@ -348,9 +354,13 @@ local function classWords()
     return words
 end
 
--- Whether a note line's tag word can be a player's name: not a role or raid word, a class, or a group.
+-- Whether a note line's tag word can be a player's name: not a role or raid word, a class, a spec word, or a group.
 local function nameWord(tag, classes)
     if not usable(tag) or not tag:match("^[%a\128-\255]") then
+        return false
+    end
+    local Specs = CRT.NoteSpecs
+    if Specs and Specs.Read(tag) then
         return false
     end
     local l = tag:lower()
@@ -391,8 +401,15 @@ local function headerTip(who)
         local p = who.p
         tooltipOwner(l)
         GameTooltip:SetText(p.name, CRT.Groups.ClassColor(p.key, who.class))
-        local line = p.role == "HEALER" and (p.hand and TEXT.healerHand or TEXT.healer) or TEXT.assigned
-        GameTooltip:AddLine(line, 0.85, 0.85, 0.85, true)
+        local Slots = who.slot and CRT.TimelineHealerSlots
+        if Slots then
+            for _, line in ipairs(Slots.TipLines()) do
+                GameTooltip:AddLine(line, 0.85, 0.85, 0.85, true)
+            end
+        else
+            local line = p.role == "HEALER" and (p.hand and TEXT.healerHand or TEXT.healer) or TEXT.assigned
+            GameTooltip:AddLine(line, 0.85, 0.85, 0.85, true)
+        end
         if #who.rows == 0 and who.unknownClass then
             GameTooltip:AddLine(TEXT.classUnknown, 0.85, 0.85, 0.85, true)
         end
@@ -542,6 +559,24 @@ function HV.Build(view, lanes, length)
             end
         end
     end
+    -- the healer slots (Timeline/HealerSlots.lua): an assigned player already here becomes their slot, shown once
+    local Slots = CRT.TimelineHealerSlots
+    local slots = Slots and Slots.ForView(view:EncounterNumber(), marks) or {}
+    view.hvSlots = slots
+    for _, s in ipairs(slots) do
+        local p, keys = Slots.Person(s, slots, players)
+        local who = byKey[keys[1]] or (keys[2] and byKey[keys[2]])
+        if who then
+            p.me = p.me or who.p.me
+            who.p, who.class, who.unknownClass = p, p.class, nil
+        else
+            who = person(p)
+        end
+        who.slot, who.strict, s.who = s, true, who
+        for _, k in ipairs(keys) do
+            byKey[k] = who
+        end
+    end
     -- the Notes row the Abilities layout adds for lines with no ability row, when it got one
     local notesRow = rowsFor[#lanes + 1] and rowsFor[#lanes + 1].kind == "notes" and #lanes + 1 or nil
     local shown, noteIds, seenNote, onNotes = {}, {}, {}, {}
@@ -572,13 +607,17 @@ function HV.Build(view, lanes, length)
         elseif e and m.kind == "note" then
             local seen, whos = {}, {}
             for _, tag in ipairs(m.tags or {}) do
-                local p = usable(tag) and find(tag) or nil
-                if not p and nameWord(tag, classes) then
+                local slot = Slots and usable(tag) and Slots.ForTag(slots, tag) -- a spec word: its slot's
+                local p = not slot and usable(tag) and find(tag) or nil
+                if not p and not slot and nameWord(tag, classes) then
                     p = { key = tag, name = tag } -- named in the note, not on the roster
                 end
-                if p and not seen[p.key:lower()] then
-                    seen[p.key:lower()] = true
-                    local who = person(p, e.class)
+                local who = slot and slot.who or (p and not seen[p.key:lower()] and person(p, e.class))
+                if who and not seen[who.key] then
+                    seen[who.key] = true
+                    if p then
+                        seen[p.key:lower()] = true
+                    end
                     noteSpell(who, e)
                     whos[#whos + 1] = who
                 end
@@ -654,18 +693,21 @@ function HV.Build(view, lanes, length)
         -- every row picked off still leaves the name row, to pick them back
         if #who.rows > 0 or who.unknownClass or #who.menu.options > 0 then
             local p = who.p
-            local spec = specName(p.spec)
+            -- a slot's name row: its label and, with no player, the hint on its row (Timeline/HealerSlots.lua)
+            local head = who.slot and Slots.Header(who.slot, slots, p.name)
+            local spec = not head and specName(p.spec)
             -- yours or locked, for someone who may not change the raid note
             who.marker = not lead and (p.me and TEXT.yours or TEXT.locked) or nil
-            local label = p.name .. (spec and (DOT .. spec) or "") .. (who.marker and (DOT .. who.marker) or "")
-            local note
+            local label = (head and head.label or (p.name .. (spec and (DOT .. spec) or "")))
+                .. (who.marker and (DOT .. who.marker) or "")
+            local note = head and head.note
             if #who.rows == 0 then
                 note = (who.unknownClass and TEXT.classUnknown) or (who.hidden and next(who.hidden) and TEXT.allHidden)
                     or TEXT.noDefaults
             end
             out[#out + 1] = { key = "healers:" .. p.key:lower(), kind = "healer", label = label, class = who.class,
-                marks = {}, tip = headerTip(who), note = note, tint = classTint(who.class, NAME_TINT),
-                hvMenu = who.menu }
+                marks = {}, tip = headerTip(who), note = note, noteWarn = head and head.warn and #who.rows > 0 or nil,
+                tint = classTint(who.class, NAME_TINT), hvMenu = who.menu, hvSlot = who.slot }
             for _, r in ipairs(who.rows) do
                 r.hvMenu = who.menu -- a right-click on any of a player's rows picks their rows (HV.LabelMenu)
                 r.indent, r.tint = HV.INDENT, classTint(who.class, SPELL_TINT) -- the view draws both
@@ -1069,7 +1111,11 @@ function HV.Draw(view, length)
     if Panel then
         Panel.Draw(view, on)
     end
-    -- a row's muted note on the track, at its start (a healer whose class isn't known yet)
+    local Slots = CRT.TimelineHealerSlots
+    if Slots then
+        Slots.DrawBorders(view, on) -- each healer slot's name: solid with a player, dashed without
+    end
+    -- a row's muted note on the track, at its start (a healer whose class isn't known yet, a healer slot's hint)
     local notes, rowH = 0, CRT.TimelineView.ROW_H
     for i, lane in ipairs(on and view.lanes or {}) do
         if lane.note then
@@ -1080,7 +1126,9 @@ function HV.Draw(view, length)
                 fs = view.hvBandFrame:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
                 view.hvNotes[notes] = fs
             end
-            fs:SetTextColor(rgba(CRT.PALETTE and CRT.PALETTE.muted and "muted" or "label"))
+            -- a healer slot's "Pick a player" in the warning colour
+            local key = lane.noteWarn and CRT.PALETTE and CRT.PALETTE.warn and "warn"
+            fs:SetTextColor(rgba(key or (CRT.PALETTE and CRT.PALETTE.muted and "muted" or "label")))
             fs:SetText(lane.note)
             fs:ClearAllPoints()
             fs:SetPoint("LEFT", view.track, "TOPLEFT", 6, -(i - 1) * rowH - rowH / 2)
@@ -1141,8 +1189,13 @@ function HV.Watch(view)
 end
 
 -- A right-click on a player's name or spell row in the label column (View:LabelMenu): the menu that shows or hides
--- their rows (Timeline/HealerRows.lua), the view drawn again after each pick. True when lane was one.
+-- their rows (Timeline/HealerRows.lua), the view drawn again after each pick; on a healer slot's name row, the
+-- slot's menu (Timeline/HealerSlots.lua). True when lane was one.
 function HV.LabelMenu(view, owner, lane)
+    local Slots = CRT.TimelineHealerSlots
+    if lane and lane.kind == "healer" and lane.hvSlot and Slots then
+        return Slots.HeaderMenu(view, owner, lane)
+    end
     local Picks = CRT.TimelineHealerRows
     if not (lane and lane.hvMenu and Picks) then
         return false
@@ -1155,7 +1208,9 @@ end
 -- A click (HV.Click) or double-click on a row of Healer CDs at t seconds: on a cooldown row, that cooldown is
 -- placed at once for its player (a raid note line) by someone who may change the raid note. Anyone else places
 -- it only on their own row, as one of their reminders (Only me); on another player's row nothing is placed and
--- a chat line says why. True when the click was this view's (a cooldown, a player's or a panel row).
+-- a chat line says why. On a healer slot's row the line is tagged as the slot's player (its name, else its spec word,
+-- Timeline/HealerSlots.lua), and a slot from the note's words is kept for the boss. True when the click was this
+-- view's (a cooldown, a player's or a panel row).
 function HV.DoubleClick(view, t, lane)
     if not lane then
         return false
@@ -1169,12 +1224,16 @@ function HV.DoubleClick(view, t, lane)
     local e = { spellID = lane.spellID, name = lane.label, class = lane.entry and lane.entry.class }
     local Notes = CRT.Notes
     local raid = Notes and Notes.CanEditRaid and Notes:CanEditRaid()
+    local slot, Slots = lane.player.slot, CRT.TimelineHealerSlots
     if raid then
-        view:PlaceCooldownAt(t, e, lane.player.name)
+        if slot and Slots and view:EncounterNumber() then
+            Slots.Ensure(view:EncounterNumber(), slot)
+        end
+        view:PlaceCooldownAt(t, e, lane.player.tag or lane.player.name)
     elseif lane.player.me then
         view:PlaceCooldownAt(t, e) -- your own row: one of your reminders, as a dropped cooldown
     else
-        CRT:Print(TEXT.notLead)
+        CRT:Print(slot and Slots and Slots.TEXT.notOwn or TEXT.notLead)
     end
     return true
 end

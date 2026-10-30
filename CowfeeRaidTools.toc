@@ -65,6 +65,7 @@ CRT_Modules\Alerts\Rules.lua
 CRT_Modules\Alerts\Engine.lua
 CRT_Modules\Alerts\Speech.lua
 CRT_Modules\Notes\Parse.lua
+CRT_Modules\Notes\SpecWords.lua
 CRT_Modules\Notes\Data.lua
 CRT_Modules\Notes\Diff.lua
 CRT_Modules\Notes\Engine.lua
@@ -152,6 +153,7 @@ CRT_Modules\Timeline\View.lua
 CRT_Modules\Timeline\HealerView.lua
 CRT_Modules\Timeline\HealerPanel.lua
 CRT_Modules\Timeline\HealerRows.lua
+CRT_Modules\Timeline\HealerSlots.lua
 CRT_Modules\Timeline\ReferencePage.lua
 CRT_Modules\Timeline\ReviewTab.lua
 CRT_Modules\Timeline\SettingsTab.lua

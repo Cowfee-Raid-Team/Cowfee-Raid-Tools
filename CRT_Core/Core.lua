@@ -10,6 +10,7 @@ CRT.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetad
 -- Per season (declared, so the dev season purge, Dev/SeasonTools.lua, clears them for a finished season's bosses):
 -- each module declares its tables kept per boss with Bosses:DeclareStore or DeclareField (CRT_Data/Bosses/Registry.lua).
 --   timeline.bosses, rows, reviewRefs, orders, ignored, abilities, pullNumberBackup (Timeline/Data.lua)
+--   timeline.healerSlots (Healer CDs' healer slots per boss, Timeline/HealerSlots.lua)
 --   alerts.reminders, anyBackup (Alerts/Reminders.lua), alerts.phases (Alerts/Phases.lua), alerts.special (Alerts/Special.lua),
 --   alerts.shieldPulls (Alerts/ShieldPulls.lua)
 --   pace.own, shared, use, disabled (Pace/Data.lua); markers.disabled (Markers/Display.lua)
@@ -384,6 +385,9 @@ local defaults = {
         -- Healer CDs' rows you picked per player: [player key in lower case][spellID] = true (shown) or false
         -- (hidden); a spell not there is as by default (Timeline/HealerRows.lua). Long term, never shared.
         healerRows = {},
+        -- Healer CDs' healer slots per boss, every difficulty: [encounterID] = { { spec = SpecializationID, n = number,
+        -- player = "Name-Realm" or nil } } (Timeline/HealerSlots.lua). Per season, declared for the purge.
+        healerSlots = {},
     },
     -- Team raids (Team.lua, TeamList.lua): list is your own team names, in the order added (Team and Pug are built
     -- in, never saved here); popup is the place of the new raid group popup (TeamPopup.lua). Tonight's team and the
