@@ -64,6 +64,21 @@ local ADDON, CRT = ...
 --                                         still comes; the timed callout and speech don't, and no other difficulty's
 --                                         times are used. Only with its Bar on. Not with ticks or bar.
 --   } }
+-- A debuff list (kind = "debuffList") is the other kind of entry: a display of the players who have a debuff, by side,
+-- driven by the aura, not by the ability timeline (Alerts/DebuffList.lua reads it, Alerts/DebuffListView.lua draws it):
+--   { kind = "debuffList",
+--     key, label, help, difficulty, default   as above
+--     spellID = 1301117,                required: the debuff (from /crt dev aura or the Journal, never guessed)
+--     sides = { { key = "left", label = "Left", groups = { 1, 3 } }, ... },
+--                                       required: one or more sides, each a column of the players of its raid groups
+--                                         (1 to 8); nothing assumes two sides or a number of players
+--     colors = { left = { on = { r, g, b }, off = { r, g, b } } },
+--                                       optional, per side key: a bar with the debuff (on) and one without (off), 0 to 1
+--     showAll = false,                  optional: list every player of a side, not only those with it (default false)
+--     sortByRole = true,                optional: tanks, healers, damage, then by name (default true)
+--     barHeight = 24, barWidth = 160,   optional: each bar's size (BAR_RANGE) }
+--   It has no when, who, show, bar, ticks, absorb or markers: it is never on the alerts engine. Its times, items and
+--   covers are empty, so the rest of the special alert code can read it as an alert that never fires.
 -- No double alerts: an alert covers its when.spellID, its when.row's spell and its covers. When you have it on
 -- and your own reminder on for one of those spells, the engine leaves out your reminder's alert for any cast
 -- the special one also alerts (the same phase, within Alerts.COVER_WINDOW seconds); the rest still come.
@@ -76,6 +91,8 @@ local ADDON, CRT = ...
 -- Raid markers: SetRaidTarget is a protected function since patch 12.0 (warcraft.wiki.gg API_SetRaidTarget;
 -- Blizzard calls it only from its secure templates), so an addon can never put a marker on a player. The
 -- alert names the marks in its text instead (Special.MARKING says so to the Mech Alerts panel).
+-- A debuff list keeps on (Alert me) there too; its looks (groups, colours, sizes, place) are CRT.db.alerts.debuffLists
+-- (Alerts/DebuffList.lua).
 -- Each player's choices: CRT.db.alerts.special[encounterID][key] = { on, show = { alert, text, icon, bar,
 -- circle, timeline }, speak, markers, fill, lead, countTo, absorb }, saved once changed; until then the entry's own
 -- defaults apply. lead is your Show from (seconds before each cast it shows, LEAD_MIN to LEAD_MAX as on the Mechanics
@@ -384,6 +401,144 @@ local function readCovers(list)
     return out
 end
 
+-- Debuff lists ---------------------------------------------------------------------------------------
+
+local DEBUFF_LIST = "debuffList"
+Special.DEBUFF_LIST = DEBUFF_LIST
+-- A bar's size: the default and the range the boss file and the Looks sliders may give
+Special.BAR_RANGE = { height = { min = 12, max = 48, default = 24 }, width = { min = 80, max = 320, default = 160 } }
+-- A side the boss file gives no colours: plain light and dark grey (not a theme colour: a data colour's default)
+local SIDE_ON, SIDE_OFF = { 0.85, 0.85, 0.85 }, { 0.25, 0.25, 0.25 }
+
+-- Raid groups 1 to 8, each once, in order, or nil.
+function Special.ReadGroups(list)
+    if type(list) ~= "table" or #list == 0 then
+        return nil
+    end
+    local out, seen = {}, {}
+    for _, g in ipairs(list) do
+        if not (wholeID(g) and g <= MAX_GROUP) or seen[g] then
+            return nil
+        end
+        seen[g] = true
+        out[#out + 1] = g
+    end
+    table.sort(out)
+    return out
+end
+
+-- { r, g, b } with each part 0 to 1, as a new table, or nil.
+local function readColor(c)
+    if type(c) ~= "table" then
+        return nil
+    end
+    local out = {}
+    for i = 1, 3 do
+        if not (finite(c[i]) and c[i] >= 0 and c[i] <= 1) then
+            return nil
+        end
+        out[i] = c[i]
+    end
+    return out
+end
+
+local function readSides(list)
+    if type(list) ~= "table" or #list == 0 then
+        return nil, "a debuff list needs sides"
+    end
+    local out, seen = {}, {}
+    for i, s in ipairs(list) do
+        local key = type(s) == "table" and text(s.key)
+        if not key or seen[key] then
+            return nil, "side " .. i .. " needs a key of its own"
+        end
+        local groups = Special.ReadGroups(s.groups)
+        if not groups then
+            return nil, "side " .. key .. " needs raid groups 1 to 8"
+        end
+        seen[key] = true
+        out[#out + 1] = { key = key, label = text(s.label) or key, groups = groups }
+    end
+    return out
+end
+
+local function readSize(v, range)
+    if v == nil then
+        return range.default
+    end
+    if finite(v) and v >= range.min and v <= range.max then
+        return v
+    end
+    return nil
+end
+
+-- The debuff list's own fields (see the top of this file), or nil and why.
+local function readDebuffList(def)
+    if def.when ~= nil or def.who ~= nil then
+        return nil, "a debuff list has no when or who: the debuff drives it"
+    end
+    if not wholeID(def.spellID) then
+        return nil, "a debuff list needs its spellID"
+    end
+    local sides, why = readSides(def.sides)
+    if not sides then
+        return nil, why
+    end
+    if def.colors ~= nil and type(def.colors) ~= "table" then
+        return nil, "colors must be a table by side"
+    end
+    local colors = {}
+    for _, s in ipairs(sides) do
+        local given = def.colors and def.colors[s.key]
+        if given ~= nil and type(given) ~= "table" then
+            return nil, "side " .. s.key .. "'s colours must be { on, off }"
+        end
+        local on = given and given.on ~= nil and readColor(given.on)
+        local off = given and given.off ~= nil and readColor(given.off)
+        if (given and given.on ~= nil and not on) or (given and given.off ~= nil and not off) then
+            return nil, "side " .. s.key .. "'s colours must be { r, g, b }, 0 to 1"
+        end
+        colors[s.key] = { on = on or readColor(SIDE_ON), off = off or readColor(SIDE_OFF) }
+    end
+    for _, k in ipairs({ "showAll", "sortByRole" }) do
+        if def[k] ~= nil and type(def[k]) ~= "boolean" then
+            return nil, k .. " must be true or false"
+        end
+    end
+    local h, w = readSize(def.barHeight, Special.BAR_RANGE.height), readSize(def.barWidth, Special.BAR_RANGE.width)
+    if not (h and w) then
+        return nil, "barHeight or barWidth is out of range"
+    end
+    return { spellID = def.spellID, sides = sides, colors = colors, showAll = def.showAll == true,
+        sortByRole = def.sortByRole ~= false, barHeight = h, barWidth = w }
+end
+
+-- A debuff list read: its own fields, with an alert's fields empty (no times, no one, nothing shown or covered).
+local function debuffListEntry(def, key, label)
+    local own, why = readDebuffList(def)
+    if not own then
+        return nil, why
+    end
+    if def.icon ~= nil and not wholeID(def.icon) then
+        return nil, "icon must be a spell ID"
+    end
+    own.key, own.label, own.kind = key, label, DEBUFF_LIST
+    own.help, own.difficulty, own.default = text(def.help), def.difficulty, def.default == true
+    own.icon = def.icon
+    own.when, own.who, own.covers = {}, { mode = "everyone" }, {}
+    own.show = {}
+    for _, k in ipairs(SHOW_KEYS) do
+        own.show[k] = false
+    end
+    own.speak, own.lead, own.text, own.fill = false, DEFAULT_LEAD, label, DEFAULT_FILL
+    return own
+end
+
+-- Whether an entry is a debuff list.
+function Special.IsDebuffList(entry)
+    return type(entry) == "table" and entry.kind == DEBUFF_LIST
+end
+
 -- One entry of a boss file, checked and in the shape the rest of the addon reads, or nil and why.
 function Special.Read(def)
     if type(def) ~= "table" then
@@ -398,6 +553,11 @@ function Special.Read(def)
     end
     if def.difficulty ~= nil and not GROUPS[def.difficulty] then
         return nil, "difficulty must be mythic, nh or left out"
+    end
+    if def.kind == DEBUFF_LIST then
+        return debuffListEntry(def, key, label)
+    elseif def.kind ~= nil then
+        return nil, "kind must be debuffList or left out"
     end
     local when, whyWhen = readWhen(def.when)
     if not when then
@@ -663,6 +823,9 @@ end
 function Special:Times(encounterID, entry, group, ref)
     local Reminders = CRT.AlertReminders
     local out = {}
+    if entry.kind == DEBUFF_LIST then
+        return out -- the debuff drives it, not the ability timeline
+    end
     if entry.when.list then
         for i, e in ipairs(entry.when.list) do
             out[i] = { ph = e.ph, t = e.t, n = i }
@@ -711,6 +874,9 @@ end
 -- when.spellID, and the spell of its when.row on ref or the boss's ability timeline for group.
 function Special:Covers(encounterID, entry, group, ref)
     local out = {}
+    if entry.kind == DEBUFF_LIST then
+        return out -- it alerts no cast, so it stands for none
+    end
     for _, id in ipairs(entry.covers or {}) do
         out[id] = true
     end
@@ -883,7 +1049,8 @@ function Special.Icon(encounterID, entry, group, ref)
     if entry.iconFile then
         return readable(entry.iconFile) and entry.iconFile or nil
     end
-    local spell = entry.when.spellID or rowSpell(encounterID, entry, group, ref)
+    -- a debuff list's icon is its debuff's
+    local spell = entry.when.spellID or entry.spellID or rowSpell(encounterID, entry, group, ref)
     return (spellTexture(spell))
 end
 
@@ -1055,7 +1222,7 @@ function Special:AbsorbWatches(run)
         local choices = self:Choices(run.encounterID, entry)
         local a = self:Absorb(run.encounterID, entry, choices)
         local fits = entry.difficulty == nil or run.anyDifficulty or entry.difficulty == group
-        if a and (fits or a.anyDifficulty) and choices.on and choices.show.bar and untimedIsMine(entry) then
+        if a and entry.kind ~= DEBUFF_LIST and (fits or a.anyDifficulty) and choices.on and choices.show.bar and untimedIsMine(entry) then
             local timed = fits and #self:Times(run.encounterID, entry, group, run.reference) > 0
             local Reference = CRT.TimelineReference
             out[#out + 1] = {
