@@ -28,6 +28,12 @@ local W = Editor.state
 local EL = {}
 CRT.NoteEditorLinks = EL
 
+-- Raid marker codes ({cross}, {rt1}) in a group's label as their icons, as tall as the text (CRT_Core/MarkerText.lua).
+local function markers(text)
+    local f = CRT.MarkerText
+    return f and f(text) or text
+end
+
 local TEXT = {
     titleOne = "1 timer line lists the same players as a group row. Link it so it follows the row?",
     title = "%d timer lines list the same players as a group row. Link them so they follow the row?",
@@ -253,7 +259,7 @@ local function drawBanner(sum, width)
         fs:ClearAllPoints()
         fs:SetPoint("TOPLEFT", L.pad, -y)
         fs:SetWidth(inner)
-        fs:SetText(text)
+        fs:SetText(markers(text))
         fs:Show()
         y = y + math.ceil(fs:GetStringHeight() or 12) + 2
     end
@@ -339,7 +345,7 @@ local function tagEnter(self)
         return
     end
     UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
-    GameTooltip:SetText(string.format(TEXT.tagTip, row.label or ""), 1, 1, 1)
+    GameTooltip:SetText(markers(string.format(TEXT.tagTip, row.label or "")), 1, 1, 1)
     for _, line in ipairs(list) do
         GameTooltip:AddLine(lineText(line), 0.85, 0.85, 0.85)
     end
@@ -392,9 +398,9 @@ local function rowEnter(self)
     end
     UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
     if row.block ~= "" then
-        GameTooltip:SetText(string.format(TEXT.follows, row.label, row.block), 1, 1, 1)
+        GameTooltip:SetText(markers(string.format(TEXT.follows, row.label, row.block)), 1, 1, 1)
     else
-        GameTooltip:SetText(string.format(TEXT.followsPlain, row.label), 1, 1, 1)
+        GameTooltip:SetText(markers(string.format(TEXT.followsPlain, row.label)), 1, 1, 1)
     end
     GameTooltip:Show()
 end

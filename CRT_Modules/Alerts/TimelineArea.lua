@@ -330,7 +330,7 @@ local function draw(w, line, now, s)
     w.popText:SetTextColor(c[1], c[2], c[3])
     w.ring:SetVertexColor(c[1], c[2], c[3])
     Areas.SetFont(w.name, font, textSize, OUTLINE)
-    w.name:SetText(Areas.LineText(line))
+    w.name:SetText(Areas.ShownText(line))
     w.name:SetTextColor(c[1], c[2], c[3])
     w.name:SetShown(s.showNames ~= false)
     local list = s.badges ~= false and Timeline.Badges(line) or EMPTY

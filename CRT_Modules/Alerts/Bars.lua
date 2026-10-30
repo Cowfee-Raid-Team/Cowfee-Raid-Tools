@@ -383,7 +383,7 @@ local function row(line, now, ahead, shownAt, s)
     local color, from = Areas.DrawColor(line, colorOf(s.barColor, DEFAULT_BAR_COLOR))
     color = color or DEFAULT_BAR_COLOR
     return {
-        text = Areas.LineText(line),
+        text = Areas.ShownText(line),
         kind = typeWord(line, s),
         time = timeText(countTo(line, now) - now),
         icon = Areas.LineIcon(line),
@@ -560,7 +560,7 @@ local function absorbRow(line, now, s)
     local left = math.max(0, math.min(st.length, st.at + st.length - now))
     return {
         absorb = true,
-        text = Areas.LineText(line),
+        text = Areas.ShownText(line),
         icon = Areas.LineIcon(line),
         lineColor = from ~= "custom" and color or nil,
         color = color,

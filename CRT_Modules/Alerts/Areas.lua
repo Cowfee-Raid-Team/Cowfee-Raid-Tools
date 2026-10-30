@@ -72,6 +72,7 @@ local ADDON, CRT = ...
 --   Areas.Swipe(w, line, total, now)  sets the countdown swipe on w.cooldown (icons, circles), see below
 --   Areas.LineText(line), Areas.LineIcon(line), Areas.SetFont(fontString, name,
 --     size, outline): what a line shows, with values the game hides left out, and the area's font.
+--   Areas.ShownText(line): LineText with raid marker codes drawn as icons, for the areas' own text.
 --   Areas.DrawColor(line, custom), Areas.CustomColors(): the colour a line is drawn in (its ability type's
 --     unless a colour of its own may win) and whether your own colours apply.
 
@@ -183,6 +184,13 @@ function Areas.LineText(line)
         end
     end
     return ""
+end
+
+-- The line's text as an area draws it: LineText with raid marker codes ({cross}, {rt1}) as their icons, as tall
+-- as the text (CRT_Core/MarkerText.lua). LineText stays as written, for speech and the game's own timeline.
+function Areas.ShownText(line)
+    local text = Areas.LineText(line)
+    return CRT.MarkerText and CRT.MarkerText(text) or text
 end
 
 -- The line's icon, else its spell's icon, else nil.

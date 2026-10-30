@@ -160,7 +160,7 @@ local function draw(w, line, now, s, shownAt)
             w.text:ClearAllPoints()
             w.text:SetPoint("LEFT", w, "LEFT", size + TEXT_GAP, 0) -- right of the icon square, on the widget
         end
-        w.text:SetText(Areas.LineText(line))
+        w.text:SetText(Areas.ShownText(line))
         local c = Areas.DrawColor(line) or WHITE -- its ability type's colour, unless its own may win
         w.text:SetTextColor(c[1], c[2], c[3])
         w.text:Show()

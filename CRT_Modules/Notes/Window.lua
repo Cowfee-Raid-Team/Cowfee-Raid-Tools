@@ -131,6 +131,18 @@ local function colorName(word)
     return word
 end
 
+-- Raid marker codes ({cross}, {rt1}) as their icons, as tall as the window's font (CRT_Core/MarkerText.lua).
+local function markers(text)
+    local f = CRT.MarkerText
+    return f and f(text) or text
+end
+
+-- Whether the word from start to stop (one past its end) is a marker code in braces: never a name.
+local function markerWord(s, start, stop)
+    local Codes = CRT.MarkerCodes
+    return Codes ~= nil and Codes.InBraces(s, start, stop)
+end
+
 local function names(item)
     local parts = {}
     for _, tag in ipairs(item.tags) do
@@ -147,7 +159,7 @@ local function describe(item)
         local icon = info and info.icon and ("|T" .. info.icon .. ":0|t ") or ""
         return icon .. (info and info.name or ("Spell " .. item.spellId)), not info
     end
-    return "|cff" .. hex(item.color) .. (item.text or "") .. "|r", false
+    return "|cff" .. hex(item.color) .. markers(item.text or "") .. "|r", false
 end
 
 -- A timer line's time cell: yours with ">" in the heading colour, else grey.
@@ -171,7 +183,7 @@ end
 
 -- A line of free text: names class colored, your own name in gold, and the line marked with ">" when it
 -- names you or your role, or (an assignment line) your class. A line with no colon is treated as a heading,
--- unless noHeading.
+-- unless noHeading. Raid marker codes become their icons, never names.
 local function textLine(line, noHeading)
     if line == "" then
         return ""
@@ -179,7 +191,10 @@ local function textLine(line, noHeading)
     -- an assignment line naming your class is yours too; a sentence never is by class
     local mine = Engine:ClassLineIsMine(line)
     local myName = (UnitName("player") or ""):lower()
-    local colored = line:gsub("[%w\128-\255]+", function(word)
+    local colored = line:gsub("()([%w\128-\255]+)()", function(start, word, stop)
+        if markerWord(line, start, stop) then
+            return nil -- kept as written, for the icon below
+        end
         if Engine:WordIsMe(word) then
             mine = true
         end
@@ -188,6 +203,7 @@ local function textLine(line, noHeading)
         end
         return colorName(word)
     end)
+    colored = markers(colored)
     if not noHeading and not line:find(":", 1, true) then
         colored = gold(colored)
     end
@@ -250,7 +266,7 @@ local function personalLine(line)
     end
     local md, whole = markdownLine(line)
     if whole then
-        return md
+        return markers(md)
     end
     -- a bullet or bold line keeps its own look: never the gold of a line with no colon
     return textLine(md, md ~= line)
@@ -553,7 +569,7 @@ end
 
 local function reminderLine(item, seconds, isNext)
     local icon = item.icon and ("|T" .. tostring(item.icon) .. ":0|t ") or ""
-    local text = icon .. tostring(item.text or TEXT.reminder)
+    local text = icon .. markers(tostring(item.text or TEXT.reminder))
     if isNext then
         return gold("> " .. fmtTime(seconds)) .. "  " .. text
     end
@@ -629,7 +645,7 @@ local function runModel(head)
                     order[#order + 1] = p
                 end
                 local icon = it.icon and ("|T" .. tostring(it.icon) .. ":0|t ") or ""
-                p.rows[#p.rows + 1] = { it = it, due = start + it.time, index = index, x = "  " .. icon .. tostring(it.text or TEXT.reminder) }
+                p.rows[#p.rows + 1] = { it = it, due = start + it.time, index = index, x = "  " .. icon .. markers(tostring(it.text or TEXT.reminder)) }
             elseif not Alerts:Skipped(it.ph) and not byPhase[it.ph] then
                 local p = { ph = it.ph, wait = { x = "|cff777777" .. format(TEXT.waiting, tostring(it.ph)) .. "|r" } }
                 byPhase[it.ph] = p
