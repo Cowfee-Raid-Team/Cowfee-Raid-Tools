@@ -124,6 +124,16 @@ function Timeline:WithoutIgnored(lanes, encounterID)
     return shown, hidden
 end
 
+-- Whether this is a developer build: the CRT_Dev files are loaded (CRT_Dev/Dev/LayoutEditor.lua makes
+-- CRT.Dev), whether or not /crt dev is open. A packaged build leaves them out. Asked when needed, never at
+-- load, since the Dev files load after the modules. A packaged build doesn't read your own timeline layers,
+-- which only the Advanced tab manages: hidden Journal rows (Journal:IsHidden), rows hidden by name (Lanes),
+-- your own spells (Journal:Rows) and your ability labels (Timeline:Ability, ApplyAbilities). Nothing saved
+-- is removed: a developer build reads it all again.
+function Timeline.DevBuild()
+    return rawget(CRT, "Dev") ~= nil
+end
+
 -- Whether this is a developer build with the Development page open (/crt dev). Players never have it:
 -- the page and every Dev file are left out of the package.
 function Timeline.DevMode()
@@ -278,6 +288,9 @@ end
 -- ignored mechanics: no reference, note or anything shared changes.
 
 function Timeline:Ability(encounterID, spellID)
+    if not Timeline.DevBuild() then
+        return nil
+    end
     local all = tdb().abilities
     local list = all and all[tostring(encounterID)]
     return list and list[spellID] or nil
@@ -308,6 +321,9 @@ end
 -- each ability you gave a row and that has no lane yet gets an empty one (after the boss's rows, kind
 -- "journal"). rows are the boss's Journal rows (Journal:Rows). Returns the new list.
 function Timeline:ApplyAbilities(lanes, encounterID, rows)
+    if not Timeline.DevBuild() then
+        return lanes
+    end
     local all = tdb().abilities
     local list = all and all[tostring(encounterID)]
     if not list then

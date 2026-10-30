@@ -30,9 +30,7 @@ local EMPTY_BOSS = "No pulls recorded for this boss yet"
 local EMPTY_ALL = "No boss pulls recorded yet"
 
 local TEXT = {
-    needsDev = "Ability timelines are written on the Timeline's Advanced tab, which needs /crt dev.",
-    savedFor = "Saved as your ability timeline for %s (%s). It shows on the Timeline's Review tab.",
-    notSaved = "Not saved: %s",
+    needsDev = "Writing ability timelines isn't part of this version.",
     shareNote = "Share note",
     shareHelp = "Sends this boss's raid note to everyone in the group with the addon, with every line added or moved here, and makes it everyone's active note. Only the raid leader or an assistant can send it; anyone else just sets their own active note. Notes can't be sent during a boss fight.",
     noNote = "This boss has no encounter ID yet, so no raid note can be made for it.",
@@ -880,7 +878,6 @@ end
 -- (UI.HelpRight), so each button stands HELP_ROOM left of the next one.
 local function buildPopControls()
     popButton = button(reviewFrame, "Pop out", 90)
-    popButton:SetPoint("TOPRIGHT", reviewFrame, "TOPRIGHT", -8 - UI.HELP_GAP - UI.HELP_SIZE, -38)
     popButton:SetScript("OnClick", togglePopout)
     UI.HelpRight(popButton, "Pop out", "Moves the timeline into a window of its own that you can drag and resize. Dock, the window's X or Escape puts it back.")
 
@@ -1062,17 +1059,17 @@ end
 
 -- Saves text as one of your references at once and opens it on the Advanced tab, the boss and difficulty
 -- it names picked (the Journal's Send to Timeline). Text that doesn't read yet goes in the box with what
--- is wrong. Without /crt dev the tab is hidden: it saves, says in chat where it went, and opens nothing.
--- Returns the new reference's key, or nil.
+-- is wrong. Without /crt dev the tab is hidden and nothing could manage the reference, so it saves nothing
+-- and says so. Returns the new reference's key, or nil.
 function Timeline:SaveReferenceText(text)
-    local key, errors = Reference:Add(text)
+    if not Timeline.DevMode() then
+        CRT:Print(TEXT.needsDev)
+        return nil
+    end
+    local key = Reference:Add(text)
     local ref = key and Reference.Parse(text)
     if not ref then
-        if Timeline.DevMode() then
-            self:OpenReferenceText(text)
-        else
-            CRT:Print(string.format(TEXT.notSaved, errors and errors[1] or ""))
-        end
+        self:OpenReferenceText(text)
         return nil
     end
     if type(ref.encounterID) == "number" then
@@ -1081,11 +1078,6 @@ function Timeline:SaveReferenceText(text)
     local diff = (ref.difficulty or ""):lower()
     selectedGroup = diff == "mythic" and "mythic" or "nh"
     bossList = nil
-    if not Timeline.DevMode() then
-        CRT:Print(string.format(TEXT.savedFor, ref.boss or "?", GROUPS[selectedGroup]))
-        refresh()
-        return key
-    end
     UI:Show("timeline")
     selectTab("references")
     if refTab then

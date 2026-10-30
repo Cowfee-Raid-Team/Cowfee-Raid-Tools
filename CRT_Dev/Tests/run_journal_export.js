@@ -62,11 +62,11 @@ check("opens the copy window titled with the boss", shown.title and shown.title:
 check("with Send to Timeline", shown.action and shown.action.label == "Send to Timeline")
 shown.action.onClick("edited text")
 check("Send to Timeline saves it as a reference at once", shown.saved == "edited text" and printed[#printed]:find("Saved the abilities for Nek'zali", 1, true))
--- without /crt dev the Timeline says where it went (Timeline:SaveReferenceText); this adds no line naming the hidden tab
+-- without /crt dev the window only shows the text to copy: no Send to Timeline
 devMode = false
-local before = #printed
-shown.action.onClick("other text")
-check("Send to Timeline outside dev: saved, no line about the Advanced tab", shown.saved == "other text" and #printed == before)
+shown = {}
+X:Run()
+check("outside /crt dev: the copy window, with no Send to Timeline", shown.text and shown.action == nil)
 devMode = true
 -- the helpers the Advanced tab's list edits a reference with
 local R = CRT.TimelineReference

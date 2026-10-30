@@ -66,6 +66,7 @@ local noteText = "EncounterID:3001;Difficulty:Mythic;Name:Nek note\\n"
   .. "time:10;ph:1;tag:everyone;spellid:5001;\\n"
   .. "time:20;ph:1;tag:everyone;text:Hungering Pyre;colors:1 0 0;\\n"
 local CRT = {
+  Dev = {}, -- a developer build (the CRT_Dev files loaded): your own timeline layers are read (Timeline.DevBuild)
   PALETTE = { accent = { 0.78, 0.56, 0.36 } }, -- the theme's accent (the harness's own; Themes.lua fills it in the game)
   db = {
     ui = {}, classCache = {},

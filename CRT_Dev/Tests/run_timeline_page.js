@@ -84,6 +84,7 @@ local CRT = { db = { timeline = { record = true, minPull = 15, keep = 10, bosses
     ValuePill = function(parent, o) local m = mock("pill") m.opts, m.parent = o, parent pills[#pills + 1] = m
       rawset(m, "refresh", function() m.enabled = not o.enabledIf or (o.enabledIf() and true or false) m.text = tostring(o.get()) end) m.refresh() return m end,
     SkinTree = function(_, f) skinCalls = skinCalls + 1 end,
+    SkinEditBox = function(_, e) rawset(e, "skinned", true) end,
     RegisterPage = function(_, key, title, fn) pages[key] = { title = title, build = fn } end,
     RegisterTab = function(_, b) tabs[#tabs+1] = b end, SetTabSelected = function(_, b, on) if on then selectedTabButton = b end end,
     IsModern = function() return true end, Scale = function() return 100 end, RegisterLayer = function(_, k, f) layered = k if k == "timeline" then popFrame = f end end, SelectPage = function(_, k) selectedPage = k end,
@@ -95,6 +96,8 @@ CRT_THEME(CRT, CRT.UI)
 -- Timeline.DevMode reads the Development page's hidden flag: /crt dev open while the tests run, unless one closes it
 CRT.UI.pages = { dev = { hidden = false } }
 local function setDev(on) CRT.UI.pages.dev.hidden = not on end
+-- a developer build: the CRT_Dev files loaded (CRT.Dev); a test takes it away for a packaged build
+CRT.Dev = {}
 -- the real CRT_Core/UI/Toggle.lua (UI.Toggle2, the pop-out's Abilities | Healer CDs toggle)
 assert(load(toggleSrc, "CRT_Core/UI/Toggle.lua"))("CowfeeRaidTools", CRT)
 -- over the real UI/Tooltip.lua's (CRT_THEME loads it): the Tooltip position dropdown with its spot picker,
@@ -557,9 +560,10 @@ do
   l = abilityLineNamed("Grasping Depths")
   assert(l.check.checked and l.name.alpha == 1 and not l.remove.shown, "back to full, and no x on a Journal row")
   local mine = abilityLineNamed("Mine")
-  assert(mine and mine.tag.text == "yours" and mine.remove.shown, "your own spell is marked yours, with an x")
+  assert(mine and mine.tag.text == "yours" and mine.remove.shown, "your own spell is marked yours, with Remove")
+  assert(mine.remove.text == "Remove" and mine.remove.template == "UIPanelButtonTemplate" and mine.remove.normalFont == CRTFontButtonSmall, "Remove is a small panel button")
   mine.remove.OnClick(mine.remove)
-  assert(customRemoved[#customRemoved] == 555, "the x removes it")
+  assert(customRemoved[#customRemoved] == 555, "Remove takes it out")
   rowsList = {}
   T:Set("grid", 30)
 end
@@ -571,6 +575,7 @@ do
   C_Spell.GetSpellName = function(id) if id == 4321 then return "Custom Cast" end end
   edit:SetText("4321") add.OnClick(add)
   assert(customAdded[#customAdded] == 4321 and edit:GetText() == "", "Add spell ID adds a custom row")
+  assert(rawget(edit, "skinned"), "the spell ID box is skinned (UI:SkinEditBox)")
   C_Spell.GetSpellName = realName
   assert(helps["Add"] and helps["Add"]:find("recorded pulls", 1, true), "Add's (?) says recorded pulls only")
 end
@@ -787,20 +792,44 @@ do
   assert(selectedTabButton == tabs[1], "Advanced was selected: back to Review")
   adv.OnClick(adv)
   assert(selectedTabButton == tabs[1], "a hidden tab can't be picked")
-  -- Send to Timeline outside dev: saves, says where, opens no hidden tab
-  local before = #printed
+  -- Send to Timeline outside dev: saves nothing, says so, opens no hidden tab
+  local before, count = #printed, #CRT.db.timeline.references
   local key = T:SaveReferenceText("Boss: Nek'zali the Soulcoiler\\nDifficulty: Mythic\\nEncounter: 3470\\nOdd: 0:10")
-  assert(key and R:Find(key) and selectedTabButton == tabs[1], "Save outside dev saves and selects no hidden tab")
-  assert(#printed == before + 1 and printed[#printed]:find("Nek'zali the Soulcoiler", 1, true) and printed[#printed]:find("Mythic", 1, true), "and says where it went: " .. tostring(printed[#printed]))
-  R:Delete(key)
+  assert(key == nil and #CRT.db.timeline.references == count and selectedTabButton == tabs[1], "Save outside dev saves nothing and selects no hidden tab")
+  assert(#printed == before + 1 and not printed[#printed]:find("/crt dev", 1, true), "and says so, without pointing at /crt dev: " .. tostring(printed[#printed]))
   T:OpenReferenceText("Boss: X")
-  assert(printed[#printed]:find("/crt dev", 1, true) and selectedTabButton == tabs[1], "Open outside dev says it needs /crt dev")
+  assert(#printed == before + 2 and selectedTabButton == tabs[1], "Open outside dev says so too, and opens nothing")
   setDev(true)
   T:Fire()
   assert(adv.shown, "with /crt dev open again, Advanced is back without a reload")
   tabs[1].OnClick(tabs[1])
 end
 print("ok Advanced only behind /crt dev")
+
+-- a packaged build (no CRT_Dev files) reads none of your own timeline layers that only Advanced manages:
+-- rows hidden by name, your ability labels; the saved data stays, and a developer build reads it again
+do
+  local ref = R:Find("ship:1").ref
+  local function laneNamed(name)
+    local lanes = CRT.TimelineLanes.AsShown({ reference = ref }, {}, T:Settings(), 3470, nil, "mythic")
+    for _, l in ipairs(lanes) do if l.label == name or l.baseLabel == name then return l end end
+  end
+  local s = T:Settings()
+  s.rows[3470] = s.rows[3470] or {}
+  s.rows[3470].hiddenNames = { ["soulcoil rite"] = true }
+  T:SetAbility(3470, 1286873, "name", "My name")
+  assert(laneNamed("Soulcoil Rite") == nil and T:Ability(3470, 1286873).name == "My name", "developer build: your hide and your label are read")
+  CRT.Dev = nil
+  assert(T.DevBuild() == false and laneNamed("Soulcoil Rite") ~= nil and T:Ability(3470, 1286873) == nil, "packaged build: neither is read")
+  local lanes = { { label = "X", spellID = 1286873 } }
+  assert(T:ApplyAbilities(lanes, 3470, {}) == lanes and lanes[1].label == "X", "packaged build: no labels laid on")
+  assert(s.rows[3470].hiddenNames["soulcoil rite"] == true and s.abilities["3470"][1286873].name == "My name", "packaged build: nothing saved is removed")
+  CRT.Dev = {}
+  assert(laneNamed("Soulcoil Rite") == nil and T:Ability(3470, 1286873).name == "My name", "developer build again: read as before")
+  s.rows[3470].hiddenNames = nil
+  T:SetAbility(3470, 1286873, "name", nil)
+end
+print("ok a packaged build skips your own timeline layers")
 
 -- Share note on the Review tab: makes the boss's raid note when it has none, then shares it
 do

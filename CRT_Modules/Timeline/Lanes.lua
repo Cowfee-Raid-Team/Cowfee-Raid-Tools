@@ -17,10 +17,13 @@ CRT.TimelineLanes = Lanes
 local SKULL = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
 local UNNAMED_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 
+-- A row's name as rows are matched and hidden by it (timeline.rows[boss].hiddenNames): trimmed, curly
+-- apostrophes made plain, lowercase.
 local function trimLower(s)
     s = tostring(s or ""):gsub("\226\128\153", "'"):gsub("\226\128\152", "'")
     return (s:gsub("^%s+", ""):gsub("%s+$", "")):lower()
 end
+Lanes.NameKey = trimLower
 
 -- Puts the deaths of each source on the lanes: one combined lane, or one lane per player. Deaths
 -- with no time go to unknown, but only the first source's (the shown pull's, not an older one's).
@@ -182,7 +185,8 @@ local function referenceLanes(ref, rows, settings, encounterID, overlay, group, 
             byID[row.spellID] = row
         end
     end
-    local mine = settings.rows and settings.rows[encounterID]
+    -- rows you hid by name on the Advanced tab: a developer build only (Timeline.DevBuild)
+    local mine = CRT.Timeline.DevBuild() and settings.rows and settings.rows[encounterID]
     local hiddenNames = mine and mine.hiddenNames
 
     local phases = ref.phases or {}

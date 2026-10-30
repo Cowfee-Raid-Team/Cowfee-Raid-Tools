@@ -93,6 +93,7 @@ local CRT = { db = { timeline = { rows = {} } }, Timeline = { GROUP_NAMES = { nh
   UI = { TooltipOwner = function(tip, owner, anchor, x, y, how) owned[#owned + 1] = { tip = tip, owner = owner, area = how } end } }
 function CRT.Timeline:Settings() return CRT.db.timeline end
 function CRT.Timeline:Fire() end
+function CRT.Timeline.DevBuild() return true end -- a developer build: your own spells are read
 assert(load(journalSrc, "Journal.lua"))("CowfeeRaidTools", CRT)
 assert(load(refSrc, "Reference.lua"))("CowfeeRaidTools", CRT)
 assert(load(tipSrc, "AbilityTip.lua"))("CowfeeRaidTools", CRT)

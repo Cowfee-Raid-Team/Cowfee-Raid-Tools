@@ -32,16 +32,16 @@ local TEXT = {
     overlayHelp = "With no pull picked on the right, draws the deaths of this boss's recent pulls on the ability timeline, faded by how old they are, so deaths that repeat stand out. Pick a pull on the right to see only that pull's deaths; click it again to go back to all of them. How many pulls it covers: the number, or Overlay pulls on the Settings tab.",
 }
 
--- The rows: the dropdowns and the label; the checkboxes (Play, Rehearse and Pop out at the right, from
--- Page.lua); a third row only when the frame is too narrow for Order beside the label (and Share note
--- beside Play), which then drop to it. The timeline and Recent pulls start under the last row shown.
+-- The rows: the dropdowns and the label; the checkboxes (Rehearse, Pop out and Share note at the right,
+-- from Page.lua); a third row only when the frame is too narrow for Order beside the label (and Share note
+-- after Pop out), which then drop to it. The timeline and Recent pulls start under the last row shown.
 local ROW1_Y, ROW2_Y, ROW3_Y = -4, -38, -64
 ReviewTab.ROW2_Y, ReviewTab.ROW3_Y = ROW2_Y, ROW3_Y
 local BODY_Y, BODY_ROW3_Y = -64, -96
 local RECORD_X, OVERLAY_X = 8, 170
 local PILL_GAP = 4 -- between the pill and the words on each side of it
--- the second row holds Share note too (Page.lua) from this width: the checkboxes end near 400, then Share
--- note, Play, Rehearse and Pop out with their (?) icons
+-- the second row holds Share note too (Page.lua) from this width: the checkboxes end near 400, then
+-- Rehearse, Pop out and Share note with their (?) icons
 local WIDE_W = 880
 
 local function settings()

@@ -215,10 +215,12 @@ local TEXT_MENU = {
 
 -- Your rows: a Shown tick on each line of the list, your own spells added by ID, and their remove x.
 local TEXT_ROWS = {
+    abilities = "Journal abilities",
+    abilitiesHelp = "The boss's abilities in the Encounter Journal, with their spell IDs; a line whose name matches one gets its icon and tooltip. Click or right-click an ability to give it a row on the timeline, a type, your own name, or a Mech Alert; these are only yours.\n\nUntick an ability to hide its row on your timeline. Spells you add by ID under the list are marked yours; Remove takes one out.\n\nWhile one of your ability timelines is open in the box, this list shows its abilities under its phases: right-click to add a phase or intermission, or set a phase's start. Their ticks hide a row by its name, for the boss picked on the Review tab.\n\nNothing shows in combat or while the Journal window is open.",
     shown = "Shown",
     shownTip = "Untick to hide this row on your timeline. Only yours.",
     yours = "yours",
-    remove = "x",
+    remove = "Remove",
     removeTip = "Remove this spell of yours",
     spellID = "spell ID",
     add = "Add",
@@ -231,17 +233,14 @@ local TICK_W = 20 -- the Shown tick, left of the icon
 local TICK_SIZE = 18
 local ICON_W = 22 -- the icon and the gap after it
 local NAME_W = 180
-local REMOVE_W = 16 -- the remove x on your own rows, at the right end
+local REMOVE_H = 16 -- Remove on your own rows, at the right end: a small panel button
+local REMOVE_GAP = 4 -- between Remove and the spell ID
 local DIM = 0.4 -- an unticked row's icon and name
 local ADD_ROW_H = 30 -- the spell ID box under the list
 local ADD_EDIT_W = 90
 
--- A name as the lanes compare it: trimmed, curly apostrophes made plain, lowercase (Lanes.lua's
--- trimLower), the key of a reference row hidden by name (timeline.rows[boss].hiddenNames).
-local function nameKey(name)
-    local s = tostring(name or ""):gsub("\226\128\153", "'"):gsub("\226\128\152", "'")
-    return (s:gsub("^%s+", ""):gsub("%s+$", "")):lower()
-end
+-- A name as the lanes compare it, the key of a reference row hidden by name (timeline.rows[boss].hiddenNames).
+local nameKey = CRT.TimelineLanes.NameKey
 
 -- A row of an ability timeline is hidden by its name, or by the spell the lanes give it (its [spell] or
 -- its Journal match by name) when that spell is hidden. boss: the page's boss key, where hiddenNames is
@@ -301,7 +300,7 @@ local function tipLeave()
     GameTooltip:Hide()
 end
 
--- The tick and the remove x of a line of the list (abilityLine).
+-- The tick and Remove of a line of the list (abilityLine).
 local function addRowControls(l)
     l.check = CreateFrame("CheckButton", nil, l, "UICheckButtonTemplate")
     l.check:SetSize(TICK_SIZE, TICK_SIZE)
@@ -311,21 +310,24 @@ local function addRowControls(l)
     l.check:SetScript("OnClick", tickClicked)
     l.check:SetScript("OnEnter", tipEnter)
     l.check:SetScript("OnLeave", tipLeave)
-    l.remove = CreateFrame("Button", nil, l)
-    l.remove:SetSize(REMOVE_W, REMOVE_W)
+    -- a small panel button, sized from its label in the small button font
+    l.remove = UI.PanelButton(l, TEXT_ROWS.remove, REMOVE_H, function()
+        Journal:RemoveCustom(l.boss, l.row.spellID)
+    end)
+    l.remove:SetNormalFontObject(CRTFontButtonSmall)
+    l.remove:SetHighlightFontObject(CRTFontButtonSmallHighlight)
+    l.remove:SetDisabledFontObject(CRTFontButtonSmallDisable)
+    local text = l.remove:GetFontString()
+    l.removeW = UI.PanelButtonWidth(text and text:GetStringWidth() or 0)
+    l.remove:SetWidth(l.removeW)
     l.remove:SetPoint("RIGHT", 0, 0)
-    l.remove.text = label(l.remove, TEXT_ROWS.remove, "CRTFontSmall")
-    l.remove.text:SetPoint("CENTER", 0, 0)
     l.remove.tipTitle = TEXT_ROWS.removeTip
     l.remove.line = l
-    l.remove:SetScript("OnClick", function(self)
-        Journal:RemoveCustom(self.line.boss, self.line.row.spellID)
-    end)
     l.remove:SetScript("OnEnter", tipEnter)
     l.remove:SetScript("OnLeave", tipLeave)
 end
 
--- The tick, the dimming and the remove x for what the line now shows. tick: whether it gets a tick.
+-- The tick, the dimming and Remove for what the line now shows. tick: whether it gets a tick.
 local function showRowControls(l, tick)
     local own = tick and not l.refRow and l.row and l.row.own and true or false
     l.check:SetShown(tick)
@@ -336,7 +338,7 @@ local function showRowControls(l, tick)
     l.name:SetAlpha(alpha)
     l.remove:SetShown(own)
     l.id:ClearAllPoints()
-    l.id:SetPoint("RIGHT", own and -REMOVE_W - 4 or 0, 0)
+    l.id:SetPoint("RIGHT", own and -(l.removeW + REMOVE_GAP) or 0, 0)
 end
 local RENAME_ABILITY = "COWFEERAIDTOOLS_RENAME_ABILITY"
 local abilityMenu -- set in Build, where the list is
@@ -495,6 +497,7 @@ function ReferencePage.AddSpellRow(f, boss)
     edit:SetMaxLetters(8)
     edit:SetSize(ADD_EDIT_W, 20)
     edit:SetPoint("LEFT", idLabel, "RIGHT", 10, 0)
+    UI:SkinEditBox(edit)
     local function add()
         local spellID = tonumber(edit:GetText())
         if not spellID or spellID <= 0 or spellID ~= math.floor(spellID) then
@@ -677,6 +680,13 @@ function ReferencePage.Build(f, ctx)
         status:SetTextColor(UI.Color("good"))
     end
 
+    -- The encounter ID the Journal knows the page's boss by, or nil.
+    local function selectedJournalID()
+        local selected = ctx.selectedBoss()
+        local refs = selected and ctx.references() or {}
+        return selected and Journal:ResolveID(selected, refs[1] and refs[1].ref) or nil
+    end
+
     -- The boss whose Journal abilities fit the box: its Boss and Encounter lines when it has them,
     -- else the selected boss. Returns the encounter ID to ask the Journal (or nil) and a name.
     local function journalBoss()
@@ -684,17 +694,7 @@ function ReferencePage.Build(f, ctx)
         if boss or encounterID then
             return Journal:ResolveID(nil, { boss = boss, encounterID = encounterID }), boss or tostring(encounterID)
         end
-        local selected = ctx.selectedBoss()
-        local refs = selected and ctx.references() or {}
-        return Journal:ResolveID(selected, refs[1] and refs[1].ref), ctx.bossName()
-    end
-
-
-    -- The encounter ID the Journal knows the page's boss by (as journalBoss gives it for an empty box).
-    local function selectedJournalID()
-        local selected = ctx.selectedBoss()
-        local refs = selected and ctx.references() or {}
-        return selected and Journal:ResolveID(selected, refs[1] and refs[1].ref) or nil
+        return selectedJournalID(), ctx.bossName()
     end
 
     local fillIDs = button(f, "Fill spell IDs", 110)
@@ -815,7 +815,7 @@ function ReferencePage.Build(f, ctx)
     abilitiesLabel:SetWidth(280)
     abilitiesLabel:SetJustifyH("LEFT")
     abilitiesLabel:SetWordWrap(false)
-    UI.HelpRight(abilitiesLabel, "Journal abilities", "The boss's abilities in the Encounter Journal, with their spell IDs; a line whose name matches one gets its icon and tooltip. Click or right-click an ability to give it a row on the timeline, a type, your own name, or a Mech Alert; these are only yours.\n\nUntick an ability to hide its row on your timeline. Spells you add by ID under the list are marked yours; the x removes one.\n\nWhile one of your ability timelines is open in the box, this list shows its abilities under its phases: right-click to add a phase or intermission, or set a phase's start. Their ticks hide a row by its name, for the boss picked on the Review tab.\n\nNothing shows in combat or while the Journal window is open.")
+    UI.HelpRight(abilitiesLabel, TEXT_ROWS.abilities, TEXT_ROWS.abilitiesHelp)
     local abilitiesNone = label(f, "", "CRTFontSmall")
     abilitiesNone:SetWidth(300)
     abilitiesNone:SetJustifyH("LEFT")
