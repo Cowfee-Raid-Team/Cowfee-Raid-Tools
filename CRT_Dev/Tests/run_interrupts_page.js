@@ -17,7 +17,7 @@ const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const dir = process.argv[2];
 const harness = themeLua(dir) + `
-local registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc, anchorSrc, kickSrc, pageSrc, parseSrc, notesSrc, editModelSrc, noteBlockSrc, gridSrc, editorSrc, exportSrc, paletteSrc, pagePaletteSrc, whoSrc = ...
+local registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc, anchorSrc, kickSrc, pageSrc, parseSrc, notesSrc, editModelSrc, noteBlockSrc, gridSrc, editorSrc, exportSrc, paletteSrc, pagePaletteSrc, whoSrc, markerTextSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -166,7 +166,7 @@ local groupsListeners = {}
 CRT.Groups = { Presets = function() return { { id = 7, name = "Main" } } end,
   Find = function(_, id) if id == 7 then return { slots = MAIN } end end,
   OnChange = function(_, fn) groupsListeners[#groupsListeners + 1] = fn end }
-for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, commSrc, parseSrc, notesSrc, editModelSrc, paletteSrc, latticeSrc, setupSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
+for _, src in ipairs({ markerTextSrc, registrySrc, seasonSrc, bossSrc, commSrc, parseSrc, notesSrc, editModelSrc, paletteSrc, latticeSrc, setupSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
 CRT.Bosses:Get(3470).interrupts = { { difficulty = 16, label = "Kick", groups = { { key = "left", label = "Left", slots = 5 }, { key = "right", label = "Right", slots = 5 } },
   timing = { anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
   firstCast = 4.5, spacing = 1.0, tolerance = 0.3, adds = 10, perNumber = 2, window = 25 }, note = "Mythic only here." } }
@@ -889,7 +889,7 @@ const FILES = ['CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.
   'CRT_Core/Comm.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Setup.lua', 'CRT_Modules/Interrupts/Data.lua', 'CRT_Modules/Interrupts/Anchor.lua',
   'CRT_Modules/Interrupts/Comm.lua', 'CRT_Modules/Interrupts/Page.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua',
   'CRT_Modules/Notes/EditModel.lua', 'CRT_Modules/Interrupts/NoteBlock.lua', 'CRT_Modules/Interrupts/PageGrid.lua', 'CRT_Modules/Interrupts/SetupEditor.lua',
-  'CRT_Dev/Dev/KickSetupExport.lua', 'CRT_Modules/Notes/Palette.lua', 'CRT_Modules/Interrupts/PagePalette.lua', 'CRT_Modules/Interrupts/WhoWindow.lua'];
+  'CRT_Dev/Dev/KickSetupExport.lua', 'CRT_Modules/Notes/Palette.lua', 'CRT_Modules/Interrupts/PagePalette.lua', 'CRT_Modules/Interrupts/WhoWindow.lua', 'CRT_Core/MarkerText.lua'];
 lua.lua_checkstack(L, FILES.length + 4); // more sources than Lua's default stack room
 for (const f of FILES) {
   const p = path.join(dir, f);

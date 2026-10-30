@@ -21,6 +21,7 @@ Files load in the order the `.toc` lists them. Each file starts with `local ADDO
 |---|---|---|
 | 1 | `CRT_Core/Core.lua` | Creates `CRT`, the default settings, the `CRTDB` saved variable, `CRT:Print`, and the scaled font objects |
 | 1b | `CRT_Core/Themes.lua` | The themes, their palettes and `CRT.PALETTE`, the palette in use |
+| 1c | `CRT_Core/MarkerText.lua` | Raid marker codes (`{rt1}`, `{cross}`): the one list of codes (`CRT.MarkerCodes`) and `CRT.MarkerText(text, size)`, which draws them as icons in shown text only |
 | 1c | `CRT_Core/Gear.lua` | The gear engine, `CRT.Gear`: your equipped gear, other players' gear, the wire format and the tooltip |
 | 1c2 | `CRT_Core/Share.lua` | The share engine, `CRT.Share`: a table as a `!CRT:<kind>:<version>:<payload>` code to paste into another CRT, and back (see Sharing codes below); `Profiles.lua` packs through its parts |
 | 1d | `CRT_Core/Team.lua`, `CRT_Core/TeamList.lua` | Team raids, `CRT.Team`: tonight's team (Pug or your own), the raid leader's push and its lock, who in the raid runs CRT (one hello message, `CRTHello`) and whether the group is a team raid (see Team raids below) |

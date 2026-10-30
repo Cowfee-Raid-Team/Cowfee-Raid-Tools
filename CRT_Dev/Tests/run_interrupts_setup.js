@@ -9,13 +9,14 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local latticeSrc, setupSrc, altarSrc = ...
+local latticeSrc, setupSrc, altarSrc, markerTextSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
 local function copy(t) if type(t) ~= "table" then return t end local o = {} for k, v in pairs(t) do o[k] = copy(v) end return o end
 
 local CRT = {}
+assert(load(markerTextSrc))("CowfeeRaidTools", CRT) -- CRT_Core/MarkerText.lua, whose icon MarkerIcon uses
 assert(load(latticeSrc))("CowfeeRaidTools", CRT)
 assert(load(setupSrc))("CowfeeRaidTools", CRT)
 local S = CRT.InterruptSetup
@@ -122,7 +123,7 @@ if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const FILES = ['CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Setup.lua', 'CRT_Data/Seasons/Midnight-S2/TheCoiledAltar.lua'];
+const FILES = ['CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Setup.lua', 'CRT_Data/Seasons/Midnight-S2/TheCoiledAltar.lua', 'CRT_Core/MarkerText.lua'];
 for (const f of FILES) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));

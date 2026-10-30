@@ -8,7 +8,7 @@ const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = require('./placement_stub')(process.argv[2]) + `
-local dbSrc, displaySrc, editorSrc, clearOnSrc = ...
+local dbSrc, displaySrc, editorSrc, clearOnSrc, markerTextSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
 
@@ -98,6 +98,7 @@ CRT.UI = { RegisterThemed = function() end, RegisterLayer = function() end, Regi
   HelpRight = function(target, title, text, opts) local b = (function() return mock() end)(opts and opts.parent or target, title, text) rawset(b, "helpTarget", target) return b end, HELP_GAP = 4, HELP_SIZE = 20, Help = function() return mock() end, StyleWindow = function() end, SetFrameTitle = function() end, SkinTree = function() end }
 local exported
 CRT.ConsumablesTools = { ShowText = function(_, title, text) exported = text end }
+assert(load(markerTextSrc, "MarkerText.lua"))("CowfeeRaidTools", CRT) -- CRT_Core/MarkerText.lua, the marker codes the display reads
 assert(load(dbSrc, "Database.lua"))("CowfeeRaidTools", CRT)
 CRT_PLACEMENT(CRT) -- CRT_Core/UI/Placement.lua, which the display is placed by
 assert(load(displaySrc, "Display.lua"))("CowfeeRaidTools", CRT)
@@ -505,4 +506,5 @@ lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Markers/Dat
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Markers/Display.lua', 'utf8')));
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Dev/Dev/MarkerEditor.lua', 'utf8')));
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Markers/ClearOn.lua', 'utf8')));
-if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Core/MarkerText.lua', 'utf8')));
+if (lua.lua_pcall(L, 5, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

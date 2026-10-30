@@ -8,7 +8,7 @@ const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = require('./theme_stub')(process.argv.slice(2)) + require('./placement_stub')(process.argv.slice(2)) + `
-local engineSrc, setSrc, dbSrc, displaySrc, regSrc, seasonSrc, bossSrc, tabSrc = ...
+local engineSrc, setSrc, dbSrc, displaySrc, regSrc, seasonSrc, bossSrc, tabSrc, markerTextSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
 
@@ -108,6 +108,7 @@ assert(load(engineSrc, "CRT_Core/Macros.lua"))("CowfeeRaidTools", CRT)
 assert(load(setSrc, "CRT_Modules/Markers/Macros.lua"))("CowfeeRaidTools", CRT)
 assert(load(dbSrc, "CRT_Modules/Markers/Database.lua"))("CowfeeRaidTools", CRT)
 CRT_PLACEMENT(CRT) -- CRT_Core/UI/Placement.lua, which the display is placed by
+assert(load(markerTextSrc, "CRT_Core/MarkerText.lua"))("CowfeeRaidTools", CRT) -- the marker codes the display reads
 assert(load(displaySrc, "CRT_Modules/Markers/Display.lua"))("CowfeeRaidTools", CRT)
 assert(load(regSrc, "CRT_Data/Bosses/Registry.lua"))("CowfeeRaidTools", CRT)
 assert(load(seasonSrc, "Season.lua"))("CowfeeRaidTools", CRT)
@@ -275,6 +276,6 @@ print(passes .. " passed, " .. fails .. " failed")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-for (const p of ['CRT_Core/Macros.lua', 'CRT_Modules/Markers/Macros.lua', 'CRT_Modules/Markers/Database.lua', 'CRT_Modules/Markers/Display.lua', 'CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Dev/Tests/SamplePack/Sszorak.lua', 'CRT_Modules/Markers/MacrosTab.lua'])
+for (const p of ['CRT_Core/Macros.lua', 'CRT_Modules/Markers/Macros.lua', 'CRT_Modules/Markers/Database.lua', 'CRT_Modules/Markers/Display.lua', 'CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Dev/Tests/SamplePack/Sszorak.lua', 'CRT_Modules/Markers/MacrosTab.lua', 'CRT_Core/MarkerText.lua'])
   lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
-if (lua.lua_pcall(L, 8, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, 9, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
