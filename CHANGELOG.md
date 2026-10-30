@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1 (2026-10-30)
+
+- **Previews by section:** every page with something on screen has its own preview button, plus one per display, so you can move just the alerts, just the note windows or just the pace window. The title bar's Previews still shows everything.
+- **Debuff lists** (new special alert): shows who has a debuff in columns by raid group, with your own colours, sides and bar size. First up: Grasping Fangs on Ula'tek. Tick it under Mech Alerts > Special.
+- **Mech Alerts:** special alerts use the same tabs as mechanics (When, Who, Looks, Sound and speech, Shield bar, Markers).
+- **Note editor:** Push note saves and shares in one click; Remove assignment takes an assignment out, with its blank line. New assignments keep the note's format: short names, spaces between them, a blank line before.
+- **Interrupts:** every kick number shows on the plates by default (yours still stands out).
+- **Timeline:** Review shows "Deaths from the last (N) pulls"; click the number to change it. Time visible, Fit and Play are gone from Review (right-click the time axis to fit the fight; Rehearse plays). Settings has no Rows block, and the Advanced tab is gone.
+- **Main window:** a thinner menu scroll bar and wider menu buttons.
+
 ## 1.2.0 (2026-10-29)
 
 - **Assignments:** build soaks, sides and other assignments on the new Assign tab in Mech Alerts, or with Add assignment in the note editor. Drag players onto rows; each row gets timers on the casts it is on, in the boss's raid note. A pasted note's group list can become one too.
