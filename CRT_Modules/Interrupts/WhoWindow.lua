@@ -169,10 +169,7 @@ end
 
 local function build()
     win = UI.Window("CowfeeRaidToolsKickWho", { kind = "popout", title = TEXT.title, saved = saved,
-        width = LAYOUT.width, height = LAYOUT.height, minWidth = LAYOUT.minWidth, minHeight = LAYOUT.minHeight,
-        onResize = function()
-            Who.Refresh()
-        end })
+        width = LAYOUT.width, height = LAYOUT.height, minWidth = LAYOUT.minWidth, minHeight = LAYOUT.minHeight })
     win.strip:SetHelp(TEXT.title, TEXT.help)
     win.rows = {}
     win.check = UI.PanelButton(win.content, TEXT.check, LAYOUT.buttonH, function()
@@ -181,7 +178,8 @@ local function build()
         end
     end)
     win.check:SetPoint("TOPRIGHT", 0, 0)
-    -- hooked, not set: the shared window keeps its own scripts
+    -- filled once as it opens and once as its size changes (the grip, Reset); hooked, not set: the shared window
+    -- keeps its own scripts
     win:HookScript("OnShow", Who.Refresh)
     win:HookScript("OnSizeChanged", Who.Refresh)
     Who.window = win
@@ -192,8 +190,7 @@ function Who.Open()
     if not win then
         build()
     end
-    win:Show()
-    Who.Refresh()
+    win:Show() -- its OnShow fills it
 end
 
 function Who.Toggle()

@@ -104,6 +104,7 @@ end
 -- icon (a player's or class's class icon). Returns its width.
 function Palette.FillChip(b, entry, source, removable, icon)
     b.source, b.class, b.token = source, entry.class, entry.token
+    b.carries = entry.token or entry.label -- what a drag of it carries, checked again on the drop (Drag:Up)
     b.text:SetText(entry.label)
     local left = L.chipPad
     b.icon:Hide()
@@ -534,8 +535,15 @@ function Drag:Down(chip, button)
         return
     end
     local x, y = cursor()
-    self.state.press = { chip = chip, source = chip.source, x = x, y = y }
+    self.state.press = { chip = chip, source = chip.source, carries = chip.carries, x = x, y = y }
     self.state.driver:Show()
+end
+
+-- Whether a press's chip still holds what the press picked up: a chip drawn again mid-drag with another name (the list
+-- changed under it) drops nothing.
+function Drag:Still(p)
+    local chip = p.chip
+    return chip:IsShown() and chip.source ~= nil and chip.carries == p.carries
 end
 
 function Drag:Up(chip)
@@ -544,8 +552,12 @@ function Drag:Up(chip)
         return
     end
     self:EndPress()
-    if p.dragging then
-        self.opts.drop(p.source, self.opts.target())
+    if p.dragging and not self:Still(p) then
+        self.opts.cancel()
+        self.opts.highlight(nil)
+    elseif p.dragging then
+        -- the chip's source as it is now: drawn again with the same name, its place may have moved
+        self.opts.drop(chip.source, self.opts.target())
     else
         self.opts.click(p.source, chip)
     end

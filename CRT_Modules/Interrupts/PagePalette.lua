@@ -6,8 +6,10 @@ local ADDON, CRT = ...
 -- row fills its next slot (Interrupts/PageGrid.lua takes the drop).
 --
 -- The group and the layouts are worked out once and kept (Page.Cache) until the group changes (GROUP_ROSTER_UPDATE), a
--- Raid Groups layout changes (Groups:OnChange) or another boss is shown (Page.ClearCache): the page, its rows, the
--- palette and Who has it all read the same copy. Page.counts counts the work, for the harness and /crt dev kicks perf.
+-- Raid Groups layout changes (Groups:OnChange), combat or a pull ends (PLAYER_REGEN_ENABLED, ENCOUNTER_END: a name read
+-- as secret can be read again) or another boss is shown (Page.ClearCache); a group read with a name or class unreadable
+-- is read again on the next draw. The page, its rows, the palette and Who has it all read the same copy. Page.counts
+-- counts the work, for the harness and /crt dev kicks perf.
 -- The layouts read the note editor's sources (Notes/EditModel.lua: Model.Sources for the layouts in order, Model.Roster
 -- for each one's players).
 
@@ -47,18 +49,41 @@ local function classOf(name)
     return lookup and lookup(name) or nil
 end
 
--- The group: { { name (no realm), class, row (the Addon check's) } }, sorted by name.
+-- How many the group has, or nil when the game can't say.
+local function groupSize()
+    local ok, n
+    if IsInRaid and IsInRaid() then
+        ok, n = pcall(GetNumGroupMembers)
+    elseif IsInGroup and IsInGroup() then
+        ok, n = pcall(GetNumSubgroupMembers)
+        n = ok and type(n) == "number" and n + 1 or n
+    else
+        return 1
+    end
+    return ok and CRT.Comm.Readable(n) and type(n) == "number" and n or nil
+end
+
+-- The group: { { name (no realm), class, row (the Addon check's) } }, sorted by name; and whether it is whole (every
+-- member's name and class readable). The Addon check leaves out a name it can't read (a secret one) and a class it
+-- can't read is nil: such a group is used, never kept.
 local function readRoster()
     Page.counts.roster = Page.counts.roster + 1
     local rows = CRT.AddonCheck and CRT.AddonCheck:Roster() or {}
-    local out = {}
+    local out, whole = {}, true
     for _, row in ipairs(rows) do
         out[#out + 1] = { name = Interrupts.CleanName(row.name), class = row.class, row = row }
+        if not row.class then
+            whole = false
+        end
+    end
+    local size = groupSize()
+    if size == nil or #rows < size then
+        whole = false
     end
     table.sort(out, function(a, b)
         return a.name:lower() < b.name:lower()
     end)
-    return out
+    return out, whole
 end
 
 -- The Raid Groups layouts with their players: { { label, entries = { { name, class } } } }.
@@ -85,17 +110,26 @@ local function readLayouts()
     return out
 end
 
--- The group and the layouts, worked out the first time they are asked for after a change.
+-- The group and the layouts, worked out the first time they are asked for after a change. A group read while a name
+-- or class was unreadable is marked dirty: it serves the draw it was read for, and the next draw reads it again
+-- (Page.DropDirty).
 function Page.Cache()
     if not cache then
-        local roster = readRoster()
+        local roster, whole = readRoster()
         local byName = {}
         for _, m in ipairs(roster) do
             byName[m.name:lower()] = m
         end
-        cache = { roster = roster, byName = byName, layouts = readLayouts() }
+        cache = { roster = roster, byName = byName, layouts = readLayouts(), dirty = not whole }
     end
     return cache
+end
+
+-- Before each draw of the page: a dirty group is read again.
+function Page.DropDirty()
+    if cache and cache.dirty then
+        cache = nil
+    end
 end
 
 function Page.ClearCache()
@@ -134,7 +168,7 @@ function Page.PaletteSections()
         for _, m in ipairs(members) do
             if m.name ~= "" and not seen[m.name:lower()] then
                 seen[m.name:lower()] = true
-                entries[#entries + 1] = { label = m.name, class = m.class, name = m.name }
+                entries[#entries + 1] = { label = m.name, token = m.name, class = m.class, name = m.name }
             end
         end
         if #entries > 0 then
@@ -188,8 +222,11 @@ function Page.BuildPalette(f)
         draw(false)
     end })
     -- the group or a layout changed: worked out again on the next refresh
+    -- out of combat and after a pull, the names and classes that were secret can be read again
     local events = CreateFrame("Frame")
-    events:RegisterEvent("GROUP_ROSTER_UPDATE")
+    for _, e in ipairs({ "GROUP_ROSTER_UPDATE", "PLAYER_REGEN_ENABLED", "ENCOUNTER_END" }) do
+        events:RegisterEvent(e)
+    end
     events:SetScript("OnEvent", function()
         Page.ClearCache()
     end)

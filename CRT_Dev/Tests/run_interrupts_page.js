@@ -43,6 +43,9 @@ local grouped = true
 LE_PARTY_CATEGORY_INSTANCE = 2
 IsInGroup = function(c) return grouped and c ~= 2 end
 IsInRaid = function() return grouped end
+GetNumGroupMembers = function() return 3 end -- the Addon check's three below
+GetNumSubgroupMembers = function() return 2 end
+GetCursorPosition = function() return 0, 0 end
 C_InstanceEncounter = { IsEncounterInProgress = function() return false end }
 C_ChatInfo = { RegisterAddonMessagePrefix = function() end, SendAddonMessage = function() return 0 end }
 local cvars = { nameplateShowEnemies = "1" }
@@ -85,6 +88,7 @@ local function mock(kind, parent)
     SetMotionScriptsWhileDisabled = function(self, v) self.motionWhileDisabled = v end,
     SetAlpha = function(self, a) self.alpha = a end,
     IsMouseOver = function(self) return self.mouseOver and true or false end,
+    HookScript = function(self, k, fn) local old = self.scripts[k] self.scripts[k] = old and function(...) old(...) fn(...) end or fn end,
     SetBackdropBorderColor = function(self, r, g, b) self.border = { r, g, b } end,
   }
   all[#all + 1] = m
@@ -124,7 +128,7 @@ function UI.Dropdown(parent, text, opts) return row("dropdown", parent, text, op
 function UI.SoundDropdown(parent, text, opts) return row("sound", parent, text, opts, 50 + 24) end
 function UI.Slider(parent, text, opts) return row("slider", parent, text, opts, 44) end
 function UI.PickColor(color, set, opts) picked[#picked + 1] = { color = color, set = set, opts = opts } end
-function UI.Window(name, opts) local w = mock("Frame") w.content = mock("Frame", w) w.strip = mock("Frame", w) w.name, w.opts = name, opts w.shown = false return w end
+function UI.Window(name, opts) local w = mock("Frame") w.content = mock("Frame", w) w.content.h = 300 w.strip = mock("Frame", w) w.name, w.opts = name, opts w.shown = false return w end
 function UI.ScrollGutter(w) return 6 + (w or 18) end
 local skinnedBars = 0
 function UI:SkinScrollBar() skinnedBars = skinnedBars + 1 end
@@ -148,8 +152,11 @@ CRT.InterruptReminder = { Preview = function() previewed = previewed + 1 end }
 CRT.db.notes = { list = {}, nextId = 1 }
 CRT.db.classCache = { tovi = "WARRIOR" }
 -- Raid Groups: one layout, as the note editor's Players from reads it
+local MAIN = { "Tovi-Kazzak", "", "Solex", "Brenn" }
+local groupsListeners = {}
 CRT.Groups = { Presets = function() return { { id = 7, name = "Main" } } end,
-  Find = function(_, id) if id == 7 then return { slots = { "Tovi-Kazzak", "", "Solex", "Brenn" } } end end }
+  Find = function(_, id) if id == 7 then return { slots = MAIN } end end,
+  OnChange = function(_, fn) groupsListeners[#groupsListeners + 1] = fn end }
 for _, src in ipairs({ registrySrc, seasonSrc, bossSrc, commSrc, parseSrc, notesSrc, editModelSrc, paletteSrc, latticeSrc, setupSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
 CRT.Bosses:Get(3470).interrupts = { { difficulty = 16, label = "Kick", groups = { { key = "left", label = "Left", slots = 5 }, { key = "right", label = "Right", slots = 5 } },
   timing = { anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
@@ -348,6 +355,80 @@ check(tgt and tgt.g == 2 and tgt.at == nil, "target: the row's end")
 P.gridScroll.mouseOver, P.rows[2].mouseOver = false, false
 check(P.KickTarget() == nil, "target: none outside the rows")
 
+-- a gap in a saved list (the old per-slot fields): the chip's number is the kick number the plates and status use
+do
+  I:Clear(id)
+  CRT.db.interrupts.kicks[3470][16].own.left = { "P1", "", "Solex", "", "" }
+  I:SetUse(id, "own"); P.Refresh()
+  eq(plain(chipsOf(1)[2].text.text), "2 Solex", "gap: closed up on the page")
+  eq(select(1, I:Mine(id)), 2, "gap: the same number for the plates and the reminder (Interrupts:Mine)")
+  check(plain(P.status.text):find("Your kick: Kick #2 Left.", 1, true), "gap: and the status bar: " .. plain(P.status.text))
+  eq(CRT.db.interrupts.kicks[3470][16].own.left[2], "Solex", "gap: closed up in the saved list")
+  -- a name a row has already is refused, case and realm left out
+  check(not P.DropKick({ name = "solex-Kazzak" }, { g = 1 }), "dup: a name the row has is refused")
+  check(P.DropKick({ name = "Solex" }, { g = 2 }), "dup: the same name on another row is fine")
+  check(not P.DropKick({ g = 2, k = 1 }, { g = 1 }), "dup: and can't move onto a row that has it")
+  I:Clear(id); P.Refresh()
+end
+
+-- a row drawn again mid-drag: the drop carries the name it picked up, and a chip now holding another drops nothing
+do
+  for s, n in ipairs({ "Solex", "Brenn" }) do I:SetName(id, 1, s, n) end
+  P.Refresh()
+  local D = P.dragState.drag
+  local chip = chipsOf(1)[1]
+  D:Down(chip, "LeftButton")
+  P.dragState.press.dragging = true
+  -- the list changes under the drag: chip 1 is now Brenn
+  I:SetName(id, 1, 1, "Brenn"); I:SetName(id, 1, 2, "Solex"); P.Refresh()
+  P.gridScroll.mouseOver, P.rows[2].mouseOver = true, true
+  D:Up(chip)
+  eq(namesOf(1) .. "|" .. namesOf(2), "Brenn,Solex|", "drag: a chip drawn again with another name drops nothing")
+  check(P.dragState.press == nil, "drag: and the press ends")
+  -- drawn again with the same name: the drop goes on, from where the chip is now
+  D:Down(chip, "LeftButton")
+  P.dragState.press.dragging = true
+  P.Refresh()
+  D:Up(chip); flush()
+  eq(namesOf(1) .. "|" .. namesOf(2), "Solex|Brenn", "drag: drawn again with the same name, it drops")
+  P.gridScroll.mouseOver, P.rows[2].mouseOver = false, false
+  I:Clear(id); P.Refresh()
+end
+
+-- the cache: a Raid Groups change, another boss, a group read while a name was secret
+do
+  local before = P.counts.layouts
+  MAIN[2] = "Newcomer"
+  for _, fn in ipairs(groupsListeners) do fn() end
+  local found = false
+  for _, e in ipairs(P.PaletteSections()[2].entries) do if e.name == "Newcomer" then found = true end end
+  check(found, "cache: a Raid Groups change shows on the palette")
+  eq(P.counts.layouts, before + 1, "cache: the layouts read again once")
+  MAIN[2] = ""
+  for _, fn in ipairs(groupsListeners) do fn() end
+  local r = P.counts.roster
+  P.bossRow.opts.set("3470:16"); flush()
+  eq(P.counts.roster, r + 1, "cache: another boss reads the group again")
+  P.Refresh()
+  eq(P.counts.roster, r + 1, "cache: and keeps it")
+  ROSTER[2].class = nil -- a class the game wouldn't say (a secret value)
+  P.ClearCache(); P.Refresh()
+  r = P.counts.roster
+  P.Refresh()
+  eq(P.counts.roster, r + 1, "cache: a group read with a class unreadable is read again on the next draw")
+  ROSTER[2].class = "WARRIOR"
+  P.Refresh(); r = P.counts.roster
+  P.Refresh()
+  eq(P.counts.roster, r, "cache: whole again, kept")
+  local told = {}
+  for _, f in ipairs(all) do
+    for _, e in ipairs({ "PLAYER_REGEN_ENABLED", "ENCOUNTER_END" }) do
+      if f.events[e] and f.scripts.OnEvent then told[e] = true end
+    end
+  end
+  check(told.PLAYER_REGEN_ENABLED and told.ENCOUNTER_END, "cache: cleared after combat and after a pull")
+end
+
 -- Use the raid's list and Clear list ask first
 check(P.useRaid.enabled, "use raid: there is a raid's list")
 P.useRaid.scripts.OnClick(P.useRaid)
@@ -369,8 +450,23 @@ fillOwn(true); I:SetUse(id, "own")
 I:SetName(id, 1, 4, "Brenn"); I:SetName(id, 1, 5, "Quick"); P.Refresh()
 eq(P.whoButton and plain(P.whoButton.text), "Who has it (1 of 10)", "who: the button counts who has it")
 check(P.Who.window == nil, "who: no window until it is opened")
-P.whoButton.scripts.OnClick(P.whoButton)
+local statusCalls = 0
+do
+  local realMember = P.MemberOf
+  P.MemberOf = function(...) statusCalls = statusCalls + 1 return realMember(...) end
+  P.whoButton.scripts.OnClick(P.whoButton)
+  P.MemberOf = realMember
+end
 local WW = P.Who.window
+eq(statusCalls, 20, "who: filled once as it opens (ten names: each one's state and colour)")
+do
+  statusCalls = 0
+  local realMember = P.MemberOf
+  P.MemberOf = function(...) statusCalls = statusCalls + 1 return realMember(...) end
+  WW.scripts.OnSizeChanged(WW)
+  P.MemberOf = realMember
+  eq(statusCalls, 20, "who: filled once as its size changes")
+end
 check(WW and WW.shown and WW.opts.kind == "popout", "who: the button opens a pop-out (UI.Window)")
 check(WW.opts.saved() == CRT.db.interrupts.whoWindow, "who: its place kept in the saved settings")
 WW.content.h = 300
@@ -583,6 +679,16 @@ check(printed[#printed]:find("doesn't fit", 1, true), "read: why: " .. tostring(
 P.bossRow.opts.set("3470:16"); P.bossRow.opts.set("3470:15")
 eq(#printed, said + 1, "read: once")
 eq(I:Shared("3470:15").list[2][1], "E", "read: the raid's list kept")
+-- shown again: the note read again only once its text changed
+do
+  local reads = P.counts.note
+  pf:Hide(); pf:Show(); flush()
+  eq(P.counts.note, reads, "read: shown again, the same note isn't read again")
+  CRT.Notes:UpdateRaw(noteID, "EncounterID:3470;Difficulty:Heroic\\nintstart\\nW X Y Z\\nQ R S T\\nintend\\n")
+  pf:Hide(); pf:Show(); flush()
+  eq(P.counts.note, reads + 1, "read: a changed note is read again as the page shows")
+  eq(I:Shared("3470:15").list[2][1], "Q", "read: its names")
+end
 
 -- Edit setup opens the setup editor on the setup shown
 check(P.editSetup and P.editSetup.text == T.editSetup, "edit: the button beside Boss")

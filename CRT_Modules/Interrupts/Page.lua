@@ -755,6 +755,7 @@ local function draw()
     end
     local t0 = now()
     Page.counts.refresh = Page.counts.refresh + 1
+    Page.DropDirty() -- a group read while a name was secret is read again
     for _, c in ipairs(controls) do
         c.refresh()
     end
