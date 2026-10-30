@@ -3587,6 +3587,91 @@ check("special subtabs (" .. LOOK .. "): a boss with none keeps its empty list a
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- A debuff list (Alerts/Special.lua's kind debuffList): listed with its spell's icon; selected, When, Who, Sound and speech
+-- and Shield bar hide, and its Looks (Notes/SpecialDebuffLooks.lua) take the Looks tab: sides with groups and colours,
+-- Show every player, Sort by role, the bar sliders, Preview <label> and the notice.
+local FANGS_ENTRY = { kind = "debuffList", key = "fangs", label = "Grasping Fangs", spellID = 777,
+  sides = { { key = "left", label = "Left", groups = { 1, 3 } }, { key = "right", label = "Right", groups = { 2, 4 } } },
+  colors = { left = { on = { 0.9, 0.2, 0.7 }, off = { 0.35, 0.05, 0.1 } }, right = { on = { 0.2, 0.5, 1 }, off = { 0.05, 0.1, 0.3 } } } }
+check("special debuff list (" .. LOOK .. "): its own Looks, the tabs it has no use for hidden", function()
+  withSpecial({ SPECIAL_LIST[1], FANGS_ENTRY })
+  CRT.db.alerts.special, CRT.db.alerts.debuffLists, CRT.db.alerts.debuffTiers = {}, {}, {}
+  local made = {}
+  CRT.UI.PreviewButton = CRT.UI.PreviewButton or function(p, label, keys, opts)
+    local b = CRT.UI.PanelButton(p, label, opts and opts.height or 22) rawset(b, "keys", keys) rawset(b, "refresh", function() end) made[#made + 1] = b return b end
+  local f = freshOpen()
+  local s = f.special
+  click(s.tabs.buttons.when)
+  click(s.rows[2].frame)
+  assert(s.title.text == "Grasping Fangs" and s.rows[2].name.text == "Grasping Fangs", "listed and selected")
+  local hidden = {}
+  for _, k in ipairs({ "when", "who", "sound", "shield" }) do if s.tabs.buttons[k].shown then hidden[#hidden + 1] = k end end
+  assert(#hidden == 0, "When, Who, Sound and speech and Shield bar hidden: " .. table.concat(hidden, ","))
+  assert(s.tabs.buttons.looks.shown and s.tabs.buttons.markers.shown and s.tabs:Current() == "looks", "Looks opens, Markers stays")
+  assert(s.tabs.buttons.looks.pts[#s.tabs.buttons.looks.pts][2] == 12, "the tabs close up from the left")
+  local d = s.debuffLooks
+  assert(d and d.frame.shown and not s.checks.alert.shown and not s.fill.shown and not s.countTo.shown, "its Looks in place of Show as, Bar fill and Count down to")
+  assert(d.sides[1].label.text == "Left" and d.sides[1].edit.text == "1, 3" and d.sides[2].label.text == "Right" and d.sides[2].edit.text == "2, 4", "a row per side, its groups")
+  assert(d.sides[1].default.enabled == false, "Default greyed while the side is the boss file's")
+  -- typed groups: saved when the box lets go; a bad one is refused, and says why
+  d.sides[1].edit.text = "1, 5"
+  d.sides[1].edit.OnEditFocusLost(d.sides[1].edit)
+  local saved = CRT.db.alerts.debuffLists[ENC].fangs
+  assert(saved.groups.left[1] == 1 and saved.groups.left[2] == 5 and d.sides[1].default.enabled, "1, 5 saved for Left; Default on")
+  d.sides[1].edit.text = "1, 9"
+  d.sides[1].edit.OnEditFocusLost(d.sides[1].edit)
+  assert(d.sides[1].edit.text == "1, 5" and d.notice.text:find("1 to 8", 1, true), "9 refused: the box goes back, the line says why: " .. tostring(d.notice.text))
+  -- a colour from the game's picker
+  click(d.sides[2].swatches.on.button)
+  picker.r, picker.g, picker.b = 0, 1, 0
+  picker.info.swatchFunc()
+  assert(saved.colors.right.on[2] == 1, "With it for Right from the colour picker")
+  click(d.sides[1].default)
+  click(d.sides[2].default)
+  assert(saved.groups == nil and saved.colors == nil and d.sides[1].edit.text == "1, 3", "Default: the boss file's groups and colours")
+  -- Show every player: refused until a pull saw someone with it (an empty list may be the game hiding the debuff)
+  local help
+  for _, h in ipairs(helps) do if h.helpTitle == "Show every player" then help = h end end
+  assert(not d.showAll.enabled and not d.showAll.checked and help.helpText():find("until a pull has seen someone", 1, true),
+    "nobody seen yet: Show every player greyed and off, its (?) says why")
+  CRT.AlertDebuffList:SetSeen(ENC, 777, "readable", true)
+  CRT.NoteReminders.Refresh()
+  assert(d.showAll.enabled, "a pull saw someone with it: Show every player can be ticked")
+  -- Show every player, Sort by role, the sliders
+  setCheck(d.showAll, true)
+  assert(saved.showAll == true, "Show every player saved")
+  setCheck(d.showAll, false)
+  setCheck(d.sortByRole, false)
+  assert(saved.sortByRole == false and saved.showAll == nil, "Sort by role off saved; Show every player back to the file's")
+  sliders["Bar height"].opts.set(30)
+  sliders["Bar width"].opts.set(200)
+  assert(saved.barHeight == 30 and saved.barWidth == 200, "the bar sizes saved")
+  -- the tier seen: secret greys Show every player on; private shows the notice
+  CRT.AlertDebuffList:SetSeen(ENC, 777, "secret")
+  CRT.NoteReminders.Refresh()
+  assert(d.showAll.checked and not d.showAll.enabled, "the game hid who has it: Show every player on and greyed")
+  assert(help and type(help.helpText) == "function" and help.helpText():find("stays on", 1, true), "its (?) says why")
+  CRT.AlertDebuffList:SetSeen(ENC, 777, "private")
+  CRT.NoteReminders.Refresh()
+  assert(not d.showAll.enabled and d.notice.text:find("The game hides this debuff from addons, so the list can't fill in.", 1, true), "private: the notice, Show every player refused")
+  -- Preview <label>
+  local pb = d.previews["debufflist-" .. ENC .. "-fangs"]
+  assert(pb and pb.text == "Preview Grasping Fangs" and pb.keys[1] == "debufflist-" .. ENC .. "-fangs" and pb.shown, "Preview Grasping Fangs on its key")
+  -- Test: the display's samples (none made in this harness): no error, no notice
+  click(s.testBtn)
+  assert(s.message.text == "", "Test asks nothing of the ability timeline")
+  -- back to a timed alert: its tabs and its Looks again, and the tab picked before
+  click(s.rows[1].frame)
+  assert(s.tabs.buttons.when.shown and s.tabs.buttons.who.shown and s.tabs:Current() == "when", "a timed alert: every tab, When as picked before")
+  assert(not d.frame.shown and s.checks.alert.shown, "the alert's Looks back")
+  CRT.UI.PreviewButton = nil
+  click(s.mechBtn)
+  CRT.db.alerts.special, CRT.db.alerts.debuffLists, CRT.db.alerts.debuffTiers = {}, {}, {}
+  noSpecial()
+  for _, h in ipairs(helps) do assert(rawget(h, "helpTarget") ~= nil, "the (?) " .. tostring(h.helpTitle) .. " is placed by UI.HelpRight") end
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 end
 MODERN = nil
 
