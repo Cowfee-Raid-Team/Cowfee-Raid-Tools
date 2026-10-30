@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.2 (2026-10-30)
+
+- **Raid marker icons in notes:** {cross}, {skull}, {star}, {rt1} to {rt8} and the other marker names now show as icons wherever a note is shown: the note windows, the Raid Notes page, the note editor's preview and note alerts. The edit boxes and anything sent to chat stay as plain text.
+- **Mech Alerts fix:** switching between Special and Mechanics no longer draws both lists on top of each other or throws a Lua error.
+
 ## 1.2.1 (2026-10-30)
 
 - **Previews by section:** every page with something on screen has its own preview button, plus one per display, so you can move just the alerts, just the note windows or just the pace window. The title bar's Previews still shows everything.
