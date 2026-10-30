@@ -259,7 +259,7 @@ function Lanes.Build(base, rows, settings, encounterID, overlay, group, order, o
     return pullLanes(base, rows, settings, encounterID, group)
 end
 
--- The lanes as the Timeline shows them: Build, then your labels for Journal abilities, without the
+-- The lanes as the Timeline shows them: Build, then the ability labels (yours, then the boss file's), without the
 -- hidden abilities (the boss file's hidden list) and with your ignored mechanics apart. The one list the
 -- view, the Rehearsal and the Mech Alerts tab all read, so they agree. Returns the lanes, the deaths with
 -- no time, extra (see Build) and the ignored lanes.

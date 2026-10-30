@@ -234,6 +234,7 @@ CRT_Dev\Dev\SeasonTools.lua
 CRT_Dev\Dev\BossOrder.lua
 CRT_Dev\Dev\JournalTree.lua
 CRT_Dev\Dev\ReferenceTypes.lua
+CRT_Dev\Dev\AbilityLabels.lua
 CRT_Dev\Dev\WindowLog.lua
 CRT_Dev\Dev\LayoutCheck.lua
 CRT_Dev\Dev\LateTest.lua
