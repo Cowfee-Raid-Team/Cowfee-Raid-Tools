@@ -12,7 +12,8 @@ local ADDON, CRT = ...
 -- A raid note opens read-only for anyone who can't change it (Notes:CanEditRaid); a personal note never is. A drag
 -- is the mouse's own: OnMouseDown on a chip, a driver frame's OnUpdate that starts it past a few pixels and moves
 -- the ghost, OnMouseUp to drop it on the row under the mouse; Escape cancels it. Closing with unsaved changes asks
--- first. History in the title bar opens the note's earlier versions (Notes/HistoryWindow.lua).
+-- first. History in the title bar opens the note's earlier versions (Notes/HistoryWindow.lua). Push note saves, then
+-- shares the note as Notes > Share to raid does (CRT.NotesPage.ShareNote); greyed, saying why, when it can't.
 -- Timer lines that list the same players as an assignment line follow it (Notes/EditorLinks.lua, Notes/Links.lua):
 -- a change to the line's names is written on them too, and a banner over the rows offers to link them.
 -- The raid note's kick block (Interrupts/NoteBlock.lua) shows as its "Kick order" heading and a row per group, the same
@@ -48,6 +49,11 @@ local TEXT = {
     rawText = "Raw text",
     hideRaw = "Hide raw text",
     save = "Save",
+    push = "Push note",
+    pushTip = "Saves your changes, then shares the note the same way as Share to raid on the Raid Notes page, to its Send to choice.",
+    pushPersonal = "A personal note is your own. It isn't shared.",
+    pushBusy = "Notes can't be shared in combat or during a boss fight.",
+    pushGone = "This note was deleted, so there is nothing to share.",
     close = CLOSE or "Close",
     unsaved = "Unsaved changes.",
     saved = "Saved.",
@@ -513,6 +519,42 @@ end
 
 local layoutLeft -- the rows, the banner over them and the raw text under them (below)
 
+-- Whether Push note can share the open note, and why not: never a personal note, nor in combat or a boss fight
+-- (Notes.Busy, or the moment one starts: W.fight, set by the window's events), nor when CRT can't share
+-- (Comm:CanShare: not in a group, not the leader or an assistant, a share still running).
+local function canPush()
+    local record = W.source and not W.source.personal and Notes:Get(W.source.id)
+    if not record then
+        return false, (W.source and not W.source.personal) and TEXT.pushGone or TEXT.pushPersonal
+    end
+    if record.personal then
+        return false, TEXT.pushPersonal
+    end
+    if W.fight or Notes.Busy() then
+        return false, TEXT.pushBusy
+    end
+    local Comm = CRT.NoteComm
+    if Comm and Comm.CanShare then
+        local ok, why = Comm:CanShare()
+        if not ok then
+            return false, why
+        end
+    end
+    return CRT.NotesPage ~= nil and CRT.NotesPage.ShareNote ~= nil
+end
+Editor.CanPush = canPush
+
+-- Push note greyed, its reason kept for its tooltip.
+local function refreshPush()
+    local b = W.push
+    if not b then
+        return
+    end
+    local ok, why = canPush()
+    b:SetEnabled(ok)
+    W.pushWhy = not ok and why or nil
+end
+
 -- Everything that follows the session: the rows, the raw text, Save and the status line.
 function Editor.Refresh()
     if not (W.window and W.session) then
@@ -549,6 +591,7 @@ function Editor.Refresh()
     end
     -- Raw text can't show while Add assignment holds the left side: greyed until Done
     W.rawButton:SetEnabled(not W.assignOn)
+    refreshPush()
     local status = ""
     if W.notice then
         status = W.notice
@@ -668,6 +711,31 @@ function Editor.Save()
     W.session:SetQuickFill(quick)
     Editor.Refresh()
     followInvite()
+    return true
+end
+
+-- Push note: unsaved changes saved first (Save; a refused save stops it, its notice or the reason on the status
+-- line), then the note shared the way Notes > Share to raid shares it (CRT.NotesPage.ShareNote). Asked again at the
+-- click, as Save is. Returns whether it was shared.
+function Editor.Push()
+    local ok, why = canPush()
+    if not (ok and W.session) then
+        refused(why)
+        Editor.Refresh()
+        return false
+    end
+    if W.session:Dirty() then
+        if not Editor.Save() then
+            if not W.notice then
+                local _, no = Notes:CanEditRaid()
+                refused(no)
+                Editor.Refresh()
+            end
+            return false
+        end
+    end
+    CRT.NotesPage.ShareNote(W.source.id)
+    Editor.Refresh()
     return true
 end
 
@@ -823,10 +891,27 @@ local function buildFooter(c)
         W.window:Hide()
     end)
     W.close:SetPoint("BOTTOMRIGHT", 0, 0)
+    -- Push note, between Save and Close: greyed with the reason in its tooltip (refreshPush)
+    W.push = UI.PanelButton(c, TEXT.push, 24, function()
+        Editor.Push()
+    end)
+    W.push:SetPoint("RIGHT", W.close, "LEFT", -6, 0)
+    if W.push.SetMotionScriptsWhileDisabled then
+        W.push:SetMotionScriptsWhileDisabled(true) -- the tooltip says why while it is greyed
+    end
+    W.push:SetScript("OnEnter", function(self)
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
+        GameTooltip:SetText(TEXT.push, 1, 1, 1)
+        GameTooltip:AddLine(W.pushWhy and UI.BadText(W.pushWhy) or TEXT.pushTip, 0.85, 0.85, 0.85, true)
+        GameTooltip:Show()
+    end)
+    W.push:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
     W.save = UI.PanelButton(c, TEXT.save, 24, function()
         Editor.Save()
     end)
-    W.save:SetPoint("RIGHT", W.close, "LEFT", -6, 0)
+    W.save:SetPoint("RIGHT", W.push, "LEFT", -6, 0)
     W.rawButton = UI.PanelButton(c, TEXT.hideRaw, 24, function()
         W.rawShown = not W.rawShown
         layoutLeft()
@@ -844,6 +929,23 @@ local function buildFooter(c)
     W.status:SetPoint("RIGHT", W.assignButton, "LEFT", -8, 0)
     W.status:SetJustifyH("LEFT")
     W.status:SetWordWrap(false)
+    -- the status line is short in a narrow window: cut off, its whole text shows on hover
+    local hover = CreateFrame("Frame", nil, c)
+    hover:SetAllPoints(W.status)
+    hover:EnableMouse(true)
+    hover:SetScript("OnEnter", function(self)
+        local text = W.status:GetText() or ""
+        if text == "" or not (W.status.IsTruncated and W.status:IsTruncated()) then
+            return
+        end
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
+        GameTooltip:SetText(text, 1, 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    hover:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    W.statusHover = hover
 end
 
 -- History in the title bar, left of Reset: the note's earlier versions (Notes/HistoryWindow.lua), the same
@@ -902,14 +1004,24 @@ local function build()
         end
     end)
     win:RegisterEvent("GROUP_ROSTER_UPDATE")
+    -- combat and a boss fight grey Push note from the moment they start (Notes.Busy may not say so yet), until they end
+    for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "ENCOUNTER_START", "ENCOUNTER_END" }) do
+        win:RegisterEvent(event)
+    end
     -- the group changed: new players in the palette (when it lists the group), and a promotion (or demotion) unlocks
     -- (or locks) a clean editor
-    win:SetScript("OnEvent", function()
-        if win:IsShown() then
+    win:SetScript("OnEvent", function(_, event)
+        if event ~= "GROUP_ROSTER_UPDATE" then
+            W.fight = event == "PLAYER_REGEN_DISABLED" or event == "ENCOUNTER_START"
+            if win:IsShown() then
+                refreshPush()
+            end
+        elseif win:IsShown() then
             if W.playersFrom == Model.SOURCE_GROUP then
                 Editor.DrawPalette()
             end
             onNotesChange()
+            refreshPush()
         end
     end)
     -- a layout saved, renamed, changed or deleted: the dropdown's choices, and the palette when it lists a layout
@@ -932,6 +1044,12 @@ local function build()
         end
     end)
     Notes:OnChange(onNotesChange)
+    -- a share starting or ending (Notes/Comm.lua fires the notes' change): Push note follows
+    Notes:OnChange(function()
+        if win:IsShown() then
+            refreshPush()
+        end
+    end)
 end
 
 -- source: { id = a note's id } or { personal = true } (the personal note).

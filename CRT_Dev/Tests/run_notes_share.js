@@ -358,6 +358,21 @@ do
   for i = 1, 14 do Notes:Delete(made[i]) end
 end
 print("ok a long notes list: a row for every note, all selectable")
+do
+  -- Share to raid shares the selected note through the one share function (CRT.NotesPage.ShareNote), which the note
+  -- editor's Push note calls too
+  assert(type(CRT.NotesPage.ShareNote) == "function", "the shared share function")
+  inRaid, leader = true, true
+  local shareButton
+  for _, b in ipairs(buttons) do if rawget(b, "text") == "Share to raid" then shareButton = b end end
+  for _, b in ipairs(buttons) do if rawget(b, "id") == sentinels and rawget(b, "OnClick") then b.OnClick(b) end end
+  local before = #sent
+  shareButton.OnClick(shareButton)
+  assert(#sent > before and sent[#sent] == "RAID" and Notes:Active() == sentinels, "Share to raid sends the selected note to the raid")
+  assert(lastPrint():find("Shared Sentinels with the group", 1, true), "and says so: " .. lastPrint())
+  inRaid, leader = false, false
+end
+print("ok Share to raid shares through the one share function")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const f of process.argv.slice(2, 8)) {

@@ -80,7 +80,7 @@ end)
 
 check("assign: lines for all, a list and rotate; a row with no one has no timed lines", function()
   local out = A.Lines(feast(), CASTS)
-  assert(out[1] == "assign:ravenous feast;name:Ravenous Feast;" and out[2] == "Left: Solex, Rixxy" and out[3] == "Right: Abu" and out[4] == "Center: Cheo, Demon Hunter", joined(out))
+  assert(out[1] == "assign:ravenous feast;name:Ravenous Feast;" and out[2] == "Left: Solex Rixxy" and out[3] == "Right: Abu" and out[4] == "Center: Cheo Demon Hunter", joined(out))
   -- cast order 1@36, 1@96, 1@156, 2@20: Left and Right on all four, Center on 2 and 4
   assert(#out == 4 + 4 + 4 + 2, "timed lines: " .. (#out - 4))
   assert(out[5] == "time:36;ph:1;tag:Solex Rixxy;spellid:1234;text:Soak left;assign:ravenous feast/1/1;", out[5])
@@ -153,30 +153,71 @@ check("assign: Replace in place, every other line byte for byte; rename; remove"
     "  Kicks: Abu , Cheo  ", "" }, "\\r\\n")
   local first = A.Replace(base, "ravenous feast", A.Lines(feast(), CASTS))
   local a = lines(first)
-  assert(a[1] == "EncounterID:3470;Difficulty:Mythic;Name:Twin Fangs" and a[3] == "  Kicks: Abu , Cheo  " and a[4] == "assign:ravenous feast;name:Ravenous Feast;", "added at the end, before the trailing blank")
-  assert(first:sub(1, #base - 2) == base:sub(1, #base - 2) and first:find("\\r\\nassign:ravenous feast;name:Ravenous Feast;\\r\\nLeft: Solex, Rixxy\\r\\n", 1, true), "CRLF kept, the lines in its style")
+  assert(a[1] == "EncounterID:3470;Difficulty:Mythic;Name:Twin Fangs" and a[3] == "  Kicks: Abu , Cheo  " and a[4] == "" and a[5] == "assign:ravenous feast;name:Ravenous Feast;", "added at the end after a blank line, before the trailing line end")
+  assert(first:sub(1, #base - 2) == base:sub(1, #base - 2) and first:find("\\r\\n\\r\\nassign:ravenous feast;name:Ravenous Feast;\\r\\nLeft: Solex Rixxy\\r\\n", 1, true), "CRLF kept, the lines in its style")
   -- a change replaces them where they are; the rest stays byte for byte
   local withMore = first .. "Trailer line"
   local b = feast()
   b.rows[1].tokens = { "Solex", "Kip" }
   local second = A.Replace(withMore, "ravenous feast", A.Lines(b, CASTS))
   local s2 = lines(second)
-  assert(s2[4] == "assign:ravenous feast;name:Ravenous Feast;" and s2[5] == "Left: Solex, Kip" and s2[#s2] == "Trailer line", "in place")
+  assert(s2[5] == "assign:ravenous feast;name:Ravenous Feast;" and s2[6] == "Left: Solex Kip" and s2[#s2] == "Trailer line", "in place")
   assert(not second:find("Rixxy", 1, true) and select(2, second:gsub("assign:", "")) == 11, "the old lines gone, the new there (the heading and ten)")
   local kept = second:gsub("assign:ravenous feast;name:Ravenous Feast;\\r\\n", ""):gsub("[^\\r\\n]*assign:[^\\r\\n]*\\r\\n", ""):gsub("Left: [^\\r\\n]*\\r\\nRight: [^\\r\\n]*\\r\\nCenter: [^\\r\\n]*\\r\\n", "")
-  assert(kept == base:sub(1, #base - 2) .. "\\r\\nTrailer line", "every other line as it was:\\n" .. kept)
+  assert(kept == base:sub(1, #base - 2) .. "\\r\\n\\r\\nTrailer line", "every other line as it was (and the blank line before the block):\\n" .. kept)
   -- renamed: the old block's place, the new name
   b.name = "Feast soaks"
   local third = A.Replace(second, A.Key(b.name), A.Lines(b, CASTS), "ravenous feast")
   local s3 = lines(third)
-  assert(s3[4] == "assign:feast soaks;name:Feast soaks;" and not third:find("Ravenous Feast", 1, true) and not third:find("assign:ravenous", 1, true), "renamed in place")
+  assert(s3[5] == "assign:feast soaks;name:Feast soaks;" and not third:find("Ravenous Feast", 1, true) and not third:find("assign:ravenous", 1, true), "renamed in place")
   -- removed
   local gone = A.Replace(third, "feast soaks", {})
-  assert(gone == base:sub(1, #base - 2) .. "\\r\\nTrailer line", "removed: the note as it was")
+  assert(gone == base:sub(1, #base - 2) .. "\\r\\n\\r\\nTrailer line", "removed: the note as it was, the blank line before the trailer kept")
   -- another block and a Raid note alert's lines live side by side
   local two = A.Replace(third, "second", A.Lines({ name = "Second", rows = { { label = "Left", text = "", tokens = { "Zed" }, casts = "all" } } }, CASTS))
   assert(A.Read(two, "feast soaks", CASTS) and A.Read(two, "second", CASTS) and two:find("mech:999;", 1, true), "both blocks and the alert line")
   assert(table.concat(A.Keys(two), ",") == "feast soaks,second", table.concat(A.Keys(two), ","))
+end)
+
+check("assign: a new block in the note's own form: names without realms, spaces between them, a blank line before it", function()
+  -- Alex, 2026-10-30: an Add assignment group glued under the Kick order with "Kill Group: Whitecrows-Stormrage, Gadios-Silvermoon"
+  local kick = "EncounterID:3421;Difficulty:Mythic;Name:Twin Fangs\\nintstart\\nSolex Rixxy\\nAbu Cheo\\nintend\\nSent by: Lulu-Kel'Thuzad"
+  local b = { name = "Testing a new Assignment", rows = { { label = "Kill Group", text = "", tokens = {}, casts = "all" } } }
+  for _, who in ipairs({ "Whitecrows-Stormrage", "Gadios-Silvermoon", "Lichkingstoy-Sentinels" }) do
+    assert(A.AddToken(b, 1, who), "added " .. who)
+  end
+  assert(not A.AddToken(b, 1, "Gadios") and not A.AddToken(b, 1, "gadios-otherrealm"), "a name the row has, with or without a realm, is refused")
+  local out = A.Lines(b, nil)
+  assert(out[2] == "Kill Group: Whitecrows Gadios Lichkingstoy", "the row's line as the kick lines write theirs: " .. tostring(out[2]))
+  local text = A.Replace(kick, A.Key(b.name), out)
+  assert(text == kick .. "\\n\\nassign:testing a new assignment;name:Testing a new Assignment;\\nKill Group: Whitecrows Gadios Lichkingstoy",
+    "a blank line between the note and the new block: " .. text)
+  -- timed lines carry the same names
+  local timed = A.Lines(b, { { ph = 1, t = 30 } })
+  assert(timed[3] == "time:30;ph:1;tag:Whitecrows Gadios Lichkingstoy;text:Kill Group;assign:testing a new assignment/1/1;", tostring(timed[3]))
+  -- a block read back from an older note keeps its realm names; written again, they go
+  local old = A.Read("assign:x;name:X;\\nLeft: Abu-Sargeras, Cheo", "x")
+  assert(table.concat(old.rows[1].tokens, ",") == "Abu-Sargeras,Cheo" and A.Lines(old)[2] == "Left: Abu Cheo", "rewritten: " .. A.Lines(old)[2])
+  -- comparing two texts, how the names are written never counts; a time or a text does
+  local oldForm = "Left: Abu-Sargeras, Cheo\\ntime:36;ph:1;tag:Abu-Sargeras  Cheo;text:Soak;"
+  assert(A.NameForm(oldForm) == A.NameForm("Left: Abu Cheo\\ntime:36;ph:1;tag:Abu Cheo;text:Soak;"), "the same names: " .. A.NameForm(oldForm))
+  assert(A.NameForm(oldForm) ~= A.NameForm("Left: Abu Cheo\\ntime:40;ph:1;tag:Abu Cheo;text:Soak;"), "a moved time counts")
+  assert(A.NameForm(oldForm) ~= A.NameForm("Left: Abu Kip\\ntime:36;ph:1;tag:Abu Cheo;text:Soak;"), "another name counts")
+  -- written again in place: one blank line, never another
+  b.rows[1].tokens = { "Solex" }
+  local again = A.Replace(text, A.Key(b.name), A.Lines(b, nil))
+  assert(again == kick .. "\\n\\nassign:testing a new assignment;name:Testing a new Assignment;\\nKill Group: Solex", "in place: " .. again)
+  -- a block that follows another: a blank line between them; a trailing line end stays the note's last
+  local second = A.Replace(again .. "\\n", "two", A.Lines({ name = "Two", rows = { { label = "Right", text = "", tokens = { "Kip" }, casts = "all" } } }, nil))
+  assert(second == again .. "\\n\\nassign:two;name:Two;\\nRight: Kip\\n", "between two blocks: " .. second)
+  -- no blank line after the header, after a blank line, or into an empty note
+  local header = "EncounterID:3421;Difficulty:Mythic;Name:Twin Fangs\\n"
+  assert(A.Replace(header, "two", { "assign:two;name:Two;" }) == header .. "assign:two;name:Two;\\n", "after the header: " .. A.Replace(header, "two", { "assign:two;name:Two;" }))
+  assert(A.Replace("Intro\\n\\n", "two", { "assign:two;name:Two;" }) == "Intro\\n\\nassign:two;name:Two;\\n", "after a blank line")
+  assert(A.Replace("", "two", { "assign:two;name:Two;" }) == "assign:two;name:Two;", "an empty note")
+  -- taken out again: its blank line goes with it, so the note is as it was
+  assert(A.Replace(second, "two", {}) == again .. "\\n", "removed at the end: " .. A.Replace(second, "two", {}))
+  assert(A.Replace(again, A.Key(b.name), {}) == kick .. "\\n", "removed: the note as it was, ending in a line end")
 end)
 
 check("assign: Write into the boss's note for exactly that difficulty, lines linked to their rows", function()
@@ -189,7 +230,7 @@ check("assign: Write into the boss's note for exactly that difficulty, lines lin
   local id = A.Write(3470, "Mythic", "Twin Fangs", "ravenous feast", A.Lines(feast(), CASTS))
   assert(id == mythic, "the Mythic note, never the Heroic one")
   local rec = Notes:Get(id)
-  assert(rec.difficulty == "Mythic" and rec.raw:find("Left: Solex, Rixxy", 1, true) and A.CountIn(rec.raw, "ravenous feast") == 10, "written")
+  assert(rec.difficulty == "Mythic" and rec.raw:find("Left: Solex Rixxy", 1, true) and A.CountIn(rec.raw, "ravenous feast") == 10, "written")
   assert(Notes:Get(heroic).raw == "EncounterID:3470;Difficulty:Heroic;Name:Twin Fangs\\nHeroic stuff", "the Heroic note untouched")
   -- the links: in the editor's session, every timed line follows its row, even Right with one name
   local s = Model.New(rec.raw)
@@ -267,7 +308,7 @@ check("assign: a typed group list is never a block; a block's heading belongs to
   assert(select(2, again:gsub("assign:feast by hand/", "")) == 10 and not again:find("assign:ravenous feast", 1, true)
     and again:find("assign:feast by hand;name:Feast by hand;", 1, true), "no timed line lost, the key follows the name")
   -- the heading line gone by hand: the rows' names come from the lines' tag:
-  local headless = withBlock:gsub("assign:ravenous feast;name:Ravenous Feast;for:1234;\\n", ""):gsub("\\nLeft: Solex, Rixxy\\nRight: Abu\\nCenter: Cheo, Demon Hunter", "")
+  local headless = withBlock:gsub("assign:ravenous feast;name:Ravenous Feast;for:1234;\\n", ""):gsub("\\nLeft: Solex Rixxy\\nRight: Abu\\nCenter: Cheo Demon Hunter", "")
   back = A.Read(headless, "ravenous feast", CASTS)
   assert(back and not back.hasHeading and back.hasLines and table.concat(back.rows[1].tokens, ",") == "Solex,Rixxy"
     and table.concat(back.rows[3].tokens, ",") == "Cheo,Demon Hunter", "names from the tags")
