@@ -217,7 +217,30 @@ check("assign: a new block in the note's own form: names without realms, spaces 
   assert(A.Replace("", "two", { "assign:two;name:Two;" }) == "assign:two;name:Two;", "an empty note")
   -- taken out again: its blank line goes with it, so the note is as it was
   assert(A.Replace(second, "two", {}) == again .. "\\n", "removed at the end: " .. A.Replace(second, "two", {}))
-  assert(A.Replace(again, A.Key(b.name), {}) == kick .. "\\n", "removed: the note as it was, ending in a line end")
+  assert(A.Replace(again, A.Key(b.name), {}) == kick, "removed: the note as it was, no line end left: " .. A.Replace(again, A.Key(b.name), {}))
+end)
+
+check("assign: a block that ended the note, taken out, leaves the note as it was before (LF and CRLF)", function()
+  local blk = A.Lines({ name = "Two", rows = { { label = "Right", text = "", tokens = { "Kip" }, casts = "all" } } }, nil)
+  for _, eol in ipairs({ "\\n", "\\r\\n" }) do
+    for _, tail in ipairs({ "", eol }) do
+      local base = "EncounterID:3470;Difficulty:Mythic;Name:Twin Fangs" .. eol .. "Intro" .. tail
+      local added = A.Replace(base, "two", blk)
+      assert(added ~= base, "added")
+      assert(A.Replace(added, "two", {}) == base, "eol " .. #eol .. " tail " .. #tail .. ": " .. A.Replace(added, "two", {}))
+    end
+  end
+  -- in the middle (CRLF): one blank line, the note's style kept
+  local mid = "Intro\\r\\n\\r\\nassign:two;name:Two;\\r\\nRight: Kip\\r\\n\\r\\nNext\\r\\nZ: q"
+  assert(A.Replace(mid, "two", {}) == "Intro\\r\\n\\r\\nNext\\r\\nZ: q", "middle: " .. A.Replace(mid, "two", {}))
+  -- the Mech Alerts Assign tab's path: Write with no lines gives back the text from before the add
+  reset()
+  local before = "EncounterID:3470;Difficulty:Mythic;Name:Twin Fangs\\nIntro"
+  local id = Notes:Import(before)
+  A.Write(3470, "Mythic", "Twin Fangs", "two", blk)
+  assert(Notes:Get(id).raw ~= before, "written")
+  A.Write(3470, "Mythic", "Twin Fangs", "two", {})
+  assert(Notes:Get(id).raw == before, "Write with no lines: " .. Notes:Get(id).raw)
 end)
 
 check("assign: Write into the boss's note for exactly that difficulty, lines linked to their rows", function()

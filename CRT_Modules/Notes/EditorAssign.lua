@@ -345,13 +345,7 @@ function EA.AskRemove()
             return
         end
         A.ui:Flush()
-        local old = W.session:Text()
-        local text = Assign.Replace(old, key, {})
-        -- a block that ended the note took its last line's end with it: the line before it ends the note again
-        if not old:find("\n$") then
-            text = text:gsub("\r?\n$", "")
-        end
-        apply(text)
+        apply(Assign.Replace(W.session:Text(), key, {}))
         newBlock()
         Editor.Refresh()
         W.notice = UI.GoodText(string.format(TEXT.removed, name))
