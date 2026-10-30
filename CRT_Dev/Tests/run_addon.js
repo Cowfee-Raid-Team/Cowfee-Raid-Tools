@@ -409,6 +409,14 @@ if scenario.release then
 else
   check(kicks:find("Kick probe is", 1, true) ~= nil, "/crt dev kicks answers: " .. kicks)
 end
+-- the ability labels window's word, in a dev build only: it opens the window (Dev/AbilityLabels.lua)
+local labels = slash("dev labels")
+if scenario.release then
+  check(labels:find("Unknown command", 1, true) ~= nil and CRT.AbilityLabelsDev == nil, "/crt dev labels is not in a release build")
+else
+  check(not labels:find("Unknown command", 1, true) and CRT.AbilityLabelsDev.window ~= nil and CRT.AbilityLabelsDev.window:IsShown(), "/crt dev labels opens its window: " .. labels)
+  slash("dev labels")
+end
 
 -- /crt loot alone: your loot popup and All Loot Rolls. Loot History has no word (it opens from the menu); the
 -- leader's words come after /crt loot.

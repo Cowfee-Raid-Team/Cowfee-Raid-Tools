@@ -176,6 +176,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         if CRT.ReferenceTypes then
             CRT.ReferenceTypes:Toggle()
         end
+    elseif CRT.AbilityLabelsDev and CRT.AbilityLabelsDev:Command(msg) then
+        -- dev labels: export your ability labels for the boss files, and clear them once shipped (Dev/AbilityLabels.lua)
     elseif msg == "dev winlog" then
         if CRT.WindowLog then
             CRT.WindowLog:Toggle()
