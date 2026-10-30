@@ -34,35 +34,146 @@ function UI:SetPageHidden(key, hidden, closeHides)
 end
 
 -- Previews: the panels that appear on their own, such as the ready check bar and the debuff panel,
--- register here. "Previews" in the corner of the main panel shows them all so they can be
--- dragged into place, and hides them again. setFn(on) shows or hides one panel's preview.
+-- register here. setFn(on) shows or hides one panel's preview. Each key keeps its own on state, so a
+-- page can preview just its own displays (UI:SetPreview, UI:SetPreviewGroup, UI.PreviewButton) and
+-- sections add up. "Previews" in the title bar shows them all, or, while any is on, hides them all.
+-- The helpers (PREVIEW_HELPERS) are not displays: they run while any display previews (the main
+-- window's parking, Alerts/Areas.lua; dragging, UI/Placement.lua) and stop when the last one goes off.
 UI.previews = {}
-UI.previewing = false
+UI.previewOn = {}        -- display key -> true while it previews
+UI.previewing = false    -- true while any display previews
+UI.previewListeners = {}
+UI.PREVIEW_HELPERS = { alertwindow = true, placement = true }
 
 function UI:RegisterPreview(key, setFn)
     self.previews[key] = setFn
 end
 
-function UI:SetPreviews(on)
+function UI:IsPreviewing(key)
+    return self.previewOn[key] == true
+end
+
+function UI:AnyPreview()
+    return self.previewing
+end
+
+-- fn() runs after every preview change, so buttons and labels follow without polling.
+function UI:OnPreviewChange(fn)
+    self.previewListeners[#self.previewListeners + 1] = fn
+end
+
+function UI:CallPreview(key, on)
+    local ok, err = pcall(self.previews[key], on)
+    if not ok then
+        CRT:Print("Preview '" .. key .. "' failed: " .. tostring(err))
+    end
+end
+
+-- Turns these display keys on or off and leaves every other key as it is. force runs the helpers
+-- off even when nothing was on (closing the main window).
+function UI:SetPreviewGroup(keys, on, force)
     on = on and true or false
     if on and InCombatLockdown() then
         CRT:Print("Previews can't be turned on during combat.")
         return
     end
-    self.previewing = on
-    for key, setFn in pairs(self.previews) do
-        local ok, err = pcall(setFn, on)
-        if not ok then
-            CRT:Print("Preview '" .. key .. "' failed: " .. tostring(err))
+    if type(keys) == "string" then
+        keys = { keys }
+    end
+    for _, key in ipairs(keys) do
+        if self.previews[key] and not self.PREVIEW_HELPERS[key] then
+            self.previewOn[key] = on or nil
+            self:CallPreview(key, on)
+        end
+    end
+    local any = next(self.previewOn) ~= nil
+    if any ~= self.previewing or (force and not any) then
+        self.previewing = any
+        for key in pairs(self.PREVIEW_HELPERS) do
+            if self.previews[key] then
+                self:CallPreview(key, any)
+            end
         end
     end
     if self.previewButton then
-        self.previewButton:SetText(on and "Previews: ON" or "Previews")
+        self.previewButton:SetText(any and "Previews: ON" or "Previews")
+    end
+    for _, fn in ipairs(self.previewListeners) do
+        local ok, err = pcall(fn)
+        if not ok then
+            CRT:Print("Preview change failed: " .. tostring(err))
+        end
     end
 end
 
+function UI:SetPreview(key, on)
+    self:SetPreviewGroup({ key }, on)
+end
+
+-- Every display key: on shows them all, off hides them all and stops the helpers.
+function UI:SetPreviews(on)
+    local keys = {}
+    for key in pairs(self.previews) do
+        keys[#keys + 1] = key
+    end
+    table.sort(keys)
+    self:SetPreviewGroup(keys, on, not on)
+end
+
+-- The title bar's click: everything off while any is on, everything on while none is.
 function UI:TogglePreviews()
     self:SetPreviews(not self.previewing)
+end
+
+-- True when every registered key of the group is on (and at least one is registered).
+function UI:GroupPreviewing(keys)
+    if type(keys) == "string" then
+        keys = { keys }
+    end
+    local seen = false
+    for _, key in ipairs(keys) do
+        if self.previews[key] then
+            if not self.previewOn[key] then
+                return false
+            end
+            seen = true
+        end
+    end
+    return seen
+end
+
+-- A page's preview button: a PanelButton reading label while its keys are off and "Stop preview"
+-- while they are all on; a click toggles them. opts.tooltip says what it shows; opts.height.
+UI.PREVIEW_STOP = "Stop preview"
+
+function UI.PreviewButton(parent, label, keys, opts)
+    opts = opts or {}
+    local b = UI.PanelButton(parent, UI.PREVIEW_STOP, opts.height or 22, function()
+        UI:SetPreviewGroup(keys, not UI:GroupPreviewing(keys))
+    end)
+    -- as wide as the longer of its two labels, so it never changes size
+    local stopW = b:GetWidth()
+    b:SetText(label)
+    local fs = b:GetFontString()
+    b:SetWidth(math.max(stopW, UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0)))
+    b.previewKeys, b.previewLabel = keys, label
+    function b.refresh()
+        b:SetText(UI:GroupPreviewing(keys) and UI.PREVIEW_STOP or label)
+    end
+    b:SetScript("OnEnter", function(self)
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
+        GameTooltip:SetText(label, 1, 1, 1)
+        if opts.tooltip then
+            GameTooltip:AddLine(opts.tooltip, 0.8, 0.8, 0.8, true)
+        end
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    UI:OnPreviewChange(b.refresh)
+    b.refresh()
+    return b
 end
 
 -- The panel's size as a percent, 50 to 200. SetScale scales everything in it, text included.
@@ -2039,14 +2150,14 @@ function UI:Create()
     else
         pb:SetPoint("TOPRIGHT", f, "TOPRIGHT", -30, -2)
     end
-    pb:SetText("Previews")
+    pb:SetText(UI.previewing and "Previews: ON" or "Previews")
     pb:SetScript("OnClick", function()
         UI:TogglePreviews()
     end)
     pb:SetScript("OnEnter", function(self)
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_BOTTOM")
         GameTooltip:SetText("Previews", 1, 1, 1)
-        GameTooltip:AddLine("Shows every movable window with sample content, so you can drag them into place. Closing this window turns the previews off.", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("Shows every movable window with sample content, so you can drag them into place. While any preview is on, it turns them all off. Closing this window turns the previews off.", 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
     end)
     pb:SetScript("OnLeave", function()
