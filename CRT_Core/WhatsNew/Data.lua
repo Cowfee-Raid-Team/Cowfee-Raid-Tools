@@ -6,6 +6,17 @@ local ADDON, CRT = ...
 -- CRT_Dev/Tests/run_whatsnew.js checks every entry.
 CRT.WhatsNewData = {
     {
+        version = "1.2.0",
+        lines = {
+            "Assign tab: soaks and sides with timers",
+            "Interrupts: kick numbers over a boss's adds",
+            "Drag kickers in the note's Kick order",
+            "Addon check: who runs CRT and which version",
+            "Mech Alerts: save an alert into the raid note",
+        },
+        more = 5,
+    },
+    {
         version = "1.1.5",
         lines = {
             "Pick tonight's team: Team, Pug or your own",
