@@ -148,6 +148,7 @@ g "kick view" && { node run_kick_view.js "$W" 2>&1 | tail -20; echo "exit ${PIPE
 g "interrupts comm"&&{ node run_interrupts_comm.js "$W" 2>&1 | tail -20; echo "exit ${PIPESTATUS[0]}"; }
 g "interrupts page" && { node run_interrupts_page.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "addon check" && { node run_addoncheck.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
+g "addon check old versions" && { node run_addoncheck_hello.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "tattlebot team" && { node run_tattle.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "season stats" && { node run_seasonstats.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "season repairs" && { node run_seasonrepairs.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
