@@ -1232,7 +1232,7 @@ end
 -- The menu: the groups of UI.MENU_GROUPS, each under its header, placed for both looks by one function
 -- (UI.MenuLayout). Default: Blizzard draws each header as the game's Settings-menu category bar with its
 -- pages as gold entries under it; a Modern theme draws a small muted label over each group's box. When the
--- groups are taller than the menu, the menu scrolls with the theme's scroll bar.
+-- groups are taller than the menu, the menu scrolls with the theme's scroll bar, thin (8 px, 2 px from the buttons).
 -- Every number the menu is placed with, in px:
 --   row, rowGap   a page's button and the space under it
 --   groupGap      between one group's last page and the next group's header
@@ -1250,7 +1250,8 @@ end
 --                 below the last; boxRight: the box ends this far from the right; buttonLeft, buttonRight: a
 --                 page's button inside the box; labelX: the label from the left
 -- Tightened for 14 pages (Development included) to fit the 560 px page height in Classic, whose header bars
--- are taller than Modern's labels (job 20261022-requests).
+-- are taller than Modern's labels (job 20261022-requests). The side padding is thin (job 20261030-menu-scroll):
+-- a page's label has the room, and a scrolling menu gives its thin bar only UI.THIN_SCROLL_GAP + UI.THIN_SCROLL_W.
 UI.MENU_LAYOUT = {
     row = 30,
     rowGap = 1,
@@ -1258,7 +1259,7 @@ UI.MENU_LAYOUT = {
         groupGap = 0, -- the header's own border (4 px each side) is the space between groups
         headerGap = 1,
         row = 29, -- a page's button, a pixel under the default: four bordered headers need the room
-        textX = 10,
+        textX = 8,
         labelX = 10,
         frame = 3, -- the bevel around each header's bar, in the theme's steel colours
         outline = 1, -- the black line outside the bevel
@@ -1268,9 +1269,9 @@ UI.MENU_LAYOUT = {
         groupGap = 8,
         header = 16,
         pad = 2,
-        boxRight = 6,
-        buttonLeft = 2,
-        buttonRight = 8,
+        boxRight = 2,
+        buttonLeft = 1,
+        buttonRight = 3,
         labelX = 4,
     },
 }
@@ -1363,7 +1364,7 @@ function UI.MenuLayout(groups, modern, width, height)
     end
     local out = place(width)
     if math.floor(out.height - height) > 0 then
-        out = place(width - UI.ScrollGutter())
+        out = place(width - UI.ScrollGutter(UI.THIN_SCROLL_W, UI.THIN_SCROLL_GAP))
         out.scroll = true
     end
     return out
@@ -1380,14 +1381,19 @@ function UI:CreateMenu(f)
     menu:SetWidth(MENU_W)
     menu.blocks, menu.headers = {}, {}
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsMenuScroll", menu, "UIPanelScrollFrameTemplate")
+    -- a thin bar (UI.THIN_SCROLL_W) close to the buttons: it takes UI.ScrollGutter's room, less than the full bar
     if UI.SkinScrollBar then
-        UI:SkinScrollBar(scroll.ScrollBar)
+        UI:SkinScrollBar(scroll.ScrollBar, { width = UI.THIN_SCROLL_W })
     end
     scroll:SetPoint("TOPLEFT")
     scroll:SetPoint("BOTTOMRIGHT")
     scroll.scrollBarHideable = true
-    if scroll.ScrollBar then
-        scroll.ScrollBar:Hide()
+    local bar = scroll.ScrollBar
+    if bar then
+        bar:ClearAllPoints()
+        bar:SetPoint("TOPLEFT", scroll, "TOPRIGHT", UI.THIN_SCROLL_GAP, 0)
+        bar:SetPoint("BOTTOMLEFT", scroll, "BOTTOMRIGHT", UI.THIN_SCROLL_GAP, 0)
+        bar:Hide()
     end
     local inner = CreateFrame("Frame", nil, scroll)
     inner:SetSize(MENU_W, 1)
