@@ -539,6 +539,48 @@ do
   check(laneIndex(v, "healers:slot:105:1") == nil, "no slots, no slot rows")
 end
 
+-- #1225: Healer CDs follows Timeline > Settings > Icon size, as the Abilities layout does -----------------------------
+do
+  setNote({ "time:20;ph:1;tag:Halo;spellid:64843;", "time:40;ph:1;tag:RestoDruid;spellid:740;" })
+  CRT.db.timeline.healerSlots[3001] = { { spec = 105, n = 1 } }
+  local function abilityIcon(a)
+    for _, b in ipairs(a.icons) do if b:IsShown() and b.lane and b.lane.label == "Surge" then return b end end
+  end
+  for _, size in ipairs({ 18, 28 }) do
+    CRT.Timeline:Set("iconSize", size)
+    local a = View.Create(mock("Frame"))
+    a:SetData({ reference = ref }, 3001, nil, "Nek")
+    local ai = abilityIcon(a)
+    local h = newView()
+    for _, key in ipairs({ "healers:halo-home:64843", "healers:slot:105:1:740" }) do
+      local row = laneIndex(h, key)
+      local f = flagsOn(h, row)[1]
+      check(ai and ai.w == size and f and f.w == size and f.h == size and f.icon.w == size - 2,
+        size .. " px: a cast on " .. key .. " is the Abilities icon's size: " .. tostring(f and f.w) .. " vs " .. tostring(ai and ai.w))
+      local p = h.hvPairs[View.BandKey(f.mark)]
+      check(p and p.fill.h == size and p.fill.pt[5] == -(row - 1) * View.ROW_H - (View.ROW_H - size) / 2,
+        size .. " px: its band is as tall as its icon, centred on its row")
+      check(h.labels[row].h == a.labels[1].h, size .. " px: the row is as high as an Abilities row")
+      h:Select(f.mark)
+      local sel
+      for _, tx in ipairs(h.bandTex or {}) do if tx:IsShown() and tx.h > 1 then sel = tx end end
+      check(sel and sel.h == size, size .. " px: a selected cast's bands too: " .. tostring(sel and sel.h))
+      h:ClearSelection()
+    end
+    local head = laneIndex(h, "healers:slot:105:1")
+    check(h.labels[head].h == a.labels[1].h and h.labels[laneIndex(h, "healers:halo-home")].h == a.labels[1].h,
+      size .. " px: the healer and slot name rows are Abilities rows' height")
+  end
+  -- a live change: the open view drawn again follows it
+  local h = newView()
+  CRT.Timeline:Set("iconSize", 20)
+  h:Refresh()
+  check(flagsOn(h, laneIndex(h, "healers:halo-home:64843"))[1].w == 20 and HV.CastW() == 20, "the slider's new size on the next draw")
+  CRT.Timeline:Set("iconSize", 22)
+  setNote({})
+  CRT.db.timeline.healerSlots = {}
+end
+
 if fails > 0 then error(fails .. " healer slot checks failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

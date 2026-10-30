@@ -209,6 +209,12 @@ local function settings()
     return CRT.Timeline:Settings()
 end
 
+-- The Icon size setting (Timeline > Settings): the size of a cast's icon on a row, in the Abilities layout and on
+-- Healer CDs alike (Timeline/HealerView.lua's casts and their bands). Every row is ROW_H high in both.
+function View.IconSize()
+    return settings().iconSize or 22
+end
+
 local function rgba(key, alpha)
     local c = CRT.PALETTE[key] or CRT.PALETTE.text or { 1, 1, 1 } -- a palette without the key (an old theme) draws white
     return c[1], c[2], c[3], alpha or 1
@@ -3187,7 +3193,10 @@ function Methods:DrawBands(spec)
         local function x(t)
             return View.TimeToX(math.max(0, math.min(length, t)), length, trackW)
         end
-        local top, h = -(spec.row - 1) * ROW_H - BAND_INSET, ROW_H - 2 * BAND_INSET
+        -- on Healer CDs as tall as its casts' own bands (HealerView.BandInset, from the Icon size)
+        local HealerView = self.mode == "healers" and CRT.TimelineHealerView
+        local inset = HealerView and HealerView.BandInset() or BAND_INSET
+        local top, h = -(spec.row - 1) * ROW_H - inset, ROW_H - 2 * inset
         local function put(x0, x1, r, g, b, a, sub)
             if x1 - x0 <= 0 then
                 return
@@ -4292,7 +4301,7 @@ function Methods:Refresh(relayout)
     end
     self:DrawEndLine(pull and self.extra.endLine, length, height)
 
-    local size = s.iconSize or 22
+    local size = View.IconSize()
     local used, bars, leads, ticks = 0, 0, 0, 0
     for i, lane in ipairs(lanes) do
         local y = -(i - 1) * ROW_H

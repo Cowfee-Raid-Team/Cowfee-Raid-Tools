@@ -74,18 +74,24 @@ local BAND_ALPHA = 0.22 -- a cooldown's band after its cast, in its player's cla
 local OUTLINE_ALPHA = 0.7 -- the outline of a cooldown's band before its cast; its far end line is solid
 HV.INDENT = 16 -- how far a cooldown row's icon and name sit right of its healer's name row
 local NAME_TINT, SPELL_TINT = 0.16, 0.12 -- a healer's block background alpha: the name row, the cooldown rows
-local BAND_INSET = 4 -- the band's gap from its row's top and bottom
 local BAND_LINE_W = 1 -- the line where the cooldown is up again
 local SAME_MOMENT = 0.05 -- seconds: two casts this close are the same moment, not too soon
-local GHOST_W, GHOST_ALPHA = 18, 0.25 -- a moved cast's ghost at the raid's time: a faint square where its icon was
+local GHOST_ALPHA = 0.25 -- a moved cast's ghost at the raid's time: a faint square where its icon was (HV.CastW())
 local GHOST_DASH, GHOST_GAP = 4, 3 -- and a dashed pole down its row
 local SHADOW_ICON_ALPHA, SHADOW_LINE_ALPHA = 0.4, 0.35 -- the hover shadow of a cast a click would place
 local UNNAMED_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local GROUP_WORD = { "^g%d+$", "^group%d+$" } -- tag words that name a raid group, not a player
 
--- A cast's icon on a cooldown row: square, as tall as its bands (the view's DrawMarks draws it).
+-- A cast's icon on a cooldown row: square, as tall as its bands (the view's DrawMarks draws it), the Icon size
+-- setting's size as the Abilities layout's icons are (View.IconSize), never taller than its row.
 function HV.CastW()
-    return CRT.TimelineView.ROW_H - 2 * BAND_INSET
+    local View = CRT.TimelineView
+    return math.min(View.IconSize(), View.ROW_H)
+end
+
+-- The gap between a cast's bands and its row's top and bottom: the bands are as tall as its icon, centred on the row.
+function HV.BandInset()
+    return (CRT.TimelineView.ROW_H - HV.CastW()) / 2
 end
 
 local function readable(v)
@@ -803,8 +809,9 @@ local function drawMoved(view, n, x, length)
             local square = bandTexture(view, n)
             square:SetColorTexture(r, g, b, GHOST_ALPHA)
             square:ClearAllPoints()
-            square:SetPoint("TOPLEFT", view.track, "TOPLEFT", gx - GHOST_W / 2, top - 1)
-            square:SetSize(GHOST_W, GHOST_W)
+            local cw = HV.CastW()
+            square:SetPoint("TOPLEFT", view.track, "TOPLEFT", gx - cw / 2, top - HV.BandInset())
+            square:SetSize(cw, cw)
             for y = 3, rowH - 3 - GHOST_DASH, GHOST_DASH + GHOST_GAP do
                 n = n + 1
                 local dash = bandTexture(view, n)
@@ -818,7 +825,7 @@ local function drawMoved(view, n, x, length)
             fs:SetTextColor(rgba("label"))
             fs:SetText(string.format(TEXT.moved, View.Format(m.raidT), View.Format(math.min(length, m.t))))
             fs:ClearAllPoints()
-            fs:SetPoint("LEFT", view.track, "TOPLEFT", math.max(gx, x(m.t)) + GHOST_W / 2 + 4, top - rowH / 2)
+            fs:SetPoint("LEFT", view.track, "TOPLEFT", math.max(gx, x(m.t)) + HV.CastW() / 2 + 4, top - rowH / 2)
         end
     end
     return n, labels
@@ -867,7 +874,7 @@ local function drawPair(view, n, m, x, length)
     local rowH = CRT.TimelineView.ROW_H
     local r, g, b = laneColor(m.hvLane)
     local t, cd, half = m.t, m.cd, HV.CastW() / 2
-    local top, h = -(m.row - 1) * rowH - BAND_INSET, rowH - 2 * BAND_INSET
+    local top, h = -(m.row - 1) * rowH - HV.BandInset(), HV.CastW()
     local p = { tex = {}, outline = {} }
     local function put(x0, y, w, hh, cr, cg, cb, a, sub)
         n = n + 1
@@ -1022,7 +1029,7 @@ local function placeShadow(view, lane, t)
     sh.icon:SetSize(cw, cw)
     sh.icon:Show()
     local r, g, b = laneColor(lane)
-    local top, h, L = -(row - 1) * rowH - BAND_INSET, rowH - 2 * BAND_INSET, sh.lines
+    local top, h, L = -(row - 1) * rowH - HV.BandInset(), cw, sh.lines
     local cd = lane.cd
     if not cd then
         for _, tex in ipairs(L) do
