@@ -1,12 +1,15 @@
 local ADDON, CRT = ...
 
--- The alert settings' subtabs: one strip for the Mech Alerts panel (Notes/Reminders.lua) and the pop-out alert editor
--- (Alerts/Editor.lua), so both show the same tabs, in the same order, with the same dots. Under the host's header:
---   When              Show from, Linger and the alert's times
+-- The alert settings' subtabs: one strip for the Mech Alerts panel (Notes/Reminders.lua), its Special panel
+-- (Notes/SpecialAlerts.lua) and the pop-out alert editor (Alerts/Editor.lua), so all show the same tabs, in the same
+-- order, with the same dots. Under the host's header:
+--   When              Show from, Linger and the alert's times (Special: the When line, Duration)
+--   Who               the special alert's roles or rotation, the Special panel only
 --   Looks             Show as, Text, Icon, Color, and the bar's rows
 --   Sound and speech  Sound, Also when it lands on me, Speak the text, Speak at, Count down 3 2 1, Glow at 0
 --   Shield bar        the Shield bar section (Alerts/ShieldSection.lua)
 --   Assign            the mechanic's assignment blocks in the raid note (Notes/AssignTab.lua), the Mech Alerts panel only
+--   Markers           the special alert's marks and Mark the players, the Special panel only
 -- The strip is laid out from SubTabs.LIST, in order: a new tab is one more entry there (key, label, width, and on for
 -- its dot), and every host gets it. Each tab has a frame over the whole host frame; the host builds that tab's
 -- controls into it, at the host's own coordinates, so only the open tab's controls show. A tab's label carries a
@@ -22,10 +25,12 @@ CRT.AlertSubTabs = SubTabs
 -- Every word of the strip, in one place. Keep the keys, change the text in quotes, save, /reload.
 local TEXT = {
     when = "When",
+    who = "Who",
     looks = "Looks",
     sound = "Sound and speech",
     shield = "Shield bar",
     assign = "Assign",
+    markers = "Markers",
 }
 SubTabs.TEXT = TEXT
 
@@ -59,17 +64,28 @@ local function anySound(d)
     return (d.sound ~= nil and d.sound ~= Draft().NO_SOUND) or d.auraSound or d.speak or d.count or d.glow or false
 end
 
--- The tabs, in order. width: the approved mock-up's, widened for a label that needs more. on(draft): its dot; When
--- has none (Show from always has a value). hosts (optional): the hosts that get the tab, by owner, such as
--- { mechanics = true } for a tab only the Mech Alerts panel has room for (the editor's strip is 600 px); none: every host.
+-- The tabs, in order. width: the approved mock-up's, widened for a label that needs more; widthBy (optional): a host's
+-- own width, by owner (the Special panel's six tabs are narrower, to fit its 724 px). on(draft): its dot; When has none
+-- (Show from always has a value). The Special panel paints with its alert's choices in a draft's shape
+-- (Notes/SpecialAlerts.lua's TabState), with whoPicks and marked for its own two tabs. hosts (optional): the hosts that
+-- get the tab, by owner, such as { mechanics = true } for a tab only the Mech Alerts panel has room for (the editor's
+-- strip is 600 px); none: every host.
+local SPECIAL_W = 108
 SubTabs.LIST = {
-    { key = "when", label = TEXT.when, width = 118 },
-    { key = "looks", label = TEXT.looks, width = 118, on = anyShown },
+    { key = "when", label = TEXT.when, width = 118, widthBy = { special = SPECIAL_W } },
+    -- its dot: a rotation, a roles list or the raid note's line picks players (not Everyone)
+    { key = "who", label = TEXT.who, width = SPECIAL_W, hosts = { special = true },
+        on = function(d) return d.whoPicks == true end },
+    { key = "looks", label = TEXT.looks, width = 118, widthBy = { special = SPECIAL_W }, on = anyShown },
     { key = "sound", label = TEXT.sound, width = 150, on = anySound },
-    { key = "shield", label = TEXT.shield, width = 118, on = function(d) return Draft().Absorb(d) ~= nil end },
+    { key = "shield", label = TEXT.shield, width = 118, widthBy = { special = SPECIAL_W },
+        on = function(d) return Draft().Absorb(d) ~= nil end },
     -- its dot: the mechanic has an assignment with players in the raid note
     { key = "assign", label = TEXT.assign, width = 118, hosts = { mechanics = true },
         on = function() return CRT.NoteAssignTab ~= nil and CRT.NoteAssignTab.HasNames() end },
+    -- its dot: the alert has marks and Mark the players is on
+    { key = "markers", label = TEXT.markers, width = SPECIAL_W, hosts = { special = true },
+        on = function(d) return d.marked == true end },
 }
 
 -- The tab each host picked last, for the session: [owner] = key.
@@ -84,9 +100,10 @@ local Strip = {}
 Strip.__index = Strip
 
 -- Builds the strip into parent. opts:
---   owner  the host's name ("mechanics", "editor"): the session keeps the tab it picked last
+--   owner  the host's name ("mechanics", "special", "editor"): the session keeps the tab it picked last
 --   x, y   the first tab's top left in parent
 --   rule   { y, left, right }: a line under the tabs, from left to parent's width - right (optional)
+--   maxW   the room for the tabs: past it, they narrow to their labels (optional)
 --   list   the tabs (default SubTabs.LIST)
 --   onPick function(key) after a click changed the tab (optional)
 -- Returns the strip: keys (in order), buttons[key], frames[key] (each over the whole parent), rule, and Select, Current,
@@ -150,19 +167,42 @@ function SubTabs.AddTab(s, parent, entry)
     s.frames[key] = f
 end
 
--- Sizes and places the tabs from x, y: each its entry's width, or its label (and dot) and padding when wider.
--- Measured on every call, so a changed text size is followed.
+-- Each tab's width: its entry's (the host's own, widthBy[owner], when it has one), or its label (and dot) and padding
+-- when wider. With opts.maxW and the tabs past it (a large text size), the tabs wider than their label give the room
+-- back, each in proportion to what it has spare, never under its label. When the labels alone don't fit maxW, the
+-- strip still runs past it: a label is never cut. The Special panel's six fit 724 at the largest text size offered
+-- (run_mechalerts.js checks it); a host adding tabs must check that again.
+local function widths(s)
+    local owner, out, need, spare = s.opts.owner, {}, {}, 0
+    local total = (#s.keys - 1) * L.GAP
+    for i, key in ipairs(s.keys) do
+        local b, entry = s.buttons[key], s.entries[key]
+        need[i] = textWidth(b.text) + 2 * L.PAD + (entry.on and (L.DOT_GAP + L.DOT) or 0)
+        out[i] = math.max((entry.widthBy and entry.widthBy[owner]) or entry.width or 0, need[i])
+        total = total + out[i]
+        spare = spare + out[i] - need[i]
+    end
+    local over = s.opts.maxW and total - s.opts.maxW or 0
+    if over > 0 and spare > 0 then
+        local share = math.min(1, over / spare)
+        for i = 1, #out do
+            out[i] = math.max(need[i], out[i] - math.ceil((out[i] - need[i]) * share))
+        end
+    end
+    return out
+end
+
+-- Sizes and places the tabs from x, y (widths above). Measured on every call, so a changed text size is followed.
 function Strip:Layout()
     local x = self.opts.x
-    for _, key in ipairs(self.keys) do
-        local b, entry = self.buttons[key], self.entries[key]
-        local need = textWidth(b.text) + 2 * L.PAD + (entry.on and (L.DOT_GAP + L.DOT) or 0)
-        local w = math.max(entry.width or 0, need)
-        b:SetSize(w, L.H)
+    local w = widths(self)
+    for i, key in ipairs(self.keys) do
+        local b = self.buttons[key]
+        b:SetSize(w[i], L.H)
         b:ClearAllPoints()
         b:SetPoint("TOPLEFT", x, self.opts.y)
-        b.w = w
-        x = x + w + L.GAP
+        b.w = w[i]
+        x = x + w[i] + L.GAP
     end
     return x - L.GAP - self.opts.x
 end

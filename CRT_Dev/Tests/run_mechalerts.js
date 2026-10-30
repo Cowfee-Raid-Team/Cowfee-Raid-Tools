@@ -2216,7 +2216,49 @@ check("mech subtabs: a tab for one host only stays out of the others", function(
   assert(16 + editorStrip:Layout() <= 600 - 16, "the editor strip fits: " .. editorStrip:Layout())
   -- the panel's five fit the panel (748 wide, 12 in from each side)
   assert(12 + panelStrip:Layout() <= 748 - 12, "the panel strip fits: " .. panelStrip:Layout())
+  -- Who and Markers are the Special panel's only (Notes/SpecialAlerts.lua), Assign is not
+  assert(panelStrip.buttons.who == nil and panelStrip.buttons.markers == nil and editorStrip.buttons.who == nil and editorStrip.buttons.markers == nil,
+    "Who and Markers stay out of Mechanics and the editor")
+  local specialStrip = CRT.AlertSubTabs.Build(mock("Frame"), { owner = "special", x = 12, y = -66, list = list })
+  assert(table.concat(specialStrip.keys, ",") == "when,who,looks,sound,shield,markers", "Special: " .. table.concat(specialStrip.keys, ","))
+  assert(specialStrip:Layout() == 5 * 108 + 150 + 5 * 4, "Special's six at 108 (Sound and speech 150): " .. specialStrip:Layout())
+  -- the per-host width leaves the other hosts' alone
+  assert(panelStrip.buttons.when.w == 118 and editorStrip.buttons.when.w == 118 and specialStrip.buttons.when.w == 108, "Mechanics and the editor keep 118")
+  -- never narrower than its label, its dot and the padding
+  TEXT_SCALE = 3
+  specialStrip:Layout()
+  local b = specialStrip.buttons.shield
+  local okW = b.w == #"Shield bar" * 18 + 20 + 10
+  TEXT_SCALE = nil
+  assert(okW, "a large text widens the tab: " .. b.w)
+  -- a strip with room for maxW: past it, the tabs wider than their label give the room back, never under their label
+  local fit = CRT.AlertSubTabs.Build(mock("Frame"), { owner = "special", x = 12, y = -66, list = list, maxW = 724 })
+  assert(fit:Layout() == 710 and fit.buttons.when.w == 108, "room enough: the mock-up's widths")
+  TEXT_SCALE = 1.75
+  local total = fit:Layout()
+  local needs = {}
+  for _, key in ipairs(fit.keys) do
+    local e = fit.entries[key]
+    needs[key] = math.ceil(#fit.buttons[key].text.text * 6 * 1.75) + 20 + (e.on and 10 or 0)
+  end
+  local widths = {}
+  for _, key in ipairs(fit.keys) do widths[key] = fit.buttons[key].w end
+  TEXT_SCALE = nil
+  assert(total <= 724, "at 1.75 the six still fit 724: " .. total)
+  for key, w in pairs(widths) do assert(w >= needs[key], key .. " never under its label: " .. w .. " < " .. needs[key]) end
+  assert(fit:Layout() == 710, "back at 1: the mock-up's widths again")
+  -- the largest text size offered: Text size 22 over the 14 point body (CRT_Core/Core.lua's ApplyFonts, 8 to 22), and
+  -- 1.1 more in the Modern look's default font. The labels alone fit 724 there, so the strip stays inside the panel.
+  local largest = 22 / 14 * 1.1
+  for _, scale in ipairs({ largest, 1.75 }) do
+    TEXT_SCALE = scale
+    local w = fit:Layout()
+    TEXT_SCALE = nil
+    assert(w <= 724, "at " .. scale .. " the six fit 724: " .. w)
+  end
+  fit:Layout()
   click(panelStrip.buttons.when) -- the session's pick back on When
+  click(specialStrip.buttons.when)
   assert(#errors == 0, tostring(errors[1]))
 end)
 
@@ -2949,8 +2991,12 @@ check("mech special (" .. LOOK .. "): the panel says When and Who, keeps Show as
   assert(CRT.db.alerts.special[ENC].soaks.fill == "down" and fill.value == "down" and CRT.db.alerts.special[ENC].soaks.speak == false, "saved, the rest kept")
   setCheck(s.checks.bar, false)
   assert(fill.opts.enabledIf() == false, "greyed with Bar off")
+  -- on Looks, under Show as at the panel's left; Speak the text on Sound and speech
   local fp = fill.pts[#fill.pts]
-  assert(fp[3] == s.speak.pts[1][3] and fp[2] > 96, "on the Speak row, after its label")
+  local lowest = 0
+  for _, c in pairs(s.checks) do lowest = math.min(lowest, c.pts[#c.pts][3]) end
+  assert(fill.parent == s.tabs.frames.looks and fp[2] == 12 and fp[3] <= lowest - 24, "Bar fill under Show as: " .. tostring(fp[2]) .. ", " .. tostring(fp[3]))
+  assert(s.speak.parent == s.tabs.frames.sound, "Speak the text on Sound and speech")
   -- markers: an addon can't set them, so the section is greyed and says why
   assert(s.markText.text == "Marks for each step: Star, Circle. Named in the alert's text.", "the marks: " .. s.markText.text)
   assert(s.markCheck.enabled == false and s.markCheck.checked == false, "Mark the players: greyed")
@@ -3088,22 +3134,24 @@ check("mech special (" .. LOOK .. "): the Shield bar section, your choice over t
   assert(#errors == 0, tostring(errors[1]))
 end)
 
--- The Special panel's layout with the section: right of Show as and Bar fill, between the Who chips and Markers
-check("mech special (" .. LOOK .. "): the Shield bar section sits clear of Show as, Bar fill and Markers", function()
+-- The Special panel's Shield bar tab: the section over the panel's width, under the tabs, clear of the header and Test
+check("mech special (" .. LOOK .. "): the Shield bar section fills its tab, clear of the header, the tabs and Test", function()
   withSpecial({ SHIELD_ENTRY })
   CRT.db.alerts.special = {}
   CRT.db.alerts.shieldPulls = { [ENC] = { at = 1, units = { boss1 = 10, boss2 = 20, boss3 = 30 } } }
   local f = freshOpen()
   local s = f.special
   local sh = s.shield
+  click(s.tabs.buttons.shield)
   sh.lengthRow.opts.set(20) -- Default on show
   rects = {}
   local pr = rect(s.panel, f)
   local parts = { sh.check, sh.unitRow, sh.lengthRow, sh.any, sh.lastText, sh.note, sh.default }
   for _, b in ipairs(sh.use) do if b.shown then parts[#parts + 1] = b end end
   assert(sh.use[3].shown, "three Use buttons fit its own row")
-  local others = { s.speak, s.fill, s.countTo, s.markHeading, s.markText, s.markCheck, s.testBtn, s.whoText }
-  for _, c in pairs(s.checks) do others[#others + 1] = c others[#others + 1] = c.label end
+  assert(sh.opts.x == 12 and sh.opts.width == pr[3] - pr[1] - 24, "the panel's width: " .. tostring(sh.opts.width))
+  local others = { s.title, s.kind, s.alertMe, s.testBtn }
+  for _, key in ipairs(s.tabs.keys) do others[#others + 1] = s.tabs.buttons[key] end
   local function overlap(a, b) return a[1] < b[3] - 0.5 and b[1] < a[3] - 0.5 and a[2] < b[4] - 0.5 and b[2] < a[4] - 0.5 end
   -- a dropdown or slider row is 32 high (UI.CONTROL_ROW_H) with its control about 20 high in its middle
   local function box(m) local r = rect(m, f) if rawget(m, "opts") then return { r[1], r[2] + 6, r[3], r[4] - 6 } end return r end
@@ -3119,6 +3167,7 @@ check("mech special (" .. LOOK .. "): the Shield bar section sits clear of Show 
   CRT.NoteReminders.Refresh()
   edges(f, "special with the shield section, large text")
   TEXT_SCALE = nil
+  click(s.tabs.buttons.when)
   CRT.db.alerts.shieldPulls = nil
   CRT.db.alerts.special = {}
   CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
@@ -3180,7 +3229,8 @@ check("mech special (" .. LOOK .. "): Show from under When: yours, saved when it
   local sr, hr, dr = rect(sl, f), rect(help, f), rect(def, f)
   local wr, ir, whoR = rect(s.whenText, f), rect(s.impactsText, f), rect(s.whoHeading, f)
   assert(hr[1] >= sr[3] and dr[1] >= hr[3], "slider, its (?), then Default")
-  assert(sr[2] >= ir[4] and sr[2] >= wr[4] and sr[4] <= whoR[2], "under When's lines, over Who")
+  assert(sr[2] >= ir[4] and sr[2] >= wr[4], "under When's lines")
+  assert(sl.parent == s.tabs.frames.when and def.parent == sl.parent and s.whoHeading.parent == s.tabs.frames.who, "on When; Who on its own tab")
   -- moved: saved, When follows, Default lights up
   sl.opts.set(8)
   assert(CRT.db.alerts.special[ENC].soaks.lead == 8, "saved")
@@ -3316,19 +3366,223 @@ check("mech special (" .. LOOK .. "): nothing passes the page edges", function()
   withSpecial(long)
   local f = fresh()
   click(f.special.specialBtn)
-  local n = edges(f, "special")
-  assert(n > 40, "checked " .. n .. " pieces")
+  local t = f.special.tabs
+  local n = 0
+  for _, key in ipairs(t.keys) do
+    click(t.buttons[key])
+    n = n + edges(f, "special, " .. key)
+  end
+  assert(n > 40 * 2, "checked " .. n .. " pieces")
   assert(f.special.more.shown, "the steps that don't fit are counted")
   rects = {}
   local lr, pr = rect(f.special.list, f), rect(f.special.panel, f)
   assert(lr[3] <= pr[1], "the list ends before the panel")
   assert(lr[4] >= TAB_H - 12 and pr[4] >= TAB_H - 12, "both fill the height")
+  -- the chips stay inside the panel, the (?) after them too
+  for _, c in ipairs(f.special.chips) do if c.shown then assert(rect(c, f)[3] <= pr[3] - 12, "a chip inside the panel") end end
   TEXT_SCALE = 1.75
   CRT.NoteReminders.Refresh()
-  edges(f, "special, large text")
+  for _, key in ipairs(t.keys) do
+    click(t.buttons[key])
+    edges(f, "special, large text, " .. key)
+  end
   TEXT_SCALE = nil
+  click(t.buttons.when)
   click(f.special.mechBtn)
   noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- The Special panel's subtabs (Alerts/SubTabs.lua, owner "special"): When, Who, Looks, Sound and speech, Shield bar,
+-- Markers under the header, at the approved mock-up's sizes (108, Sound and speech 150, gap 4), each holding its group;
+-- one tab's controls on show; Test on every tab; the dots; the tab stays when another row is picked.
+local SPECIAL_TABS = { "when", "who", "looks", "sound", "shield", "markers" }
+local function specialOnTab(s)
+  local sh = s.shield
+  return {
+    when = { s.whenText, s.impactsText, s.lead, s.leadDefault },
+    who = { s.whoHeading, s.whoText, s.more },
+    looks = { s.checks.alert, s.checks.text, s.checks.icon, s.checks.bar, s.checks.circle, s.checks.timeline, s.fill, s.countTo },
+    sound = { s.speak },
+    shield = { sh.check, sh.unitRow, sh.lengthRow, sh.any },
+    markers = { s.markHeading, s.markText, s.markCheck },
+  }
+end
+
+check("special subtabs (" .. LOOK .. "): six tabs under the header, in order, at the mock-up's sizes", function()
+  withSpecial(SPECIAL_LIST)
+  CRT.db.alerts.special = {}
+  local f = freshOpen()
+  local s = f.special
+  local t = s.tabs
+  assert(t and table.concat(t.keys, ",") == table.concat(SPECIAL_TABS, ","), "the six tabs, in order: " .. tostring(t and table.concat(t.keys, ",")))
+  local labels, x = {}, 12
+  for i, key in ipairs(t.keys) do
+    local b = t.buttons[key]
+    labels[i] = b.text.text
+    local pt = b.pts[#b.pts]
+    assert(b.parent == s.content and pt[1] == "TOPLEFT" and pt[2] == x and pt[3] == -66, key .. " at " .. tostring(pt[2]) .. ", " .. tostring(pt[3]))
+    assert(b.h == 24 and b.w == (key == "sound" and 150 or 108), key .. " is " .. tostring(b.w) .. " x " .. tostring(b.h))
+    x = x + b.w + 4
+  end
+  assert(table.concat(labels, ",") == "When,Who,Looks,Sound and speech,Shield bar,Markers", table.concat(labels, ","))
+  rects = {}
+  local pr = rect(s.panel, f)
+  assert(x - 4 == 12 + 710 and x - 4 <= pr[3] - pr[1] - 12, "710 px, inside the panel: " .. (x - 4) .. " of " .. (pr[3] - pr[1]))
+  assert(t.buttons.assign == nil, "no Assign on Special")
+  assert(t.rule and t.rule.pts[1][3] == -90, "a rule under the tabs")
+  -- the header above the tabs, outside them
+  local tabTop = rect(t.buttons.when, f)[2]
+  for _, m in ipairs({ s.title, s.kind, s.alertMe }) do
+    assert(m.parent == s.content, "the header stays outside the tabs: " .. tostring(m.label or m.text))
+    assert(rect(m, f)[4] <= tabTop + 0.5, "above the tabs: " .. tostring(m.label or m.text))
+  end
+  -- each control is built into its own tab's frame, under the rule
+  local rule = rect(t.rule, f)[2]
+  for key, list in pairs(specialOnTab(s)) do
+    for i, m in ipairs(list) do
+      assert(m.parent == t.frames[key], key .. " control " .. i .. " (" .. tostring(rawget(m, "label") or rawget(m, "text")) .. ") on its tab")
+      if #m.pts > 0 then assert(rect(m, f)[2] >= rule, key .. " control " .. i .. " under the tabs") end -- +N is placed when it shows
+    end
+  end
+  for _, c in ipairs(s.chips) do assert(c.parent == t.frames.who, "the chips on Who") end
+  -- Test and the message stay outside the tabs
+  for _, m in ipairs({ s.testBtn, s.message }) do assert(m.parent == s.content, "outside the tabs: " .. tostring(m.text)) end
+  -- the When line's (?) follows its text
+  local help
+  for _, h in ipairs(helps) do if h.helpTitle == "When" and rawget(h, "helpTarget") == s.whenText then help = h end end
+  assert(help and help.parent == t.frames.when, "When's (?) on the When line")
+  click(s.mechBtn)
+  CRT.db.alerts.special = {}
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("special subtabs (" .. LOOK .. "): one tab's controls on show, Test on every tab, nothing overlapping", function()
+  withSpecial(SPECIAL_LIST)
+  CRT.db.alerts.special = {}
+  local f = freshOpen()
+  local s = f.special
+  local list = specialOnTab(s)
+  local function overlap(a, b) return a[1] < b[3] - 0.5 and b[1] < a[3] - 0.5 and a[2] < b[4] - 0.5 and b[2] < a[4] - 0.5 end
+  local function box(m) local r = rect(m, f) if rawget(m, "opts") then return { r[1], r[2] + 6, r[3], r[4] - 6 } end return r end
+  for _, key in ipairs(SPECIAL_TABS) do
+    click(s.tabs.buttons[key])
+    assert(s.tabs:Current() == key and s.tabs.buttons[key].tabSelected == true, key .. " selected")
+    for other, ctrls in pairs(list) do
+      for i, m in ipairs(ctrls) do
+        if other == key then
+          assert(visibleIn(m.parent, f), key .. ": control " .. i .. "'s tab on show")
+        else
+          assert(not visibleIn(m, f), key .. ": " .. other .. " control " .. i .. " hidden")
+        end
+      end
+    end
+    assert(visibleIn(s.testBtn, f), key .. ": Test on show")
+    rects = {}
+    local shown = { s.title, s.alertMe, s.testBtn }
+    for _, k in ipairs(SPECIAL_TABS) do shown[#shown + 1] = s.tabs.buttons[k] end
+    for _, m in ipairs(list[key]) do if visibleIn(m, f) and m ~= s.more then shown[#shown + 1] = m end end
+    if key == "looks" then for _, c in pairs(s.checks) do shown[#shown + 1] = c.label end end
+    -- the Shield bar section's own rows are laid out by Alerts/ShieldSection.lua (run_alerts_shield.js): here only
+    -- against the rest
+    local section = {}
+    for _, m in ipairs(list.shield) do section[m] = true end
+    for i = 1, #shown do
+      for j = i + 1, #shown do
+        if not (section[shown[i]] and section[shown[j]]) then
+        local function name(m) local l = rawget(m, "label") if type(l) == "table" then l = l.text end return tostring(l or rawget(m, "text")) end
+        assert(not overlap(box(shown[i]), box(shown[j])), key .. ": " .. name(shown[i]) .. " " .. table.concat(box(shown[i]), ",") .. " overlaps "
+          .. name(shown[j]) .. " " .. table.concat(box(shown[j]), ","))
+        end
+      end
+    end
+    edges(f, "special " .. key .. " tab")
+  end
+  click(s.tabs.buttons.when)
+  click(s.mechBtn)
+  CRT.db.alerts.special = {}
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("special subtabs (" .. LOOK .. "): a tab's dot follows the special alert's settings", function()
+  withSpecial({ SPECIAL_LIST[1], SPECIAL_LIST[2], { key = "roles", label = "Roles", when = { times = "0:30" }, who = { mode = "roles", roles = { "tank" } } } })
+  CRT.db.alerts.special = {}
+  local f = freshOpen()
+  local s = f.special
+  local dots = s.tabs.buttons
+  click(s.rows[1].frame) -- Orb soaks: a rotation, the note callout shown, spoken, marks
+  assert(not dots.when.dot.shown, "When has no dot")
+  assert(dots.who.dot.shown, "a rotation picks players: Who's dot")
+  assert(dots.looks.dot.shown, "Show as ticked: Looks' dot")
+  assert(dots.sound.dot.shown, "Speak the text: Sound and speech's dot")
+  assert(not dots.shield.dot.shown, "no shield bar, no dot")
+  assert(not dots.markers.dot.shown, "marks, but Mark the players off: no dot")
+  setCheck(s.speak, false)
+  assert(not dots.sound.dot.shown, "nothing spoken: no dot")
+  for _, k in ipairs(CRT.AlertDraft.SHOW_KEYS) do if s.checks[k].checked then setCheck(s.checks[k], false) end end
+  assert(not dots.looks.dot.shown, "nothing shown: no dot")
+  setCheck(s.checks.bar, true)
+  setCheck(s.shield.check, true)
+  assert(dots.shield.dot.shown, "Shield bar ticked: its dot")
+  setCheck(s.shield.check, false)
+  assert(not dots.shield.dot.shown, "unticked: the dot goes")
+  -- Mark the players on, from an old save: while marking isn't allowed the box is greyed and unticked, so no dot
+  CRT.AlertSpecial:SetChoice(ENC, CRT.AlertSpecial:Get(ENC, "soaks"), "markers", true)
+  CRT.NoteReminders.Refresh()
+  assert(CRT.AlertSpecial.MARKING.allowed == false and not dots.markers.dot.shown, "marking not allowed: no Markers dot from a saved tick")
+  -- were marking allowed: marks and Mark the players light Markers' dot
+  CRT.AlertSpecial.MARKING.allowed = true
+  CRT.NoteReminders.Refresh()
+  local markedDot = dots.markers.dot.shown
+  CRT.AlertSpecial.MARKING.allowed = false
+  CRT.NoteReminders.Refresh()
+  assert(markedDot, "marks and Mark the players: Markers' dot")
+  assert(not dots.markers.dot.shown, "not allowed again: the dot goes")
+  -- Mythic dance: everyone, no marks
+  click(s.rows[2].frame)
+  assert(not dots.who.dot.shown and not dots.markers.dot.shown, "Everyone, no marks: no Who or Markers dot")
+  -- a roles list
+  click(s.rows[3].frame)
+  assert(dots.who.dot.shown, "a roles list picks players: Who's dot")
+  click(s.mechBtn)
+  CRT.db.alerts.special = {}
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("special subtabs (" .. LOOK .. "): the tab stays when another row is picked, and for the session", function()
+  withSpecial(SPECIAL_LIST)
+  CRT.db.alerts.special = {}
+  local f = freshOpen()
+  local s = f.special
+  click(s.tabs.buttons.markers)
+  click(s.rows[2].frame)
+  assert(s.tabs:Current() == "markers" and s.tabs.frames.markers.shown and not s.tabs.frames.when.shown, "another row: still Markers")
+  CRT.NoteReminders.Refresh()
+  assert(s.tabs:Current() == "markers", "a redraw keeps it")
+  assert(CRT.AlertSubTabs.Picked("special") == "markers", "remembered for Special")
+  local g = freshOpen()
+  assert(g.special.tabs:Current() == "markers" and g.special.tabs.frames.markers.shown, "built again: the tab picked last")
+  -- the Mechanics panel keeps its own
+  click(g.special.mechBtn)
+  assert(g.panel.tabs:Current() ~= "markers" and g.panel.tabs.buttons.markers == nil, "Mechanics: its own tab")
+  click(g.special.specialBtn)
+  click(g.special.tabs.buttons.when)
+  click(g.special.mechBtn)
+  CRT.db.alerts.special = {}
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("special subtabs (" .. LOOK .. "): a boss with none keeps its empty list and no panel", function()
+  noSpecial()
+  local f = freshOpen()
+  local s = f.special
+  assert(s.empty.shown and s.emptyHint.shown and not s.content.shown, "the empty line, no panel content")
+  for _, key in ipairs(SPECIAL_TABS) do assert(not visibleIn(s.tabs.buttons[key], f), key .. " hidden") end
+  click(s.mechBtn)
   assert(#errors == 0, tostring(errors[1]))
 end)
 

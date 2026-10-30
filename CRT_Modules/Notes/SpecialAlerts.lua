@@ -3,15 +3,16 @@ local ADDON, CRT = ...
 -- The Special part of the Mech Alerts tab (Notes/Reminders.lua builds it into the tab): the Special (N) |
 -- Mechanics toggle over the left list, the boss's special alerts (Alerts/Special.lua, from its boss file)
 -- for the difficulty on show, each with its on/off tick and its icon (Special.Icon) in its ability type's colour, and
--- on the right the selected one: When and Who as its data says them (a rotation's steps as chips, a roles list as
--- "Roles: Tank, Healer"), Show from under When (your lead, with Default for the boss file's), Show as (your choices,
--- saved at once), the Shield bar section beside Show as (Alerts/ShieldSection.lua, as in the alert editor: your
--- shield bar over the entry's absorb, Special:SetChoice "absorb", with Default for the boss file's), Markers (greyed:
--- an addon can't set them) and Test. The tab hands it the boss, the difficulty group and the ability timeline
--- on show (host), and the places of its list and panel. Special first: the tab opens on Special every time
--- (M.Opened), a boss with none too. A click on Mechanics holds for that boss until the tab is left; Make a
--- Mech Alert opens it on Mechanics (M.ShowMechanics). CRT.db.alerts.specialView and specialViewPicked, the
--- older saved pick, are no longer read or written.
+-- on the right the selected one: its name, "special alert" and Alert me, then the subtabs (Alerts/SubTabs.lua, owner
+-- "special", the Mechanics panel's strip): When (the When line as its data says it, Show from with Default for the boss
+-- file's), Who (a rotation's steps as chips, a roles list as "Roles: Tank, Healer"), Looks (Show as, Bar fill, Count
+-- down to; your choices, saved at once), Sound and speech (Speak the text), Shield bar (Alerts/ShieldSection.lua, as in
+-- the alert editor: your shield bar over the entry's absorb, Special:SetChoice "absorb", with Default for the boss
+-- file's) and Markers (greyed: an addon can't set them); Test at the bottom right on every tab. The tab hands it the
+-- boss, the difficulty group and the ability timeline on show (host), and the places of its list and panel. Special
+-- first: the tab opens on Special every time (M.Opened), a boss with none too. A click on Mechanics holds for that boss
+-- until the tab is left; Make a Mech Alert opens it on Mechanics (M.ShowMechanics). CRT.db.alerts.specialView and
+-- specialViewPicked, the older saved pick, are no longer read or written.
 
 local UI = CRT.UI
 
@@ -95,22 +96,28 @@ local L = {
     TEST_W = 80,
     BUTTON_H = 22,
     BOTTOM_Y = 10,
-    -- the panel's rows, from its top
+    -- the panel's rows, from its top: the header, then the subtabs (Alerts/SubTabs.lua) with a rule under them, then
+    -- the open tab's rows from CONTENT_Y (the Mechanics panel's numbers, Notes/Reminders.lua, so both line up)
     TITLE_Y = -14, KIND_Y = -36, ALERT_Y = -12,
-    WHEN_Y = -62, WHEN_TEXT_Y = -82, IMPACTS_Y = -98, LEAD_Y = -114,
-    WHO_Y = -152, WHO_TEXT_Y = -172, CHIPS_Y = -190,
-    SHOW_Y = -220, SPEAK_Y = -292, COUNT_Y = -314,
-    MARK_Y = -344, MARK_TEXT_Y = -364, MARK_CHECK_Y = -380,
-    MESSAGE_Y = -408,
+    TABS_Y = -66, RULE_Y = -90, CONTENT_Y = -100,
+    MESSAGE_Y = -408, -- under the tabs' rows, on every tab
     -- Show from: the Mechanics panel's slider (Notes/Reminders.lua's SHOW_LABEL, SLIDER_W), Default after its (?)
     LEAD_LABEL = 70, LEAD_W = 150, DEFAULT_GAP = 8,
     ALERT_W = 130, -- Alert me and its label, at the header's right
-    FILL_X = 128, FILL_LABEL = 90, FILL_W = 120, -- Bar fill, on the Speak row, and Count down to under it
-    -- the Shield bar section (Alerts/ShieldSection.lua's column, Last pull on a row of its own): right of Show as and Bar
-    -- fill, SHIELD_GAP after Count down to's (?), from just under the Who chips down to just above Markers. SHIELD_X and
-    -- SHIELD_W are worked out in M.Build from the panel's width.
-    SHIELD_Y = -216, SHIELD_GAP = 12,
+    FILL_LABEL = 90, FILL_W = 120, -- Bar fill under Show as, and Count down to under it
 }
+-- each tab's rows, from the top of the tab's content
+local TOP = L.CONTENT_Y
+-- When: the When line (its (?) after it), the impacts under it, Duration and Default
+L.WHEN_TEXT_Y, L.IMPACTS_Y, L.LEAD_Y = TOP, TOP - 16, TOP - 32
+-- Who: its heading, the roles or rotation line, the chips
+L.WHO_Y, L.WHO_TEXT_Y, L.CHIPS_Y = TOP, TOP - 20, TOP - 38
+-- Looks: Show as (its two rows of boxes under the heading), Bar fill, Count down to
+L.SHOW_Y, L.FILL_Y, L.COUNT_Y = TOP, TOP - 80, TOP - 102
+-- Sound and speech: Speak the text. Shield bar: the section (Alerts/ShieldSection.lua's column) over the panel's width
+L.SPEAK_Y, L.SHIELD_Y = TOP, TOP
+-- Markers: its heading, the marks line, Mark the players
+L.MARK_Y, L.MARK_TEXT_Y, L.MARK_CHECK_Y = TOP, TOP - 20, TOP - 36
 
 -- the lists' look, shared with the Mechanics list (Notes/MechLook.lua)
 local Look = CRT.MechLook
@@ -295,7 +302,7 @@ local function chip(i)
     if c then
         return c
     end
-    c = CreateFrame("Frame", nil, ui.panel, "BackdropTemplate")
+    c = CreateFrame("Frame", nil, ui.whoFrame, "BackdropTemplate")
     if c.SetBackdrop then
         c:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     end
@@ -348,16 +355,21 @@ local function drawChips(steps)
     end
 end
 
+-- Draws Who. Returns whether it picks players (a rotation, the raid note's line or a roles list with any in it), not
+-- Everyone: the Who tab's dot.
 local function drawWho(enc, entry)
     local S = Special()
     local mode = entry.who.mode
     local steps
+    local picks = false
     if mode == "rotation" then
         ui.whoText:SetText(TEXT.rotation)
         steps = entry.who.steps
+        picks = #(steps or {}) > 0
     elseif mode == "note" then
         steps = S.NoteSteps(S.NoteFor(nil, enc), entry.who.note)
         ui.whoText:SetText(string.format(#steps > 0 and TEXT.noteLine or TEXT.noNoteLine, entry.who.note))
+        picks = #steps > 0
     elseif mode == "roles" then
         -- one list for every cast, so no chips: its words, each with a capital
         local words = {}
@@ -365,10 +377,24 @@ local function drawWho(enc, entry)
             words[i] = w:sub(1, 1):upper() .. w:sub(2)
         end
         ui.whoText:SetText(string.format(TEXT.roles, table.concat(words, ", ")))
+        picks = #words > 0
     else
         ui.whoText:SetText(TEXT.everyone)
     end
     drawChips(steps)
+    return picks
+end
+
+-- The selected alert's choices in a draft's shape, for the subtabs' dots (Alerts/SubTabs.lua's on functions): its
+-- Show as boxes, Speak the text, the shield bar in use, and for Who and Markers whoPicks and marked (marks, and Mark
+-- the players on; never while marking isn't allowed, when the box shows greyed and unticked whatever was saved).
+function M.TabState(enc, entry, c, picks)
+    local S = Special()
+    local a = S:Absorb(enc, entry, c)
+    return { show = c.show, speak = c.speak,
+        shield = a and { on = true, unit = a.unit, length = a.length, anyDifficulty = a.anyDifficulty } or nil,
+        whoPicks = picks and true or false,
+        marked = S.MARKING.allowed == true and entry.marks ~= nil and c.markers == true }
 end
 
 local function drawMarkers(entry)
@@ -400,8 +426,8 @@ local function placeShowAs()
             rows[r][i] = ui.checks[key]
         end
     end
-    -- left of the Shield bar section
-    Draft.FlowShowAs(rows, L.INSET - 4, L.SHIELD_X - L.SHOW_GAP, L.CHECK_SIZE + 2, L.SHOW_GAP, function(check, x, r)
+    -- over the Looks tab's width
+    Draft.FlowShowAs(rows, L.INSET - 4, L.PANEL_W - L.INSET, L.CHECK_SIZE + 2, L.SHOW_GAP, function(check, x, r)
         check:ClearAllPoints()
         check:SetPoint("TOPLEFT", x, L.SHOW_Y - 20 - (r - 1) * 26)
     end)
@@ -422,7 +448,7 @@ local function drawPanel(enc, entry)
     ui.impactsText:SetShown(impacts ~= nil)
     ui.lead.refresh()
     ui.leadDefault:SetEnabled(c.lead ~= nil) -- greyed while the shipped lead is on
-    drawWho(enc, entry)
+    local picks = drawWho(enc, entry)
     placeShowAs()
     for key, check in pairs(ui.checks) do
         check:SetChecked(c.show[key] and true or false)
@@ -435,6 +461,8 @@ local function drawPanel(enc, entry)
     ui.countTo.refresh()
     drawMarkers(entry)
     ui.message:SetText(state.notice and UI.BadText(state.notice) or "")
+    -- each tab's dot: something on it is on
+    ui.tabs:Paint(M.TabState(enc, entry, c, picks))
 end
 
 -- Draws the view: the toggle always, the Special list and panel while Special is on show.
@@ -532,10 +560,11 @@ local function heading(parent, label, y, helpTitle, helpText)
     return fs
 end
 
-local function line(parent, y)
+-- A line of text over the panel's width (w: narrower, such as room for a (?) after it).
+local function line(parent, y, w)
     local fs = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     fs:SetPoint("TOPLEFT", L.INSET, y)
-    fs:SetWidth(L.PANEL_W - 2 * L.INSET)
+    fs:SetWidth(w or (L.PANEL_W - 2 * L.INSET))
     fs:SetJustifyH("LEFT")
     fs:SetWordWrap(false)
     return fs
@@ -680,7 +709,7 @@ end
 
 local function buildShield(p)
     ui.shield = CRT.AlertShieldSection.Build(p, {
-        layout = "column", note = true, x = L.SHIELD_X, y = L.SHIELD_Y, width = L.SHIELD_W,
+        layout = "column", note = true, x = L.INSET, y = L.SHIELD_Y, width = L.PANEL_W - 2 * L.INSET,
         buttonHeight = L.BUTTON_H,
         get = shieldState,
         set = setShield,
@@ -716,6 +745,96 @@ local function buildShield(p)
     })
 end
 
+-- When: the When line (its (?) after it, so the line leaves room for it), the impacts under it, Duration and Default.
+local function buildWhen(p)
+    ui.whenText = line(p, L.WHEN_TEXT_Y, L.PANEL_W - 2 * L.INSET - UI.HELP_GAP - UI.HELP_SIZE)
+    ui.whenText:SetTextColor(TIMES_GREY[1], TIMES_GREY[2], TIMES_GREY[3])
+    ui.whenHelp = UI.HelpRight(ui.whenText, TEXT.when, TEXT.whenHelp)
+    ui.impactsText = line(p, L.IMPACTS_Y)
+    ui.impactsText:SetTextColor(TIMES_GREY[1], TIMES_GREY[2], TIMES_GREY[3])
+    buildLead(p)
+end
+
+-- Who: its heading and (?), the roles or rotation line, and the steps as chips (drawChips).
+local function buildWho(p)
+    ui.whoFrame = p
+    ui.whoHeading = heading(p, TEXT.who, L.WHO_Y, nil, TEXT.whoHelp)
+    ui.whoText = line(p, L.WHO_TEXT_Y)
+    ui.chips = {}
+    ui.more = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    ui.more:Hide()
+end
+
+-- Markers: greyed, with the reason in its (?) (drawMarkers).
+local function buildMarkers(p)
+    ui.markHeading = heading(p, TEXT.markers, L.MARK_Y, nil, TEXT.markersHelp)
+    ui.markText = line(p, L.MARK_TEXT_Y)
+    ui.markCheck = makeCheck(p, TEXT.markThem, L.INSET - 4, L.MARK_CHECK_Y, setChoice("markers"))
+    ui.markCheck.label:SetWidth(L.PANEL_W / 2)
+end
+
+-- Looks: Show as, then Bar fill and Count down to under it.
+local function buildLooks(p)
+    heading(p, TEXT.showAs, L.SHOW_Y, nil, TEXT.showAsHelp)
+    ui.checks = {}
+    local labels = { alert = TEXT.callout, text = TEXT.showText, icon = TEXT.showIcon, bar = TEXT.bar, circle = TEXT.circle,
+        timeline = TEXT.timeline }
+    for key, label in pairs(labels) do
+        ui.checks[key] = makeCheck(p, label, L.INSET - 4, L.SHOW_Y, setChoice(key, true))
+    end
+    placeShowAs()
+    -- Bar fill: whether the bar fills up to the cast or empties, saved with your choices; greyed while Bar is off
+    ui.fill = UI.Dropdown(p, TEXT.barFill, {
+        labelWidth = L.FILL_LABEL, width = L.FILL_W,
+        options = { { key = "up", label = TEXT.fillUp }, { key = "down", label = TEXT.fillDown } },
+        enabledIf = function()
+            local entry, enc = current()
+            return entry ~= nil and Special():Choices(enc, entry).show.bar and true or false
+        end,
+        get = function()
+            local entry, enc = current()
+            return entry and Special():Choices(enc, entry).fill or "up"
+        end,
+        set = function(key)
+            local entry, enc = current()
+            if entry then
+                state.notice = nil
+                Special():SetChoice(enc, entry, "fill", key)
+                M.Refresh()
+            end
+        end,
+    })
+    ui.fill:SetPoint("TOPLEFT", L.INSET, L.FILL_Y)
+    -- Count down to: the bar's number counts to the cast (the default) or to each impact; greyed while the bar has no
+    -- ticks (a shield bar's impacts don't apply)
+    ui.countTo = UI.Dropdown(p, TEXT.countTo, {
+        labelWidth = L.FILL_LABEL, width = L.FILL_W,
+        options = CRT.AlertDraft.CountOptions(TEXT.countCast, TEXT.countImpact),
+        enabledIf = function()
+            local entry, enc = current()
+            if not (entry and entry.impacts) then
+                return false
+            end
+            local c = Special():Choices(enc, entry)
+            return c.show.bar and Special():Absorb(enc, entry, c) == nil and true or false
+        end,
+        get = function()
+            local entry, enc = current()
+            return entry and Special():Choices(enc, entry).countTo or "cast"
+        end,
+        set = function(key)
+            local entry, enc = current()
+            if entry then
+                state.notice = nil
+                Special():SetChoice(enc, entry, "countTo", key)
+                M.Refresh()
+            end
+        end,
+    })
+    ui.countTo:SetPoint("TOPLEFT", L.INSET, L.COUNT_Y)
+    UI.HelpRight(ui.countTo, TEXT.countTo, TEXT.countHelp)
+end
+
 local function buildPanel(f)
     local frame = CreateFrame("Frame", nil, f, "BackdropTemplate")
     frame:SetSize(L.PANEL_W, L.PANEL_H)
@@ -746,85 +865,20 @@ local function buildPanel(f)
     UI.Tint(ui.kind, "SetTextColor", "muted")
     ui.alertMe = makeCheck(p, TEXT.alertMe, L.PANEL_W - L.INSET - L.ALERT_W, L.ALERT_Y, setChoice("on"))
 
-    heading(p, TEXT.when, L.WHEN_Y, nil, TEXT.whenHelp)
-    ui.whenText = line(p, L.WHEN_TEXT_Y)
-    ui.whenText:SetTextColor(TIMES_GREY[1], TIMES_GREY[2], TIMES_GREY[3])
-    ui.impactsText = line(p, L.IMPACTS_Y)
-    ui.impactsText:SetTextColor(TIMES_GREY[1], TIMES_GREY[2], TIMES_GREY[3])
-    buildLead(p)
+    -- Under the header, the subtabs (Alerts/SubTabs.lua, shared with the Mechanics panel and the alert editor): each
+    -- tab's controls are built into its own frame, so only the open tab's show. The tab picked stays when another row
+    -- is picked, and for the session.
+    ui.tabs = CRT.AlertSubTabs.Build(p, { owner = "special", x = L.INSET, y = L.TABS_Y,
+        rule = { y = L.RULE_Y, left = L.INSET, right = L.INSET }, maxW = L.PANEL_W - 2 * L.INSET })
+    local tf = ui.tabs.frames
+    buildWhen(tf.when)
+    buildWho(tf.who)
+    buildLooks(tf.looks)
+    ui.speak = makeCheck(tf.sound, TEXT.speak, L.INSET - 4, L.SPEAK_Y, setChoice("speak"))
+    buildShield(tf.shield)
+    buildMarkers(tf.markers)
 
-    ui.whoHeading = heading(p, TEXT.who, L.WHO_Y, nil, TEXT.whoHelp)
-    ui.whoText = line(p, L.WHO_TEXT_Y)
-    ui.chips = {}
-    ui.more = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    ui.more:Hide()
-
-    heading(p, TEXT.showAs, L.SHOW_Y, nil, TEXT.showAsHelp)
-    ui.checks = {}
-    local labels = { alert = TEXT.callout, text = TEXT.showText, icon = TEXT.showIcon, bar = TEXT.bar, circle = TEXT.circle,
-        timeline = TEXT.timeline }
-    for key, label in pairs(labels) do
-        ui.checks[key] = makeCheck(p, label, L.INSET - 4, L.SHOW_Y, setChoice(key, true))
-    end
-    placeShowAs()
-    ui.speak = makeCheck(p, TEXT.speak, L.INSET - 4, L.SPEAK_Y, setChoice("speak"))
-    -- Bar fill: whether the bar fills up to the cast or empties, saved with your choices; greyed while Bar is off
-    ui.fill = UI.Dropdown(p, TEXT.barFill, {
-        labelWidth = L.FILL_LABEL, width = L.FILL_W,
-        options = { { key = "up", label = TEXT.fillUp }, { key = "down", label = TEXT.fillDown } },
-        enabledIf = function()
-            local entry, enc = current()
-            return entry ~= nil and Special():Choices(enc, entry).show.bar and true or false
-        end,
-        get = function()
-            local entry, enc = current()
-            return entry and Special():Choices(enc, entry).fill or "up"
-        end,
-        set = function(key)
-            local entry, enc = current()
-            if entry then
-                state.notice = nil
-                Special():SetChoice(enc, entry, "fill", key)
-                M.Refresh()
-            end
-        end,
-    })
-    ui.fill:SetPoint("TOPLEFT", L.INSET + L.FILL_X, L.SPEAK_Y)
-    -- Count down to: the bar's number counts to the cast (the default) or to each impact; greyed while the bar has no
-    -- ticks (a shield bar's impacts don't apply)
-    ui.countTo = UI.Dropdown(p, TEXT.countTo, {
-        labelWidth = L.FILL_LABEL, width = L.FILL_W,
-        options = CRT.AlertDraft.CountOptions(TEXT.countCast, TEXT.countImpact),
-        enabledIf = function()
-            local entry, enc = current()
-            if not (entry and entry.impacts) then
-                return false
-            end
-            local c = Special():Choices(enc, entry)
-            return c.show.bar and Special():Absorb(enc, entry, c) == nil and true or false
-        end,
-        get = function()
-            local entry, enc = current()
-            return entry and Special():Choices(enc, entry).countTo or "cast"
-        end,
-        set = function(key)
-            local entry, enc = current()
-            if entry then
-                state.notice = nil
-                Special():SetChoice(enc, entry, "countTo", key)
-                M.Refresh()
-            end
-        end,
-    })
-    ui.countTo:SetPoint("TOPLEFT", L.INSET + L.FILL_X, L.COUNT_Y)
-    UI.HelpRight(ui.countTo, TEXT.countTo, TEXT.countHelp)
-    buildShield(p)
-
-    ui.markHeading = heading(p, TEXT.markers, L.MARK_Y, nil, TEXT.markersHelp)
-    ui.markText = line(p, L.MARK_TEXT_Y)
-    ui.markCheck = makeCheck(p, TEXT.markThem, L.INSET - 4, L.MARK_CHECK_Y, setChoice("markers"))
-    ui.markCheck.label:SetWidth(L.PANEL_W / 2)
-
+    -- Under the tabs, on every tab: Test's problem, and Test at the bottom right
     ui.message = line(p, L.MESSAGE_Y)
 
     local b = CreateFrame("Button", nil, p, "UIPanelButtonTemplate")
@@ -852,8 +906,6 @@ function M.Build(f, h, g)
     L.X, L.Y, L.TOGGLE_H = g.x, g.y, g.toggleH
     L.LIST_W, L.LIST_H = g.listW, g.listH
     L.PANEL_X, L.PANEL_Y, L.PANEL_W, L.PANEL_H = g.panelX, g.panelY, g.panelW, g.panelH
-    L.SHIELD_X = L.INSET + L.FILL_X + L.FILL_LABEL + 5 + L.FILL_W + UI.HELP_GAP + UI.HELP_SIZE + L.SHIELD_GAP
-    L.SHIELD_W = L.PANEL_W - L.INSET - L.SHIELD_X
 
     -- Special on the left, Mechanics on the right, the (?) after it
     ui.toggle = UI.Toggle2(f, { { key = "special", label = string.format(TEXT.special, 0) }, { key = "mechanics", label = TEXT.mechanics } },
