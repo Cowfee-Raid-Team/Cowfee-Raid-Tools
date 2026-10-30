@@ -71,9 +71,17 @@ eq(B.Expand("Melee: a\\n"), "Melee: a\\n", "expand: no block, same text")
 local rawIn = head("Heroic") .. BLOCK
 B.Expand(rawIn)
 eq(rawIn, head("Heroic") .. "intstart\\nXuelan Sixz\\nDurayn Sarrantha\\nintend\\n", "the raw text is unchanged")
+-- the bug of #1212: a Twin Fangs Mythic note read "Group 1 / Group 2" while the Interrupts tracker was switched off
+-- (Alex's saved data: interrupts.enabled = false, the note's header "EncounterID:3421;Difficulty:Mythic"). The setup is
+-- the boss's data, there with the tracker off too, so it still names the groups.
 I:SetEnabled(false)
-eq(B.Expand(head("Heroic") .. BLOCK), head("Heroic") .. "Kick order\\nGroup 1: Xuelan Sixz\\nGroup 2: Durayn Sarrantha\\n", "expand: Group N when the module is off")
+eq(B.Expand(head("Heroic") .. BLOCK), head("Heroic") .. "Kick order\\n{rt1} Left: Xuelan Sixz\\n{rt2} Right: Durayn Sarrantha\\n", "expand: the setup's labels with the tracker off")
+eq(B.View(head("Mythic") .. BLOCK)[3].label, "Skull add", "view: the Mythic label with the tracker off")
 I:SetEnabled(true)
+-- a text with no header: the note record's boss and difficulty, when given, name the groups
+eq(B.View(BLOCK, { encounterID = 3470, difficulty = "Heroic" })[2].label, "Left", "view: the record's boss for a text with no header")
+eq(B.View(BLOCK)[2].label, "Group 1", "view: no header and no record, Group N")
+eq(B.View("EncounterID:3470;Difficulty:Mythic\\n" .. BLOCK, { encounterID = 3470, difficulty = "Heroic" })[3].label, "Skull add", "view: the header wins over the record")
 eq(B.Expand("Name:Free\\n" .. BLOCK), "Name:Free\\nKick order\\nGroup 1: Xuelan Sixz\\nGroup 2: Durayn Sarrantha\\n", "expand: a note with no boss and difficulty, Group N")
 
 -- the rendered note view
@@ -91,6 +99,10 @@ local mrows = R.Rows(head("Mythic") .. BLOCK, { classOf = classOf })
 local skull
 for _, r in ipairs(mrows) do if r.label == "Skull add" then skull = r end end
 eq(skull and skull.marker, 8, "render: the marker on its label row")
+local brows = R.Rows(BLOCK, { classOf = classOf, boss = { encounterID = 3470, difficulty = "Heroic" } })
+local blabels = {}
+for _, r in ipairs(brows) do if r.kind == "label" then blabels[#blabels + 1] = r.label end end
+eq(table.concat(blabels, ","), "Left,Right", "render: the record's boss names the groups of a text with no header")
 local n0 = R.Rows("Melee: Xuelan\\nSpread out\\n", { classOf = classOf })
 eq(#n0, 2, "render: a note with no block is as before")
 
