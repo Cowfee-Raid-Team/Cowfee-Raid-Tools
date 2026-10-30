@@ -67,8 +67,13 @@ function M.Build(parent, host)
     t.frame = f
     local x = host.x
 
+    -- the selected entry only while it is a debuff list: the tab is built, and its sliders read, whatever is selected
     local function current()
         local entry, enc = host.current()
+        local S = CRT.AlertSpecial
+        if not (entry and S and S.IsDebuffList and S.IsDebuffList(entry)) then
+            return nil, enc
+        end
         return entry, enc
     end
 

@@ -178,14 +178,15 @@ function DL.GroupsText(list)
 end
 
 -- The look in use for an entry: { sides = { { key, label, groups } }, colors = { [side] = { on, off } }, showAll,
--- sortByRole, barHeight, barWidth }, your choices over the boss file's.
+-- sortByRole, barHeight, barWidth }, your choices over the boss file's. An entry with no sides (not a debuff list) has
+-- an empty look.
 function DL:Look(enc, entry)
     local saved = self:Store(enc, entry.key) or {}
     local groups = type(saved.groups) == "table" and saved.groups or {}
     local colors = type(saved.colors) == "table" and saved.colors or {}
     local S = Special()
     local look = { sides = {}, colors = {} }
-    for i, side in ipairs(entry.sides) do
+    for i, side in ipairs(type(entry.sides) == "table" and entry.sides or {}) do
         local mine = S.ReadGroups(groups[side.key])
         look.sides[i] = { key = side.key, label = side.label, groups = mine or side.groups, own = mine ~= nil }
         local base, c = entry.colors[side.key], type(colors[side.key]) == "table" and colors[side.key] or {}
