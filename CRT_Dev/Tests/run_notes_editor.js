@@ -1115,7 +1115,7 @@ do
   assert(rawget(ui.rowFrames[1].remove, "template") == "UIPanelButtonTemplate" and ui.rowFrames[1].remove:GetText() == "x", "the row's x is a panel button")
   -- a player from the editor's own palette onto Row 1: the heading and the row, no timer lines
   blockDrag(W, ui, paletteChip("Abu"), 1)
-  assert(W.session:Text() == base .. "\\n" .. H1 .. "\\nRow 1: Abu", "names only: " .. W.session:Text())
+  assert(W.session:Text() == base .. "\\n\\n" .. H1 .. "\\nRow 1: Abu", "names only, after a blank line: " .. W.session:Text())
   assert(W.save:IsEnabled() and W.session:Dirty(), "unsaved until Save")
   assert(W.raw:GetText() == W.session:Text(), "Raw text follows")
   assert(A.pick.opts.get() == "b:assignment 1" and optionKeys(A.pick) == "new,b:assignment 1", "an untimed block is in the list: " .. optionKeys(A.pick))
@@ -1318,7 +1318,7 @@ do
   -- a row's chip dragged to another row moves it
   blockDrag(P, ui, ui.rowFrames[1].chips[1], 2)
   raw = Notes:Get(noteID).raw
-  assert(raw:find("Right: Gadios, Kip", 1, true) and raw:find("\\nLeft:\\n", 1, true), "moved: " .. raw)
+  assert(raw:find("Right: Gadios Kip", 1, true) and raw:find("\\nLeft:\\n", 1, true), "moved: " .. raw)
   -- refused while you may not change the raid note, with the reason; nothing written
   inRaid, leader = true, false
   local before = Notes:Get(noteID).raw
@@ -1512,6 +1512,143 @@ do
   inRaid = false
 end
 print("ok the Kick order block: rows per group, numbered chips, a full group refused, a drop on a chip, Save and the Interrupts lists, read-only")
+
+-- 13. Add assignment on a note with a Kick order block (Alex, 2026-10-30): the new group after a blank line, its names
+-- as the kick lines have them (no realm, spaces), the Raw text the same, and read as the other groups are
+do
+  inRaid, leader = true, true
+  local roster = CRT.Groups.ReadRoster
+  CRT.Groups.ReadRoster = function() local r = roster() r[#r + 1] = { key = "Whitecrows-Stormrage", class = "MAGE", role = "DAMAGER" } return r end
+  local KICK = "EncounterID:4747;Difficulty:Mythic;Name:Kicks\\nintstart\\nAbu Gadios\\nRixxy\\nintend\\nSent by: Lulu-Kel'Thuzad"
+  local kid = Notes:Import(KICK)
+  assert(Editor.Open({ id = kid }) and not W.session.readOnly, "opened")
+  W.assignButton.scripts.OnClick(W.assignButton)
+  local ui = W.assignUI
+  typeInto(ui.nameEdit, "Testing a new Assignment")
+  ui:Flush()
+  typeInto(ui.rowFrames[1].labelEdit, "Kill Group")
+  ui:Flush()
+  assert(paletteChip("Whitecrows-Stormrage"), "a player of another realm in the palette")
+  blockDrag(W, ui, paletteChip("Whitecrows-Stormrage"), 1)
+  blockDrag(W, ui, paletteChip("Gadios"), 1)
+  local t = W.session:Text()
+  assert(t == KICK .. "\\n\\nassign:testing a new assignment;name:Testing a new Assignment;\\nKill Group: Whitecrows Gadios", "the new group: " .. t)
+  EA.Close()
+  assert(W.raw:GetText() == t, "Raw text shows the same")
+  -- read as the Assignments window reads it (the kick block as its lines, then Parse's lines): the new group's line
+  -- is like the kick groups'
+  local shown = CRT.InterruptNote.Expand(t, Notes:Get(kid))
+  local ls = Parser.Parse(shown).lines
+  local kill, left
+  for i, l in ipairs(ls) do
+    if l:find("^Kill Group:") then kill = i end
+    if l:find("Left:", 1, true) then left = l end
+  end
+  assert(left and left:find("Left: Abu Gadios$"), "a kick group's line: " .. tostring(left))
+  assert(kill and ls[kill] == "Kill Group: Whitecrows Gadios" and ls[kill - 1] == "Testing a new Assignment" and ls[kill - 2] == "", "a blank line, the heading, the row: " .. shown)
+  assert(Editor.Save() and Notes:Get(kid).raw == t, "saved as shown")
+  CRT.Groups.ReadRoster = roster
+  Editor.Discard()
+  inRaid, leader = false, false
+end
+print("ok Add assignment keeps the note's format: a blank line before the new group, names as the kick lines have them")
+
+-- 14. Push note: unsaved changes saved first, then the share Notes > Share to raid makes (one function, CRT.NotesPage.ShareNote);
+-- greyed with the reason for a personal note, when you can't share, and in combat or a boss fight
+do
+  local shares, can, cannot = {}, true, "Only the raid leader or an assistant can share notes."
+  local comm = { Sharing = CRT.NoteComm.Sharing, Share = CRT.NoteComm.Share, CanShare = CRT.NoteComm.CanShare }
+  CRT.NoteComm.CanShare = function() if can then return true end return false, cannot end
+  CRT.NoteComm.Share = function(_, nid) shares[#shares + 1] = { id = nid, raw = Notes:Get(nid) and Notes:Get(nid).raw } end
+  local via = {}
+  local realShare = CRT.NotesPage.ShareNote
+  assert(type(realShare) == "function", "CRT.NotesPage.ShareNote")
+  CRT.NotesPage.ShareNote = function(nid) via[#via + 1] = nid return realShare(nid) end
+  local tips = {}
+  GameTooltip = { SetOwner = function() end, ClearAllPoints = function() end, SetPoint = function() end, ClearLines = function() end,
+    SetText = function(_, t) tips = { t } end, AddLine = function(_, t) tips[#tips + 1] = t end, Show = function() end, Hide = function() tips = {} end }
+  inRaid, leader = true, true
+  local base = "EncounterID:4800;Difficulty:Mythic;Name:Push Boss\\nSoak: Abu"
+  local pid = Notes:Import(base)
+  assert(Editor.Open({ id = pid }), "opened")
+  local push = button("Push note")
+  assert(push and W.push == push and push:IsEnabled(), "Push note in the footer, on")
+  push.scripts.OnEnter(push)
+  assert(tips[1] == "Push note" and tips[2]:find("Share to raid", 1, true), "its tooltip says what it does: " .. tostring(tips[2]))
+  -- unsaved: saved first, then shared once
+  local soak = rowOf(W.session, "label", 1)
+  drag(paletteChip("Rixxy"), soak)
+  assert(W.session:Dirty(), "a change")
+  push.scripts.OnClick(push)
+  assert(Notes:Get(pid).raw == base .. ", Rixxy" and not W.session:Dirty(), "saved: " .. Notes:Get(pid).raw)
+  assert(#shares == 1 and shares[1].id == pid and shares[1].raw == base .. ", Rixxy", "shared once, the saved text")
+  assert(#via == 1 and via[1] == pid, "through the one share function")
+  -- nothing unsaved: shared again, nothing saved
+  push.scripts.OnClick(push)
+  assert(#shares == 2 and #via == 2, "shared again")
+  -- Share to raid on the page goes through the same function
+  for _, b in ipairs(buttons) do if rawget(b, "id") == pid and b.scripts.OnClick then b.scripts.OnClick(b) end end
+  local shareButton = button("Share to raid")
+  shareButton.scripts.OnClick(shareButton)
+  assert(#via == 3 and via[3] == pid and #shares == 3 and shares[3].id == pid, "Share to raid: the same function, the same share")
+  -- a refused save shares nothing: the note changed since it opened
+  drag(paletteChip("Kip"), soak)
+  Notes:UpdateRaw(pid, base .. ", Zed")
+  push.scripts.OnClick(push)
+  assert(#shares == 3 and #via == 3, "a refused save shares nothing")
+  assert(W.status:GetText():find("changed since you opened", 1, true), "the status says why: " .. W.status:GetText())
+  Editor.Discard()
+  -- you can't share: greyed, the reason in its tooltip; a click anyway shares nothing
+  assert(Editor.Open({ id = pid }), "opened again")
+  can = false
+  Editor.Refresh()
+  assert(not push:IsEnabled(), "greyed when you can't share")
+  push.scripts.OnEnter(push)
+  assert(tips[2]:find(cannot, 1, true), "the reason in its tooltip: " .. tostring(tips[2]))
+  push.scripts.OnClick(push)
+  assert(#shares == 3, "nothing shared")
+  can = true
+  Editor.Refresh()
+  assert(push:IsEnabled(), "on again")
+  -- in combat: greyed from the moment combat starts, on again when it ends
+  W.window.scripts.OnEvent(W.window, "PLAYER_REGEN_DISABLED")
+  assert(not push:IsEnabled(), "greyed as combat starts")
+  push.scripts.OnEnter(push)
+  assert(tips[2]:find("combat", 1, true), "says why: " .. tostring(tips[2]))
+  combat = true
+  W.window.scripts.OnEvent(W.window, "PLAYER_REGEN_ENABLED")
+  assert(not push:IsEnabled(), "still greyed while the game says combat")
+  combat = false
+  W.window.scripts.OnEvent(W.window, "PLAYER_REGEN_ENABLED")
+  assert(push:IsEnabled(), "on once combat is over")
+  W.window.scripts.OnEvent(W.window, "ENCOUNTER_START")
+  assert(not push:IsEnabled(), "greyed as a boss fight starts")
+  W.window.scripts.OnEvent(W.window, "ENCOUNTER_END")
+  assert(push:IsEnabled(), "on when it ends")
+  -- a share running: greyed, then on again when the share ends (the notes change)
+  can, cannot = false, "A note is already being shared."
+  Notes:Fire()
+  assert(not push:IsEnabled(), "greyed while a share runs")
+  can = true
+  Notes:Fire()
+  assert(push:IsEnabled(), "on when it ends")
+  Editor.Discard()
+  -- a personal note: greyed, says why
+  local mine = Notes:MakePersonal(4800, "Mythic", "Push Boss")
+  assert(Editor.Open({ id = mine }), "a personal note opened")
+  assert(not push:IsEnabled(), "greyed on a personal note")
+  push.scripts.OnEnter(push)
+  assert(tips[2]:find("personal", 1, true), "says why: " .. tostring(tips[2]))
+  Editor.Discard()
+  assert(Editor.Open({ personal = true }) and not push:IsEnabled(), "and on the Personal note")
+  push.scripts.OnClick(push)
+  assert(#shares == 3, "nothing shared from a personal note")
+  Editor.Discard()
+  CRT.NotesPage.ShareNote = realShare
+  CRT.NoteComm.Sharing, CRT.NoteComm.Share, CRT.NoteComm.CanShare = comm.Sharing, comm.Share, comm.CanShare
+  inRaid, leader = false, false
+end
+print("ok Push note: saves, then shares once through Share to raid's function; a refused save shares nothing; greyed with the reason")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = process.argv.slice(2, 19);

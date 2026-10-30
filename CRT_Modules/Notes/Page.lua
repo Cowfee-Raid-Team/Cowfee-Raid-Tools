@@ -72,6 +72,29 @@ local function shareOptions()
     return list
 end
 
+-- Shares a note to the Send to choice: CRT's own sharing, a note target, or all of them (a target that isn't available
+-- is skipped, and the chat says why). With no note, CRT sends the Empty note (Notes/Comm.lua) and the other addons clear
+-- theirs. Notes > Share to raid and the note editor's Push note both share through it (CRT.NotesPage.ShareNote).
+local function shareNote(id)
+    local key = shareTarget()
+    local record = id and Notes:Get(id)
+    if key == "crt" or key == "all" then
+        CRT.NoteComm:Share(id)
+    end
+    if key == "all" then
+        for _, target in ipairs(Targets:List()) do
+            local available, why = target.IsAvailable()
+            if available then
+                Targets:Share(target.key, record)
+            else
+                CRT:Print(target.label .. ": skipped, " .. why)
+            end
+        end
+    elseif key ~= "crt" then
+        Targets:Share(key, record)
+    end
+end
+
 local function shareHelp()
     local parts = { TEXT.crtHelp }
     for _, target in ipairs(Targets:List()) do
@@ -689,24 +712,8 @@ local function buildNotes(pf)
     shareButton = share
     share:SetPoint("LEFT", active, "RIGHT", 6, 0)
     share:SetScript("OnClick", function()
-        -- With no note picked, CRT sends the Empty note (Notes/Comm.lua) and the other addons clear theirs.
-        local key = shareTarget()
-        local record = selected and Notes:Get(selected)
-        if key == "crt" or key == "all" then
-            CRT.NoteComm:Share(selected)
-        end
-        if key == "all" then
-            for _, target in ipairs(Targets:List()) do
-                local available, why = target.IsAvailable()
-                if available then
-                    Targets:Share(target.key, record)
-                else
-                    CRT:Print(target.label .. ": skipped, " .. why)
-                end
-            end
-        elseif key ~= "crt" then
-            Targets:Share(key, record)
-        end
+        -- through the table, so it is the one function the note editor's Push note calls too
+        CRT.NotesPage.ShareNote(selected)
         refresh()
     end)
     local roster = makeButton(pf, "Open roster in Raid Groups", LIST_W)
@@ -1082,6 +1089,7 @@ CRT.NotesPage = {
     -- the Notes tab's note text box and the detail lines under it, for the layout checks
     NOTE_BOX_TOP = NOTE_BOX_TOP, NOTE_BOX_H = NOTE_BOX_H, STATUS_LINE_H = STATUS_LINE_H, STATUS_LINES = STATUS_LINES,
     IMPORT = IMPORT, -- the Import/New dialog's layout
+    ShareNote = shareNote, -- shares a note to the Send to choice (Share to raid, the note editor's Push note)
     Open = function(tab)
         currentTab = tab
         UI:Show("notes")
