@@ -429,7 +429,7 @@ local defaults = {
     -- sizes, height above the plate, your pair's colours and the others'), reminder the countdown before your kick.
     -- The reminder's place is per character, in CRTDBChar.interrupts.reminder.
     interrupts = { enabled = false, own = {}, shared = {}, use = {}, kicks = {}, setups = {}, whoWindow = {}, accept = true, test = false,
-        plates = { on = true, all = false, size = 50, font = 24, offset = 20,
+        plates = { on = true, all = true, size = 50, font = 24, offset = 20,
             mineBox = { 0, 1, 0, 1 }, mineText = { 1, 0, 0, 1 }, box = { 1, 0, 0, 1 }, text = { 1, 1, 1, 1 } }, -- saved, the player's to change: not a theme colour
         reminder = { on = true, sound = "none", size = 48 } },
     alerts = {
