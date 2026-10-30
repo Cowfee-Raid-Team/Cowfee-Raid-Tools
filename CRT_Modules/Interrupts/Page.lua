@@ -2,17 +2,22 @@ local ADDON, CRT = ...
 
 -- The Interrupts page, after Pace in the menu, shown only while Enable Interrupts is on (General Settings). Two tabs:
 --   Assignments  the boss and difficulty (every kick setup, Interrupts:Bosses) with Edit setup beside it (your own
---                setup, Interrupts/SetupEditor.lua), the status bar (which list is in use and your kick), the kick
---                list (Interrupts/PageGrid.lua: a column per group, scrolling when they don't fit), Clear list, Use
---                the raid's list, Share to raid, Write to the raid note (Interrupts/NoteBlock.lua), Test on trash and
---                Preview reminder; on the right, Who has it (each player on the list once, with the Addon check's
---                answer) and How the numbers are worked out (the setup, read-only)
+--                setup, Interrupts/SetupEditor.lua), the status bar (which list is in use and your kick), the Kick
+--                list heading (its (?) is how the numbers are worked out: the setup, read-only), the kick rows
+--                (Interrupts/PageGrid.lua: a row of chips per group, scrolling when they don't fit), Clear list, Use
+--                the raid's list, Share to raid, Who has it (N of M) (Interrupts/WhoWindow.lua, a pop-out), Test on
+--                trash, Preview reminder and Write to the raid note (Interrupts/NoteBlock.lua); on the right, the
+--                players to drag onto the rows (Interrupts/PagePalette.lua)
 --   Settings     the numbers above the nameplates, the reminder and sharing
--- Opening a boss reads its raid note's kick block into the raid's list (NoteBlock.ReadInto).
--- The fields edit your own list, and are read-only in a group for anyone who can't share. A name the group has is in
--- its class colour. While the page is open it follows the group (GROUP_ROSTER_UPDATE, PARTY_LEADER_CHANGED) and the
--- enemy nameplates switch (CVAR_UPDATE). Game calls (warcraft.wiki.gg, read 2026-10-28): GetCVar("nameplateShowEnemies"),
--- GetDifficultyInfo(difficultyID) -> name, CVAR_UPDATE (cvarName, value), GROUP_ROSTER_UPDATE, PARTY_LEADER_CHANGED.
+-- Opening a boss reads its raid note's kick block into the raid's list (NoteBlock.ReadInto), again only once the boss
+-- or the note's text changed. The rows edit your own list, and are read-only in a group for anyone who can't share.
+-- Work once, draw often: Page.Refresh marks the page to be drawn and draws it once on the next frame, however many
+-- changes asked for it; showing the page draws it once at once; the group and the Raid Groups layouts are worked out
+-- once until they change (Page.Cache). While the page is open it follows the group (GROUP_ROSTER_UPDATE,
+-- PARTY_LEADER_CHANGED) and the enemy nameplates switch (CVAR_UPDATE). Page.perf, when a dev probe sets it, is told how
+-- long each show and each refresh took (debugprofilestop). Game calls (warcraft.wiki.gg, read 2026-10-28/29):
+-- GetCVar("nameplateShowEnemies"), GetDifficultyInfo(difficultyID) -> name, CVAR_UPDATE (cvarName, value),
+-- GROUP_ROSTER_UPDATE, PARTY_LEADER_CHANGED, C_Timer.After(seconds, fn), debugprofilestop() -> milliseconds.
 
 local UI = CRT.UI
 local Interrupts = CRT.Interrupts
@@ -20,7 +25,7 @@ local Anchor = CRT.InterruptAnchor
 local KickComm = CRT.InterruptComm
 local Setup = CRT.InterruptSetup
 
-local Page = { fields = {}, pickers = {}, slotLabels = {}, headings = {}, whoRows = {}, howLines = {}, tabs = {}, swatches = {} }
+local Page = { tabs = {}, swatches = {} }
 CRT.InterruptsPage = Page
 
 local TEXT = {
@@ -41,7 +46,7 @@ local TEXT = {
     yourKick = "Your kick: %s #%d %s.",
     notOn = "You are not on it.",
     kick = "%s #%d",
-    gridHelp = "Type a name, or pick one with the arrow: your group, then each Raid Groups layout. Names are kept without their realm.\n\nIn a group, only the raid leader and assistants can edit the list. Solo, the list is yours to test with.",
+    list = "Kick list",
     clear = "Clear list",
     clearAsk = "Empty every name on your own kick list for %s?",
     useRaid = "Use the raid's list",
@@ -56,20 +61,6 @@ local TEXT = {
     test = "Test on trash",
     testHelp = "Tries the boss shown on trash. By timing: any pack is numbered by the order its mobs start casting, the first two 1, the next two 2, and so on. By raid marker: mark a mob with a group's marker, and its number moves on with each cast. Turns off when you change zone.",
     preview = "Preview reminder",
-    who = "Who has it",
-    whoHelp = "Each player on the list once, and whether their CRT has Interrupts on, from the Addon check on General Settings. Green: on. Orange: an older CRT, or Interrupts off. Red: no CRT.",
-    more = "and %d more",
-    check = "Check now",
-    noNames = "No names on the list yet.",
-    notHere = "not in your group",
-    you = "you, v%s",
-    on = "v%s",
-    off = "Interrupts off",
-    tooOld = "v%s, no Interrupts",
-    older = "older CRT v%s",
-    none = "No CRT",
-    waiting = "asking...",
-    offline = "offline",
     how = "How the numbers are worked out",
     howHelp = "The boss's kick setup. A setup by timing is as CRT ships it: if a hotfix moves the adds, numbers stop showing or land on the wrong adds until CRT is updated.",
     howSpell = "Kicks: %s.",
@@ -119,14 +110,11 @@ local LAYOUT = {
     leftX = 8, rightX = 630,
     bossY = -8, bossLabelW = 40, bossW = 300, editGap = 34,
     statusY = -46, statusH = 28,
-    -- the kick list (Interrupts/PageGrid.lua): a column per group, as many side by side as fit gridW, then the next
-    -- band below; it scrolls past gridMaxH. Pooled: a slot's fields are made once and reused for every boss.
-    gridY = -86, headH = 22, colW = 284, rowH = 30, fieldH = 22, labelW = 56, editX = 64, editW = 130,
-    pickX = 200, pickW = 70, pickDY = 5, bandGap = 8, gridMaxH = 300, pickMenuH = 400,
-    buttonGap = 16, buttonH = 22, buttonSpace = 6, testGap = 38,
-    -- the right column
-    whoY = -8, whoTop = -32, whoRowH = 18, whoNameW = 190, whoStateX = 196, whoRows = 16, howGap = 20, howHeadH = 22,
-    howRowH = 18, howLines = 6,
+    -- the Kick list heading, then its rows (Interrupts/PageGrid.lua): a row per group, scrolling past gridMaxH
+    listY = -86, gridY = -110, gridMaxH = 280,
+    buttonGap = 16, buttonH = 22, buttonSpace = 6, testGap = 38, previewX = 284,
+    howLines = 6, -- the most lines How the numbers are worked out lists
+    -- the right column: the players (Interrupts/PagePalette.lua)
     -- the Settings tab
     setX2 = 520, setLabelW = 150, setControlW = 160, swatchW = 36, swatchH = 18, swatchLabelW = 100, swatchStep = 100,
     platesY = { head = -8, on = -28, all = -52, size = -80, font = -114, offset = -148, yours = -192, others = -222 },
@@ -164,13 +152,28 @@ local function boss()
 end
 Page.Boss = boss
 
--- Shows a setup, its raid note's kick block read in first.
+-- What a boss's kick block is read from: the key, the note's id and its text. The block is read again only when this
+-- changed since the last read.
+local function noteSignature(key)
+    local Block, Notes = CRT.InterruptNote, CRT.Notes
+    local ok, id = pcall(Block.NoteOf, key)
+    local record = ok and id and Notes and Notes.Get and Notes:Get(id)
+    return key .. "\0" .. tostring(ok and id or "") .. "\0" .. tostring(record and record.raw or "")
+end
+
 -- The raid note's kick block read into the raid's list; a block that doesn't fit says so once.
 local noFitSaid = {}
+local lastRead
 local function readNote(key)
     if not (key and CRT.InterruptNote) then
         return
     end
+    local sig = noteSignature(key)
+    if sig == lastRead then
+        return
+    end
+    lastRead = sig
+    Page.counts.note = Page.counts.note + 1
     local ok, _, why = pcall(CRT.InterruptNote.ReadInto, key)
     if ok and why and not noFitSaid[why] then
         noFitSaid[why] = true
@@ -179,8 +182,10 @@ local function readNote(key)
 end
 Page.ReadNote = readNote
 
+-- Shows a setup, its raid note's kick block read in first.
 local function choose(key)
     selected = key
+    Page.ClearCache()
     readNote(key)
     refresh()
 end
@@ -287,36 +292,7 @@ function Page.Status(encounterID)
     return TEXT.statusOwn .. " " .. kick, "warn"
 end
 
--- The group, for the pickers and the name colours ----------------------------------------------------------------
-
-local function roster()
-    local rows = CRT.AddonCheck and CRT.AddonCheck:Roster() or {}
-    local out = {}
-    for _, row in ipairs(rows) do
-        out[#out + 1] = { name = Interrupts.CleanName(row.name), class = row.class, row = row }
-    end
-    table.sort(out, function(a, b)
-        return a.name:lower() < b.name:lower()
-    end)
-    return out
-end
-
-Page.Roster = function()
-    return roster()
-end
-
-local function memberOf(name, list)
-    if name == "" then
-        return nil
-    end
-    name = name:lower()
-    for _, m in ipairs(list) do
-        if m.name:lower() == name then
-            return m
-        end
-    end
-    return nil
-end
+-- The name colours (the group itself is Page.Cache's, Interrupts/PagePalette.lua) -----------------------------------
 
 local function classColor(class)
     local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
@@ -325,7 +301,7 @@ local function classColor(class)
     end
     return 1, 1, 1
 end
-Page.MemberOf, Page.ClassColor = memberOf, classColor
+Page.ClassColor = classColor
 
 local function canEdit()
     return not CRT.Comm.Channel() or CRT.Comm.IsLeaderOrAssist("player")
@@ -403,12 +379,8 @@ local function buildStatus(f)
     end }
 end
 
-local function colorByte(v)
-    return math.floor(v * 255 + 0.5)
-end
-
 -- The rows under the kick list follow its height (the grid's viewport, PageGrid.lua): Clear list (Use the raid's list,
--- Share and Write follow it), Test on trash and Preview reminder.
+-- Share and Who has it follow it), Test on trash and Preview reminder (Write to the raid note follows it).
 function Page.PlaceBelow(height)
     local y = L.gridY - height - L.buttonGap
     if Page.clear then
@@ -419,7 +391,7 @@ function Page.PlaceBelow(height)
         Page.test:ClearAllPoints()
         Page.test:SetPoint("TOPLEFT", L.leftX - L.checkInset, y - L.testGap)
         Page.preview:ClearAllPoints()
-        Page.preview:SetPoint("TOPLEFT", L.leftX + L.colW, y - L.testGap)
+        Page.preview:SetPoint("TOPLEFT", L.leftX + L.previewX, y - L.testGap)
     end
 end
 
@@ -468,6 +440,10 @@ local function buildButtons(f)
     share:SetPoint("LEFT", useRaid, "RIGHT", L.buttonSpace, 0)
     reasonTip(share, TEXT.share)
     local shareHelp = UI.HelpRight(share, TEXT.share, TEXT.shareHelp)
+    -- Who has it (N of M), beside Share: opens its pop-out (Interrupts/WhoWindow.lua)
+    local who = Page.Who.BuildButton(f)
+    who:SetPoint("LEFT", shareHelp or share, "RIGHT", L.buttonSpace, 0)
+    Page.whoButton = who
     local write = button(f, TEXT.write, function()
         local id = boss()
         if not (id and CRT.InterruptNote) then
@@ -482,7 +458,6 @@ local function buildButtons(f)
             CRT:Print(string.format(emptied and TEXT.writeEmpty or TEXT.writeDone, tostring(noteName)))
         end
     end)
-    write:SetPoint("LEFT", shareHelp or share, "RIGHT", L.buttonSpace, 0)
     reasonTip(write, TEXT.write)
     UI.HelpRight(write, TEXT.write, TEXT.writeHelp)
     Page.share, Page.clear, Page.useRaid, Page.write = share, clear, useRaid, write
@@ -506,94 +481,6 @@ local function buildButtons(f)
         write:SetEnabled(wok and true or false)
         write.crtReason = (not wok) and wwhy or nil
     end }
-end
-
-local function whoText(name, group)
-    local m = memberOf(name, group)
-    if not m then
-        return UI.ColorText(TEXT.notHere, "muted")
-    end
-    local state, version, modules = CRT.AddonCheck:Status(m.row, m.row.online)
-    version = tostring(version or "?")
-    local on = modules and modules.interrupts
-    if state == "you" or state == "same" or state == "newer" then
-        if on == true then
-            return UI.GoodText(string.format(state == "you" and TEXT.you or TEXT.on, version))
-        end
-        return UI.WarnText(on == false and TEXT.off or string.format(TEXT.tooOld, version))
-    elseif state == "older" then
-        return UI.WarnText(string.format(TEXT.older, version))
-    elseif state == "none" then
-        return UI.BadText(TEXT.none)
-    elseif state == "offline" then
-        return UI.ColorText(TEXT.offline, "muted")
-    end
-    return UI.ColorText(TEXT.waiting, "muted")
-end
-Page.WhoText = whoText
-
--- Each player on a list once, in the order they first appear (group order, then kick order), case left out.
-function Page.WhoNames(list)
-    local names, seen = {}, {}
-    for _, col in ipairs(list or {}) do
-        for _, name in ipairs(col) do
-            if name ~= "" and not seen[name:lower()] then
-                seen[name:lower()] = true
-                names[#names + 1] = name
-            end
-        end
-    end
-    return names
-end
-
-local function refreshWho()
-    local id = boss()
-    local list = id and Interrupts:List(id)
-    local names = Page.WhoNames(list)
-    local group = roster()
-    local rows = #Page.whoRows
-    for i, row in ipairs(Page.whoRows) do
-        local name = names[i]
-        if i == rows and #names > rows then
-            -- the last row says how many more there are
-            row.name:SetText(UI.ColorText(string.format(TEXT.more, #names - rows + 1), "muted"))
-            row.state:SetText("")
-        elseif i == 1 and not name then
-            row.name:SetText(UI.ColorText(TEXT.noNames, "muted"))
-            row.state:SetText("")
-        else
-            local m = name and memberOf(name, group)
-            row.name:SetText(name or "")
-            row.name:SetTextColor(classColor(m and m.class))
-            row.state:SetText(name and whoText(name, group) or "")
-        end
-    end
-end
-
-local function buildWho(f)
-    local head = label(f, TEXT.who, "CRTFontNormal")
-    head:SetPoint("TOPLEFT", L.rightX, L.whoY)
-    UI.HelpRight(head, TEXT.who, TEXT.whoHelp)
-    local check = button(f, TEXT.check, function()
-        if CRT.AddonCheck then
-            CRT.AddonCheck:Check()
-        end
-    end)
-    check:SetPoint("TOPRIGHT", f, "TOPLEFT", L.rightX + L.rightW, L.whoY + 4)
-    Page.checkNow = check
-    for i = 1, L.whoRows do
-        local y = L.whoTop - (i - 1) * L.whoRowH
-        local row = { name = label(f, ""), state = label(f, "") }
-        row.name:SetPoint("TOPLEFT", L.rightX, y)
-        row.name:SetWidth(L.whoNameW)
-        row.name:SetWordWrap(false)
-        row.state:SetPoint("TOPLEFT", L.rightX + L.whoStateX, y)
-        row.state:SetWidth(L.rightW - L.whoStateX)
-        row.state:SetJustifyH("RIGHT")
-        row.state:SetWordWrap(false)
-        Page.whoRows[i] = row
-    end
-    controls[#controls + 1] = { refresh = refreshWho }
 end
 
 local function seconds(v)
@@ -635,24 +522,21 @@ function Page.HowLines(def)
     }
 end
 
-local function buildHow(f)
-    local y = L.whoTop - L.whoRows * L.whoRowH - L.howGap
-    local head = label(f, TEXT.how, "CRTFontNormal")
-    head:SetPoint("TOPLEFT", L.rightX, y)
-    UI.HelpRight(head, TEXT.how, TEXT.howHelp)
-    for i = 1, L.howLines do
-        local fs = label(f, "")
-        fs:SetPoint("TOPLEFT", L.rightX, y - L.howHeadH - (i - 1) * L.howRowH)
-        fs:SetWidth(L.rightW)
-        fs:SetWordWrap(false)
-        Page.howLines[i] = fs
+-- How the numbers are worked out, for the setup shown: the (?) on the Kick list heading.
+function Page.HowText()
+    local lines = Page.HowLines(boss() and Interrupts:Def(boss()))
+    if #lines == 0 then
+        return TEXT.howHelp
     end
-    controls[#controls + 1] = { refresh = function()
-        local lines = Page.HowLines(boss() and Interrupts:Def(boss()))
-        for i, fs in ipairs(Page.howLines) do
-            fs:SetText(lines[i] or "")
-        end
-    end }
+    return TEXT.howHelp .. "\n\n" .. table.concat(lines, "\n")
+end
+
+-- The Kick list heading over the rows, its (?) how the numbers are worked out.
+local function buildListHeading(f)
+    local head = label(f, TEXT.list, "CRTFontNormal")
+    head:SetPoint("TOPLEFT", L.leftX, L.listY)
+    Page.listHead = head
+    Page.howHelp = UI.HelpRight(head, TEXT.how, Page.HowText)
 end
 
 local function buildAssignments(f)
@@ -697,11 +581,13 @@ local function buildAssignments(f)
     Page.preview = button(f, TEXT.preview, function()
         CRT.InterruptReminder:Preview()
     end)
+    -- Write to the raid note after Preview reminder: the row above is full with Who has it
+    Page.write:SetPoint("LEFT", Page.preview, "RIGHT", L.buttonSpace, 0)
+    buildListHeading(f)
     -- the grid last among the left column's refreshes, so it places the rows under it once they exist
     Page.BuildGrid(f)
     Page.PlaceBelow(L.gridMaxH)
-    buildWho(f)
-    buildHow(f)
+    Page.BuildPalette(f)
 end
 
 -- Settings -----------------------------------------------------------------------------------------------------------
@@ -834,23 +720,64 @@ end
 
 local TABS = { { key = "assignments", label = TEXT.assignments }, { key = "settings", label = TEXT.settings } }
 
-local function selectTab(key)
+local function showTab(key)
     for _, tab in ipairs(TABS) do
         local on = tab.key == key
         Page.tabs[tab.key].frame:SetShown(on)
         UI:SetTabSelected(Page.tabs[tab.key].button, on)
     end
     Page.tab = key
+end
+
+local function selectTab(key)
+    showTab(key)
     refresh()
 end
 Page.SelectTab = selectTab
 
+-- The milliseconds since an earlier now(), for Page.perf; nil while no probe listens.
+local function now()
+    return Page.perf and debugprofilestop and debugprofilestop() or nil
+end
+
+local function tell(what, since)
+    if since and Page.perf then
+        pcall(Page.perf, what, debugprofilestop() - since)
+    end
+end
+
+-- Draws the page once, now: every control's refresh.
+local dirty, queued = false, false
+local function draw()
+    dirty = false
+    if not page or not page:IsShown() then
+        return
+    end
+    local t0 = now()
+    Page.counts.refresh = Page.counts.refresh + 1
+    for _, c in ipairs(controls) do
+        c.refresh()
+    end
+    tell("refresh", t0)
+end
+Page.RefreshNow = draw
+
+local function nextFrame()
+    queued = false
+    if dirty then
+        draw()
+    end
+end
+
+-- Marks the page to be drawn: once, on the next frame, however many changes ask before then.
 refresh = function()
     if not page or not page:IsShown() then
         return
     end
-    for _, c in ipairs(controls) do
-        c.refresh()
+    dirty = true
+    if not queued then
+        queued = true
+        C_Timer.After(0, nextFrame)
     end
 end
 Page.Refresh = function()
@@ -901,7 +828,9 @@ local function build(pf)
         end
         refresh()
     end)
+    -- shown: the note read when it changed, then the page drawn once, at once (whatever asked for a refresh on the way)
     pf:SetScript("OnShow", function()
+        local t0 = now()
         for _, e in ipairs({ "GROUP_ROSTER_UPDATE", "PARTY_LEADER_CHANGED", "CVAR_UPDATE" }) do
             watch:RegisterEvent(e)
         end
@@ -909,7 +838,9 @@ local function build(pf)
             CRT.AddonCheck:MaybeCheck()
         end
         readNote(boss())
-        selectTab(Page.tab or "assignments")
+        showTab(Page.tab or "assignments")
+        draw()
+        tell("show", t0)
     end)
     pf:SetScript("OnHide", function()
         watch:UnregisterAllEvents()
@@ -918,9 +849,7 @@ local function build(pf)
         end
     end)
     Interrupts:OnChange(refresh)
-    if CRT.AddonCheck then
-        CRT.AddonCheck:OnChange(refresh)
-    end
+    -- the Addon check's answers change only Who has it (Interrupts/WhoWindow.lua), never the whole page
     CRT.Bosses:OnRouteChange(refresh)
     if pf:IsShown() then
         pf:GetScript("OnShow")(pf)
