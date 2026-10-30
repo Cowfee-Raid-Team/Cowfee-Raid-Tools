@@ -1131,7 +1131,7 @@ end
 -- length (kept to MIN_SPAN..MAX_SPAN; a shorter range gets MIN_SPAN centred on it) and the range starts
 -- at the left edge. A range under ZOOM_SEL.minPx pixels or ZOOM_SEL.minSec seconds is ignored, and Escape
 -- cancels one. Fit, and a right-click on the axis, show the whole fight again. Each zoom here calls
--- view.onSpan(span), so the page's Time visible slider follows. The band's parts are made once and only
+-- view.onSpan(span) when a page has set it, for a control that shows the span. The band's parts are made once and only
 -- moved while a selection runs.
 
 -- The track's x under the cursor, kept on the track.

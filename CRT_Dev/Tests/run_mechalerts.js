@@ -2505,7 +2505,7 @@ check("mech: ability names in their type colour, with a type tooltip", function(
   assert(said[3][2] == "Soak: stack to share the damage" and near(said[3][3], soak) and #said == 4, "your label: its one type")
   said = {}
   r3.frame.OnEnter(r3.frame)
-  assert(said[2][2] == "mine" and said[3][2]:find("^No type yet") and said[3][2]:find("Set type", 1, true), "no type: how to set one: " .. tostring(said[3][2]))
+  assert(said[2][2] == "mine" and said[3][2] == "No type yet.", "no type: says so, with no pointer to the Advanced tab players don't see: " .. tostring(said[3][2]))
   -- the Journal's text, asked for the boss and difficulty on show, between the spell and the types
   local asked
   CRT.TimelineJournal.AbilitySection = function(_, enc, group, spellID, name, sectionID)

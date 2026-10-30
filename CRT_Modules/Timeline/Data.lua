@@ -65,6 +65,10 @@ function Timeline:Set(field, value)
     self:Fire()
 end
 
+-- How many pulls Deaths from recent pulls may cover (settings.overlay): the range of the Settings tab's
+-- Overlay pulls slider and of the Review tab's pill, one setting.
+Timeline.OVERLAY_PULLS = { min = 2, max = 5 }
+
 -- Ignored mechanics: boss mechanics you hide from your own timeline, per boss, by name (a reference row
 -- and a recorded pull's spell row of the same ability share it), in timeline.ignored[boss][name in
 -- lower case] = the name as shown. Only what you see: the notes, alerts, reminders and anything shared

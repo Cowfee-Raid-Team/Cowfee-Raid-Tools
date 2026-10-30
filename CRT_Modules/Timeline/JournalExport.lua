@@ -14,7 +14,7 @@ CRT.TimelineJournalExport = Export
 
 local TEXT = {
     button = "Export Abilities",
-    tip = "Cowfee Raid Tools: writes this boss's abilities as an ability timeline, with every spell, for you to add the cast times on the Timeline's Advanced tab.",
+    tip = "Cowfee Raid Tools: writes this boss's abilities as an ability timeline, with every spell, for you to add the cast times to.",
     title = "Abilities for %s (Ctrl+C to copy)",
     send = "Send to Timeline",
     none = "Open a boss in the Journal first.",
@@ -23,7 +23,7 @@ local TEXT = {
         "# From the Encounter Journal. Add each ability's times after its colon, as m:ss or seconds: 0:02, 1:17",
         "# A Phase line with no time yet is the stage's start to fill in: Phase: P1.5 3:17 (Intermission: ...)",
     },
-    saved = "Saved the abilities for %s. Add their times on the Timeline's Advanced tab.",
+    saved = "Saved the abilities for %s. Add their times on the Timeline's Advanced tab.", -- /crt dev only; else the Timeline says where it went,
 }
 
 -- The Journal's icons that are reference types too: a dispellable debuff, a Heroic or a Mythic mechanic.
@@ -149,7 +149,7 @@ local function show(text, name)
     CRT.ConsumablesTools:ShowText(string.format(TEXT.title, name), text, {
         label = TEXT.send,
         onClick = function(t)
-            if CRT.Timeline:SaveReferenceText(t) then
+            if CRT.Timeline:SaveReferenceText(t) and CRT.Timeline.DevMode() then
                 CRT:Print(string.format(TEXT.saved, name))
             end
         end,

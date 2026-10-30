@@ -30,6 +30,9 @@ local EMPTY_BOSS = "No pulls recorded for this boss yet"
 local EMPTY_ALL = "No boss pulls recorded yet"
 
 local TEXT = {
+    needsDev = "Ability timelines are written on the Timeline's Advanced tab, which needs /crt dev.",
+    savedFor = "Saved as your ability timeline for %s (%s). It shows on the Timeline's Review tab.",
+    notSaved = "Not saved: %s",
     shareNote = "Share note",
     shareHelp = "Sends this boss's raid note to everyone in the group with the addon, with every line added or moved here, and makes it everyone's active note. Only the raid leader or an assistant can send it; anyone else just sets their own active note. Notes can't be sent during a boss fight.",
     noNote = "This boss has no encounter ID yet, so no raid note can be made for it.",
@@ -37,9 +40,6 @@ local TEXT = {
     phaseCopy = "Moved the phase line in an ability timeline of your own (shipped ability timelines never change). It is listed as yours.",
     rehearse = "Rehearse",
     advancedBlurb = "An ability timeline is a boss's planned cast times, typed or pasted as text on the left. The Review tab draws it, alerts take their times from it, and the Rehearsal plays it. Right-click a Journal ability on the right to give it a row, a type, your own name, or a Mech Alert.",
-    play = "Play",
-    pause = "Pause",
-    playHelp = "Plays the rehearsal with a gold line moving across the timeline, so you can watch the whole fight and its cooldowns from above while the Rehearsal window shows it as you would see it.",
     rehearseHelp = "Plays this fight out in a window of its own, a stand-in boss frame and cast bar, with your real alerts firing on time. It can't start in combat and stops if combat begins; nothing is sent to the group. /crt timeline rehearse does the same.",
     noRehearse = "Nothing to rehearse: pick a boss with an ability timeline or a pull on the Timeline's Review tab.",
     noAbilities = "No ability timeline",
@@ -60,18 +60,21 @@ local BACKDROP = {
 
 local GROUPS = Timeline.GROUP_NAMES
 
+local TAB_X, TAB_Y, TAB_W, TAB_GAP = 8, -36, 160, 4 -- the tab buttons, packed from the left
 local ADVANCED_BLURB_H = 54 -- the blurb over the reference editor on the Advanced tab
 
 local TABS = {
     { key = "review", label = "Review" },
     { key = "settings", label = "Settings" },
-    { key = "references", label = "Advanced" }, -- the reference editor and the Journal abilities
+    -- the reference editor and the Journal abilities: developer builds with /crt dev open only
+    { key = "references", label = "Advanced", dev = true },
 }
 
 local page, view, emptyLabel, unnamedHelp
 local reviewFrame, holder, recent, refTab, settingsTab
 local shareButton, shareHelp
-local rehearseButton, playButton
+local rehearseButton, popButton
+local placeRows -- the Review tab's rows (ReviewTab's placeOrder), placed again as Share note shows or hides
 local tabButtons, tabFrames = {}, {}
 local controls = {} -- the Review tab's controls, which refresh() redraws
 local currentTab = "review"
@@ -339,6 +342,31 @@ local function togglePull(pullID)
     refresh()
 end
 
+-- The second row's buttons at the right: Rehearse, Pop out, then Share note. In a frame too narrow for
+-- all of them (ReviewTab's placeOrder decides), Share note goes to the right of the third row and Pop out
+-- takes the end of the second; a hidden Share note leaves Pop out at the end too. True when it shows.
+local HELP_ROOM = UI.HELP_GAP + UI.HELP_SIZE + 6 -- a (?) after a button, then the gap to the next
+local function placeShare(wide)
+    if not (shareButton and popButton) then
+        return false
+    end
+    local shown = shareButton:IsShown() and true or false
+    local rightX = -8 - UI.HELP_GAP - UI.HELP_SIZE -- a (?) in from the right, so it ends at the inset
+    shareButton:ClearAllPoints()
+    popButton:ClearAllPoints()
+    if wide then
+        shareButton:SetPoint("TOPRIGHT", reviewFrame, "TOPRIGHT", rightX, ReviewTab.ROW2_Y)
+    else
+        shareButton:SetPoint("TOPRIGHT", reviewFrame, "TOPRIGHT", rightX, ReviewTab.ROW3_Y)
+    end
+    if wide and shown then
+        popButton:SetPoint("RIGHT", shareButton, "LEFT", -HELP_ROOM, 0)
+    else
+        popButton:SetPoint("TOPRIGHT", reviewFrame, "TOPRIGHT", rightX, ReviewTab.ROW2_Y)
+    end
+    return shown
+end
+
 local function buildReview(f)
     reviewFrame = f
     local tab = ReviewTab.Build(f, {
@@ -401,12 +429,14 @@ local function buildReview(f)
         end,
         pullLabel = pullLabel,
         showingReference = showingReference,
+        placeShare = placeShare,
     })
+    placeRows = tab.placeOrder
     view, holder, recent, emptyLabel, unnamedHelp, controls = tab.view, tab.holder, tab.recent, tab.emptyLabel, tab.unnamedHelp, tab.controls
 end
 
 -- The pop-out window -----------------------------------------------------------------------------
--- Pop out moves the whole Review tab (the boss and pull choices, the zoom and the view) into a
+-- Pop out moves the whole Review tab (the boss and pull choices and the view) into a
 -- window of its own that can be dragged to any size, for a wider view than the main panel allows.
 -- The Review tab then shows a note and a button to bring it back, and closing the window (its X,
 -- Escape or Dock) puts it back. Its size and position are saved in timeline.popout. Its title strip holds
@@ -418,7 +448,7 @@ local MIN_W, MIN_H = 760, 360
 -- taller for its rows), and how much of the screen it may take. A saved size other than POP.oldW x POP.oldH
 -- (the size every pop-out had before) came from the grip.
 local POP = { w = 1200, h = 600, healersW = 1600, healersH = 900, screen = 0.9, oldW = 1200, oldH = 600 }
-local popWin, popButton, dockedNote
+local popWin, dockedNote
 local popped = false
 local returnPage -- the page Show on the Timeline came from, shown again when the pop-out is closed
 -- the Abilities | Healer CDs toggle on the pop-out's title strip (UI.Toggle2); its (?) and a gap before Reset
@@ -676,6 +706,7 @@ local function updateShare()
         local on = shownEncounter() ~= nil and CRT.Notes ~= nil and CRT.NoteComm ~= nil
         shareButton:SetShown(on)
         shareHelp:SetShown(on)
+        placeRows()
     end
 end
 
@@ -818,14 +849,12 @@ local function updateRehearse()
     if rehearseButton then
         local can = Timeline:RehearsalSource() ~= nil and not CRT.TimelineRehearsalRun.Blocked()
         rehearseButton:SetEnabled(can)
-        playButton:SetEnabled(can)
     end
 end
 
--- Play on the Review tab and the playhead. One fight plays at a time, on the Rehearsal window's clock:
--- Play here opens that window on the shown fight when it isn't open on it, then plays or pauses it,
--- and the window's own Play does the same. While the window is open on the fight shown here (the
--- same boss, difficulty and ability timeline or pull), the view draws the playhead at the window's time.
+-- The playhead. One fight plays at a time, on the Rehearsal window's clock (Rehearse opens it, its own
+-- Play plays it). While the window is open on the fight shown here (the same boss, difficulty and ability
+-- timeline or pull), the view draws the playhead at the window's time.
 
 -- The open rehearsal, when it is of the fight shown here.
 local function shownRehearsal()
@@ -836,16 +865,7 @@ local function shownRehearsal()
     end
 end
 
-local function playClicked()
-    local RW = shownRehearsal()
-    if RW then
-        RW:TogglePlay()
-    elseif Timeline:Rehearse() then
-        CRT.TimelineRehearsalWindow:Play()
-    end
-end
-
--- Each frame while the Review tab shows: the playhead and the button's Play or Pause.
+-- Each frame while the Review tab shows: the playhead.
 local function followRehearsal()
     local RW = shownRehearsal()
     if RW then
@@ -853,17 +873,12 @@ local function followRehearsal()
     elseif view.playT then
         view:SetPlayhead(nil)
     end
-    local text = (RW and RW:Playing()) and TEXT.pause or TEXT.play
-    if playButton:GetText() ~= text then
-        playButton:SetText(text)
-    end
 end
 
 -- The Pop out button on the Review tab, and the note left on the tab while it is popped out.
--- Right to left: Pop out, Rehearse and Play, each with its (?) just after it (UI.HelpRight), so each
--- button stands HELP_ROOM left of the next one, and Pop out's (?) ends at the frame's right inset.
+-- Left to right: Rehearse, Pop out and Share note (placeShare), each with its (?) just after it
+-- (UI.HelpRight), so each button stands HELP_ROOM left of the next one.
 local function buildPopControls()
-    local HELP_ROOM = UI.HELP_GAP + UI.HELP_SIZE + 6 -- a (?) after a button, then the gap to the next
     popButton = button(reviewFrame, "Pop out", 90)
     popButton:SetPoint("TOPRIGHT", reviewFrame, "TOPRIGHT", -8 - UI.HELP_GAP - UI.HELP_SIZE, -38)
     popButton:SetScript("OnClick", togglePopout)
@@ -877,20 +892,15 @@ local function buildPopControls()
     end)
     UI.HelpRight(rehearseButton, TEXT.rehearse, TEXT.rehearseHelp)
 
-    -- Play: see playClicked above.
-    playButton = button(reviewFrame, TEXT.play, 70)
-    playButton:SetPoint("RIGHT", rehearseButton, "LEFT", -HELP_ROOM, 0)
-    playButton:SetScript("OnClick", playClicked)
-    UI.HelpRight(playButton, TEXT.play, TEXT.playHelp)
     reviewFrame:SetScript("OnUpdate", followRehearsal)
 
     -- Share note: see shareNote above.
     shareButton = button(reviewFrame, TEXT.shareNote, 90)
-    shareButton:SetPoint("TOPRIGHT", reviewFrame, "TOPRIGHT", -8 - UI.HELP_GAP - UI.HELP_SIZE, -66)
     shareButton:SetScript("OnClick", shareNote)
     shareHelp = UI.HelpRight(shareButton, TEXT.shareNote, TEXT.shareHelp)
     shareButton:Hide()
     shareHelp:Hide()
+    placeRows() -- on the second row or the third (placeShare)
 
     dockedNote = CreateFrame("Frame", nil, tabFrames.review)
     dockedNote:SetAllPoints(tabFrames.review)
@@ -969,10 +979,43 @@ end
 
 -- The page -------------------------------------------------------------------------------------
 
+-- A tab that shows now: the Advanced tab only while /crt dev is open (Timeline.DevMode).
+local function tabAllowed(key)
+    for _, tab in ipairs(TABS) do
+        if tab.key == key then
+            return not tab.dev or Timeline.DevMode()
+        end
+    end
+    return false
+end
+
+-- Shows the tab buttons that are allowed now, packed from the left; a hidden tab that was selected
+-- goes back to Review. Run each time the page shows or refreshes, so /crt dev needs no /reload.
+local function updateTabs()
+    local x = TAB_X
+    for _, tab in ipairs(TABS) do
+        local b = tabButtons[tab.key]
+        local on = tabAllowed(tab.key)
+        b:SetShown(on)
+        if on then
+            b:SetPoint("TOPLEFT", x, TAB_Y)
+            x = x + TAB_W + TAB_GAP
+        end
+    end
+    if not tabAllowed(currentTab) then
+        currentTab = "review"
+        for _, tab in ipairs(TABS) do
+            tabFrames[tab.key]:SetShown(tab.key == "review")
+            UI:SetTabSelected(tabButtons[tab.key], tab.key == "review")
+        end
+    end
+end
+
 refresh = function()
     if not page or not (page:IsShown() or (popped and popWin:IsShown())) then
         return
     end
+    updateTabs()
     bossList = buildBossList()
     fixSelection()
     -- what is shown is kept, so the page (and a reload) opens on it again
@@ -988,7 +1031,7 @@ refresh = function()
 end
 
 local function selectTab(key)
-    if not tabFrames[key] then
+    if not tabFrames[key] or not tabAllowed(key) then
         key = "review"
     end
     currentTab = key
@@ -1003,8 +1046,13 @@ local function selectTab(key)
 end
 
 -- Opens the Timeline on its Advanced tab with text in the reference box, ready to fill in and Save (the
--- Encounter Journal's Export Abilities, Timeline/JournalExport.lua).
+-- Encounter Journal's Export Abilities, Timeline/JournalExport.lua). The tab is only there with /crt dev
+-- open; without it this says so in chat.
 function Timeline:OpenReferenceText(text)
+    if not Timeline.DevMode() then
+        CRT:Print(TEXT.needsDev)
+        return
+    end
     UI:Show("timeline")
     selectTab("references")
     if refTab then
@@ -1014,12 +1062,17 @@ end
 
 -- Saves text as one of your references at once and opens it on the Advanced tab, the boss and difficulty
 -- it names picked (the Journal's Send to Timeline). Text that doesn't read yet goes in the box with what
--- is wrong. Returns the new reference's key, or nil.
+-- is wrong. Without /crt dev the tab is hidden: it saves, says in chat where it went, and opens nothing.
+-- Returns the new reference's key, or nil.
 function Timeline:SaveReferenceText(text)
-    local key = Reference:Add(text)
+    local key, errors = Reference:Add(text)
     local ref = key and Reference.Parse(text)
     if not ref then
-        self:OpenReferenceText(text)
+        if Timeline.DevMode() then
+            self:OpenReferenceText(text)
+        else
+            CRT:Print(string.format(TEXT.notSaved, errors and errors[1] or ""))
+        end
         return nil
     end
     if type(ref.encounterID) == "number" then
@@ -1028,6 +1081,11 @@ function Timeline:SaveReferenceText(text)
     local diff = (ref.difficulty or ""):lower()
     selectedGroup = diff == "mythic" and "mythic" or "nh"
     bossList = nil
+    if not Timeline.DevMode() then
+        CRT:Print(string.format(TEXT.savedFor, ref.boss or "?", GROUPS[selectedGroup]))
+        refresh()
+        return key
+    end
     UI:Show("timeline")
     selectTab("references")
     if refTab then
@@ -1042,12 +1100,12 @@ local function build(pf)
 
     local title = label(pf, "Timeline", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
-    UI.HelpRight(title, "The Timeline", "Every raid boss pull is saved on its own: the boss's casts and players' deaths. Pick a boss on the Review tab to see its ability timeline, and click a pull under Recent pulls to see that pull's deaths on it; scroll the wheel to move through the rows (or along the time when they all fit), Shift + wheel or right-drag to move along the time, and Ctrl + wheel to zoom. Drag along the time axis or across the track to zoom to that stretch; Fit, or right-click the axis, shows the whole fight again.\n\nAn ability timeline is the boss's planned timeline; paste your own on the Advanced tab, and pick which one shows there.\n\nThe red lines are phase changes: Shift-drag one to move it, right-click a moved line to put it back.\n\nA row's colour says what the ability is (a dot for each extra type):\n" .. CRT.TimelineReference.Legend())
+    UI.HelpRight(title, "The Timeline", "Every raid boss pull is saved on its own: the boss's casts and players' deaths. Pick a boss on the Review tab to see its ability timeline, and click a pull under Recent pulls to see that pull's deaths on it; scroll the wheel to move through the rows (or along the time when they all fit), Shift + wheel or right-drag to move along the time, and Ctrl + wheel to zoom. Drag along the time axis or across the track to zoom to that stretch; right-click the axis to show the whole fight again. How much time shows at first is Seconds visible on the Settings tab.\n\nAn ability timeline is the boss's planned timeline, with this boss's pulls laid over it.\n\nThe red lines are phase changes: Shift-drag one to move it, right-click a moved line to put it back.\n\nA row's colour says what the ability is (a dot for each extra type):\n" .. CRT.TimelineReference.Legend())
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        b:SetSize(160, 26)
-        b:SetPoint("TOPLEFT", 8 + (i - 1) * 164, -36)
+        b:SetSize(TAB_W, 26)
+        b:SetPoint("TOPLEFT", TAB_X + (i - 1) * (TAB_W + TAB_GAP), TAB_Y)
         skin(b, 0.4)
         b.sel = b:CreateTexture(nil, "ARTWORK")
         b.sel:SetAllPoints()
@@ -1107,10 +1165,6 @@ local function build(pf)
             return selectedBoss
         end,
         bossName = bossName,
-        showingReference = showingReference,
-        shownReference = function()
-            return shownRef()
-        end,
         refresh = function()
             refresh()
         end,
@@ -1121,6 +1175,7 @@ local function build(pf)
     lastViewRead = true
 
     pf:SetScript("OnShow", function()
+        updateTabs()
         selectTab(currentTab)
         refresh()
     end)
