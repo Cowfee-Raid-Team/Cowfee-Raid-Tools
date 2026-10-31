@@ -155,6 +155,8 @@ CRT_Modules\Timeline\HealerView.lua
 CRT_Modules\Timeline\HealerPanel.lua
 CRT_Modules\Timeline\HealerRows.lua
 CRT_Modules\Timeline\HealerSlots.lua
+CRT_Modules\Timeline\HealerOrder.lua
+CRT_Modules\Timeline\HealerOrderShare.lua
 CRT_Modules\Timeline\ReferencePage.lua
 CRT_Modules\Timeline\ReviewTab.lua
 CRT_Modules\Timeline\SettingsTab.lua

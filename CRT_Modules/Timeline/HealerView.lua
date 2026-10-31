@@ -20,6 +20,8 @@ local ADDON, CRT = ...
 -- Under them, the boss's healer slots (Timeline/HealerSlots.lua): a healer planned by spec, with that spec's major
 -- cooldowns only, and the + Add healer row (Timeline/HealerPanel.lua). A slot's assigned player who is on the roster
 -- shows once, as the slot. Note lines tagged with a spec word ("RestoDruid2", Notes/SpecWords.lua) go on their slot.
+-- The healers (players and slots alike) and each one's spell rows come in your order: a drag on a name or spell row's
+-- label sets it (Timeline/HealerOrder.lua); anyone not in it comes after, in the order above.
 -- The casts are the raid note's cooldown lines for the boss and difficulty shown (the view's
 -- NoteAndReminderMarks, which places its flags), each on the row of its player and spell, with its cooldown
 -- shown with no selection needed: a filled band after it and an outlined one before it, red where the next
@@ -43,9 +45,11 @@ local HV = {}
 CRT.TimelineHealerView = HV
 
 local TEXT = {
-    hint = "Click a row to add a cast \194\183 drag a cast to move it \194\183 drag across the track to zoom",
+    hint = "Click a row to add a cast \194\183 drag a cast to move it \194\183 drag a name to reorder \194\183 drag across "
+        .. "the track to zoom",
     -- for someone who may not change the raid note
-    hintOwn = "Drag your own casts to move them for yourself \194\183 red edge: cast while still on cooldown",
+    hintOwn = "Drag your own casts to move them for yourself \194\183 drag a name to reorder \194\183 red edge: cast while "
+        .. "still on cooldown",
     noHealers = "No healers found. Right-click a name on Raid Groups and pick Set role > Healer.",
     classUnknown = "Class unknown until they are seen in a group once.",
     notLead = "Only the raid leader or an assistant can place a cooldown for another player.",
@@ -509,6 +513,9 @@ end
 -- own rows. view.hvNoteIds is the raid notes whose lines are drawn, for the panel.
 function HV.Build(view, lanes, length)
     lanes = lanes or {}
+    if view.hvDrag and CRT.TimelineHealerOrder then
+        CRT.TimelineHealerOrder.Cancel(view) -- a held healer or spell row: its rows are built again
+    end
     -- a copy for the marks to find their ability rows in (it may get a Notes row added, never drawn here)
     local rowsFor = {}
     for i, lane in ipairs(lanes) do
@@ -695,6 +702,11 @@ function HV.Build(view, lanes, length)
     end
     local abilities = #out
     local lead = canEditRaid()
+    -- the healers and each one's spell rows in your order (Timeline/HealerOrder.lua); a drag moves a block by hvOrder
+    local Order = CRT.TimelineHealerOrder
+    if Order then
+        people = Order.Apply(view:EncounterNumber(), people)
+    end
     for _, who in ipairs(people) do
         -- every row picked off still leaves the name row, to pick them back
         if #who.rows > 0 or who.unknownClass or #who.menu.options > 0 then
@@ -711,10 +723,12 @@ function HV.Build(view, lanes, length)
                 note = (who.unknownClass and TEXT.classUnknown) or (who.hidden and next(who.hidden) and TEXT.allHidden)
                     or TEXT.noDefaults
             end
+            local block = Order and { key = who.key, spellKey = Order.SpellKey(who) } or nil
             out[#out + 1] = { key = "healers:" .. p.key:lower(), kind = "healer", label = label, class = who.class,
                 marks = {}, tip = headerTip(who), note = note, noteWarn = head and head.warn and #who.rows > 0 or nil,
-                tint = classTint(who.class, NAME_TINT), hvMenu = who.menu, hvSlot = who.slot }
+                tint = classTint(who.class, NAME_TINT), hvMenu = who.menu, hvSlot = who.slot, hvOrder = block }
             for _, r in ipairs(who.rows) do
+                r.hvOrder = block
                 r.hvMenu = who.menu -- a right-click on any of a player's rows picks their rows (HV.LabelMenu)
                 r.indent, r.tint = HV.INDENT, classTint(who.class, SPELL_TINT) -- the view draws both
                 out[#out + 1] = r
@@ -1121,6 +1135,10 @@ function HV.Draw(view, length)
     local Slots = CRT.TimelineHealerSlots
     if Slots then
         Slots.DrawBorders(view, on) -- each healer slot's name: solid with a player, dashed without
+    end
+    local Order = CRT.TimelineHealerOrder
+    if on and Order then
+        Order.Hook(view) -- a left-drag on a name or spell row's label reorders (Timeline/HealerOrder.lua)
     end
     -- a row's muted note on the track, at its start (a healer whose class isn't known yet, a healer slot's hint)
     local notes, rowH = 0, CRT.TimelineView.ROW_H
