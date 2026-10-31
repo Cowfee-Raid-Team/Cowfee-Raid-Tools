@@ -45,7 +45,8 @@ local TEXT = {
     notCarried = "-- not carried over: %s",
     ownShield = "-- absorb: your Shield bar choice on Mech Alerts > Special",
     leftOut = "-- left out: your Mech Alert %q has no spell, row or times to place it",
-    lost = { count = "the count down", speakAt = "speaking at 0", sound = "its sound", glow = "the glow", color = "its colour",
+    lost = { count = "the count down", speakAt = "speaking at 0", speakBefore = "speaking before 0",
+        speakText = "its Say instead words", sound = "its sound", glow = "the glow", color = "its colour",
         linger = "Linger", moved = "its moved and turned-off casts", priority = "its priority", icon = "its own icon" },
 }
 Dev.TEXT = TEXT
@@ -214,6 +215,11 @@ local function lostParts(r)
     end
     if r.speakAt == "zero" then
         out[#out + 1] = L.speakAt
+    elseif r.speakAt == "before" then
+        out[#out + 1] = L.speakBefore
+    end
+    if type(r.speakText) == "string" and r.speakText ~= "" then
+        out[#out + 1] = L.speakText
     end
     for _, k in ipairs({ "sound", "glow", "color", "iconID" }) do
         if r[k] ~= nil and r[k] ~= false then

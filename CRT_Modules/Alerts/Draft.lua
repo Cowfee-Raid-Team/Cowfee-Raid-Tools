@@ -7,8 +7,11 @@ local ADDON, CRT = ...
 --          and for the editor also a note line (noteID, line, expected) or a saved alert (savedMode)
 --   draft  { saveAs, tag, group, difficulty, ph, timeText, timeTouched, keptTimes, spellID, iconType, iconID,
 --          text, color, show = { alert, text, icon, bar, circle, timeline }, speak, speakAt, count, glow, sound,
---          warn, linger, boss, baseDifficulty, difficultyTouched, ticksText, fill, shield }
---          speakAt is nil (Speak at: On show) or "zero" (At 0), as a reminder keeps it
+--          warn, linger, boss, baseDifficulty, difficultyTouched, ticksText, fill, shield, countFrom, speakBefore,
+--          speakText }
+--          speakAt is nil (Speak at: On show), "zero" (At 0) or "before" (Before 0, speakBefore seconds), as a
+--          reminder keeps it; countFrom where Count down starts; speakText the Say instead box (Reminders.lua's
+--          fields of those names). A raid note line has none of the three, so it saves Before 0 as On show
 --          ticksText is the Impact ticks box as typed ("2, 4": seconds into the bar, Draft.ParseTicks), fill
 --          "up" (Bar fills up) or nil (it empties), as a reminder keeps them (Alerts/Bars.lua draws them; a note line
 --          keeps them as ticks:, fill: and countto:). An older reminder's barTo stays saved as it was and is never read
@@ -130,7 +133,8 @@ end
 function Draft.New()
     return { saveAs = "mine", tag = "everyone", ph = 1, timeText = "", timeTouched = false, iconType = "spell",
         text = "", show = { alert = true, bar = true }, speak = true, count = false, glow = false,
-        warn = DEFAULT_WARN, linger = 0, shield = Draft.NewShield() }
+        warn = DEFAULT_WARN, linger = 0, shield = Draft.NewShield(), countFrom = Reminders.COUNT_FROM.default,
+        speakBefore = Reminders.SPEAK_BEFORE.default, speakText = "" }
 end
 
 -- The Shield bar section of a new alert: off, on boss1, 15 seconds, also on a difficulty with no times.
@@ -200,17 +204,37 @@ function Draft.NewDefaults()
         speakAt = d.speakAt }
 end
 
--- The Speak at choices: On show (key "show", saved as nil) and At 0 ("zero"), in the caller's words.
-function Draft.SpeakAtOptions(onShow, atZero)
-    return { { key = "show", label = onShow }, { key = "zero", label = atZero } }
+-- The Speak at choices: On show (key "show", saved as nil), At 0 ("zero") and, when its words are given, Before 0
+-- ("before"), in the caller's words.
+function Draft.SpeakAtOptions(onShow, atZero, beforeZero)
+    local out = { { key = "show", label = onShow }, { key = "zero", label = atZero } }
+    if beforeZero then
+        out[3] = { key = "before", label = beforeZero }
+    end
+    return out
 end
+
+local SPEAK_AT = { zero = "zero", before = "before" }
 
 -- Speak at as its dropdown's key, and a key back into the draft.
 function Draft.SpeakAtKey(draft)
-    return draft and draft.speakAt == "zero" and "zero" or "show"
+    return draft and SPEAK_AT[draft.speakAt] or "show"
 end
 function Draft.SetSpeakAt(draft, key)
-    draft.speakAt = key == "zero" and "zero" or nil
+    draft.speakAt = SPEAK_AT[key]
+end
+
+-- The words of a count box with no slider (the Mech Alerts panel's), in the caller's words: plain, or from (with
+-- a %d) when the draft's count starts past 3, so "Count down from 6".
+function Draft.CountWords(draft, plain, from)
+    local n = draft and Reminders.CountFrom({ countFrom = draft.countFrom })
+    return (n and n > Reminders.COUNT_FROM.default) and string.format(from, n) or plain
+end
+
+-- The Say instead words as a reminder saves them (speakText), or nil for an empty box.
+function Draft.SpeakText(draft)
+    local s = trim(draft and draft.speakText)
+    return s ~= "" and s or nil
 end
 
 -- The Show as boxes, in the rows the alert editor and Mech Alerts lay them out in: the two long names, then
@@ -323,7 +347,9 @@ function Draft.FromReminder(draft, r)
     local mode = r.speech or "text"
     draft.speak = speaks and mode ~= "count"
     draft.count = speaks and (mode == "textcount" or mode == "count")
-    draft.speakAt = r.speakAt == "zero" and "zero" or nil
+    draft.speakAt = SPEAK_AT[r.speakAt]
+    draft.countFrom, draft.speakBefore = Reminders.CountFrom(r), Reminders.SpeakBefore(r)
+    draft.speakText = type(r.speakText) == "string" and r.speakText or ""
     draft.glow = r.glow and true or false
     draft.sound = r.sound
     draft.auraSound = r.auraSound and true or false -- also play the sound when the spell lands on you
@@ -519,7 +545,14 @@ function Draft.BuildReminder(ctx, draft)
     if speech then
         r.speech = speech
     end
-    r.speakAt = draft.speakAt == "zero" and "zero" or nil
+    r.speakAt = SPEAK_AT[draft.speakAt]
+    -- Count down from (only while Count down is on), Before 0's seconds (only while Speak at is Before 0) and Say
+    -- instead; each default (3, 3 s, an empty box) is saved as nothing
+    local from = Reminders.CountFrom({ countFrom = draft.countFrom })
+    r.countFrom = (draft.count and from ~= Reminders.COUNT_FROM.default) and from or nil
+    local before = Reminders.SpeakBefore({ speakBefore = draft.speakBefore })
+    r.speakBefore = (r.speakAt == "before" and before ~= Reminders.SPEAK_BEFORE.default) and before or nil
+    r.speakText = Draft.SpeakText(draft)
     r.warn = draft.warn
     r.linger = draft.linger > 0 and draft.linger or nil
     r.sound = draft.sound

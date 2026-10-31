@@ -91,11 +91,13 @@ local TEXT = {
     countImpact = "Each impact",
     countHelp = "What the bar's number counts down to: the end of the cast, or the next hit.",
     speak = "Speak the text",
-    count = "Count down 3 2 1",
+    count = "Count down",
+    countFrom = "Count down from %d", -- a count that starts past 3 (set in the alert editor)
     glow = "Glow at 0",
     speakAt = "Speak at",
     onShow = "On show",
     atZero = "At 0",
+    beforeZero = "Before 0",
     text = "Text",
     icon = "Icon",
     iconSpell = "Spell",
@@ -834,6 +836,7 @@ local function drawPanel()
     drawBarRows(d)
     panel.also.speak:SetChecked(d.speak and true or false)
     panel.also.count:SetChecked(d.count and true or false)
+    panel.also.count.label:SetText(CRT.AlertDraft.CountWords(d, TEXT.count, TEXT.countFrom))
     panel.also.glow:SetChecked(d.glow and true or false)
     local auraOK = d.spellID ~= nil and CRT.Sound.Normalize(d.sound) ~= nil and CRT.SoundAuras:Available()
     panel.auraSound:SetChecked(d.auraSound and true or false)
@@ -1612,11 +1615,15 @@ local function buildSoundTab(p, row)
         count = makeCheck(p, TEXT.count, L.INSET - 4, L.COUNT_Y, change(function(on) cur.draft.count = on end)),
         glow = makeCheck(p, TEXT.glow, L.INSET - 4, L.GLOW_Y, change(function(on) cur.draft.glow = on end)),
     }
-    -- Speak at: when Speak the text says it, On show or At 0; greyed while Speak the text is off
+    -- Speak at: when Speak the text says it, On show or At 0; greyed while Speak the text is off. Before 0 (its
+    -- seconds set in the alert editor) is listed only for an alert that has it, so it shows as it is saved
     panel.speakAt = row(UI.Dropdown(p, TEXT.speakAt, {
         labelWidth = L.SPEAK_AT_LABEL, width = L.SPEAK_AT_W,
         enabledIf = function() return cur.draft ~= nil and cur.draft.speak and true or false end,
-        options = Draft.SpeakAtOptions(TEXT.onShow, TEXT.atZero),
+        options = function()
+            local before = Draft.SpeakAtKey(cur.draft) == "before" and TEXT.beforeZero or nil
+            return Draft.SpeakAtOptions(TEXT.onShow, TEXT.atZero, before)
+        end,
         get = function() return Draft.SpeakAtKey(cur.draft) end,
         set = change(function(v) Draft.SetSpeakAt(cur.draft, v) end),
     }))

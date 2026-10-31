@@ -8,19 +8,29 @@ local ADDON, CRT = ...
 --   EncounterID:3492;Difficulty:Heroic;Name:Ula'tek          a boss's header; blank lines between bosses
 --   ph:1;time:135.5;tag:11;dur:10;text:Damage Amp;          one reminder: key:value; pairs, in any order
 --   ph:1;time:407.5;tag:everyone;dur:20;text:Soak;colors:1.0000 0.0745 0.1529 1;
--- ph is the phase number, time seconds (with decimals), tag who it is for ("everyone" or a class ID), dur how long
--- it shows, text what it says (may be empty) and colors "r g b a" from 0 to 1. A key or header field not listed is
--- kept as it was on the reminder (import.extra, import.bossExtra) and never stops the import.
+--   ph:1;time:34.4;tag:Dotsanhots;dur:8;spellid:383410;TTS:true;countdown:5;DisplayType:Circle;
+--   ph:1;time:60.2;tag:Dotsanhots;dur:8;spellid:22812;TTS:true;TTSTimer:3;DisplayType:Text;
+-- ph is the phase number, time seconds (with decimals), tag who it is for (see TAG_KINDS: "everyone", a class ID, a
+-- player's name), dur how long it shows, text what it says (may be empty or missing), colors "r g b a" from 0 to 1,
+-- spellid its spell, TTS:true to read it out, countdown:N a spoken count, TTSTimer:N when it is read out and
+-- DisplayType Circle or Text how it shows (see Import.Speech and Import.Display for how each maps). A key or header
+-- field not listed, or a known key whose value doesn't read, is kept as written on the reminder (import.extra,
+-- import.bossExtra) and never stops the import.
 --
 --   Import.Parse(text)          the text as { bosses = { { encounterID, difficulty, name, reminders, skipped,
 --                               extra } }, skipped }, pure: reminders are { line, ph, time, tag, dur, text, color,
---                               extra }, skipped { { line, reason } }; lines before any header are skipped at the top
---   Import.Plan(parsed, classID) what would be imported for you: per boss its group, whether the season knows it,
+--                               spellID, tts, countdown, ttsTimer, display, extra }, skipped { { line, reason } };
+--                               lines before any header are skipped at the top
+--   Import.Me()                 you, read once per import: { name, realm, classID, classFile, specID, role, group }
+--   Import.Plan(parsed, me)     what would be imported for you: per boss its group, whether the season knows it,
 --                               the reminders for you (ForPlayer) as reminder tables, and every skipped line
 --   Import.Apply(plan, opts)    writes them through the reminders' own save path (Alerts/Draft.lua, Alerts/Reminders.lua)
 --
--- Saved data (additive): each imported reminder has import = { source = Import.SOURCE, tag, ph, time, dur, text,
--- extra, bossExtra } (text only when the line's was empty; extra and bossExtra only when there are unknown fields).
+-- Saved data (additive): each imported reminder has import = { source = Import.SOURCE, tag, tagKind, ph, time, dur,
+-- text, countdown, ttsTimer, extra, bossExtra } (text only when the line's was empty; countdown and ttsTimer the
+-- line's own numbers, as written before they are fitted to the reminder's ranges; extra and bossExtra only when
+-- there are unknown fields). Its spell is the reminder's own spellID; the count, Before 0 and TTS words are its
+-- countFrom, speakAt/speakBefore and speakText (Alerts/Reminders.lua).
 -- Replace deletes only reminders whose import.source is Import.SOURCE, for the bosses and difficulty groups pasted.
 -- It never touches a note, for a raid leader or a raider: only CRT.db.alerts.reminders.
 
@@ -40,6 +50,17 @@ local TEXT = {
     badPhase = "bad phase (%s)",
     noTag = "no tag",
     otherTag = "for another tag (%s)",
+    -- a tag of a kind (TAG_KINDS) that isn't you, by its kind's key
+    other = {
+        player = "for another player (%s)",
+        class = "for another class (%s)",
+        group = "for another group (%s)",
+        role = "for another role (%s)",
+        spec = "for another spec (%s)",
+        position = "for another position (%s)",
+    },
+    roles = { TANK = "Tank", HEALER = "Healer", DAMAGER = "DPS" },
+    positions = { melee = "Melee", ranged = "Ranged" },
     badBoss = "no encounter ID",
     badDifficulty = "unknown difficulty (%s)",
     noDifficulty = "no difficulty",
@@ -49,8 +70,9 @@ local TEXT = {
 }
 Import.TEXT = TEXT
 
--- The keys a reminder line reads; any other is kept in import.extra.
-local LINE_KEYS = { ph = true, time = true, tag = true, dur = true, text = true, colors = true }
+-- The keys a reminder line reads, in lower case; any other is kept in import.extra.
+local LINE_KEYS = { ph = true, time = true, tag = true, dur = true, text = true, colors = true, spellid = true,
+    tts = true, countdown = true, ttstimer = true, displaytype = true }
 local HEADER_KEYS = { encounterid = true, difficulty = true, name = true }
 -- The difficulty names a header may give, in lower case: only these are read (Normal and Heroic share a group).
 local DIFFICULTIES = { normal = "Normal", heroic = "Heroic", mythic = "Mythic" }
@@ -90,13 +112,54 @@ function Import.Color(s)
     return { nums[1], nums[2], nums[3], 1 }
 end
 
--- One reminder line into { line, ph, time, tag, dur, text, color, extra }, or nil and why it is skipped.
+-- A whole number of 0 or more, or nil.
+local function count(s)
+    local n = tonumber(s)
+    if n and n == n and n >= 0 and n < math.huge and n == math.floor(n) then
+        return n
+    end
+    return nil
+end
+
+-- A number of seconds of 0 or more, or nil.
+local function seconds(s)
+    local n = tonumber(s)
+    if n and n == n and n >= 0 and n < math.huge then
+        return n
+    end
+    return nil
+end
+
+-- The keys read into the reminder's spell, speech and display: { key in lower case, field, read(value) }. A value
+-- that doesn't read (nil) is kept as written in extra.
+local READS = {
+    { "spellid", "spellID", function(v) local n = count(v) return n and n > 0 and n or nil end },
+    -- true, false, or the words to say in place of the text ("TTS:Testing")
+    { "tts", "tts", function(v)
+        local l = v:lower()
+        if l == "true" then
+            return true
+        elseif l == "false" then
+            return false
+        end
+        return v ~= "" and v or nil
+    end },
+    { "countdown", "countdown", count },
+    { "ttstimer", "ttsTimer", seconds },
+    -- only a DisplayType Import.Display maps; another stays in extra
+    { "displaytype", "display", function(v) return Import.Display(v) and v or nil end },
+}
+
+-- One reminder line into { line, ph, time, tag, dur, text, color, spellID, tts, countdown, ttsTimer, display,
+-- extra }, or nil and why it is skipped.
 local function readLine(raw, list)
     local r = { line = raw, extra = nil }
+    local written = {} -- each known key as written, so one that doesn't read is kept as it was
     for _, p in ipairs(list) do
         local key = p.key:lower()
         if LINE_KEYS[key] then
             r[key] = p.value
+            written[key] = p.key
         else
             r.extra = r.extra or {}
             r.extra[p.key] = p.value
@@ -128,6 +191,16 @@ local function readLine(raw, list)
             -- a colour that doesn't read is kept as it was
             out.extra = out.extra or {}
             out.extra.colors = r.colors
+        end
+    end
+    for _, k in ipairs(READS) do
+        local value = r[k[1]]
+        if value ~= nil then
+            out[k[2]] = k[3](value)
+            if out[k[2]] == nil then
+                out.extra = out.extra or {}
+                out.extra[written[k[1]]] = value
+            end
         end
     end
     return out
@@ -195,20 +268,18 @@ end
 
 -- The rules (each in one place) ------------------------------------------------------------------------
 
--- Who a line is for, until the format's tags are settled: "everyone", and a class ID that is the player's own
--- (UnitClass's third value). Any other tag is for someone else.
-function Import.ForPlayer(tag, classID)
-    if type(tag) ~= "string" or tag == "" then
-        return false, TEXT.noTag
-    end
-    if tag:lower() == "everyone" then
-        return true
-    end
-    local n = tonumber(tag)
-    if n and type(classID) == "number" and n == classID then
-        return true
-    end
-    return false, string.format(TEXT.otherTag, tag)
+-- You ---------------------------------------------------------------------------------------------------------
+
+local function readable(v)
+    return not (issecretvalue and issecretvalue(v))
+end
+
+local function word(v)
+    return readable(v) and type(v) == "string" and v ~= "" and v or nil
+end
+
+local function number(v)
+    return readable(v) and type(v) == "number" and v or nil
 end
 
 -- The player's class ID, or nil when the game doesn't give a readable one.
@@ -217,10 +288,347 @@ function Import.PlayerClassID()
         return nil
     end
     local ok, _, _, id = pcall(UnitClass, "player")
-    if not ok or (issecretvalue and issecretvalue(id)) or type(id) ~= "number" then
+    return ok and number(id) or nil
+end
+
+-- A class ID's name as notes write it ("Death Knight", Parse.lua's) and its class file, or nil when the game has
+-- no such class.
+local function classByID(id)
+    if type(id) ~= "number" or not GetClassInfo then
         return nil
     end
-    return id
+    local ok, name, file = pcall(GetClassInfo, id)
+    file = ok and word(file) or nil
+    if not file then
+        return nil
+    end
+    local P = CRT.NoteParser
+    return (P and P.ClassName and P.ClassName(file)) or word(name) or file, file
+end
+
+-- How many classes the game has (class IDs run 1 to it), or nil.
+local function classCount()
+    if not GetNumClasses then
+        return nil
+    end
+    local ok, n = pcall(GetNumClasses)
+    return ok and number(n) or nil
+end
+
+-- A SpecializationID's name ("Arms"), through Groups.SpecInfo (GetSpecializationInfoByID), or nil.
+local function specName(id)
+    local Groups = CRT.Groups
+    if not (Groups and Groups.SpecInfo) then
+        return nil
+    end
+    local ok, name = pcall(Groups.SpecInfo, id)
+    return ok and word(name) or nil
+end
+
+-- Your role: the one picked in the group, else your spec's (GetSpecializationInfoByID's fifth value), else DPS, as
+-- the note alerts read it (Notes/Engine.lua).
+local ROLES = { TANK = true, HEALER = true, DAMAGER = true }
+local function roleOf(specID)
+    if UnitGroupRolesAssigned then
+        local ok, role = pcall(UnitGroupRolesAssigned, "player")
+        if ok and readable(role) and ROLES[role] then
+            return role
+        end
+    end
+    if specID and GetSpecializationInfoByID then
+        local ok, _, _, _, _, role = pcall(GetSpecializationInfoByID, specID)
+        if ok and readable(role) and ROLES[role] then
+            return role
+        end
+    end
+    return "DAMAGER"
+end
+
+-- Your raid group's number from the raid roster (GetRaidRosterInfo's subgroup); in a party or alone, 1, as the
+-- note alerts count you.
+local function subgroup()
+    local okRaid, inRaid = pcall(IsInRaid or function() return false end)
+    if not (okRaid and inRaid == true) then
+        return 1
+    end
+    local okN, n = pcall(GetNumGroupMembers)
+    for i = 1, (okN and number(n)) or 0 do
+        -- the answer read only once it is known not to be secret
+        local okMe, me = pcall(function()
+            local v = UnitIsUnit("raid" .. i, "player")
+            return readable(v) and v == true
+        end)
+        if okMe and me == true then
+            local ok, _, _, group = pcall(GetRaidRosterInfo, i)
+            return ok and number(group) or nil
+        end
+    end
+    return nil
+end
+
+-- Melee or ranged: the note alerts' rule (Notes/Engine.lua's Engine.Position: every tank melee, a healer or DPS by
+-- the shared melee spec list), so a "melee" line means the same in a note and in an import. Nil without it.
+local function positionOf(role, specID)
+    local E = CRT.NoteEngine
+    if not (E and E.Position) then
+        return nil
+    end
+    local ok, pos = pcall(E.Position, role, specID)
+    return ok and pos or nil
+end
+
+-- You, read once per import, each value guarded (an error or a secret leaves it out): { name, realm, classID,
+-- classFile, specID, role, position, group }.
+function Import.Me()
+    local me = {}
+    if UnitName then
+        local ok, name = pcall(UnitName, "player")
+        me.name = ok and word(name) or nil
+    end
+    if GetNormalizedRealmName then
+        local ok, realm = pcall(GetNormalizedRealmName)
+        me.realm = ok and word(realm) or nil
+    end
+    if UnitClass then
+        local ok, _, file, id = pcall(UnitClass, "player")
+        if ok then
+            me.classFile, me.classID = word(file), number(id)
+        end
+    end
+    local Groups = CRT.Groups
+    if Groups and Groups.PlayerSpecID then
+        local ok, spec = pcall(Groups.PlayerSpecID)
+        me.specID = ok and number(spec) or nil
+    end
+    me.role = roleOf(me.specID)
+    me.position = positionOf(me.role, me.specID)
+    me.group = subgroup()
+    return me
+end
+
+-- A class ID alone (an older caller) as a me table.
+local function meOf(v)
+    if type(v) == "table" then
+        return v
+    end
+    local me = { classID = type(v) == "number" and v or nil }
+    me.classFile = select(2, classByID(me.classID))
+    return me
+end
+
+-- Who a line is for ------------------------------------------------------------------------------------------
+
+local function squash(s)
+    return (s:gsub("[%s%-']", ""):lower())
+end
+
+-- A tag that is a character's name, "Name" or "Name-Realm": the name and the realm (nil without), or nil. A name
+-- has no spaces, digits or punctuation.
+local function nameOf(tag)
+    local name, realm = tag:match("^([^%-]+)%-(.+)$")
+    name = name or tag
+    if name:find("[%s%d%p]") then
+        return nil
+    end
+    return name, realm
+end
+
+-- Whether a tag is your name, in any case; a realm, when it has one, must be yours. CRT has no case-folding name
+-- normaliser (Groups.Normalize only adds the realm), and lower() folds ASCII letters only: "Ä" and "ä" differ.
+local function namesMe(tag, me)
+    local name, realm = nameOf(tag)
+    if not (name and me.name) or name:lower() ~= me.name:lower() then
+        return false
+    end
+    return realm == nil or me.realm == nil or squash(realm) == squash(me.realm)
+end
+
+-- The words of one of Parse.lua's ROLE_WORDS keys, in lower case, as a set.
+local function roleWords(key)
+    local P = CRT.NoteParser
+    local out = {}
+    for _, w in ipairs(P and P.ROLE_WORDS and P.ROLE_WORDS[key] or {}) do
+        out[w] = true
+    end
+    return out
+end
+
+-- The role a tag names ("tank", "healer"/"heal", "dps"/"damager": Parse.lua's words), or nil.
+local function roleTag(tag)
+    local lower = tag:lower()
+    for key, role in pairs({ tank = "TANK", healer = "HEALER", dps = "DAMAGER" }) do
+        if roleWords(key)[lower] then
+            return role
+        end
+    end
+    return nil
+end
+
+-- "melee" or "ranged" for a tag of either (Parse.lua's words), or nil.
+local function positionTag(tag)
+    local lower = tag:lower()
+    for _, key in ipairs({ "melee", "ranged" }) do
+        if roleWords(key)[lower] then
+            return key
+        end
+    end
+    return nil
+end
+
+-- A raid group's number, 1 to 8: "Group1" (the export's own form) and "G3", "Grp3" as notes write it (Parse.lua's
+-- GROUP_WORDS), any case; or nil.
+local function groupOf(tag)
+    local prefix, n = tag:lower():match("^(%a+)([1-8])$")
+    local P = CRT.NoteParser
+    local words = P and P.GROUP_WORDS or { g = true, grp = true, group = true }
+    return prefix and words[prefix] and tonumber(n) or nil
+end
+
+-- A tag that is a whole number: a class ID (1 to the game's class count, or any the game knows as a class), else a
+-- SpecializationID ("71" is Arms). Returns the number and "class" or "spec", or nil.
+local function numberTag(tag)
+    if not tag:match("^%d+$") then
+        return nil
+    end
+    local n = tonumber(tag)
+    local classes = classCount()
+    if (classes and n >= 1 and n <= classes) or classByID(n) then
+        return n, "class"
+    end
+    return n, "spec"
+end
+
+-- The kinds of tag a line can have, in the order they are tried: the first whose matches gives true or false
+-- decides (true: the line is yours; false: it is for another of that kind, and label(tag) names whom); nil means
+-- the tag is not of that kind. A tag no kind takes is skipped "for another tag". me is Import.Me()'s.
+local TAG_KINDS = {
+    -- your own name first, as the note alerts read it, so a player named Tank keeps their lines
+    { key = "player", matches = function(tag, me) return namesMe(tag, me) or nil end },
+    { key = "everyone", matches = function(tag) return roleWords("everyone")[tag:lower()] or nil end },
+    { key = "group", label = function(tag) return tostring(groupOf(tag)) end,
+        matches = function(tag, me)
+            local n = groupOf(tag)
+            if n then
+                return n == me.group
+            end
+        end },
+    { key = "class", label = function(tag) return (classByID(tonumber(tag))) or tag end,
+        matches = function(tag, me)
+            local n, kind = numberTag(tag)
+            if kind == "class" then
+                return n == me.classID
+            end
+        end },
+    { key = "spec", label = function(tag) return specName(tonumber(tag)) or tag end,
+        matches = function(tag, me)
+            local n, kind = numberTag(tag)
+            if kind == "spec" then
+                return me.specID ~= nil and n == me.specID
+            end
+        end },
+    { key = "role", label = function(tag) return TEXT.roles[roleTag(tag)] end,
+        matches = function(tag, me)
+            local role = roleTag(tag)
+            if role then
+                return role == me.role
+            end
+        end },
+    { key = "position", label = function(tag) return TEXT.positions[positionTag(tag)] end,
+        matches = function(tag, me)
+            local pos = positionTag(tag)
+            if pos then
+                return pos == me.position
+            end
+        end },
+    -- a spec word of the notes ("RestoDruid", Notes/SpecWords.lua): yours when you play that spec now
+    { key = "spec", label = function(tag) local e = CRT.NoteSpecs.Read(tag) return e and e.label or tag end,
+        matches = function(tag, me)
+            local Specs = CRT.NoteSpecs
+            local e = Specs and Specs.Read and Specs.Read(tag)
+            if e then
+                return me.specID ~= nil and e.spec == me.specID
+            end
+        end },
+    -- a class by its English name or file token, in any case and spacing ("Death Knight", "deathknight", "DRUID")
+    { key = "class", label = function(tag) local P = CRT.NoteParser return P.ClassName(P.ClassOf(tag)) or tag end,
+        matches = function(tag, me)
+            local P = CRT.NoteParser
+            local file = P and P.ClassOf and P.ClassOf(tag)
+            if file then
+                return file == me.classFile
+            end
+        end },
+    -- any other name: another player's (a word the notes give another meaning, such as "damage", is not a name)
+    { key = "player", label = function(tag) return tag end,
+        matches = function(tag, me)
+            local P = CRT.NoteParser
+            if nameOf(tag) and not (P and P.TAG_WORDS and P.TAG_WORDS[tag:lower()]) then
+                return namesMe(tag, me)
+            end
+        end },
+}
+Import.TAG_KINDS = TAG_KINDS
+
+-- Who a line is for: true and the tag's kind when it is yours, else false, why (naming the kind) and the kind (nil
+-- for a tag no kind takes). me is Import.Me()'s (a class ID alone also works).
+function Import.ForPlayer(tag, me)
+    if type(tag) ~= "string" or trim(tag) == "" then
+        return false, TEXT.noTag
+    end
+    tag = trim(tag)
+    me = meOf(me)
+    for _, kind in ipairs(TAG_KINDS) do
+        local ok, mine = pcall(kind.matches, tag, me)
+        if ok and mine == true then
+            return true, nil, kind.key
+        elseif ok and mine == false then
+            local okLabel, label = pcall(kind.label, tag)
+            return false, string.format(TEXT.other[kind.key], okLabel and label or tag), kind.key
+        end
+    end
+    return false, string.format(TEXT.otherTag, tag), nil
+end
+
+-- What a line says aloud, as the reminder's Read out choices (Alerts/Draft.lua's speak, count and speakAt):
+--   no TTS (or TTS:false)  nothing is read out
+--   TTS:true               the text (or the spell's name) is read out when the alert shows, Show from before its time;
+--   TTS:<words>            those words instead (Import.Words)
+--   countdown:N            a spoken count from N to the time (Count down from, countFrom). The reminders count from
+--                          3 to 10, so N under 3 counts from 3 and over 10 from 10 (N is kept in import.countdown)
+--   TTSTimer:N             read out N seconds before the time (Speak at: Before 0, speakBefore), on the half second
+--                          nearest N from 0.5 to 10; 0 is At 0 (N is kept in import.ttsTimer)
+-- Returns speak, count, speakAt (nil, "zero" or "before"), countFrom and speakBefore (nil when not used).
+local function nearest(n, range)
+    local v = math.floor((n - range.min) / range.step + 0.5) * range.step + range.min
+    return math.max(range.min, math.min(range.max, v))
+end
+
+function Import.Speech(line)
+    local R = CRT.AlertReminders
+    local speak = line.tts == true or (type(line.tts) == "string" and line.tts ~= "")
+    local count = type(line.countdown) == "number" and line.countdown > 0
+    local countFrom = count and nearest(line.countdown, R.COUNT_FROM) or nil
+    local speakAt, speakBefore
+    if speak and type(line.ttsTimer) == "number" then
+        if line.ttsTimer == 0 then
+            speakAt = "zero"
+        else
+            speakAt, speakBefore = "before", nearest(line.ttsTimer, R.SPEAK_BEFORE)
+        end
+    end
+    return speak, count, speakAt, countFrom, speakBefore
+end
+
+-- The words a TTS:<words> line says in place of its text, or nil (TTS:true says the text).
+function Import.Words(line)
+    return type(line.tts) == "string" and line.tts ~= "" and line.tts or nil
+end
+
+-- How a line shows, as the Show as box it ticks besides the new alert's (Alert and Bar): DisplayType Circle the
+-- circle, Text the text; none, or one not listed (kept in import.extra), only the new alert's.
+local DISPLAYS = { circle = "circle", text = "text" }
+function Import.Display(display)
+    return type(display) == "string" and DISPLAYS[trim(display):lower()] or nil
 end
 
 -- A line's time as the reminder's typed times: phase 1 is seconds from the pull ("P1 2:15.5"); a later phase's
@@ -255,31 +663,45 @@ end
 -- Planning ------------------------------------------------------------------------------------------------
 
 -- The reminder a line becomes, made as the alert editor makes a new one (Draft.New, Draft.BuildReminder): Only
--- me, its time typed, its text (or the placeholder), colour and Show from; the rest the editor's defaults.
-local function reminderOf(boss, line)
+-- me, its time typed, its spell (the icon), its text (else the spell's name, else the placeholder), colour, Show
+-- from, what it reads out (Import.Speech) and how it shows (Import.Display); the rest the editor's defaults.
+-- kind is the tag's kind (ForPlayer).
+local function reminderOf(boss, line, kind)
     local Draft = CRT.AlertDraft
     local draft = Draft.New()
     Draft.SetGroup(draft, boss.group)
     draft.boss = boss.bossName
-    draft.text = line.text ~= "" and line.text or TEXT.placeholder
+    draft.spellID = line.spellID
+    draft.text = line.text ~= "" and line.text or CRT.AlertReminders.SpellName(line.spellID) or TEXT.placeholder
     draft.ph = line.ph
     draft.timeText = ("%.10g"):format(line.time)
     draft.timeTouched = true
     draft.warn = Import.Warn(line.dur)
     draft.color = line.color and { line.color[1], line.color[2], line.color[3], line.color[4] } or nil
+    local countFrom, speakBefore
+    draft.speak, draft.count, draft.speakAt, countFrom, speakBefore = Import.Speech(line)
+    draft.countFrom = countFrom or draft.countFrom
+    draft.speakBefore = speakBefore or draft.speakBefore
+    draft.speakText = Import.Words(line) or ""
+    local show = Import.Display(line.display)
+    if show then
+        draft.show[show] = true
+    end
     local r = Draft.BuildReminder({ encounterID = boss.encounterID }, draft)
     -- the phase rule is Import.Times, whatever the draft's time box reads
     r.times = Import.Times(line.ph, line.time)
-    r.import = { source = Import.SOURCE, tag = line.tag, ph = line.ph, time = line.time, dur = line.dur,
-        text = line.text == "" and "" or nil, extra = line.extra, bossExtra = boss.extra }
+    r.import = { source = Import.SOURCE, tag = line.tag, tagKind = kind, ph = line.ph, time = line.time,
+        dur = line.dur, text = line.text == "" and "" or nil, countdown = line.countdown, ttsTimer = line.ttsTimer,
+        extra = line.extra, bossExtra = boss.extra }
     return r
 end
 
--- What the parsed text would import for a player of classID: { bosses = { { encounterID, name, difficulty, group,
+-- What the parsed text would import for you (me: Import.Me()'s, or a class ID alone): { bosses = { { encounterID, name, difficulty, group,
 -- known, reminders = { reminder tables }, skipped = { { line, reason } }, reason } }, skipped, count }. A boss
 -- with a reason (no encounter ID, an unknown difficulty) imports nothing; known is false for a boss the season
 -- doesn't have (still imported, by its encounter ID). count is how many reminders would be written.
-function Import.Plan(parsed, classID)
+function Import.Plan(parsed, me)
+    me = meOf(me)
     local out = { bosses = {}, skipped = parsed and parsed.skipped or {}, count = 0 }
     local Bosses = CRT.Bosses
     for _, b in ipairs(parsed and parsed.bosses or {}) do
@@ -297,9 +719,9 @@ function Import.Plan(parsed, classID)
         end
         if not p.reason then
             for _, line in ipairs(b.reminders) do
-                local mine, why = Import.ForPlayer(line.tag, classID)
+                local mine, why, kind = Import.ForPlayer(line.tag, me)
                 if mine then
-                    p.reminders[#p.reminders + 1] = reminderOf(p, line)
+                    p.reminders[#p.reminders + 1] = reminderOf(p, line, kind)
                 else
                     p.skipped[#p.skipped + 1] = { line = line.line, reason = why }
                 end
@@ -327,7 +749,8 @@ local function timeOf(r)
     return r.times
 end
 
--- The key two reminders are the same by: their group, time and text.
+-- The key two reminders are the same by: their group, time, text and spell (two spells at one time whose names
+-- the game doesn't give are both the placeholder).
 local function sameKey(group, r)
     local R = CRT.AlertReminders
     local times = timeOf(r)
@@ -335,7 +758,8 @@ local function sameKey(group, r)
     if not list then
         return nil
     end
-    return tostring(group) .. "|" .. R.FormatTimes(list) .. "|" .. trim(r.text):lower()
+    local spell = type(r.spellID) == "number" and tostring(r.spellID) or ""
+    return tostring(group) .. "|" .. R.FormatTimes(list) .. "|" .. trim(r.text):lower() .. "|" .. spell
 end
 
 local function imported(r)

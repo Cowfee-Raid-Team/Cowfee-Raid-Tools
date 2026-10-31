@@ -397,6 +397,15 @@ check("alerts share: an older code's barTo still reads, and is left out quietly"
   assert(AS.REMINDER_FIELDS.barTo == nil, "barTo is no longer a field that travels")
 end)
 
+check("alerts share: Count down from, Before 0 and Say instead go with a reminder, in range", function()
+  local clean, dropped = AS.CleanReminder({ text = "x", times = "P1 0:10", outputs = { alert = true },
+    countFrom = 6, speakAt = "before", speakBefore = 2.5, speakText = "Move" })
+  assert(clean and clean.countFrom == 6 and clean.speakAt == "before" and clean.speakBefore == 2.5 and clean.speakText == "Move" and dropped == 0, "kept")
+  local bad, n = AS.CleanReminder({ text = "x", times = "P1 0:10", outputs = { alert = true },
+    countFrom = 11, speakBefore = 0, speakAt = "soon", speakText = 5 })
+  assert(bad and bad.countFrom == nil and bad.speakBefore == nil and bad.speakAt == nil and bad.speakText == nil and n == 4, "out of range left out: " .. tostring(n))
+end)
+
 -- Save as Raid note (Notes/MechNote.lua) is this computer's own: an export leaves it out without counting it, and an
 -- import over a Raid note alert brings its lines in the raid note in step
 check("alerts share: a Raid note alert's choice stays home, and an import over it updates its lines", function()

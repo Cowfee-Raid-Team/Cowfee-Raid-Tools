@@ -435,6 +435,7 @@ do
   inRaid = true
   assert(mine("everyone") and mine("healer") and mine("Group3") and mine("PRIEST") and mine("Gadios"), "everyone, role, group, class and name match")
   assert(not mine("tank") and not mine("dps") and not mine("Group1") and not mine("WARRIOR") and not mine("melee"), "others don't")
+  assert(mine("ranged"), "a healer has a position too: a priest is ranged")
   inRaid = false
   local found = Model.Palette(roster, "gro")
   assert(#found[3].entries == 8 and #found[1].entries == 0 and #found[2].entries == 0, "search keeps Group1..8 for 'gro'")
