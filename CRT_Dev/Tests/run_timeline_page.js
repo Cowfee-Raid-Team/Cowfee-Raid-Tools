@@ -1668,6 +1668,36 @@ do
   bossDD.opts.set(3470)
 end
 print("ok Review has no Play; Rehearse is first in the row")
+-- Import reminders (#1229): one button before Rehearse on the second row, on the third before Share note when narrow;
+-- it opens the paste window
+do
+  local imp
+  for i = #buttons, 1, -1 do if buttons[i].text == "Import reminders" then imp = buttons[i] break end end
+  assert(imp, "an Import reminders button")
+  assert(helps["Import reminders"] and helpTargets["Import reminders"] == imp, "with its (?) after it")
+  local reh, share = rehearseBtn(), helpTargets["Share note"]
+  local f
+  for _, d in ipairs(dropdowns) do if d.text == "Order" then f = d.parent end end
+  rawset(f, "GetWidth", function() return CRT.UI.PAGE_W end)
+  T:Fire()
+  assert(imp.pt[1] == "RIGHT" and imp.pt[2] == reh and imp.pt[3] == "LEFT" and imp.pt[4] == -(4 + 20 + 6), "wide: right before Rehearse")
+  rawset(f, "GetWidth", function() return 760 end)
+  T:Fire()
+  assert(imp.pt[1] == "RIGHT" and imp.pt[2] == share, "narrow: right before Share note on the third row")
+  share:Hide()
+  rawset(f, "GetWidth", function() return 760 end)
+  local placed = false
+  for _, d in ipairs(dropdowns) do if d.text == "Order" and d.parent == f then d.refresh() placed = true end end
+  assert(placed and imp.pt[1] == "TOPRIGHT" and imp.pt[5] == -64, "narrow, no Share note: the end of the third row")
+  rawset(f, "GetWidth", nil)
+  T:Fire()
+  local opened = 0
+  CRT.TimelineImportWindow = { Open = function() opened = opened + 1 end }
+  imp.OnClick(imp)
+  assert(opened == 1, "opens the paste window")
+  CRT.TimelineImportWindow = nil
+end
+print("ok Import reminders sits with the Review tab's buttons and opens its window")
 do
   -- Send to Timeline saves the Journal's export at once and opens it; the middle list is that reference
   local text = table.concat({ "Boss: Nek'zali the Soulcoiler", "Difficulty: Mythic", "Encounter: 3470", "# Stage One",

@@ -401,6 +401,9 @@ local defaults = {
         -- Healer CDs' spell row order per healer, on every boss: [player key in lower case, or "spec:<SpecializationID>"
         -- for an open slot] = { spellID, ... } (Timeline/HealerOrder.lua). Long term.
         healerSpellOrder = {},
+        -- Import reminders (Timeline/ImportWindow.lua): the window's place, and its Replace what I imported before tick
+        importWindow = {},
+        importReplace = true,
     },
     -- Team raids (Team.lua, TeamList.lua): list is your own team names, in the order added (Team and Pug are built
     -- in, never saved here); popup is the place of the new raid group popup (TeamPopup.lua). Tonight's team and the

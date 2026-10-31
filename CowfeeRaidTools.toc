@@ -31,6 +31,7 @@ CRT_Core\UI\Controls.lua
 CRT_Core\UI\Toggle.lua
 CRT_Core\UI\ScrollBar.lua
 CRT_Core\UI\Window.lua
+CRT_Core\UI\CodeBox.lua
 CRT_Core\UI\Placement.lua
 CRT_Core\UI\PlacementPanel.lua
 CRT_Core\UI\PlacementSelect.lua
@@ -190,6 +191,8 @@ CRT_Modules\Alerts\SubTabs.lua
 CRT_Modules\Alerts\Editor.lua
 CRT_Modules\Alerts\Saved.lua
 CRT_Modules\Alerts\Share.lua
+CRT_Modules\Timeline\ImportReminders.lua
+CRT_Modules\Timeline\ImportWindow.lua
 CRT_Modules\Markers\Database.lua
 CRT_Modules\Markers\Display.lua
 CRT_Modules\Markers\ClearOn.lua
