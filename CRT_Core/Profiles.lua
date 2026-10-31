@@ -90,7 +90,7 @@ Profiles.SHARE = {
         responses = false, -- the response buttons (saved once edited): the leader's own, kept back
     },
     gearChecker = { filter = false, belowTrack = true, popout = true, extra = true },
-    sound = false, -- the names of your own sound files
+    sound = { custom = false, voice = true }, -- the names of your own sound files stay yours; the voice is a setting
     late = { days = true, hour = true, minute = true, grace = true, onlyTeam = true, history = false, nextId = false, lastAuto = false },
     tattle = {
         enabled = true, raidsOnly = true, onlyTeam = true, avoidable = true, maxPlayers = true, custom = true,

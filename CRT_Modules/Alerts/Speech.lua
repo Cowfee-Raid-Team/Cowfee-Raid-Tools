@@ -11,7 +11,9 @@ local ADDON, CRT = ...
 -- change away from 1x stops what is being said and drops the queue, and lines that come due at 2x or 4x
 -- are never said. What was queued at 1x stays while the speed stays 1x. Sound cues play at any speed.
 -- Both go through the sound engine (Sound/Engine.lua): a cue is any sound reference, and a line is said
--- with CRT.Sound:Speak at the Raid Notes rate and volume.
+-- with CRT.Sound:Speak at the Raid Notes rate and volume. A line the chosen voice has a clip for plays the clip
+-- (Sound/Voices.lua); no finished event comes for a clip, so the next line may start CLIP_HOLD seconds after it,
+-- which keeps a count's 3, 2, 1 on their seconds (the clips are about a second long, their tail is quiet).
 -- A cue plays at its exact moment, not at the next tick: once it is within CUE_AHEAD of zero, the tick schedules
 -- it with C_Timer.After for the real seconds left (engine seconds over the rehearsal's speed). When the timer
 -- comes, the cue plays if it is still in this run's lines and due (within Rules.ZERO_EPSILON, the tolerance the
@@ -30,6 +32,7 @@ local TICK = 0.1
 local SOUND_LATE = 1  -- a sound whose time passed more than this many seconds ago is not played
 local CUE_AHEAD = 2 * TICK -- a cue this many real seconds from zero is scheduled: the next tick may come a slow frame after TICK
 local CUE_EARLY = Rules.ZERO_EPSILON -- a cue this close before its time plays: the tolerance the displays draw 0 in
+local CLIP_HOLD = 0.9 -- seconds a voice clip holds the queue: under the count's one second between numbers
 
 local NOTICE = {
     speech = "Raid Notes: your note lines are now read out even with the note callout off. Untick 'Read them out' on Raid Notes > Alert Settings to stop it.",
@@ -71,12 +74,14 @@ local function settings()
 end
 
 -- Speaks now, outside the queue (the Test speech button uses this), at the Raid Notes rate and volume.
+-- Returns what Sound:Speak did: true, or true and "clip" when a voice clip said it.
 function Speech:SpeakNow(text)
     local s = settings()
     local ok, why = CRT.Sound:Speak(text, { rate = s.ttsRate or 0, volume = s.ttsVolume or 100 })
     if not ok and why then
         CRT:Print(why)
     end
+    return ok, why
 end
 
 -- A new run: nothing from the last one is waiting or marked.
@@ -106,7 +111,7 @@ end
 local arrivals = 0
 
 -- Hooks: fn() the moment a cue plays (the displays redraw); fn(kind, info) for each cue ("cue": key, at, now,
--- how = "timer" or "tick", played, speed) and each line said ("speech": text, at, now, real).
+-- how = "timer" or "tick", played, speed) and each line said ("speech": text, at, now, real, clip).
 function Speech:OnZero(fn)
     self.zero[#self.zero + 1] = fn
 end
@@ -310,9 +315,12 @@ function Speech:Tick(now)
         local item = table.remove(self.queue, 1)
         self.playing = true
         self.playingUntil = real + Rules.SPEECH_TIMEOUT
-        self:SpeakNow(item.text or "")
+        local _, how = self:SpeakNow(item.text or "")
+        if how == "clip" then
+            self.playingUntil = real + CLIP_HOLD
+        end
         if #self.timing > 0 then
-            tell(self, "speech", { text = item.text, at = item.at, now = now, real = real })
+            tell(self, "speech", { text = item.text, at = item.at, now = now, real = real, clip = how == "clip" })
         end
     end
 end

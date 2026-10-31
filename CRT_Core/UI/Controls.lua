@@ -156,8 +156,11 @@ end
 -- and filesOnly; options defaults to the engine's list. opts.help true adds the (?) on where your own
 -- files go, as row.help, right of the dropdown (or of its Play button). opts.playButton true adds a small Play button after the
 -- closed dropdown, as row.play, that plays the chosen sound once (nothing else: no alert, bar or speech).
+-- The open list scrolls past UI.SOUND_MENU_H pixels unless opts.maxHeight says otherwise: the voices' clips
+-- make it long.
 UI.SOUND_PLAY_W, UI.SOUND_PLAY_GAP = 44, 6
-UI.SOUND_HELP = "Game sounds, sounds shared by other addons, and your own files.\n\nYour own .ogg or .mp3 files go in the CowfeeRaidTools_Media addon's Sounds folder: Quality of Life > Sounds shows how, with a Test button for each file.\n\nPlay in the list plays the sound on your sound channel (General Settings)."
+UI.SOUND_MENU_H = 400
+UI.SOUND_HELP = "The Xavier and Lola voice clips, game sounds, sounds shared by other addons, and your own files.\n\nYour own .ogg or .mp3 files go in the CowfeeRaidTools_Media addon's Sounds folder: Quality of Life > Sounds shows how, with a Test button for each file.\n\nPlay in the list plays the sound on your sound channel (General Settings)."
 
 function UI.SoundDropdown(parent, text, opts)
     local o = {}
@@ -167,6 +170,7 @@ function UI.SoundDropdown(parent, text, opts)
     o.options = opts.options or function()
         return CRT.Sound:Choices({ none = opts.none, filesOnly = opts.filesOnly })
     end
+    o.maxHeight = opts.maxHeight or UI.SOUND_MENU_H
     o.decorate = function(button, option)
         if option.key == "none" then
             return nil

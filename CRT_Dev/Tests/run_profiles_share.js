@@ -190,7 +190,7 @@ do
   local leaked = {}
   for p in pairs(paths) do for _, no in ipairs({ "notes.list", "groups.presets", "late.history", "tattle.history", "alerts.reminders", "alerts.saved", "timeline.bosses", "lootmaster.authority", "classCache", "importBackup",
       "readycheck.output", "readycheck.earlyPullOutput", "tattle.output", "tattle.autoPost", "tattle.season", "lootmaster.awardChannel", "lootmaster.awardMessage", "lootmaster.responses",
-      "notes.trustedOnly", "sound", "qol.lowHealth.customSounds", "seasonStats", "whatsNew", "alerts.specialView", "alerts.specialViewPicked", "groups.roles", "timeline.popView" }) do
+      "notes.trustedOnly", "sound.custom", "qol.lowHealth.customSounds", "seasonStats", "whatsNew", "alerts.specialView", "alerts.specialViewPicked", "groups.roles", "timeline.popView" }) do
     if p == no or p:sub(1, #no + 1) == no .. "." then leaked[#leaked + 1] = p end end end
   check(#leaked == 0, "no excluded data, report output, trust setting or sound file name is a shared path (" .. table.concat(leaked, ",") .. ")")
   local kept = {}
@@ -211,6 +211,7 @@ do
     check(paths[path] ~= nil and paths[path].default == def, path .. " is shared, with its default " .. tostring(def))
   end
   check(paths["gearChecker.filter"] == nil, "the Gear Checker's picked chip stays page state")
+  check(paths["sound.voice"] ~= nil and paths["sound.voice"].default == "xavier", "the voice is shared, Xavier by default")
 end
 
 -- The sender: a profile with settings, positions and data. --------------------------------------
@@ -254,7 +255,7 @@ check(sent.data.whatsNew == nil, "What's new (Show after updates, the version se
 check(not flat:find("Someone", 1, true) and not flat:find("Friend", 1, true), "no class cache or loot authority is exported")
 check(not flat:find("settingsTab", 1, true) and not flat:find("lastPage", 1, true), "no page state is exported")
 check(not flat:find("GUILD", 1, true) and not flat:find("officer", 1, true) and sent.data.readycheck.output == nil and sent.data.tattle.autoPost == nil and sent.data.notes.trustedOnly == nil, "no report output, auto-post or note trust setting is exported")
-check(sent.data.qol.lowHealth.soundChoice == nil and sent.data.sound == nil, "no sound file name, and no sound choice naming your own file, is exported")
+check(sent.data.qol.lowHealth.soundChoice == nil and (sent.data.sound == nil or sent.data.sound.custom == nil), "no sound file name, and no sound choice naming your own file, is exported")
 check(sent.data.tattle.custom[12345] == "Soak" and sent.data.consumables.categoryOrder[1] == "flask" and sent.data.alerts.areas.timeline.lineColor[3] == 0.6, "Tattlebot spells, consumables order and the timeline line colour are exported")
 check(sent.data.alerts.special and sent.data.alerts.special[3001] and sent.data.alerts.special[3001].soaks.on == true and sent.data.alerts.special[3001].soaks.show.bar == false
   and sent.data.alerts.specialView == nil, "your special alerts' choices are exported with the other alert settings, the list's page state is not")
