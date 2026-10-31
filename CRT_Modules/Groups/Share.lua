@@ -6,8 +6,8 @@ local ADDON, CRT = ...
 -- into parts and sent through CRT.Comm:Send on the group channel. Not sent again when it is the one last sent to that
 -- channel this session, so a raider who joins later gets it on the next changed push, or after the sender's /reload.
 -- Never in combat or a boss fight (Notes.Busy, as Push note), and only by the leader or an assistant.
--- Receiving (Share.Receive): only from the group's leader or an assistant, never your own (CRT.NoteComm.Sender, the
--- check shared notes use). Kept as one layout per sender (preset.from, their Name-Realm), named "<layout> (from
+-- Receiving (Share.Receive): never while you lead the group; else only from the leader or an assistant, never your
+-- own (CRT.NoteComm.Sender, the check shared notes use). Kept as one layout per sender (preset.from, their Name-Realm), named "<layout> (from
 -- <sender>)", replaced by the next one they send, and made the active layout (Groups:StoreFrom); your own layouts are
 -- never touched. Parts that don't all arrive within TIMEOUT seconds, or don't add up to their hash, are dropped.
 --
@@ -208,6 +208,10 @@ function Share.Receive(prefix, message, channel, sender)
         return
     end
     if prefix ~= PREFIX or type(message) ~= "string" or type(sender) ~= "string" or not CHANNELS[channel] then
+        return
+    end
+    -- the group's leader keeps their own roster: never one from anyone, assistants included (Alex, 2026-10-31)
+    if UnitIsGroupLeader("player") then
         return
     end
     local short, trusted = senderOf(sender)

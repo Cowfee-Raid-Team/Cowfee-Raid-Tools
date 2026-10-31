@@ -59,7 +59,9 @@ local TEXT = {
     rosterHelp = "Push note also sends your active Raid Groups layout, so everyone's Late Tracker expects the same "
         .. "people. Raiders get it as their active layout, named \"<layout> (from <you>)\".\n\n"
         .. "It goes only when it changed since you last sent it. Someone who joins later gets it on your next push "
-        .. "after a change, or after you /reload.",
+        .. "after a change, or after you /reload.\n\n"
+        .. "While you lead the group, your own roster is never replaced: you take no roster from anyone, assistants "
+        .. "included.",
     close = CLOSE or "Close",
     unsaved = "Unsaved changes.",
     saved = "Saved.",

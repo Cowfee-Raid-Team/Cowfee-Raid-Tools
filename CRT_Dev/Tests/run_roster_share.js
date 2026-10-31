@@ -327,6 +327,21 @@ Groups:SetActive(kip.id)
 for _, m in ipairs(Share.Pack("Main; Mythic", variant(8, "Fifth-Sargeras"))) do Share.Receive("CRTNote2", m, "RAID", "Solex-Sargeras") end
 eq(Groups:Active(), kip.id, "another prefix: ignored")
 
+-- the group's leader never takes a roster, not even an assistant's (Alex, 2026-10-31); everyone else still does
+leaders.Solex = "assist"
+leaders.player = "lead"
+local n2, p2 = count(), #printed
+deliver(Share.Pack("Main; Mythic", variant(8, "Sixth-Sargeras")), "Solex-Sargeras")
+check(count() == n2 and #printed == p2 and Groups:Active() == kip.id and got.slots[8] ~= "Sixth-Sargeras",
+  "leader: an assistant's roster is ignored")
+leaders.player = "assist"
+deliver(Share.Pack("Main; Mythic", variant(8, "Seventh-Sargeras")), "Solex-Sargeras")
+check(Groups:Active() == got.id and got.slots[8] == "Seventh-Sargeras", "an assistant: takes another assistant's roster")
+Groups:SetActive(kip.id)
+leaders.player = nil -- the leader handed lead over and is a raider now
+deliver(Share.Pack("Main; Mythic", variant(8, "Eighth-Sargeras")), "Solex-Sargeras")
+check(Groups:Active() == got.id and got.slots[8] == "Eighth-Sargeras", "a former leader, now a raider: takes it")
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 print("ok roster share: sent with its prefix in parts, deduped, taken only from the leader or an assistant, made active")
