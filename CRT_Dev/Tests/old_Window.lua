@@ -63,6 +63,15 @@ local function fmtTime(seconds)
     return format("%d:%02d", math.floor(seconds / 60), math.floor(seconds % 60))
 end
 
+-- A countdown's whole second, rounded up (Alex, 2026-10-31: every countdown rounds up, as Rules.Countdown does,
+-- within its 5 ms tolerance), so 0:00 comes the moment the time passes 0.
+local function up(seconds)
+    if seconds <= 0.005 then
+        return 0
+    end
+    return math.ceil(seconds - 0.005)
+end
+
 -- Headings and your own lines, in the theme's heading colour (the game's gold in Default: Blizzard).
 local function gold(text)
     return CRT.UI.HeadingText(text)
@@ -268,7 +277,7 @@ local function timersText()
             elseif Engine.IsCut and Engine:IsCut(item) then
                 -- A later phase started first: this line never comes.
             elseif shown(item) and not (Notes:WindowSettings("window").hidePassed and remaining < -(item.dur or 0)) then
-                lines[#lines + 1] = timerLine(item, remaining)
+                lines[#lines + 1] = timerLine(item, up(remaining))
             end
         end
         for _, ph in ipairs(note.phases) do
@@ -481,7 +490,7 @@ local function runLines()
             end)
             lines[#lines + 1] = phaseHeading(ph)
             for _, row in ipairs(rows) do
-                lines[#lines + 1] = reminderLine(row.it, row.remaining, row == nextRow)
+                lines[#lines + 1] = reminderLine(row.it, up(row.remaining), row == nextRow)
             end
         else
             lines[#lines + 1] = "|cff777777" .. format(TEXT.waiting, tostring(ph)) .. "|r"

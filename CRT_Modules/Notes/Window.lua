@@ -89,7 +89,11 @@ end
 -- The whole second a timer shows for the time left: rounded up, as every alert countdown is (Alerts/Rules.lua
 -- Countdown), so 0 comes the moment the time passes 0, with the sound; 0 from then on.
 local function shownSecond(remaining)
-    local left = CRT.AlertRules.Countdown(remaining, 0)
+    local Rules = CRT.AlertRules
+    if not Rules then
+        return remaining > 0 and math.ceil(remaining) or 0 -- a test harness without the alert rules
+    end
+    local left = Rules.Countdown(remaining, 0)
     return left and tonumber(left) or 0
 end
 
