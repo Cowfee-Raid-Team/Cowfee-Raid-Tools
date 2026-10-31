@@ -225,6 +225,42 @@ check("the tts voice reads the count out", #played == 0 and #said == 4)
 CRT.db.sound.voice = "xavier"
 Alerts:Stop()
 
+-- Counts from 5 and from 10 (Rules.SpeechItems opts.countFrom), and Speak at: Before 0 (opts.before)
+local function runCount(text, warn, opts, seconds)
+  local list = {}
+  for i, s in ipairs(Rules.SpeechItems(text, warn, true, true, false, opts)) do list[i] = s end
+  items = { { id = "k" .. tostring(opts.countFrom) .. tostring(opts.before), ph = 1, time = 20, text = text, priority = 21,
+    outputs = { speech = true }, speech = list } }
+  reset()
+  Alerts:Start(1, "Mythic", "test")
+  local t0 = clock
+  for i = 1, (seconds or 25) * 10 do step(0.1) end
+  local out = {}
+  for _, p in ipairs(played) do out[#out + 1] = { what = p.path:match("([^\\\\]+)%.mp3$"), at = p.at - t0 } end
+  for _, s in ipairs(said) do out[#out + 1] = { what = "tts:" .. tostring(s.text), at = s.at - t0 } end
+  table.sort(out, function(a, b) return a.at < b.at end)
+  return out
+end
+local function show(out) local t = {} for _, o in ipairs(out) do t[#t + 1] = o.what .. "@" .. string.format("%.1f", o.at) end return table.concat(t, " ") end
+local function find(out, what) for _, o in ipairs(out) do if o.what == what then return o end end end
+local function onSecond(out, n) local o = find(out, tostring(n)) return o and math.abs(o.at - (20 - n)) <= 0.15 end
+
+local c5 = runCount("Soak", 8, { countFrom = 5 })
+check("a count from 5 plays 5, 4, 3, 2, 1 as clips, each on its second",
+  find(c5, "Soak") and onSecond(c5, 5) and onSecond(c5, 4) and onSecond(c5, 3) and onSecond(c5, 2) and onSecond(c5, 1) and #said == 0
+    and find(c5, "5seconds321") == nil, show(c5))
+local c10 = runCount("Soak", 12, { countFrom = 10 })
+local ten = find(c10, "tts:10")
+check("a count from 10: 10 has no clip and is read out", ten ~= nil and math.abs(ten.at - 10) <= 0.15, show(c10))
+check("then 9 is still on its second, with the 9 clip, and so on down to 1",
+  onSecond(c10, 9) and onSecond(c10, 8) and onSecond(c10, 5) and onSecond(c10, 1) and find(c10, "5seconds321") == nil, show(c10))
+local cb = runCount("Soak", 8, { countFrom = 5, before = 3 })
+check("Speak at Before 0 inside a count: Soak at 3 s, then 2 once Soak ends, and 1 a second after 2",
+  find(cb, "Soak") and math.abs(find(cb, "Soak").at - 17) <= 0.15 and find(cb, "3") == nil
+    and find(cb, "1") and find(cb, "1").at - 19 <= (X.seconds.Soak - 1) + 0.15 and find(cb, "1").at - find(cb, "2").at <= 1.0 + 1e-6
+    and find(cb, "2") and find(cb, "2").at - find(cb, "Soak").at >= X.seconds.Soak - 1e-6, show(cb))
+Alerts:Stop()
+
 -- Quality of Life > Sounds: the Voice dropdown, Test and (?) ---------------------------------------------
 local dropdowns, helps, build = {}, {}, nil
 CRT.UI = {
