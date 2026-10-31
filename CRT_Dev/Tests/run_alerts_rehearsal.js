@@ -293,7 +293,7 @@ test("rehearsal run follows its clock", function()
   advance(3) -- 2x: six fight seconds in three
   assert(near(A:Elapsed(), 38, 1e-6), "2x elapsed " .. tostring(A:Elapsed()))
   local bars = Bars:Visible()
-  assert(#bars == 1 and bars[1].text == "Soak" and bars[1].time == format("%d", math.floor(50 - fight)) and near(fight, 38, 1e-6),
+  assert(#bars == 1 and bars[1].text == "Soak" and bars[1].time == format("%d", math.ceil(50 - fight - 0.001)) and near(fight, 38, 1e-6),
     "bar counts on the clock: " .. tostring(bars[1] and bars[1].time))
   -- the base stays where Start put it
   assert(near(A:TimeAt(0), base))
@@ -484,7 +484,7 @@ test("rehearsal bars freeze on pause", function()
   playing, speed = true, 2
   advance(1)
   b = Bars:Visible()[1]
-  assert(near(fight, 17, 1e-6) and b.time == format("%d", math.floor(30 - fight)), "two fight seconds in one at 2x: " .. b.time)
+  assert(near(fight, 17, 1e-6) and b.time == format("%d", math.ceil(30 - fight - 0.001)), "two fight seconds in one at 2x (rounded up): " .. b.time)
 end)
 
 test("rehearsal personal note window counts on the clock", function()

@@ -234,11 +234,10 @@ local function drawBorder(bar, size)
     e[4]:SetWidth(size)
 end
 
-local function timeText(remaining)
-    if remaining < 10 then
-        return format("%.1f", math.max(0, remaining))
-    end
-    return format("%d", math.floor(remaining))
+-- The shared countdown (Rules.Countdown: rounded up, tenths under 10), so 0.0 shows the moment the fill runs out
+-- and the sound plays. line (a timed bar's) lets a probe see when its 0.0 is drawn.
+local function timeText(remaining, line)
+    return Rules.Countdown(remaining, false, line and "bars", line) or "0.0"
 end
 
 -- " (soak)": the line's main ability type named after its text, whatever colour the bar uses; nil with no known
@@ -385,7 +384,7 @@ local function row(line, now, ahead, shownAt, s)
     return {
         text = Areas.ShownText(line),
         kind = typeWord(line, s),
-        time = timeText(countTo(line, now) - now),
+        time = timeText(countTo(line, now) - now, line),
         icon = Areas.LineIcon(line),
         lineColor = from ~= "custom" and color or nil,
         color = color,
@@ -623,7 +622,7 @@ local function animate(bar, now)
     local fillWidth = bar.fillRoom * filled
     bar.fill:SetWidth(math.max(fillWidth, 1))
     bar.fill:SetShown(fillWidth > 0)
-    local t = timeText(countTo(line, now) - now)
+    local t = timeText(countTo(line, now) - now, line)
     if t ~= bar.timeShown then
         bar.timeShown = t
         bar.time:SetText(t)

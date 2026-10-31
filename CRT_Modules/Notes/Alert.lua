@@ -199,13 +199,11 @@ local function lineColor(line)
     return Colors and Colors.KnownTypeColor(line.abilityType) or nil
 end
 
-local function countdownText(remaining)
-    if remaining <= 0 then
-        return "NOW"
-    elseif remaining < 10 then
-        return format("%.1fs", remaining)
-    end
-    return math.floor(remaining) .. "s"
+-- The shared countdown (Alerts/Rules.lua Countdown: rounded up, tenths under 10), and NOW from 0, the moment
+-- the sound plays.
+local function countdownText(remaining, line)
+    local left = CRT.AlertRules.Countdown(remaining, false, "callout", line)
+    return left and (left .. "s") or "NOW"
 end
 
 function Alert:Refresh()
@@ -236,7 +234,7 @@ function Alert:Refresh()
         -- A note's spell line shows the spell's own name, as it always did. A line with show:
         -- (ownLabel) shows its own text, icon and colour below, like a reminder.
         local info = Notes:SpellInfo(best.spellID)
-        show(info and info.icon or best.icon, info and info.name or best.text or ("Spell " .. best.spellID), countdownText(remaining),
+        show(info and info.icon or best.icon, info and info.name or best.text or ("Spell " .. best.spellID), countdownText(remaining, best),
             lineColor(best))
     else
         -- Any other line (a reminder, or a merged "Soak + Defensive") shows its own text, with the
@@ -246,7 +244,7 @@ function Alert:Refresh()
             local info = Notes:SpellInfo(best.spellID)
             icon = info and info.icon
         end
-        show(icon, best.text or "", countdownText(remaining), lineColor(best))
+        show(icon, best.text or "", countdownText(remaining, best), lineColor(best))
     end
 end
 
@@ -338,6 +336,15 @@ ticker:RegisterEvent("PLAYER_LOGIN")
 ticker:SetScript("OnEvent", function()
     build()
 end)
+
+-- Redrawn the moment a sound cue plays (Alerts/Speech.lua OnZero), so its NOW and the sound are the same moment.
+if CRT.AlertSpeech and CRT.AlertSpeech.OnZero then
+    CRT.AlertSpeech:OnZero(function()
+        if frame then
+            Alert:Refresh()
+        end
+    end)
+end
 
 -- A theme switch draws the alert again on its next update, so a line with no colour of its own takes the
 -- new heading colour.

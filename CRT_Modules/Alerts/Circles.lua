@@ -43,7 +43,6 @@ local TRACK_ALPHA = 0.2      -- the faint full ring behind the swipe, of the rin
 local REVERSE = false
 local DEFAULT_FONT_NAME = "Friz Quadrata" -- until a font is chosen
 
-local NOW_BELOW = 0.1        -- under this many seconds left reads NOW
 local MIN_SIZE, MAX_SIZE, DEFAULT_SIZE = 32, 160, 64
 local MIN_FONT, MAX_FONT, DEFAULT_FONT = 10, 32, 16
 local MIN_SECONDS_FONT = 8
@@ -90,12 +89,9 @@ local function fontSize(s)
     return clamp(s.fontSize, MIN_FONT, MAX_FONT, DEFAULT_FONT)
 end
 
--- Whole seconds, rounded up, and NOW once under a tenth is left.
-local function seconds(remaining)
-    if remaining < NOW_BELOW then
-        return TEXT.now
-    end
-    return tostring(math.ceil(remaining))
+-- Whole seconds, rounded up (the shared Rules.Countdown), and NOW from 0, the moment the sound plays.
+local function seconds(remaining, line)
+    return CRT.AlertRules.Countdown(remaining, true, "circles", line) or TEXT.now
 end
 
 -- The words' full width. GetStringWidth is bounded by the region's size, GetUnboundedStringWidth is not.
@@ -175,7 +171,7 @@ local function draw(w, line, now, s, shownAt)
     end
     Areas.Swipe(w, line, total, now) -- set only when the line, its time or a rehearsal's state changes
     Areas.SetFont(w.seconds, s.font or DEFAULT_FONT_NAME, math.max(MIN_SECONDS_FONT, math.floor(size / 3)), s.outline)
-    w.seconds:SetText(seconds(at - now))
+    w.seconds:SetText(seconds(at - now, line))
     Areas.SetFont(w.text, s.font or DEFAULT_FONT_NAME, textSize, s.outline)
     w.text:SetText(Areas.ShownText(line))
     w.text:SetTextColor(c[1], c[2], c[3])

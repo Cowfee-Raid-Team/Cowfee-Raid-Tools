@@ -20,7 +20,6 @@ local TEXT = {
     sampleLater = "Soak",
 }
 
-local NOW_BELOW = 0.1     -- under this many seconds left reads NOW
 local MIN_ICON, MAX_ICON, DEFAULT_ICON = 24, 96, 44
 local MIN_FONT, MAX_FONT, DEFAULT_FONT = 10, 40, 20
 local MIN_SECONDS_FONT = 8
@@ -56,12 +55,9 @@ local function fadeOn(s)
     return s.fade ~= false
 end
 
--- Whole seconds, rounded up, and NOW once under a tenth is left.
-local function seconds(remaining)
-    if remaining < NOW_BELOW then
-        return TEXT.now
-    end
-    return tostring(math.ceil(remaining))
+-- Whole seconds, rounded up (the shared Rules.Countdown), and NOW from 0, the moment the sound plays.
+local function seconds(remaining, line)
+    return CRT.AlertRules.Countdown(remaining, true, "icons", line) or TEXT.now
 end
 
 -- The words' full width. GetStringWidth is bounded by the region's size, GetUnboundedStringWidth is not.
@@ -151,7 +147,7 @@ local function draw(w, line, now, s, shownAt)
         w.swipeKey = nil
     end
     Areas.SetFont(w.seconds, s.font, math.max(MIN_SECONDS_FONT, math.floor(size / 2)), s.outline)
-    w.seconds:SetText(seconds(at - now))
+    w.seconds:SetText(seconds(at - now, line))
     local width = size
     if showText(s) then
         Areas.SetFont(w.text, s.font, textSize, s.outline)

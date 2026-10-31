@@ -1143,6 +1143,28 @@ function Area:Move()
     end
 end
 
+-- Every area redrawn now: the ticker's refresh, and the moment a sound cue plays (Alerts/Speech.lua OnZero), so
+-- the areas' NOW and the sound are the same moment.
+function Areas:TickAll()
+    for _, area in ipairs(Areas.list) do
+        -- One area failing must not stop the others.
+        -- A failure is reported once, until the area works again.
+        local ok, err = pcall(area.Tick, area)
+        if ok then
+            area.failed = nil
+        elseif not area.failed then
+            area.failed = true
+            report(err)
+        end
+    end
+end
+
+if CRT.AlertSpeech and CRT.AlertSpeech.OnZero then
+    CRT.AlertSpeech:OnZero(function()
+        Areas:TickAll()
+    end)
+end
+
 -- One ticker for every area. It builds them at login, once the saved settings are in.
 local ticker = CreateFrame("Frame")
 local elapsed = 0
@@ -1163,17 +1185,7 @@ ticker:SetScript("OnUpdate", function(_, dt)
         return
     end
     elapsed = 0
-    for _, area in ipairs(Areas.list) do
-        -- One area failing must not stop the others.
-        -- A failure is reported once, until the area works again.
-        local ok, err = pcall(area.Tick, area)
-        if ok then
-            area.failed = nil
-        elseif not area.failed then
-            area.failed = true
-            report(err)
-        end
-    end
+    Areas:TickAll()
 end)
 ticker:RegisterEvent("PLAYER_LOGIN")
 ticker:SetScript("OnEvent", function()

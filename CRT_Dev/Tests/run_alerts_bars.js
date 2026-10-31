@@ -427,7 +427,7 @@ for i = 2, 5 do assert(widths[i] < widths[i - 1], "the fill moves every frame: "
 assert(math.abs(bar.fill.w - 240 * (6.03 - 0.08) / 6.03) < 1e-6, "on the bar's own time: " .. bar.fill.w)
 assert(math.abs(B:Visible()[1].fraction - (6.03 - 0.08) / 6.03) < 1e-9, "the row follows")
 clock = 100.16 ticker.OnUpdate(ticker, 0.016)
-assert(bar.time.text == "4.8" and B:Visible()[1].time == "4.8", "the seconds follow, to the first impact at 105: " .. bar.time.text)
+assert(bar.time.text == "4.9" and B:Visible()[1].time == "4.9", "the seconds follow, to the first impact at 105: " .. bar.time.text)
 -- the bar is drawn to 1 s past its last impact at 5.03 s; at 5 s the first lands and its tick fades in the frame it does
 ticker.OnUpdate(ticker, 1) -- a refresh
 clock = 104.99 ticker.OnUpdate(ticker, 0.016)
