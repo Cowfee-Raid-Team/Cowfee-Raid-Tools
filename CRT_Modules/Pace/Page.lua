@@ -84,6 +84,11 @@ local function boss()
     return selected
 end
 
+-- The boss the page shows (its encounter ID), for the pace window's preview (Pace/Display.lua).
+function Pace:PageBoss()
+    return boss()
+end
+
 local function clock(t)
     return string.format("%d:%02d", math.floor(t / 60), math.floor(t % 60))
 end
