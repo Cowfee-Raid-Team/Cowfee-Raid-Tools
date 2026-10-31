@@ -32,6 +32,8 @@ Every theme fills every key in `CRT.THEME_KEYS`. Each key is named for what it c
 | outline | a dark edge that must show on any fill: the alert bars' Border, drawn fully opaque. Always the theme's darkest colour |
 | steelLight | the lit top and left edges of the 3 px bevel round each Classic menu header |
 | steelDark | the shaded bottom and right edges of that bevel |
+| personal | your own reminders' flags on the Timeline (the Personal notes row, and your own casts on Healer CDs): a blue flag, apart from the raid note's accent flags |
+| personalEdge | the lighter blue edge round a personal flag, and round its spell icon |
 
 The four status keys mean the same thing on every page and overlay: heading for titles, good for good, warn for in between, bad for bad. Pick by meaning, never by the colour a theme happens to give.
 
@@ -64,6 +66,8 @@ Hex per theme, in menu order. "Game" means Default: Blizzard reads the game's ow
 | outline | 1A120C | 000000 | 000000 | 17110E |
 | steelLight | C9CCD1 | 9E9E9E | 8A9DB0 | D9B48A |
 | steelDark | 2E3033 | 2E2E2E | 28313B | 5A4231 |
+| personal | 3D7FD6 | 4A8BD8 | 2F6BD6 | 3D7AC7 |
+| personalEdge | 9CC7F5 | A8CFF7 | 9EC2FF | A3C9F0 |
 
 Default: Blizzard is the Classic look: the game's art draws the windows, so most of its column is only read by the few surfaces that use `CRT.PALETTE` in both looks. Those values are the colours from before themes and never change (outline came later: its darkest colour, as in every theme). Its heading, good, warn and bad are the game's own text colours.
 

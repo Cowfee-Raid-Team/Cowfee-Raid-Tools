@@ -17,7 +17,8 @@ let passes = 0, fails = 0;
 function check(ok, what) { if (ok) passes++; else { fails++; console.log('FAIL ' + what); } }
 
 const KEYS = ['background', 'surface', 'border', 'selected', 'accent', 'label', 'heading', 'text', 'good', 'warn', 'bad',
-  'knob', 'knobBorder', 'knobShine', 'knobText', 'check', 'checkBorder', 'titleTop', 'titleBottom', 'muted', 'outline', 'steelLight', 'steelDark'];
+  'knob', 'knobBorder', 'knobShine', 'knobText', 'check', 'checkBorder', 'titleTop', 'titleBottom', 'muted', 'outline', 'steelLight', 'steelDark',
+  'personal', 'personalEdge'];
 // The old name of each key, for the lint.
 const OLD = {
   espresso: 'background', roast: 'surface', edge: 'border', mocha: 'selected', caramel: 'accent', latte: 'label',
@@ -53,6 +54,8 @@ const SNAPSHOT = {
     outline: [0.10196078431372549, 0.07058823529411765, 0.047058823529411764],
     steelLight: [0.788235294117647, 0.8, 0.8196078431372549],
     steelDark: [0.1803921568627451, 0.18823529411764706, 0.2],
+    personal: [0x3D / 255, 0x7F / 255, 0xD6 / 255], // #1226: your own reminders' blue flags
+    personalEdge: [0x9C / 255, 0xC7 / 255, 0xF5 / 255],
   },
   midnight: {
     background: [0.0196078431372549, 0.0196078431372549, 0.0196078431372549],
@@ -78,6 +81,8 @@ const SNAPSHOT = {
     outline: [0, 0, 0],
     steelLight: [0.6196078431372549, 0.6196078431372549, 0.6196078431372549],
     steelDark: [0.1803921568627451, 0.1803921568627451, 0.1803921568627451],
+    personal: [0x4A / 255, 0x8B / 255, 0xD8 / 255], // #1226: your own reminders' blue flags
+    personalEdge: [0xA8 / 255, 0xCF / 255, 0xF7 / 255],
   },
   nitro: {
     background: [0.023529411764705882, 0.03137254901960784, 0.0392156862745098],
@@ -103,6 +108,8 @@ const SNAPSHOT = {
     outline: [0, 0, 0],
     steelLight: [0.5411764705882353, 0.615686274509804, 0.6901960784313725],
     steelDark: [0.1568627450980392, 0.19215686274509805, 0.23137254901960785],
+    personal: [0x2F / 255, 0x6B / 255, 0xD6 / 255], // #1226: your own reminders' blue flags
+    personalEdge: [0x9E / 255, 0xC2 / 255, 0xFF / 255],
   },
   cowfee: {
     background: [0.09019607843137255, 0.06666666666666667, 0.054901960784313725],
@@ -128,6 +135,8 @@ const SNAPSHOT = {
     outline: [0.09019607843137255, 0.06666666666666667, 0.054901960784313725],
     steelLight: [0.8509803921568627, 0.7058823529411765, 0.5411764705882353],
     steelDark: [0.35294117647058826, 0.25882352941176473, 0.19215686274509805],
+    personal: [0x3D / 255, 0x7A / 255, 0xC7 / 255], // #1226: your own reminders' blue flags
+    personalEdge: [0xA3 / 255, 0xC9 / 255, 0xF0 / 255],
   },
 };
 
@@ -185,6 +194,31 @@ if (data) {
     check(filled, theme + ': CRT:UseTheme fills CRT.PALETTE with its colours');
   }
   console.log('ok palette: the keys and every theme\'s colours');
+
+  // #1226: the style guide's values table (CRT_Dev/StyleGuide.md) has a row for every key, and each hex in it is the
+  // theme's colour in Themes.lua (a "game" cell is the game's own colour, read in the game, so it is skipped).
+  const guide = fs.readFileSync(path.join(root, 'CRT_Dev/StyleGuide.md'), 'utf8');
+  const values = (guide.split('## The values')[1] || '').split('\n## ')[0];
+  const order = ['blizzard', 'midnight', 'nitro', 'cowfee'];
+  const header = values.split(/\r?\n/).find((l) => l.startsWith('| Key |')) || '';
+  check(header.includes('Default: Blizzard') && header.split('|').length - 2 === order.length + 1, 'the style guide\'s values table has a column per theme: ' + header);
+  const rows = {};
+  for (const line of values.split(/\r?\n/)) {
+    const cells = line.split('|').slice(1, -1).map((c) => c.trim());
+    if (cells.length === order.length + 1 && KEYS.includes(cells[0])) rows[cells[0]] = cells.slice(1);
+  }
+  const toHex = (c) => c.map((v) => Math.round(v * 255).toString(16).padStart(2, '0')).join('').toUpperCase();
+  for (const k of KEYS) {
+    check(rows[k] !== undefined, 'the style guide lists ' + k + ' in its values table');
+    order.forEach((theme, i) => {
+      const cell = rows[k] && rows[k][i];
+      if (!cell || /game/i.test(cell)) return;
+      const want = toHex((data.themes[theme] || {})[k] || [0, 0, 0]);
+      check(cell.toUpperCase() === want, 'the style guide\'s ' + theme + ' ' + k + ' is ' + want + ' (it says ' + cell + ')');
+    });
+  }
+  check(rows.personal && rows.personalEdge, 'the personal flag colours come from the style guide');
+  console.log('ok palette: the style guide\'s values table matches Themes.lua');
 }
 
 // 3 and 4: the source.
