@@ -1,11 +1,17 @@
 local ADDON, CRT = ...
 
 -- The Import reminders window, opened by the Timeline's Import reminders button (Timeline/Page.lua): a box to
--- paste an export in, a preview with one row per boss (its difficulty, how many reminders it would import and
--- how many lines it skips, each skipped line and why in the row's tooltip), a Replace tick box and Import N.
--- The reading and writing are CRT.TimelineImport's (Timeline/ImportReminders.lua); this file only draws.
--- Imported reminders are your own, on the Personal notes row; Import is refused during combat. The window's
--- place is kept in timeline.importWindow, and the Replace tick in timeline.importReplace (on by default).
+-- paste an export in, then a list with one row per boss (its difficulty, a "N for you" and a "N for others" pill),
+-- which opens (a click; open at once when the paste has one boss) on every line of it: yours first, ticked; then
+-- the lines for others, one group per kind of tag ("For another spec (3)"), each group and line with a tick box,
+-- unticked; then the lines that couldn't be read, with no tick box. Each line shows its time, its text and who it is
+-- for. Under the list: Tick every line, for everyone (ticks every line that reads; unticked, only yours again),
+-- Replace, the status line, Import N (the ticked lines) and Close.
+-- The reading, the ticks and the writing are CRT.TimelineImport's (Timeline/ImportReminders.lua); this file only
+-- draws. The rows are worked out once per paste (and when a boss opens or closes) into state.rows, and a fixed pool of
+-- frames (L.pool) paints the ones in view as the list scrolls. Imported reminders are your own, on the Personal notes
+-- row; a line imported for someone else alerts you too (import.forOther). Import is refused during combat. The
+-- window's place is kept in timeline.importWindow, and the Replace tick in timeline.importReplace (on by default).
 
 local UI = CRT.UI
 
@@ -14,18 +20,19 @@ CRT.TimelineImportWindow = W
 
 local TEXT = {
     title = "Import reminders",
-    help = "Paste a %s export in the box. The list shows each boss in it: how many reminders it gives you and how many lines it skips. Hover a boss to see why a line is skipped.\n\nOnly lines for everyone and for your class are imported. They become your own reminders on the Personal notes row, never raid note lines.",
+    help = "Paste a %s export in the box. The list shows each boss in it, with how many lines are for you and how many are for others. Click a boss to see its lines.\n\nYour lines are ticked. Tick any line for someone else to import it too: it alerts you like your own, and its flag says who it was for. Lines that couldn't be read can't be imported.\n\nImported lines become your own reminders on the Personal notes row, never raid note lines.",
     paste = "Paste an export in the box.",
     nothing = "Nothing in it to import.",
+    noneTicked = "No line is ticked.",
     replace = "Replace what I imported before for these bosses",
     replaceHelp = "On: the reminders you imported before for each boss and difficulty in the box are deleted first, then these are added. Your other reminders stay.\n\nOff: these are added to what you have. A reminder you already have (the same time and text) is not added twice.",
+    tickAll = "Tick every line, for everyone",
+    tickAllHelp = "On: every line that can be read is ticked, for you or for someone else. A line for someone else alerts you too.\n\nOff: only your own lines are ticked again.",
     import = "Import %d",
     close = "Close",
-    toImport = "%d to import",
-    skipped = "%d skipped",
+    forYou = "%d for you",
+    forOthers = "%d for others",
     notInSeason = "not in this season",
-    skippedTitle = "Skipped lines",
-    more = "and %d more",
     noBoss = "No boss line found.",
     imported = "Imported %d.",
     removed = "Replaced %d.",
@@ -33,20 +40,27 @@ local TEXT = {
     leftOut = "%d skipped.",
     failed = "%d could not be saved.",
     groups = { nh = "Normal/Heroic", mythic = "Mythic" },
+    -- a boss row's toggle, as the Timeline's own (View.lua's Ignored rows)
+    open = "v",
+    closed = ">",
 }
 W.TEXT = TEXT
 
 local L = {
     width = 520, height = 520,
     pasteH = 150, listH = 190, rowH = 22,
-    checkSize = 22, statusH = 30, buttonH = 22, buttonGap = 6, gap = 6,
-    countW = 170,
-    tipLines = 15, -- skipped lines listed in a row's tooltip, then "and N more"
+    checkSize = 22, lineCheck = 18, statusH = 30, buttonH = 22, buttonGap = 6, gap = 6,
+    indent = 18,  -- each level in: a boss's lines, then a group's
+    whoW = 120,   -- who a line is for, at its right
+    pillPad = 6, pillH = 16,
 }
+L.pool = math.ceil(L.listH / L.rowH) + 1 -- the row frames: the ones in view and one more
 W.L = L
 
 local win
-local state = { plan = nil }
+-- plan: what the box reads as; lines: each boss's lines as listed (Import.Lines), by boss; open: the bosses opened, by
+-- index; rows: every row of the list, top down; all: Tick every line, for everyone
+local state = { plan = nil, lines = {}, open = {}, rows = {}, all = false }
 
 local function settings()
     return CRT.Timeline:Settings()
@@ -64,62 +78,49 @@ local function setStatus(text, color)
     win.status:SetText(color and UI.ColorText(text, color) or text)
 end
 
--- The preview -----------------------------------------------------------------------------------------------
+-- The rows ----------------------------------------------------------------------------------------------------
 
-local function rowTip(row)
-    local p = row.boss
-    if not (p and GameTooltip and UI.TooltipOwner) then
-        return
-    end
-    UI.TooltipOwner(GameTooltip, row, "ANCHOR_RIGHT")
-    GameTooltip:SetText(p.name or tostring(p.encounterID or "?"), 1, 1, 1, 1, true)
-    if p.reason then
-        GameTooltip:AddLine(p.reason, 1, 0.5, 0.4, true)
-    elseif not p.known then
-        GameTooltip:AddLine(TEXT.notInSeason, 0.85, 0.85, 0.85, true)
-    end
-    if #p.skipped > 0 then
-        GameTooltip:AddLine(TEXT.skippedTitle, 1, 0.82, 0, true)
-        for i, s in ipairs(p.skipped) do
-            if i > L.tipLines then
-                GameTooltip:AddLine(TEXT.more:format(#p.skipped - L.tipLines), 0.85, 0.85, 0.85, true)
-                break
+-- Every row of the list, top down: a boss, and when it is open its lines (Import.Lines), each row
+-- { type = "boss" | "line" | "group" | "unreadHead" | "unread", depth, p, index, line, group, label }.
+local function buildRows()
+    local rows = {}
+    for i, p in ipairs(state.plan and state.plan.bosses or {}) do
+        rows[#rows + 1] = { type = "boss", p = p, index = i, depth = 0 }
+        local g = state.lines[i]
+        if state.open[i] and g then
+            for _, l in ipairs(g.mine) do
+                rows[#rows + 1] = { type = "line", line = l, depth = 1 }
             end
-            GameTooltip:AddLine(s.reason .. ": " .. s.line, 0.85, 0.85, 0.85, true)
+            for _, grp in ipairs(g.groups) do
+                rows[#rows + 1] = { type = "group", group = grp, depth = 1 }
+                for _, l in ipairs(grp.lines) do
+                    rows[#rows + 1] = { type = "line", line = l, depth = 2 }
+                end
+            end
+            if #g.unread > 0 then
+                rows[#rows + 1] = { type = "unreadHead", label = g.unreadLabel, depth = 1 }
+                for _, l in ipairs(g.unread) do
+                    rows[#rows + 1] = { type = "unread", line = l, depth = 2 }
+                end
+            end
         end
     end
-    GameTooltip:Show()
+    state.rows = rows
 end
 
-local function makeRow(list, i)
-    local row = CreateFrame("Button", nil, list.child)
-    row:SetHeight(L.rowH)
-    local hl = row:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetAllPoints()
-    hl:SetColorTexture(1, 1, 1, 0.06)
-    row.count = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    row.count:SetPoint("RIGHT", -4, 0)
-    row.count:SetWidth(L.countW)
-    row.count:SetJustifyH("RIGHT")
-    row.count:SetWordWrap(false)
-    row.name = row:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    row.name:SetPoint("LEFT", 4, 0)
-    row.name:SetPoint("RIGHT", row.count, "LEFT", -L.gap, 0)
-    row.name:SetJustifyH("LEFT")
-    row.name:SetWordWrap(false)
-    row:SetScript("OnEnter", rowTip)
-    row:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-    list.rows[i] = row
-    return row
+-- How many of a boss's lines are for others (those that read).
+local function othersOf(g)
+    local n = 0
+    for _, grp in ipairs(g and g.groups or {}) do
+        n = n + #grp.lines
+    end
+    return n
 end
 
--- One boss's row: "Ula'tek · Normal/Heroic" (with "not in this season" for a boss the season doesn't have), then
--- "16 to import · 2 skipped" at the right, the skipped part in the warn colour.
-local function bossLine(p)
-    local name = p.name or tostring(p.encounterID or "?")
-    local parts = { name }
+-- One boss's name: "Ula'tek · Normal/Heroic", with "not in this season" for a boss the season doesn't have, or the
+-- reason it can't be imported.
+local function bossName(p)
+    local parts = { p.name or tostring(p.encounterID or "?") }
     if p.group then
         parts[#parts + 1] = TEXT.groups[p.group]
     elseif p.difficulty and p.difficulty ~= "" then
@@ -131,32 +132,123 @@ local function bossLine(p)
     elseif not p.known then
         text = text .. " " .. UI.ColorText("(" .. TEXT.notInSeason .. ")", "muted")
     end
-    local count = TEXT.toImport:format(#p.reminders)
-    if #p.skipped > 0 then
-        count = count .. " \194\183 " .. UI.ColorText(TEXT.skipped:format(#p.skipped), "warn")
-    end
-    return text, count
+    return text
 end
 
-local function fillList()
-    local list = win.list
-    local bosses = state.plan and state.plan.bosses or {}
-    for i, p in ipairs(bosses) do
-        local row = list.rows[i] or makeRow(list, i)
-        row.boss = p
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", list.child, "TOPLEFT", 0, -(i - 1) * L.rowH)
-        row:SetPoint("RIGHT", list.child, "RIGHT", 0, 0)
-        local name, count = bossLine(p)
-        row.name:SetText(name)
-        row.count:SetText(count)
-        row:Show()
+-- A pill: its words in the key's colour on a faint fill of it, as wide as the words.
+local function paintPill(pill, text, key)
+    pill.label:SetText(text)
+    pill.label:SetTextColor(UI.Color(key))
+    pill.bg:SetColorTexture(UI.Color(key, 0.18))
+    local w = tonumber(pill.label:GetStringWidth() or 0) or 0
+    pill:SetWidth(math.ceil(w) + 2 * L.pillPad)
+    pill:Show()
+end
+
+local paint -- below: the rows in view, again
+
+local function makePill(row)
+    local pill = CreateFrame("Frame", nil, row)
+    pill:SetHeight(L.pillH)
+    pill.bg = pill:CreateTexture(nil, "BACKGROUND")
+    pill.bg:SetAllPoints()
+    pill.label = pill:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    pill.label:SetPoint("CENTER")
+    pill:Hide()
+    return pill
+end
+
+-- A click on a row's tick box: its line, or every line of its group; then the count and the rows again.
+local function tickClicked(check)
+    local m = check:GetParent() and check:GetParent().model
+    if not (m and state.plan) then
+        return
     end
-    for i = #bosses + 1, #list.rows do
-        list.rows[i].boss = nil
-        list.rows[i]:Hide()
+    local on = check:GetChecked() and true or false
+    if m.type == "line" then
+        CRT.TimelineImport.Tick(state.plan, m.line, on)
+    elseif m.type == "group" then
+        CRT.TimelineImport.TickGroup(state.plan, m.group, on)
     end
-    list.child:SetHeight(math.max(1, #bosses * L.rowH))
+    paint()
+end
+
+-- A click on a boss row opens or closes it.
+local function rowClicked(row)
+    local m = row.model
+    if m and m.type == "boss" then
+        state.open[m.index] = not state.open[m.index]
+        buildRows()
+        paint()
+    end
+end
+
+local function makeRow(list, k)
+    local row = CreateFrame("Button", nil, list.child)
+    row:SetHeight(L.rowH)
+    local hl = row:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.06) -- not a theme colour: the faint white hover every CRT list row has
+    row.arrow = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    row.arrow:SetPoint("LEFT", 4, 0)
+    row.check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+    row.check:SetSize(L.lineCheck, L.lineCheck)
+    UI:SkinCheckButton(row.check)
+    row.check:SetScript("OnClick", tickClicked)
+    row.who = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    row.who:SetPoint("RIGHT", -4, 0)
+    row.who:SetWidth(L.whoW)
+    row.who:SetJustifyH("RIGHT")
+    row.who:SetWordWrap(false)
+    row.pillOther = makePill(row)
+    row.pillOther:SetPoint("RIGHT", -4, 0)
+    row.pillMine = makePill(row)
+    row.pillMine:SetPoint("RIGHT", row.pillOther, "LEFT", -4, 0)
+    row.name = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    row.name:SetJustifyH("LEFT")
+    row.name:SetWordWrap(false)
+    row:SetScript("OnClick", rowClicked)
+    list.rows[k] = row
+    return row
+end
+
+-- Draws one row frame for its row (state.rows): a boss's toggle, name and pills; a line's tick, time and text and who;
+-- a group's tick and label; the Couldn't read heading and its lines, with no tick.
+local function drawRow(row, m)
+    local x = 4 + m.depth * L.indent
+    row.arrow:SetShown(m.type == "boss")
+    row.check:SetShown(m.type == "line" or m.type == "group")
+    row.pillMine:Hide()
+    row.pillOther:Hide()
+    row.who:SetText("")
+    row.name:ClearAllPoints()
+    if m.type == "line" or m.type == "group" then
+        row.check:ClearAllPoints()
+        row.check:SetPoint("LEFT", x, 0)
+        row.name:SetPoint("LEFT", row.check, "RIGHT", 2, 0)
+    else
+        row.name:SetPoint("LEFT", m.type == "boss" and 20 or x, 0)
+    end
+    row.name:SetPoint("RIGHT", row, "RIGHT", -(L.whoW + 8), 0)
+    if m.type == "boss" then
+        row.arrow:SetText(state.open[m.index] and TEXT.open or TEXT.closed)
+        row.name:SetText(bossName(m.p))
+        local g = state.lines[m.index]
+        paintPill(row.pillOther, TEXT.forOthers:format(othersOf(g)), "warn")
+        paintPill(row.pillMine, TEXT.forYou:format(g and #g.mine or 0), "good")
+    elseif m.type == "line" then
+        local l = m.line
+        row.check:SetChecked(l.ticked and true or false)
+        row.name:SetText(CRT.TimelineImport.ShowTime(l.ph, l.time) .. "  " .. tostring(l.reminder.text or ""))
+        row.who:SetText(l.mine and (l.who or "") or UI.ColorText(l.who or "", "muted"))
+    elseif m.type == "group" then
+        row.check:SetChecked(CRT.TimelineImport.GroupTicked(m.group) == true)
+        row.name:SetText(UI.ColorText(m.group.label, "warn"))
+    elseif m.type == "unreadHead" then
+        row.name:SetText(UI.ColorText(m.label, "bad"))
+    else
+        row.name:SetText(UI.ColorText(tostring(m.line.reason) .. ": " .. tostring(m.line.line), "muted"))
+    end
 end
 
 local function paintButton()
@@ -168,35 +260,83 @@ local function paintButton()
     b:SetEnabled(n > 0)
 end
 
--- Reads the box again. status (optional) is the line to keep showing, such as what was just imported.
+-- The rows in view, from where the list is scrolled to: pool frame k shows row first + k, at that row's place.
+paint = function()
+    local list = win.list
+    local scrolled = list.scroll.GetVerticalScroll and list.scroll:GetVerticalScroll()
+    local first = math.max(0, math.floor((tonumber(scrolled or 0) or 0) / L.rowH))
+    for k = 1, L.pool do
+        local m = state.rows[first + k]
+        local row = list.rows[k] or (m and makeRow(list, k))
+        if row then
+            row.model = m
+            if m then
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", list.child, "TOPLEFT", 0, -(first + k - 1) * L.rowH)
+                row:SetPoint("RIGHT", list.child, "RIGHT", 0, 0)
+                drawRow(row, m)
+                row:Show()
+            else
+                row:Hide()
+            end
+        end
+    end
+    list.child:SetHeight(math.max(1, #state.rows * L.rowH))
+    paintButton()
+end
+
+-- Reads the box again: a new plan, its lines listed, a single boss opened, Tick every line kept. status (optional) is
+-- the line to keep showing, such as what was just imported.
 local function readBox(status, color)
     local text = win.paste.edit:GetText() or ""
     local Import = CRT.TimelineImport
+    state.lines, state.open = {}, {}
     if text:match("^%s*$") then
         state.plan = nil
     else
         state.plan = Import.Plan(Import.Parse(text), Import.Me())
+        for i, p in ipairs(state.plan.bosses) do
+            state.lines[i] = Import.Lines(p)
+        end
+        state.open[1] = #state.plan.bosses == 1 or nil
+        if state.all then
+            Import.TickAll(state.plan, true)
+        end
     end
-    fillList()
-    paintButton()
+    buildRows()
+    -- a new paste starts at the top of its list
+    if win.list.scroll.SetVerticalScroll then
+        win.list.scroll:SetVerticalScroll(0)
+    end
+    paint()
+    local any = false
+    for _, p in ipairs(state.plan and state.plan.bosses or {}) do
+        any = any or #p.lines > 0
+    end
     if status then
         setStatus(status, color)
     elseif not state.plan then
         setStatus(TEXT.paste)
     elseif #state.plan.bosses == 0 then
         setStatus(TEXT.noBoss, "bad")
-    elseif state.plan.count == 0 then
+    elseif not any then
         setStatus(TEXT.nothing, "warn")
+    elseif state.plan.count == 0 then
+        setStatus(TEXT.noneTicked, "warn")
     else
         setStatus("")
     end
 end
 
--- The line under the list after an import: what was imported and replaced, then what was left out.
+-- The line under the list after an import: what was imported and replaced, then the lines left unticked.
 local function resultLine(res)
     local skipped = 0
     for _, p in ipairs(state.plan and state.plan.bosses or {}) do
-        skipped = skipped + #p.skipped
+        for _, l in ipairs(p.lines or {}) do
+            if not (l.ticked and l.reminder) then
+                skipped = skipped + 1
+            end
+        end
     end
     local parts = { TEXT.imported:format(res.added) }
     if res.removed > 0 then
@@ -246,6 +386,10 @@ local function buildList(c)
     list.child:SetSize(list.innerW, 1)
     list.scroll:SetScrollChild(list.child)
     list.rows = {}
+    -- the template's own scroll handling moves the list; the rows in view are painted after it
+    list.scroll:HookScript("OnVerticalScroll", function()
+        paint()
+    end)
     local top = L.pasteH + L.gap
     list:SetPoint("TOPLEFT", 0, -top)
     list:SetPoint("TOPRIGHT", 0, -top)
@@ -253,8 +397,8 @@ local function buildList(c)
     return list
 end
 
-local function buildReplace(c)
-    local top = L.pasteH + L.gap + L.listH + L.gap
+-- A tick box under the list (the shared check box), its label beside it and a (?) after the label.
+local function makeTick(c, top, label, help, onClick)
     local cb = CreateFrame("CheckButton", nil, c, "UICheckButtonTemplate")
     cb:SetSize(L.checkSize, L.checkSize)
     cb:SetPoint("TOPLEFT", 0, -top)
@@ -262,12 +406,24 @@ local function buildReplace(c)
     cb.Label = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     cb.Label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
     cb.Label:SetJustifyH("LEFT")
-    cb.Label:SetText(TEXT.replace)
-    cb:SetScript("OnClick", function(self)
+    cb.Label:SetText(label)
+    cb:SetScript("OnClick", onClick)
+    UI.HelpRight(cb.Label, label, help)
+    return cb
+end
+
+local function buildTicks(c)
+    local top = L.pasteH + L.gap + L.listH + L.gap
+    win.all = makeTick(c, top, TEXT.tickAll, TEXT.tickAllHelp, function(self)
+        state.all = self:GetChecked() and true or false
+        if state.plan then
+            CRT.TimelineImport.TickAll(state.plan, state.all)
+        end
+        paint()
+    end)
+    win.replace = makeTick(c, top + L.checkSize + L.gap, TEXT.replace, TEXT.replaceHelp, function(self)
         settings().importReplace = self:GetChecked() and true or false
     end)
-    UI.HelpRight(cb.Label, TEXT.replace, TEXT.replaceHelp)
-    return cb
 end
 
 local function build()
@@ -282,9 +438,9 @@ local function build()
     local c = win.content
     win.paste = buildPaste(c)
     win.list = buildList(c)
-    win.replace = buildReplace(c)
+    buildTicks(c)
     win.status = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    win.status:SetPoint("TOPLEFT", 4, -(L.pasteH + L.gap + L.listH + L.gap + L.checkSize + L.gap))
+    win.status:SetPoint("TOPLEFT", 4, -(L.pasteH + L.gap + L.listH + L.gap + 2 * (L.checkSize + L.gap)))
     win.status:SetPoint("RIGHT", c, "RIGHT", -4, 0)
     win.status:SetHeight(L.statusH)
     win.status:SetJustifyH("LEFT")
@@ -298,17 +454,18 @@ local function build()
     win.importBtn:SetPoint("RIGHT", win.closeBtn, "LEFT", -L.buttonGap, 0)
     -- a theme switch: the rows' colours again
     win.refresh = function()
-        fillList()
-        paintButton()
+        paint()
     end
     return win
 end
 
--- Opens the window, its box empty and ready to paste in.
+-- Opens the window, its box empty and ready to paste in, Tick every line off.
 function W.Open()
     if not win then
         build()
     end
+    state.all = false
+    win.all:SetChecked(false)
     win.paste.edit:SetText("")
     win.replace:SetChecked(replaceOn())
     win:Show()
@@ -317,7 +474,15 @@ function W.Open()
     return win
 end
 
--- For tests: the window once built.
+-- For tests: the window once built, every row of its list, and a repaint (as a scroll makes).
 function W.Window()
     return win
+end
+
+function W.Rows()
+    return state.rows
+end
+
+function W.Paint()
+    paint()
 end

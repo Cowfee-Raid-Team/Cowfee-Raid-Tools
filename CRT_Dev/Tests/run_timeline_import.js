@@ -144,6 +144,8 @@ local function mock(kind, parent, template)
     if k == "GetParent" then return function(self) return self.parent end end
     if k == "SetScrollChild" then return function(self, c) rawset(self, "scrollChild", c) end end
     if k == "GetFontString" then return function(self) return { GetStringWidth = function() return #(self.text or "") * 6 end } end end
+    if k == "GetStringWidth" then return function(self) return #(self.text or "") * 6 end end
+    if k == "SetColorTexture" then return function(self, r, g, b, a) rawset(self, "color", { r, g, b, a }) end end
     return function() end end })
 end
 UIParent = mock("Frame")
@@ -799,6 +801,101 @@ check("import: the alerts' change event fires once", function()
   assert(res.added == 27 and fired == 1, "one Fire for 27 deletes and 27 saves: " .. fired)
 end)
 
+-- Every line, and lines for others (#1235) -------------------------------------------------------------------------
+
+-- you as in Alex's screenshot: a Mage (not Solex) in raid group 1, so 2 lines are yours and 10 another's
+local function asMage() classID, specID, playerName = 8, 62, "Other" end
+
+check("every line: the tag sample has 2 for you and 10 for others, each with who it is for", function()
+  fresh() asMage()
+  local plan = I.Plan(I.Parse(TAGS), I.Me())
+  local p = plan.bosses[1]
+  assert(#p.lines == 12 and plan.count == 2, "12 lines, 2 to import: " .. #p.lines .. ", " .. plan.count)
+  local who, mine = {}, 0
+  for i, l in ipairs(p.lines) do
+    who[i] = l.who
+    if l.mine then mine = mine + 1 end
+    assert(l.reminder and l.ticked == l.mine, "line " .. i .. ": a reminder, ticked when yours")
+  end
+  assert(mine == 2, "2 yours")
+  assert(table.concat(who, ",") == "Everyone,Solex,Warrior,Arms,Fury,Protection,Tank,Melee,Group 1,Druid,Druid,Druid", table.concat(who, ","))
+  assert(p.lines[2].kind == "player" and p.lines[2].reason == "for another player (Solex)" and p.lines[9].kind == "group" and p.lines[9].mine, "kinds and reasons")
+  assert(p.lines[2].reminder.import.forOther == true and p.lines[1].reminder.import.forOther == nil, "forOther only on another's")
+  -- grouped: yours first, then one group per kind in the order they come, then Couldn't read
+  local g = I.Lines(p)
+  assert(#g.mine == 2 and #g.unread == 0, "yours, nothing unreadable")
+  local labels = {}
+  for i, grp in ipairs(g.groups) do labels[i] = grp.label end
+  assert(table.concat(labels, "|") == "For another player (1)|For another class (4)|For another spec (3)|For another role (1)|For another position (1)", table.concat(labels, "|"))
+  fresh()
+end)
+
+check("every line: line and group ticks, Tick every line on and off, Import N", function()
+  fresh() asMage()
+  local plan = I.Plan(I.Parse(TAGS), I.Me())
+  local p = plan.bosses[1]
+  I.Tick(plan, p.lines[2], true)
+  assert(plan.count == 3 and p.lines[2].ticked, "a line: 3")
+  local spec = I.Lines(p).groups[3]
+  I.TickGroup(plan, spec, true)
+  assert(plan.count == 6 and I.GroupTicked(spec) == true, "the spec group: 6")
+  I.TickGroup(plan, spec, false)
+  assert(plan.count == 3 and I.GroupTicked(spec) == false, "off again: 3")
+  I.Tick(plan, spec.lines[1], true)
+  assert(I.GroupTicked(spec) == nil, "some ticked: neither")
+  I.TickAll(plan, true)
+  assert(plan.count == 12, "every line: " .. plan.count)
+  I.TickAll(plan, false)
+  assert(plan.count == 2 and not p.lines[2].ticked and p.lines[1].ticked, "back to yours: " .. plan.count)
+  fresh()
+end)
+
+check("every line: ticked lines for others are saved with forOther, and alert you", function()
+  fresh() asMage()
+  local plan = I.Plan(I.Parse(TAGS), I.Me())
+  local p = plan.bosses[1]
+  I.Tick(plan, p.lines[2], true) -- Solex's
+  I.Tick(plan, p.lines[4], true) -- Arms
+  local res = I.Apply(plan, { replace = true })
+  assert(res.added == 4, "4 added: " .. res.added)
+  local solex, arms, all
+  for _, e in ipairs(R:List(3429)) do
+    if e.r.import.tag == "Solex" then solex = e.r elseif e.r.import.tag == "71" then arms = e.r elseif e.r.import.tag == "everyone" then all = e.r end
+  end
+  assert(solex.import.forOther == true and solex.import.tagKind == "player" and arms.import.forOther == true and all.import.forOther == nil, "forOther saved")
+  assert(I.ForWho(solex) == "for Solex" and I.ForWho(arms) == "for Arms" and I.ForWho(all) == nil, tostring(I.ForWho(solex)) .. ", " .. tostring(I.ForWho(arms)))
+  assert(I.ForWho({ import = { forOther = true, tag = "Group2", tagKind = "group" } }) == "for Group 2", "a group")
+  assert(I.ForWho({ import = { forOther = true, tag = "1", tagKind = "class" } }) == "for Warrior", "a class")
+  assert(#R:Items(3429, 1, solex) == 1, "it alerts you like any reminder")
+  -- Replace removes earlier imports for the boss, yours and others' alike; the same paste again adds nothing new
+  local again = I.Apply(I.Plan(I.Parse(TAGS), I.Me()), { replace = true })
+  assert(again.removed == 4 and again.added == 2, "replaced with only yours: " .. again.removed .. ", " .. again.added)
+  fresh()
+end)
+
+check("every line: lines that couldn't be read never import", function()
+  fresh()
+  local text = "EncounterID:3492;Difficulty:Heroic;Name:Ula'tek\\nph:1;time:5;tag:everyone;text:Go;\\njunk here\\nph:x;time:5;tag:Bob;text:x;\\nph:1;time:6;tag:Bob;text:Bob's;\\n"
+    .. "\\nEncounterID:3455;Difficulty:Story;Name:Vashnik\\nph:1;time:5;tag:everyone;text:Story;\\n"
+  local plan = I.Plan(I.Parse(text), I.Me())
+  local ula, vash = plan.bosses[1], plan.bosses[2]
+  local g = I.Lines(ula)
+  assert(#g.mine == 1 and #g.groups == 1 and #g.unread == 2, "one yours, Bob's, two unreadable: " .. #g.unread)
+  assert(g.unread[1].reminder == nil and g.unread[1].reason == I.TEXT.notReminder and g.unreadLabel == "Couldn't read (2)", tostring(g.unreadLabel))
+  assert(#I.Lines(vash).unread == 1 and I.Lines(vash).unread[1].reminder == nil, "an unknown difficulty: couldn't read")
+  I.TickAll(plan, true)
+  assert(plan.count == 2, "every readable line: 2: " .. plan.count)
+  I.Tick(plan, g.unread[1], true)
+  assert(plan.count == 2 and not g.unread[1].ticked, "an unreadable line can't be ticked")
+  local res = I.Apply(plan, { replace = true })
+  assert(res.added == 2 and count(3455) == 0, "only the readable lines")
+  fresh()
+end)
+
+check("every line: the time each line shows", function()
+  assert(I.ShowTime(1, 30.4) == "0:30.4" and I.ShowTime(2, 48.1) == "P2 +0:48.1" and I.ShowTime(1, 135) == "2:15", I.ShowTime(1, 30.4))
+end)
+
 -- The pop-out ---------------------------------------------------------------------------------------------------
 
 check("window: made by UI.Window with a saved place, help in the title strip", function()
@@ -817,43 +914,131 @@ check("window: made by UI.Window with a saved place, help in the title strip", f
   assert(not win.importBtn.enabled and win.importBtn.text == "Import 0", "nothing to import yet")
 end)
 
-check("window: the preview counts each boss, Import N", function()
+-- the shown rows of the list, top down, and the one holding a model
+local function shownRows(win)
+  local out = {}
+  for _, row in ipairs(win.list.rows) do if row.shown and row.model then out[#out + 1] = row end end
+  return out
+end
+local function inView(win, test)
+  for _, row in ipairs(win.list.rows) do if row.shown and row.model and test(row.model) then return row end end
+end
+-- the row frame showing a row that passes test, the list scrolled down (a row at a time) until one does
+local function rowOf(win, test)
+  for start = 0, #Win.Rows() do
+    rawset(win.list.scroll, "GetVerticalScroll", function() return start * Win.L.rowH end)
+    Win.Paint()
+    local row = inView(win, test)
+    if row then return row end
+  end
+end
+
+check("window: a row per boss with its for-you and for-others counts, Import N", function()
   fresh()
   local win = Win.Window()
   paste(win, SAMPLE)
-  local rows = {}
-  for _, row in ipairs(win.list.rows) do if row.shown and row.boss then rows[#rows + 1] = row end end
-  assert(#rows == 10, "a row per boss: " .. #rows)
-  local ula
-  for _, row in ipairs(rows) do if row.boss.encounterID == 3492 then ula = row end end
-  assert(strip(ula.name.text) == "Ula'tek \\194\\183 Normal/Heroic", strip(ula.name.text))
-  assert(strip(ula.count.text) == "16 to import", strip(ula.count.text))
-  assert(strip(rows[1].name.text):find("not in this season", 1, true), "an unknown boss says so: " .. strip(rows[1].name.text))
+  assert(#Win.Rows() == 10, "several bosses: each closed, a row each: " .. #Win.Rows())
+  local ula = rowOf(win, function(m) return m.p and m.p.encounterID == 3492 end)
+  assert(ula and ula.model.type == "boss" and strip(ula.name.text) == "Ula'tek \\194\\183 Normal/Heroic", ula and strip(ula.name.text))
+  assert(strip(ula.arrow.text) == Win.TEXT.closed, "closed: " .. strip(ula.arrow.text))
+  assert(strip(ula.pillMine.label.text) == "16 for you" and strip(ula.pillOther.label.text) == "0 for others", strip(ula.pillMine.label.text) .. " / " .. strip(ula.pillOther.label.text))
+  assert(ula.pillMine.bg.color and ula.pillOther.bg.color, "the pills have their colour")
+  local first = shownRows(win)[1]
+  assert(strip(first.name.text):find("not in this season", 1, true), "an unknown boss says so: " .. strip(first.name.text))
   assert(win.importBtn.text == "Import 27" and win.importBtn.enabled, win.importBtn.text)
   assert(win.importBtn.w == UI.PanelButtonWidth(#"Import 27" * 6), "sized from its label")
   assert(win.closeBtn.text == "Close", "and Close")
-  -- a mage: skipped lines, and why, on hover
+  -- a mage: 2 for you, 14 for others
   classID = 8
   paste(win, SAMPLE)
-  for _, row in ipairs(win.list.rows) do if row.boss and row.boss.encounterID == 3492 then ula = row end end
-  assert(strip(ula.count.text) == "2 to import \\194\\183 14 skipped", strip(ula.count.text))
-  ula.OnEnter(ula)
-  assert(tip.shown and tip.title == "Ula'tek" and tip.lines[1] == Win.TEXT.skippedTitle and tip.lines[2]:find("for another class (Druid)", 1, true), "why, in the tooltip: " .. tostring(tip.lines[2]))
+  ula = rowOf(win, function(m) return m.p and m.p.encounterID == 3492 end)
+  assert(strip(ula.pillMine.label.text) == "2 for you" and strip(ula.pillOther.label.text) == "14 for others", strip(ula.pillOther.label.text))
   assert(win.importBtn.text == "Import 2", win.importBtn.text)
+  -- a click opens it: its lines under it
+  click(ula)
+  assert(strip(ula.arrow.text) == Win.TEXT.open and #Win.Rows() == 10 + 2 + 1 + 14, "open: yours, one group, 14 lines: " .. #Win.Rows())
+  click(ula)
+  assert(#Win.Rows() == 10, "closed again")
   classID = 11
 end)
 
-check("window: the shared code box and scroll box; a long skipped list stops at 15 lines", function()
+check("window: the tag sample opens with every line, ticks by line, group and Tick every line", function()
+  fresh() asMage()
+  local win = Win.Open()
+  paste(win, TAGS)
+  local rows = Win.Rows()
+  assert(#rows == 1 + 2 + 5 + 10, "one boss, open: its 2, 5 groups, 10 lines: " .. #rows)
+  local types = {}
+  for i = 1, 5 do types[i] = rows[i].type end
+  assert(table.concat(types, ",") == "boss,line,line,group,line", table.concat(types, ","))
+  local boss = shownRows(win)[1]
+  assert(strip(boss.arrow.text) == Win.TEXT.open and strip(boss.pillMine.label.text) == "2 for you" and strip(boss.pillOther.label.text) == "10 for others", "the pills")
+  -- a line: its tick, time, text and who
+  local line = shownRows(win)[2]
+  assert(line.check.shown and line.check.checked and strip(line.name.text) == "0:30.4  test" and strip(line.who.text) == "Everyone", strip(line.name.text) .. " | " .. strip(line.who.text))
+  local group = rowOf(win, function(m) return m.type == "group" and m.group.kind == "spec" end)
+  assert(group and strip(group.name.text) == "For another spec (3)" and group.check.shown and not group.check.checked, "a group: unticked")
+  local solex = rowOf(win, function(m) return m.type == "line" and m.line.who == "Solex" end)
+  assert(solex and not solex.check.checked, "another's line: unticked")
+  -- ticks
+  solex.check.checked = true
+  solex.check.OnClick(solex.check)
+  assert(win.importBtn.text == "Import 3", win.importBtn.text)
+  group = rowOf(win, function(m) return m.type == "group" and m.group.kind == "spec" end)
+  group.check.checked = true
+  group.check.OnClick(group.check)
+  assert(win.importBtn.text == "Import 6", win.importBtn.text)
+  local arms = rowOf(win, function(m) return m.type == "line" and m.line.who == "Arms" end)
+  assert(arms.check.checked, "the group ticked its lines, and they show it")
+  -- Tick every line, for everyone, with its (?)
+  assert(helps[Win.TEXT.tickAll], "a (?)")
+  win.all.checked = true
+  win.all.OnClick(win.all)
+  assert(win.importBtn.text == "Import 12", win.importBtn.text)
+  win.all.checked = false
+  win.all.OnClick(win.all)
+  assert(win.importBtn.text == "Import 2" and not rowOf(win, function(m) return m.type == "line" and m.line.who == "Solex" end).check.checked, "back to yours")
+  -- import some for others: saved with forOther
+  solex = rowOf(win, function(m) return m.type == "line" and m.line.who == "Solex" end)
+  solex.check.checked = true
+  solex.check.OnClick(solex.check)
+  click(win.importBtn)
+  assert(count(3429) == 3 and strip(win.status.text) == "Imported 3. 9 skipped.", strip(win.status.text))
+  local n = 0
+  for _, e in ipairs(R:List(3429)) do if e.r.import.forOther then n = n + 1 assert(e.r.import.tag == "Solex") end end
+  assert(n == 1, "one for another: " .. n)
+  fresh()
+end)
+
+check("window: rows are painted from the model as the list scrolls, from a fixed pool", function()
+  fresh()
+  local win = Win.Window()
+  classID = 8
+  paste(win, SAMPLE)
+  for _, row in ipairs(shownRows(win)) do if row.model.type == "boss" then click(row) end end
+  local rows = Win.Rows()
+  assert(#rows > Win.L.pool, "more rows than the pool: " .. #rows)
+  assert(#win.list.rows <= Win.L.pool, "never more frames than the pool: " .. #win.list.rows)
+  assert(win.list.child.h == #rows * Win.L.rowH, "the list as tall as every row")
+  rawset(win.list.scroll, "GetVerticalScroll", function() return 5 * Win.L.rowH end)
+  Win.Paint()
+  assert(win.list.rows[1].model == rows[6], "scrolled 5 rows: the first frame shows row 6")
+  local pt = win.list.rows[1].pts[1]
+  assert(pt and pt[5] == -5 * Win.L.rowH, "placed at row 6's place: " .. tostring(pt and pt[5]))
+  rawset(win.list.scroll, "GetVerticalScroll", nil)
+  -- lines that don't read: their own group, no tick boxes
+  paste(win, "EncounterID:3492;Difficulty:Heroic;Name:Ula'tek\\nph:1;time:5;tag:everyone;text:Go;\\njunk here\\n")
+  local head = rowOf(win, function(m) return m.type == "unreadHead" end)
+  local bad = rowOf(win, function(m) return m.type == "unread" end)
+  assert(head and strip(head.name.text) == "Couldn't read (1)" and not head.check.shown, "Couldn't read, no tick")
+  assert(bad and not bad.check.shown and strip(bad.name.text):find("junk here", 1, true), "the line and why")
+  classID = 11
+end)
+
+check("window: the shared code box and scroll box", function()
   local win = Win.Window()
   assert(win.paste.edit and win.paste.scroll and win.paste.innerW == Win.L.width - 16 - 2 * UI.SCROLL_BOX_PAD - 4 - 14, "the paste box is UI.CodeBox")
   assert(win.list.scroll and win.list.child, "the list is in a UI.ScrollBox")
-  local lines = { "EncounterID:3492;Difficulty:Heroic;Name:Ula'tek" }
-  for i = 1, 20 do lines[#lines + 1] = "ph:1;time:" .. (10 + i) .. ";tag:5;text:Line " .. i .. ";" end
-  paste(win, table.concat(lines, "\\n"))
-  local row = win.list.rows[1]
-  row.OnEnter(row)
-  assert(#tip.lines == 1 + 15 + 1, "a title, 15 lines and one more: " .. #tip.lines)
-  assert(tip.lines[17] == "and 5 more", tostring(tip.lines[17]))
 end)
 
 check("window: disabled with nothing to import", function()
@@ -901,8 +1086,11 @@ end)
 check("window: everything sits inside it", function()
   local Lw = Win.L
   local win = Win.Window()
-  local used = Lw.pasteH + Lw.gap + Lw.listH + Lw.gap + Lw.checkSize + Lw.gap + Lw.statusH + Lw.buttonH
+  local used = Lw.pasteH + Lw.gap + Lw.listH + Lw.gap + 2 * (Lw.checkSize + Lw.gap) + Lw.statusH + Lw.buttonH
   assert(used <= win.content.h, "fits: " .. used .. " of " .. win.content.h)
+  -- Tick every line, then Replace, then the status line, one under the other
+  local function top(f) return -f.pts[1][#f.pts[1]] end
+  assert(top(win.all) == Lw.pasteH + Lw.gap + Lw.listH + Lw.gap and top(win.replace) == top(win.all) + Lw.checkSize + Lw.gap, "the two tick boxes")
   assert(win.importBtn.w + Lw.buttonGap + win.closeBtn.w < win.content.w, "the buttons fit")
 end)
 

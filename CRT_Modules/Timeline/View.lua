@@ -607,7 +607,8 @@ local function flagEnter(f)
     local m = f.mark
     CRT.UI.TooltipOwner(GameTooltip, f, "ANCHOR_RIGHT", nil, nil, "timeline")
     GameTooltip:SetText(CRT.MarkerText(m.text), 1, 0.82, 0)
-    local who = TEXT.onlyMe
+    -- a reminder imported for someone else (#1235): "Only me, for Solex"
+    local who = m.forWho and (TEXT.onlyMe .. ", " .. m.forWho) or TEXT.onlyMe
     if not m.mine then
         local words = {}
         for i, tag in ipairs(m.tags or {}) do
@@ -1878,6 +1879,7 @@ function Methods:NoteAndReminderMarks(lanes, length)
             end
         end
     end
+    local Import = CRT.TimelineImport -- who a reminder imported for someone else was for (its flag's tooltip)
     for _, e in ipairs(Reminders:List(encounterID)) do
         -- a reminder turned off (its tick on Mech Alerts) doesn't fire, so it isn't drawn either
         -- nor one of another difficulty group than the view's, nor one saved as Raid note (its note lines are drawn)
@@ -1887,7 +1889,8 @@ function Methods:NoteAndReminderMarks(lanes, length)
                 -- is on), for the Personal notes row
                 local o = type(e.r.outputs) == "table" and e.r.outputs or {}
                 add({ ph = at.ph, time = at.t, mine = true, encounterID = encounterID, id = e.id, index = index,
-                    kind = "mine", color = e.r.color, showFor = (o.alert or o.bar) and e.r.warn or nil },
+                    kind = "mine", color = e.r.color, showFor = (o.alert or o.bar) and e.r.warn or nil,
+                    forWho = Import and Import.ForWho and Import.ForWho(e.r) or nil },
                     e.r.spellID, e.r.text, e.r.iconID)
             end
         end

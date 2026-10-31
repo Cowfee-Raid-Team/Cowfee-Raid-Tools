@@ -4,7 +4,7 @@ const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = require('./theme_stub')(process.argv.slice(2)) + `
-local dataSrc, dbSrc, refSrc, lanesSrc, rulesSrc, engineSrc, parseSrc, notesSrc, remSrc, viewSrc, regSrc, seasonSrc, nekSrc = ...
+local dataSrc, dbSrc, refSrc, lanesSrc, rulesSrc, engineSrc, parseSrc, notesSrc, remSrc, viewSrc, regSrc, seasonSrc, nekSrc, importSrc = ...
 local buttons = 0
 local textures = 0 -- every texture made, to tell a pool from one made per frame
 local function mock(kind)
@@ -130,6 +130,7 @@ assert(load(parseSrc, "CRT_Modules/Notes/Parse.lua"))("CowfeeRaidTools", CRT)
 assert(load(notesSrc, "CRT_Modules/Notes/Data.lua"))("CowfeeRaidTools", CRT)
 assert(load(remSrc, "CRT_Modules/Alerts/Reminders.lua"))("CowfeeRaidTools", CRT)
 assert(load(viewSrc, "CRT_Modules/Timeline/View.lua"))("CowfeeRaidTools", CRT)
+assert(load(importSrc, "CRT_Modules/Timeline/ImportReminders.lua"))("CowfeeRaidTools", CRT)
 local opened, notesOpened = {}, {}
 CRT.AlertEditor = {
   Open = function(_, enc, id, prefill) opened[#opened + 1] = { enc = enc, id = id, prefill = prefill } end,
@@ -410,6 +411,21 @@ do
   f = flagAt(v, 90, true)
   f.OnEnter(f)
   assert(tip[1] == "Free one" and tip[2] == "Only me" and tip[3] == "P2 +0:30" and tip[4] == "Your reminder", "reminder tip: " .. table.concat(tip, "|"))
+  -- a line imported for someone else says who it was for (#1235); one imported for you, nothing more
+  local rid = CRT.AlertReminders:Save(3001, nil, { text = "For Solex", times = "P2 +0:40", boss = "Nek",
+    import = { source = "timeline-reminders", tag = "Solex", tagKind = "player", forOther = true } })
+  v:Refresh()
+  f = flagAt(v, 100, true)
+  f.OnEnter(f)
+  assert(tip[1] == "For Solex" and tip[2] == "Only me, for Solex", "imported for another: " .. table.concat(tip, "|"))
+  CRT.AlertReminders:Save(3001, rid, { text = "For Solex", times = "P2 +0:40", boss = "Nek",
+    import = { source = "timeline-reminders", tag = "everyone", tagKind = "everyone" } })
+  v:Refresh()
+  f = flagAt(v, 100, true)
+  f.OnEnter(f)
+  assert(tip[2] == "Only me", "imported for you: " .. table.concat(tip, "|"))
+  CRT.AlertReminders:Delete(3001, rid)
+  v:Refresh()
   -- pooled: refreshing makes no new frames
   local made = buttons
   v:Refresh() v:Refresh()
@@ -1809,4 +1825,6 @@ for (const p of process.argv.slice(2, 15)) {
   let src; try { src = fs.readFileSync(p, 'utf8'); } catch (e) { console.error('cannot read ' + p); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));
 }
-if (lua.lua_pcall(L, 13, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+// the importer, beside View.lua: its ForWho gives an imported reminder's "for <who>" on the flag
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(require('path').join(require('path').dirname(process.argv[11]), 'ImportReminders.lua'), 'utf8')));
+if (lua.lua_pcall(L, 14, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

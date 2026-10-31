@@ -55,6 +55,7 @@ local TEXT = {
     heroic = PLAYER_DIFFICULTY2 or "Heroic",
     mythic = PLAYER_DIFFICULTY6 or "Mythic",
     savesTo = "Saves to: %s",
+    importedFor = "Imported %s", -- "Imported for Solex": one of your reminders imported for someone else
     newNote = "a new note for this boss",
     noteName = "%s (%s)",
     relativeTo = "Relative to",
@@ -510,9 +511,15 @@ local function sourceLine()
     return TEXT.noTimes
 end
 
--- The note a raid note line saves to, by name and difficulty.
+-- The note a raid note line saves to, by name and difficulty; for one of your reminders imported for someone else
+-- (Timeline/ImportReminders.lua's ForWho), who it was for.
 local function savesToLine()
-    if draft.saveAs ~= "note" or not (ctx and type(ctx.encounterID) == "number") then
+    if draft.saveAs ~= "note" then
+        local Import = CRT.TimelineImport
+        local forWho = ctx and ctx.reminder and Import and Import.ForWho and Import.ForWho(ctx.reminder)
+        return forWho and string.format(TEXT.importedFor, forWho) or ""
+    end
+    if not (ctx and type(ctx.encounterID) == "number") then
         return ""
     end
     local record = CRT.Notes:Get(targetNote())
