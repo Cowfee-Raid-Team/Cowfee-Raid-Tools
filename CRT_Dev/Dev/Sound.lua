@@ -24,7 +24,8 @@ end
 
 -- Handles "dev sound ...". raw is the command as typed, since a sound's name may have capitals.
 function Dev:Command(msg, raw)
-    if not msg:match("^dev%s+sound") then
+    -- "dev sound" and "dev sound <ref>" only, not "dev soundtiming" (Dev/SoundTiming.lua)
+    if not (msg:match("^dev%s+sound$") or msg:match("^dev%s+sound%s")) then
         return false
     end
     local ref = (raw or msg):match("^%S+%s+%S+%s*(.-)$") or ""
