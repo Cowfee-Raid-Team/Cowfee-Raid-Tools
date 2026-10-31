@@ -2043,8 +2043,8 @@ do
   local w = win()
   local row = dropdowns["Speak at"]
   assert(row, "a Speak at dropdown")
-  assert(optionKeys(row) == "show,zero", optionKeys(row))
-  assert(optionList(row)[1].label == "On show" and optionList(row)[2].label == "At 0", "its words")
+  assert(optionKeys(row) == "show,zero,before", optionKeys(row))
+  assert(optionList(row)[1].label == "On show" and optionList(row)[2].label == "At 0" and optionList(row)[3].label == "Before 0", "its words")
   assert(value("Speak at") == "show", "On show by default")
   typeInto(w.timeEdit, "0:30")
   pick("Speak at", "zero")
@@ -2098,6 +2098,70 @@ do
   pick("Speak at", "show")
   assert(value("Speak at") == "zero", "a pick changes nothing")
   print("ok speak at: greyed when speech is off")
+end
+
+-- Sound and speech: Say instead, Count down from (3 to 10) and Speak at: Before 0 with Seconds before (0.5 to 10)
+do
+  reset()
+  E:Open(ENC, nil, { spellID = 777, boss = "Test Boss" })
+  local w = win()
+  local t = w.tabs
+  -- the new controls sit on the Sound and speech tab, under what they belong to
+  for _, m in ipairs({ w.sayInstead, w.countFrom, w.speakBefore }) do assert(m.parent == t.frames.sound, "on the Sound and speech tab") end
+  assert(w.also.count.label.text == "Count down from", "the count's words: " .. tostring(w.also.count.label.text))
+  local sayHelp
+  for _, h in ipairs(helps) do if h.helpTitle == "Say instead" then sayHelp = h end end
+  assert(sayHelp and sayHelp.helpText ~= "", "Say instead has a (?)")
+  local function top(m) local pt = m.pts[#m.pts] return pt[#pt] end
+  assert(top(w.also.speak) == -150 and top(w.sayInstead) < -150 and top(w.also.count) < top(w.sayInstead) and top(w.also.glow) < top(w.also.count), "Speak, Say instead, Count, Glow, downwards")
+  local px = w.sayInstead.pts[#w.sayInstead.pts][2]
+  assert(px > w.also.speak.pts[#w.also.speak.pts][2], "Say instead is indented")
+  assert(-top(w.also.glow) + 24 <= 360 - 14 - 24 - 8 - 14, "Glow clears the message line")
+  -- the count's slider: 3 to 10, step 1, beside its box, greyed while the box is off
+  local cf = w.countFrom
+  assert(cf.opts.min == 3 and cf.opts.max == 10 and (cf.opts.step or 1) == 1 and cf.opts.get() == 3, "3 to 10, from 3")
+  assert(cf.opts.enabledIf() == false, "greyed while Count down is off")
+  setCheck(w.also.count, true)
+  assert(cf.opts.enabledIf() == true, "on with Count down")
+  cf.opts.set(5)
+  -- Speak at: Before 0, and its Seconds before slider, shown only for it
+  assert(optionKeys(dropdowns["Speak at"]) == "show,zero,before" and hasOption(dropdowns["Speak at"], "before").label == "Before 0", optionKeys(dropdowns["Speak at"]))
+  local sb = w.speakBefore
+  assert(sb.opts.min == 0.5 and sb.opts.max == 10 and sb.opts.step == 0.5 and sb.label == "Seconds before", "0.5 to 10 s")
+  assert(not sb.shown and sb.opts.enabledIf() == false, "hidden until Before 0")
+  pick("Speak at", "before")
+  assert(sb.shown and sb.opts.enabledIf() == true and sb.opts.get() == 3, "shown at 3 s")
+  sb.opts.set(2.5)
+  assert(sb.opts.format(2.5) == "2.5 s", tostring(sb.opts.format(2.5)))
+  -- Say instead: greyed with Speak the text off, saved as speakText
+  assert(w.sayInstead.enabled ~= false, "on with Speak the text")
+  typeInto(w.sayInstead, "Move now")
+  typeInto(w.timeEdit, "0:30")
+  click(w.saveBtn)
+  local r = R:Get(ENC, 1)
+  assert(r and r.countFrom == 5 and r.speech == "textcount" and r.speakAt == "before" and r.speakBefore == 2.5 and r.speakText == "Move now", "saved: " .. tostring(r and r.speakBefore))
+  local items = R:Items(ENC, 1, r)
+  assert(items[1].speech[1].text == "Move now" and items[1].speech[1].offset == 2.5 and items[1].speech[2].text == "5", "it says Move now 2.5 s before, then 5 4 3 2 1")
+  -- read back
+  E:Open(ENC, 1)
+  assert(w.sayInstead.text == "Move now" and cf.opts.get() == 5 and value("Speak at") == "before" and sb.opts.get() == 2.5 and sb.shown, "reads back")
+  -- the defaults are saved as nothing
+  cf.opts.set(3) sb.opts.set(3) typeInto(w.sayInstead, "  ")
+  click(w.saveBtn)
+  r = R:Get(ENC, 1)
+  assert(r.countFrom == nil and r.speakBefore == nil and r.speakText == nil and r.speakAt == "before", "3, 3 s and an empty box: nothing saved")
+  E:Open(ENC, 1)
+  assert(sb.shown, "Before 0 reopens with its slider")
+  pick("Speak at", "show")
+  assert(not sb.shown, "hidden again")
+  setCheck(w.also.speak, false)
+  assert(w.sayInstead.enabled == false, "greyed with Speak the text off")
+  -- a raid note line: none of the three (the note line has no field for them)
+  E:Open(ENC, nil, { spellID = 777, boss = "Test Boss", saveAs = "note" })
+  setCheck(w.also.count, true)
+  assert(optionKeys(dropdowns["Speak at"]) == "show,zero", "no Before 0 on a note line")
+  assert(cf.opts.enabledIf() == false and w.sayInstead.enabled == false, "greyed on a note line")
+  print("ok editor: Say instead, Count down from and Before 0")
 end
 
 -- speak at: a dropped cooldown speaks at 0

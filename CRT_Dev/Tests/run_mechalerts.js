@@ -1776,9 +1776,9 @@ check("speak at: Mech Alerts panel has it too", function()
   local _, id = only()
   local row = dropdowns["Speak at"]
   assert(row and p.speakAt == row, "a Speak at dropdown on the panel")
-  local keys = {}
-  for i, o in ipairs(row.opts.options) do keys[i] = o.key end
-  assert(table.concat(keys, ",") == "show,zero" and row.opts.options[2].label == "At 0", "On show, At 0")
+  local function list() return type(row.opts.options) == "function" and row.opts.options() or row.opts.options end
+  local function keyList() local keys = {} for i, o in ipairs(list()) do keys[i] = o.key end return table.concat(keys, ",") end
+  assert(keyList() == "show,zero" and list()[2].label == "At 0", "On show, At 0")
   assert(row.opts.get() == "show" and row.opts.enabledIf() == true, "On show, enabled")
   row.opts.set("zero")
   assert(R:Get(ENC, id).speakAt == "zero", "saved at once")
@@ -1789,6 +1789,11 @@ check("speak at: Mech Alerts panel has it too", function()
   assert(row.opts.enabledIf() == true, "back on")
   row.opts.set("show")
   assert(R:Get(ENC, id).speakAt == nil, "On show saved as nothing")
+  -- Before 0 (set in the alert editor) is listed only for an alert that has it, so it shows as it is saved
+  assert(not keyList():find("before", 1, true), "no Before 0 for an alert without it")
+  row.opts.set("before")
+  assert(keyList() == "show,zero,before" and list()[3].label == "Before 0" and row.opts.get() == "before", "listed while it has it")
+  assert(R:Get(ENC, id).speakAt == "before", "kept")
   assert(#errors == 0, tostring(errors[1]))
 end)
 

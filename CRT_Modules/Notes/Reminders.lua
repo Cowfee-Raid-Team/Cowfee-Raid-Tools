@@ -96,6 +96,7 @@ local TEXT = {
     speakAt = "Speak at",
     onShow = "On show",
     atZero = "At 0",
+    beforeZero = "Before 0",
     text = "Text",
     icon = "Icon",
     iconSpell = "Spell",
@@ -1612,11 +1613,15 @@ local function buildSoundTab(p, row)
         count = makeCheck(p, TEXT.count, L.INSET - 4, L.COUNT_Y, change(function(on) cur.draft.count = on end)),
         glow = makeCheck(p, TEXT.glow, L.INSET - 4, L.GLOW_Y, change(function(on) cur.draft.glow = on end)),
     }
-    -- Speak at: when Speak the text says it, On show or At 0; greyed while Speak the text is off
+    -- Speak at: when Speak the text says it, On show or At 0; greyed while Speak the text is off. Before 0 (its
+    -- seconds set in the alert editor) is listed only for an alert that has it, so it shows as it is saved
     panel.speakAt = row(UI.Dropdown(p, TEXT.speakAt, {
         labelWidth = L.SPEAK_AT_LABEL, width = L.SPEAK_AT_W,
         enabledIf = function() return cur.draft ~= nil and cur.draft.speak and true or false end,
-        options = Draft.SpeakAtOptions(TEXT.onShow, TEXT.atZero),
+        options = function()
+            local before = Draft.SpeakAtKey(cur.draft) == "before" and TEXT.beforeZero or nil
+            return Draft.SpeakAtOptions(TEXT.onShow, TEXT.atZero, before)
+        end,
         get = function() return Draft.SpeakAtKey(cur.draft) end,
         set = change(function(v) Draft.SetSpeakAt(cur.draft, v) end),
     }))
