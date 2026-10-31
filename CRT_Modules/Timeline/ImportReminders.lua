@@ -115,7 +115,8 @@ local function readLine(raw, list)
     local ph = 1
     if r.ph ~= nil and r.ph ~= "" then
         ph = tonumber(r.ph)
-        if not ph or ph < 1 then
+        -- a whole phase number, 1 or more
+        if not ph or ph < 1 or ph ~= math.floor(ph) then
             return nil, string.format(TEXT.badPhase, r.ph)
         end
     end
@@ -316,61 +317,105 @@ end
 
 -- Writing ---------------------------------------------------------------------------------------------------
 
--- The key two reminders are the same by: their group, typed time and text.
-local function sameKey(group, times, text)
+-- The time two reminders are compared by: an imported one's pasted phase and time (import.ph, import.time), so it
+-- matches whatever its times field holds; any other's typed times. Nil for a reminder with neither.
+local function timeOf(r)
+    local imp = type(r.import) == "table" and r.import
+    if imp and type(imp.ph) == "number" and type(imp.time) == "number" then
+        return Import.Times(imp.ph, imp.time)
+    end
+    return r.times
+end
+
+-- The key two reminders are the same by: their group, time and text.
+local function sameKey(group, r)
     local R = CRT.AlertReminders
+    local times = timeOf(r)
     local list = type(times) == "string" and R.ParseTimes(times)
     if not list then
         return nil
     end
-    return tostring(group) .. "|" .. R.FormatTimes(list) .. "|" .. trim(text):lower()
+    return tostring(group) .. "|" .. R.FormatTimes(list) .. "|" .. trim(r.text):lower()
 end
 
 local function imported(r)
     return type(r) == "table" and type(r.import) == "table" and r.import.source == Import.SOURCE
 end
 
+-- The bosses and groups a plan writes to, each once (a boss pasted twice, or as Normal and Heroic, is one pair).
+local function targets(plan)
+    local out, seen = {}, {}
+    for _, p in ipairs(plan and plan.bosses or {}) do
+        if p.group and p.encounterID then
+            local key = tostring(p.encounterID) .. "|" .. p.group
+            if not seen[key] then
+                seen[key] = { encounterID = p.encounterID, group = p.group, bosses = {} }
+                out[#out + 1] = seen[key]
+            end
+            local t = seen[key].bosses
+            t[#t + 1] = p
+        end
+    end
+    return out
+end
+
+-- One boss and group: with replace, what this importer wrote before is deleted (once for the pair); then each of
+-- its pasted reminders is saved unless the same one (group, time, text) is already there.
+local function applyTarget(t, replace, res)
+    local R = CRT.AlertReminders
+    if replace then
+        for _, e in ipairs(R:List(t.encounterID)) do
+            if imported(e.r) and R.GroupOf(e.r) == t.group then
+                R:Delete(t.encounterID, e.id)
+                res.removed = res.removed + 1
+            end
+        end
+    end
+    local seen = {}
+    for _, e in ipairs(R:List(t.encounterID)) do
+        local key = R.GroupOf(e.r) == t.group and sameKey(t.group, e.r)
+        if key then
+            seen[key] = true
+        end
+    end
+    for _, p in ipairs(t.bosses) do
+        for _, r in ipairs(p.reminders) do
+            local key = sameKey(t.group, r)
+            if key and seen[key] then
+                res.duplicates = res.duplicates + 1
+            elseif R:Save(t.encounterID, nil, r, t.group) then
+                res.added = res.added + 1
+                if key then
+                    seen[key] = true
+                end
+            else
+                res.failed = res.failed + 1
+            end
+        end
+    end
+end
+
 -- Writes the plan: with opts.replace, first deletes what this importer wrote before for each boss and group
 -- pasted; then saves each reminder through Reminders:Save, leaving out one that is the same (group, time, text)
--- as a reminder the boss already has. Returns { added, removed, duplicates, failed }, or nil and the message
+-- as a reminder the boss already has. The alerts' change event fires once, at the end (Alerts:Batch), so the
+-- Timeline and every list redraw once. Returns { added, removed, duplicates, failed }, or nil and the message
 -- (during combat, as the Timeline's other edits).
 function Import.Apply(plan, opts)
     if InCombatLockdown and InCombatLockdown() then
         return nil, TEXT.combat
     end
-    local R = CRT.AlertReminders
     local res = { added = 0, removed = 0, duplicates = 0, failed = 0 }
-    for _, p in ipairs(plan and plan.bosses or {}) do
-        if p.group and p.encounterID then
-            if opts and opts.replace then
-                for _, e in ipairs(R:List(p.encounterID)) do
-                    if imported(e.r) and R.GroupOf(e.r) == p.group then
-                        R:Delete(p.encounterID, e.id)
-                        res.removed = res.removed + 1
-                    end
-                end
-            end
-            local seen = {}
-            for _, e in ipairs(R:List(p.encounterID)) do
-                local key = R.GroupOf(e.r) == p.group and sameKey(p.group, e.r.times, e.r.text)
-                if key then
-                    seen[key] = true
-                end
-            end
-            for _, r in ipairs(p.reminders) do
-                local key = sameKey(p.group, r.times, r.text)
-                if key and seen[key] then
-                    res.duplicates = res.duplicates + 1
-                elseif R:Save(p.encounterID, nil, r, p.group) then
-                    res.added = res.added + 1
-                    if key then
-                        seen[key] = true
-                    end
-                else
-                    res.failed = res.failed + 1
-                end
-            end
+    local replace = opts and opts.replace and true or false
+    local function run()
+        for _, t in ipairs(targets(plan)) do
+            applyTarget(t, replace, res)
         end
+    end
+    local Alerts = CRT.Alerts
+    if Alerts and Alerts.Batch then
+        Alerts:Batch(run)
+    else
+        run()
     end
     return res
 end

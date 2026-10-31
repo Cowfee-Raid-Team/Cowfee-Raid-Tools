@@ -14,7 +14,7 @@ const FILES = [
   'CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua',
   'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/Engine.lua',
   'CRT_Modules/Alerts/Reminders.lua', 'CRT_Modules/Alerts/Draft.lua',
-  'CRT_Modules/Timeline/ImportReminders.lua', 'CRT_Modules/Timeline/ImportWindow.lua',
+  'CRT_Core/UI/CodeBox.lua', 'CRT_Modules/Timeline/ImportReminders.lua', 'CRT_Modules/Timeline/ImportWindow.lua',
   'CRT_Data/Bosses/Registry.lua',
 ];
 // The sample export of 2026-10-31 (factory/samples, not in Git), as it was pasted.
@@ -391,6 +391,59 @@ check("import: refused during combat", function()
   assert(res == nil and err == I.TEXT.combat and count(3492) == 0, "nothing written")
 end)
 
+check("import: the same boss twice in one group (Normal and Heroic) keeps both", function()
+  fresh()
+  local text = "EncounterID:3492;Difficulty:Normal;Name:Ula'tek\\nph:1;time:5;tag:everyone;text:From Normal;\\n\\n"
+    .. "EncounterID:3492;Difficulty:Heroic;Name:Ula'tek\\nph:1;time:9;tag:everyone;text:From Heroic;\\n"
+  I.Apply(I.Plan(I.Parse(text), 11), { replace = true })
+  local res = I.Apply(I.Plan(I.Parse(text), 11), { replace = true })
+  local names = {}
+  for _, e in ipairs(R:List(3492)) do names[e.r.text] = (names[e.r.text] or 0) + 1 end
+  assert(names["From Normal"] == 1 and names["From Heroic"] == 1, "both kept, once each")
+  assert(res.removed == 2 and res.added == 2, "each removed once: " .. res.removed .. ", " .. res.added)
+end)
+
+check("import: a line named like a spell-less ability row keeps its own time", function()
+  fresh()
+  local Ref = CRT.TimelineReference
+  local key = assert(Ref:Add("Boss: Ula'tek\\nDifficulty: Heroic\\nEncounter: 3492\\nSoak: 6:40, 7:50"), "the ability timeline")
+  -- a hand-made reminder with that name follows the row (the rule for your own reminders)
+  local own = R:Save(3492, nil, { text = "Soak", times = "P1 6:41", group = "nh", outputs = { alert = true } })
+  assert(R:Get(3492, own).times == nil, "a hand-made Soak moves onto the row")
+  R:Delete(3492, own)
+  local before = #printed
+  local text = "EncounterID:3492;Difficulty:Heroic;Name:Ula'tek\\nph:1;time:407.5;tag:everyone;dur:20;text:Soak;\\n"
+  local res = I.Apply(I.Plan(I.Parse(text), 11), { replace = false })
+  assert(res.added == 1, "added")
+  local r = R:List(3492)[1].r
+  assert(r.times == "P1 6:47.5" and r.timesBackup == nil and r.timesMigrated == nil, "its time stays: " .. tostring(r.times))
+  assert(not R.FollowsCasts(3492, r, nil, "nh"), "it follows no row")
+  local times = R:Times(3492, r, nil, "nh")
+  assert(#times == 1 and near(times[1].t, 407.5), "the alert at its own time")
+  assert(#printed == before, "no chat line")
+  local again = I.Apply(I.Plan(I.Parse(text), 11), { replace = false })
+  assert(again.added == 0 and again.duplicates == 1 and #R:List(3492) == 1, "no duplicate")
+  R.MigrateAll()
+  assert(R:List(3492)[1].r.times == "P1 6:47.5", "the login pass leaves it too")
+  Ref:Delete(key)
+end)
+
+check("parse: a phase must be a whole number", function()
+  local p = I.Parse("EncounterID:3492;Difficulty:Heroic;Name:Ula'tek\\nph:1.5;time:5;tag:everyone;text:x;\\n")
+  assert(#p.bosses[1].reminders == 0 and p.bosses[1].skipped[1].reason:find("bad phase", 1, true), "1.5 skipped")
+end)
+
+check("import: the alerts' change event fires once", function()
+  fresh()
+  I.Apply(I.Plan(I.Parse(SAMPLE), 11), { replace = true })
+  local A = CRT.Alerts
+  local fired, counting = 0, true
+  A:OnChange(function() if counting then fired = fired + 1 end end)
+  local res = I.Apply(I.Plan(I.Parse(SAMPLE), 11), { replace = true })
+  counting = false
+  assert(res.added == 27 and fired == 1, "one Fire for 27 deletes and 27 saves: " .. fired)
+end)
+
 -- The pop-out ---------------------------------------------------------------------------------------------------
 
 check("window: made by UI.Window with a saved place, help in the title strip", function()
@@ -433,6 +486,19 @@ check("window: the preview counts each boss, Import N", function()
   assert(tip.shown and tip.title == "Ula'tek" and tip.lines[1] == Win.TEXT.skippedTitle and tip.lines[2]:find("for another tag (11)", 1, true), "why, in the tooltip: " .. tostring(tip.lines[2]))
   assert(win.importBtn.text == "Import 2", win.importBtn.text)
   classID = 11
+end)
+
+check("window: the shared code box and scroll box; a long skipped list stops at 15 lines", function()
+  local win = Win.Window()
+  assert(win.paste.edit and win.paste.scroll and win.paste.innerW == Win.L.width - 16 - 2 * UI.SCROLL_BOX_PAD - 4 - 14, "the paste box is UI.CodeBox")
+  assert(win.list.scroll and win.list.child, "the list is in a UI.ScrollBox")
+  local lines = { "EncounterID:3492;Difficulty:Heroic;Name:Ula'tek" }
+  for i = 1, 20 do lines[#lines + 1] = "ph:1;time:" .. (10 + i) .. ";tag:5;text:Line " .. i .. ";" end
+  paste(win, table.concat(lines, "\\n"))
+  local row = win.list.rows[1]
+  row.OnEnter(row)
+  assert(#tip.lines == 1 + 15 + 1, "a title, 15 lines and one more: " .. #tip.lines)
+  assert(tip.lines[17] == "and 5 more", tostring(tip.lines[17]))
 end)
 
 check("window: disabled with nothing to import", function()
