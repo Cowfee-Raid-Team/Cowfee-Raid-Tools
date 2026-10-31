@@ -3,6 +3,8 @@ local ADDON, CRT = ...
 -- Timeline: the panel rows under the healers on Healer CDs (Timeline/HealerView.lua builds the rows, this file
 -- fills them). Each is a row of the view's lanes (kind "hvpanel"), so it scrolls with them, with a frame over
 -- the whole row (name column and track) that takes the clicks:
+--   add healer        "+ Add healer", which adds a healer slot by spec (Timeline/HealerSlots.lua), for anyone, on a
+--                     boss with an encounter number
 --   your moved casts  "You moved N casts from the raid note." with Reset mine and Send to raid lead, when you
 --                     moved any of the shown notes' casts (Notes/Shifts.lua); hidden at none
 --   proposed changes  for the raid leader and assistants: "Proposed changes (N)" with the auto-accept check
@@ -56,12 +58,15 @@ end
 
 -- Rows -------------------------------------------------------------------------------------------------
 
--- Adds the panel rows to out, the view's lanes: the moved casts' bar, then the proposals for the shown boss
--- (for someone who may change the raid note).
+-- Adds the panel rows to out, the view's lanes: + Add healer, the moved casts' bar, then the proposals for the shown
+-- boss (for someone who may change the raid note).
 function Panel.Rows(view, out)
     local Shifts, P, Notes = CRT.NoteShifts, CRT.NoteProposals, CRT.Notes
     local function add(panel, p)
         out[#out + 1] = { key = "healers:panel:" .. (#out + 1), kind = "hvpanel", panel = panel, p = p, label = "", marks = {} }
+    end
+    if CRT.TimelineHealerSlots and view:EncounterNumber() then
+        add("add")
     end
     view.hvMoved = Shifts and Shifts:Count(view.hvNoteIds) or 0
     if view.hvMoved > 0 then
@@ -182,6 +187,24 @@ local function barFrame(view)
     return f
 end
 
+-- The + Add healer row: its button at the left, with its (?) beside it; a click opens the specs' menu.
+local function addFrame(view)
+    if view.hvAdd then
+        return view.hvAdd
+    end
+    local f = rowFrame(view)
+    local Slots = CRT.TimelineHealerSlots
+    local b
+    b = CRT.UI.PanelButton(f, Slots.TEXT.addHealer, BUTTON_H, function()
+        Slots.AddMenu(view, b)
+    end)
+    b:SetPoint("LEFT", f, "LEFT", PAD, 0)
+    f.buttons.add = b
+    CRT.UI.HelpRight(b, Slots.TEXT.addTitle, Slots.TEXT.addHelp, { parent = f })
+    view.hvAdd = f
+    return f
+end
+
 local function headFrame(view)
     if view.hvHead then
         return view.hvHead
@@ -283,6 +306,7 @@ function Panel.ProposalText(view, p)
 end
 
 local function place(view, f, i)
+    f:SetHeight(rowH())
     f:ClearAllPoints()
     f:SetPoint("TOPLEFT", view.body, "TOPLEFT", 0, -(i - 1) * rowH())
     f:SetPoint("TOPRIGHT", view.body, "TOPRIGHT", 0, -(i - 1) * rowH())
@@ -292,11 +316,13 @@ end
 
 -- Shows each panel row's frame at its row, filled in; hides the rest. on: the view shows Healer CDs.
 function Panel.Draw(view, on)
-    local bar, head, props = false, false, 0
+    local bar, head, props, adds = false, false, 0, false
     for i, lane in ipairs(on and view.lanes or {}) do
         if lane.kind == "hvpanel" then
             local f
-            if lane.panel == "bar" then
+            if lane.panel == "add" then
+                f, adds = addFrame(view), true
+            elseif lane.panel == "bar" then
                 f, bar = barFrame(view), true
                 local n = view.hvMoved or 0
                 f.text:SetText(string.format(TEXT.moved, n, n == 1 and "" or "s"))
@@ -318,6 +344,9 @@ function Panel.Draw(view, on)
             end
             place(view, f, i)
         end
+    end
+    if view.hvAdd and not adds then
+        view.hvAdd:Hide()
     end
     if view.hvBar and not bar then
         view.hvBar:Hide()

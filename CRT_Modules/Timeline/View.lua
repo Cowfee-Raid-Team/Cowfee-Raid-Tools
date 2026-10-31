@@ -49,8 +49,15 @@ CRT.TimelineView = View
 
 local LABEL_W = 166 -- the lane name column, with a mechanic's show tick at its left
 local NAME_X = 42 -- where a lane's name starts in its label, after the tick and the icon
-local ROW_H = 30
-View.ROW_H = ROW_H -- every lane's height, for Timeline/HealerView.lua's bands
+-- the Icon size setting's default, as Core.lua's defaults give it (CRT.defaults, loaded first), for a settings table
+-- without it
+local DEFAULT_ICON = CRT.defaults and CRT.defaults.timeline and CRT.defaults.timeline.iconSize
+local ROW_INSET = 4 -- a row's gap above and below a cast's icon: the default's rows are 30 high
+-- Every lane's height (Abilities, Deaths, Notes, Personal notes, Healer CDs' healers and slots alike): the icon size
+-- plus a gap above and below (View.RowHeight). It follows the Icon size setting; each draw reads it again
+-- (syncRowH), and View.ROW_H is the height last drawn, for Timeline/HealerView.lua and the files beside it.
+local ROW_H = (DEFAULT_ICON or 0) + 2 * ROW_INSET -- set again from the setting before every draw
+View.ROW_H = ROW_H
 local AXIS_H = 20
 local PHASE_ROW_H = 12 -- each row of phase labels above the time labels
 local PHASE_ROWS = 2 -- phase labels stagger over at most this many rows
@@ -207,6 +214,24 @@ local TEXT = {
 
 local function settings()
     return CRT.Timeline:Settings()
+end
+
+-- The Icon size setting (Timeline > Settings): the size of a cast's icon on a row, in the Abilities layout and on
+-- Healer CDs alike (Timeline/HealerView.lua's casts and their bands).
+function View.IconSize()
+    return settings().iconSize or DEFAULT_ICON
+end
+
+-- The height of a row whose icons are size pixels: the one row rule, for every lane of both layouts.
+function View.RowHeight(size)
+    return size + 2 * ROW_INSET
+end
+
+-- Reads the row height again from the Icon size setting, before a draw (or a measure) uses it.
+local function syncRowH()
+    ROW_H = View.RowHeight(View.IconSize())
+    View.ROW_H = ROW_H
+    return ROW_H
 end
 
 local function rgba(key, alpha)
@@ -1656,6 +1681,41 @@ function Methods:Marks(lanes, length)
     return out
 end
 
+-- The notes the view draws for boss encounterID (its own when nil), in Notes:List's order ({ id, record }): for each
+-- difficulty the view shows, the shared note in use (one of the guilds' notes), and your personal notes, which always
+-- run beside it. Healer CDs' healer slots change only these (Timeline/HealerSlots.lua).
+function Methods:ShownNotes(encounterID)
+    encounterID = encounterID or self:EncounterNumber()
+    local Notes = CRT.Notes
+    local out = {}
+    if not (Notes and Notes.List and encounterID) then
+        return out
+    end
+    local list = Notes:List()
+    local runs = {}
+    for _, n in ipairs(list) do
+        local r = n.record
+        if r.encounterID == encounterID then
+            runs[n.id] = r.personal or Notes:FindForEncounter(encounterID, r.difficulty) == n.id
+        end
+    end
+    for _, n in ipairs(list) do
+        if n.record.encounterID == encounterID and runs[n.id] and self:ShowsDifficulty(n.record.difficulty) then
+            out[#out + 1] = n
+        end
+    end
+    return out
+end
+
+-- The ids of ShownNotes.
+function Methods:ShownNoteIds()
+    local out = {}
+    for _, n in ipairs(self:ShownNotes()) do
+        out[#out + 1] = n.id
+    end
+    return out
+end
+
 function Methods:NoteAndReminderMarks(lanes, length)
     local out = {}
     local Reminders = CRT.AlertReminders
@@ -1693,29 +1753,17 @@ function Methods:NoteAndReminderMarks(lanes, length)
         m.row = m.kind == "note" and rowFor(lanes, spellID, text) or nil
         out[#out + 1] = m
     end
-    -- the notes that run: for each difficulty, the shared note in use (one of the guilds' notes), and
-    -- your personal notes, which always run beside it
     local Notes = CRT.Notes
-    local runs = {}
     if Notes and Notes.List then
-        for _, n in ipairs(Notes:List()) do
-            local r = n.record
-            if r.encounterID == encounterID then
-                runs[n.id] = r.personal or Notes:FindForEncounter(encounterID, r.difficulty) == n.id
-            end
-        end
-    end
-    if Notes and Notes.List then
-        for _, n in ipairs(Notes:List()) do
-            if n.record.encounterID == encounterID and runs[n.id] and self:ShowsDifficulty(n.record.difficulty) then
-                local note = Notes:Parsed(n.id)
-                local rawLines = Notes:RawLines(n.id) -- the lines as drawn, so a move can tell one has changed
-                for _, timer in ipairs(note and note.timers or {}) do
-                    local raw = rawLines[timer.line]
-                    add({ ph = timer.ph, time = timer.time, tags = timer.tags, noteID = n.id, line = timer.line,
-                        difficulty = n.record.difficulty, kind = "note", expected = raw, encounterID = encounterID },
-                        timer.spellId, timer.text, timer.iconID)
-                end
+        -- the notes that run (ShownNotes): the shared note in use per difficulty shown, and your personal notes
+        for _, n in ipairs(self:ShownNotes(encounterID)) do
+            local note = Notes:Parsed(n.id)
+            local rawLines = Notes:RawLines(n.id) -- the lines as drawn, so a move can tell one has changed
+            for _, timer in ipairs(note and note.timers or {}) do
+                local raw = rawLines[timer.line]
+                add({ ph = timer.ph, time = timer.time, tags = timer.tags, noteID = n.id, line = timer.line,
+                    difficulty = n.record.difficulty, kind = "note", expected = raw, encounterID = encounterID },
+                    timer.spellId, timer.text, timer.iconID)
             end
         end
     end
@@ -1992,6 +2040,7 @@ function Methods:UpdateMove()
     g.pole:SetColorTexture(rgba(key, 0.6))
     g:SetSize(gw, gw)
     g.pole:SetShown(not HealerView)
+    g.pole:SetSize(2, ROW_H - 6)
     g.head:ClearAllPoints()
     if HealerView then
         g.head:SetAllPoints(g)
@@ -3187,7 +3236,10 @@ function Methods:DrawBands(spec)
         local function x(t)
             return View.TimeToX(math.max(0, math.min(length, t)), length, trackW)
         end
-        local top, h = -(spec.row - 1) * ROW_H - BAND_INSET, ROW_H - 2 * BAND_INSET
+        -- on Healer CDs as tall as its casts' own bands (HealerView.BandInset, from the Icon size)
+        local HealerView = self.mode == "healers" and CRT.TimelineHealerView
+        local inset = HealerView and HealerView.BandInset() or BAND_INSET
+        local top, h = -(spec.row - 1) * ROW_H - inset, ROW_H - 2 * inset
         local function put(x0, x1, r, g, b, a, sub)
             if x1 - x0 <= 0 then
                 return
@@ -3747,6 +3799,7 @@ function Methods:DrawMarks(length)
         f:SetSize(w, w)
         f.icon:SetSize(w - 2, w - 2)
         f.pole:SetShown(not inline)
+        f.pole:SetSize(2, ROW_H - 6)
         if inline then
             f:SetPoint("CENTER", self.track, "TOPLEFT", x, -(m.row - 1) * ROW_H - ROW_H / 2)
         else
@@ -3887,6 +3940,7 @@ function Methods:DrawIgnored(after, rows)
         self.ignoredHead = head
     end
     local y = -after * ROW_H
+    head:SetSize(LABEL_W - 4, ROW_H)
     head:ClearAllPoints()
     head:SetPoint("TOPLEFT", self.body, "TOPLEFT", 2, y)
     head.line:ClearAllPoints()
@@ -3901,6 +3955,7 @@ function Methods:DrawIgnored(after, rows)
     for i, lane in ipairs(self.ignoredLanes) do
         local ly = y - i * ROW_H
         local l = self:Label(after + i)
+        l:SetSize(LABEL_W - 4, ROW_H)
         l.lane = lane
         l:ClearAllPoints()
         l:SetPoint("TOPLEFT", self.body, "TOPLEFT", 2, ly)
@@ -4200,6 +4255,7 @@ end
 -- ignored list's), the scroll bar, Time unknown and the strip, as last drawn. The pop-out grows to it on
 -- Healer CDs (Timeline/Page.lua).
 function Methods:ContentHeight()
+    syncRowH()
     local rows = #(self.lanes or {}) + (self.ignoredRows or 0)
     return (self.axisH or AXIS_H) + rows * ROW_H + self.stripH + UNKNOWN_H + BAR_H + 4
 end
@@ -4253,6 +4309,7 @@ end
 -- were built for the same pull and layout (BuildLanes).
 function Methods:Refresh(relayout)
     local s = settings()
+    syncRowH() -- the rows follow the Icon size setting
     local pull = self.pull
     local built = self.built
     if not (relayout and built and built.pull == pull and built.mode == self.mode) then
@@ -4292,12 +4349,13 @@ function Methods:Refresh(relayout)
     end
     self:DrawEndLine(pull and self.extra.endLine, length, height)
 
-    local size = s.iconSize or 22
+    local size = View.IconSize()
     local used, bars, leads, ticks = 0, 0, 0, 0
     for i, lane in ipairs(lanes) do
         local y = -(i - 1) * ROW_H
         local l = self:Label(i)
         l.lane = lane
+        l:SetSize(LABEL_W - 4, ROW_H)
         l.check:SetShown(CRT.Timeline.Ignorable(lane))
         l.check:SetChecked(true)
         l.icon:SetDesaturated(false)

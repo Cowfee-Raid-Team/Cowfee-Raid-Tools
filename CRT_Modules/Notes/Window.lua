@@ -131,10 +131,22 @@ local function colorName(word)
     return word
 end
 
+-- A timer's names, each in its class colour; a spec word as the one player it means, else its label ("Resto
+-- Druid 2", Notes/SpecWords.lua's Display).
 local function names(item)
     local parts = {}
+    local Specs = CRT.NoteSpecs
     for _, tag in ipairs(item.tags) do
-        parts[#parts + 1] = colorName(tag)
+        local text, class
+        if Specs then
+            text, class = Specs.Display(tag, item.specInfo)
+        end
+        local color = text and class and RAID_CLASS_COLORS[class]
+        if text then
+            parts[#parts + 1] = (color and color.colorStr) and ("|c" .. color.colorStr .. text .. "|r") or text
+        else
+            parts[#parts + 1] = colorName(tag)
+        end
     end
     return table.concat(parts, " ")
 end

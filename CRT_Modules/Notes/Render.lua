@@ -155,6 +155,22 @@ local function classPart(words, i, ctx)
     return { text = table.concat(words, " ", i, i + n - 1), class = file, me = false }, n
 end
 
+-- A timer's tag that is a spec word ("RestoDruid", "RestoDruid2", Notes/SpecWords.lua) as one part in its class
+-- colour: the name of the one player it means when exactly one is known (SpecWords' Matching, or ctx.specWho in
+-- the tests), else its label ("Resto Druid", "Resto Druid 2"). info: the note's slot counts. Nil for any other word.
+local function specPart(word, info, ctx)
+    local Specs = CRT.NoteSpecs
+    local text, class, player
+    if Specs then
+        text, class, player = Specs.Display(word, info, ctx.specWho)
+    end
+    if not text then
+        return nil
+    end
+    local me = player ~= nil and ctx.me ~= nil and (player.name:lower():gsub("%-.*$", "")) == ctx.me
+    return { text = text, class = class, me = me }
+end
+
 local WORD = "[%w\128-\255][%w\128-\255%-']*"
 
 -- A line of text as parts: each word a name (class and you), the spaces and commas between them as written.
@@ -214,7 +230,10 @@ local function timerRow(t, rawLine, ctx)
     local tags = t.tags or {}
     local i = 1
     while i <= #tags do
-        local part, n = classPart(tags, i, ctx)
+        local part, n = specPart(tags[i], t.specInfo, ctx), nil
+        if not part then
+            part, n = classPart(tags, i, ctx)
+        end
         row.names[#row.names + 1] = part or nameOf(tags[i], ctx)
         i = i + (n or 1)
     end

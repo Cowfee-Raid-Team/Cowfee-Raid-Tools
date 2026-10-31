@@ -1003,8 +1003,8 @@ do
   check(f and f.mark.t == 50 and f.mark.raidT == 30 and f.mark.moved ~= nil, "the cast draws at your time")
   check(shownLabels(v) == "0:30 to 0:50", "with the raid's time and yours beside it: " .. shownLabels(v))
   local ghost
-  for _, tx in ipairs(v.hvBands) do if tx:IsShown() and tx.w == 18 and tx.pt[4] == 30 * v.trackW / 300 - 9 then ghost = tx end end
-  check(ghost and ghost.pt[5] == -(aura - 1) * 30 - 1, "and a ghost at the raid's time on its row")
+  for _, tx in ipairs(v.hvBands) do if tx:IsShown() and tx.w == HV.CastW() and tx.pt[4] == 30 * v.trackW / 300 - HV.CastW() / 2 then ghost = tx end end
+  check(ghost and ghost.pt[5] == -(aura - 1) * 30 - HV.BandInset(), "and a ghost at the raid's time on its row, the cast's size")
   local dashes = 0
   for _, tx in ipairs(v.hvBands) do if tx:IsShown() and tx.w == 2 and tx.pt[4] == 30 * v.trackW / 300 - 1 then dashes = dashes + 1 end end
   check(dashes >= 3, "its pole dashed: " .. dashes)

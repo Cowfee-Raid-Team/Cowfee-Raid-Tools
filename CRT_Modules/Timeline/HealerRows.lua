@@ -77,31 +77,36 @@ function Rows.Reset(key)
     end
 end
 
--- The menu for a player's rows at owner: their name, a checkbox per spell that can be a row (info.options in
--- order, each { spellID, label, icon, default }), then Reset to defaults. changed() runs after each pick.
--- False when the game's menus aren't there.
+-- Fills menu (a menu or a submenu, as a healer slot's Rows, Timeline/HealerSlots.lua) with a checkbox per spell that
+-- can be a row (info.options in order, each { spellID, label, icon, default }), then Reset to defaults. changed()
+-- runs after each pick.
+function Rows.Fill(menu, info, changed)
+    local key = info.key
+    for _, o in ipairs(info.options) do
+        local text = o.icon and string.format(ICON, tostring(o.icon), o.label) or o.label
+        menu:CreateCheckbox(text, function()
+            return Rows.Shown(key, o.spellID, o.default)
+        end, function()
+            Rows.Set(key, o.spellID, not Rows.Shown(key, o.spellID, o.default), o.default)
+            changed()
+        end)
+    end
+    menu:CreateDivider()
+    menu:CreateButton(TEXT.reset, function()
+        Rows.Reset(key)
+        changed()
+    end)
+end
+
+-- The menu for a player's rows at owner: their name, then Fill's. False when the game's menus aren't there.
 function Rows.Menu(owner, info, changed)
     local View = CRT.TimelineView
     if not (info and View and View.OpenMenu and MenuUtil and MenuUtil.CreateContextMenu) then
         return false
     end
-    local key = info.key
     View.OpenMenu(owner, function(root)
         root:CreateTitle(info.name)
-        for _, o in ipairs(info.options) do
-            local text = o.icon and string.format(ICON, tostring(o.icon), o.label) or o.label
-            root:CreateCheckbox(text, function()
-                return Rows.Shown(key, o.spellID, o.default)
-            end, function()
-                Rows.Set(key, o.spellID, not Rows.Shown(key, o.spellID, o.default), o.default)
-                changed()
-            end)
-        end
-        root:CreateDivider()
-        root:CreateButton(TEXT.reset, function()
-            Rows.Reset(key)
-            changed()
-        end)
+        Rows.Fill(root, info, changed)
     end)
     return true
 end

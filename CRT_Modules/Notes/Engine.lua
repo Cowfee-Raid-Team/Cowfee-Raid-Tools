@@ -167,11 +167,41 @@ end
 -- spec or group just changed (the note windows call it on those events).
 function Engine:ResetTokens()
     myTokens, classAt, preview.at = nil, nil, nil
+    local Specs = CRT.NoteSpecs
+    if Specs and Specs.Reset then
+        Specs.Reset()
+    end
 end
 
--- Whether a timer is for you: your name, your role, your class, everyone, or your raid group. A name in
--- a tag may carry a realm, which is ignored. A class name of several words may be split over them, and is
--- read as one class first, so "Demon Hunter" is never a Hunter's (Parse.lua's class words).
+-- Whether spec word e (slot n, or nil) is you, or the player previewed as (as): a word with no number when you
+-- play that spec now (their spec seen last, Groups.CachedSpec, for the one previewed); a numbered word when you
+-- are the one player it means (Notes/SpecWords.lua's Matching, with the note's slot counts info). An unknown
+-- spec is never a match.
+local function specIsMine(e, n, info, as)
+    local Groups, Specs = CRT.Groups, CRT.NoteSpecs
+    if n == nil then
+        local spec
+        if as then
+            spec = Groups and Groups.CachedSpec and Groups.CachedSpec(as)
+        else
+            spec = specIdAndRole()
+        end
+        return readable(spec) and spec ~= nil and spec == e.spec
+    end
+    local list = Specs.Matching(e, n, info)
+    if #list ~= 1 then
+        return false
+    end
+    if not as then
+        return list[1].me and true or false
+    end
+    local key = Groups and Groups.Normalize and Groups.Normalize(as) or as
+    return list[1].key:lower() == key:lower()
+end
+
+-- Whether a timer is for you: your name, your role, your class, your spec (a spec word, specIsMine), everyone,
+-- or your raid group. A name in a tag may carry a realm, which is ignored. A class name of several words may be
+-- split over them, and is read as one class first, so "Demon Hunter" is never a Hunter's (Parse.lua's class words).
 -- In a rehearsal, Preview as decides instead: "*" takes every tagged line (an untagged line is for no
 -- one, so it still shows only in the timers window), and a player's name takes their lines.
 function Engine:IsMine(item)
@@ -188,15 +218,25 @@ function Engine:IsMine(item)
     end
     local subgroup
     local classAtWord = CRT.NoteParser.ClassAt
+    local readSpec = CRT.NoteSpecs and CRT.NoteSpecs.ReadTag
     local i = 1
     while i <= #tags do
         local word = tags[i]:lower():gsub("%-.*$", "")
         if mine[word] then
             return true
         end
+        local spec, slot = nil, nil
+        if readSpec then
+            spec, slot = readSpec(tags[i])
+        end
         local class, n = classAtWord(tags, i)
         local number, used = groupTag(word, tags[i + 1])
-        if class then
+        if spec then
+            if specIsMine(spec, slot, item.specInfo, as) then
+                return true
+            end
+            i = i + 1
+        elseif class then
             if class == myFile then
                 return true
             end
