@@ -31,6 +31,8 @@ local MELEE_SPECS = {
     [255] = true, -- Survival Hunter
     [263] = true, -- Enhancement Shaman
 }
+-- The one list: the reminders' importer reads it too (Timeline/ImportReminders.lua's melee and ranged tags).
+Engine.MELEE_SPECS = MELEE_SPECS
 
 local function specIdAndRole()
     local info = C_SpecializationInfo

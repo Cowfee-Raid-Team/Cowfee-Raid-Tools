@@ -6,7 +6,9 @@ local ADDON, CRT = ...
 -- saved in CRT.db.alerts.reminders[encounterID][id] as
 --   { boss, spellID, text, times, outputs = { alert, bar, speech, text, icon, circle, timeline }, warn, speech,
 --     priority, group, difficulty, enabled, linger, sound, auraSound, glow, iconID, color, speakAt, ticks, fill, countTo, barTo,
---     absorb, raidNote }
+--     absorb, raidNote, speakText }
+-- speakText (optional) is read out in place of the text (speechList); only the importer sets it
+-- (Timeline/ImportReminders.lua, a line's TTS words), and it stays saved through an edit.
 -- raidNote (optional) = { tag, key, difficulty }: saved as Raid note in Mech Alerts (Notes/MechNote.lua). Its lines in the
 -- boss's raid note alert instead, so the "mine" block skips it (InNote); nothing else changes.
 -- auraSound true also plays the sound when the spell's aura is put on you (Sound/Auras.lua).
@@ -1105,8 +1107,13 @@ function Reminders.BarTicks(ticks, warn)
     return #on > 0 and on or nil, #off > 0 and off or nil
 end
 
+-- What a reminder reads out: its speakText when it has one (set only by the reminders' importer,
+-- Timeline/ImportReminders.lua, for a line that says other words than it shows), else what it shows.
 local function speechList(r, text)
     local mode = r.speech
+    if type(r.speakText) == "string" and trim(r.speakText) ~= "" then
+        text = r.speakText
+    end
     return Rules.SpeechItems(text, r.warn or 5, mode ~= "count", mode == "textcount" or mode == "count",
         r.speakAt == "zero")
 end
