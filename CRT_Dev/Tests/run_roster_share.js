@@ -29,6 +29,7 @@ local CLOCK = 100
 GetTime = function() return CLOCK end
 local timers = {}
 C_Timer = { After = function(s, fn) timers[#timers + 1] = fn end, NewTicker = function() end }
+local function runTimers() local list = timers timers = {} for _, fn in ipairs(list) do fn() end end
 LE_PARTY_CATEGORY_INSTANCE = 2
 local grouped, raid = true, true
 IsInGroup = function(c) if c == 2 then return false end return grouped end
@@ -46,10 +47,14 @@ GetRaidRosterInfo = function() end
 UnitGroupRolesAssigned = function() return "NONE" end
 UnitIsUnit = function() return false end
 issecretvalue = function(v) return v == "SECRET" end
-local sent = {}
+local sent, results = {}, {} -- results: the game's answer per call, 0 (sent) when the list runs out
 local prefixes = {}
 C_ChatInfo = { RegisterAddonMessagePrefix = function(p) prefixes[#prefixes + 1] = p end,
-  SendAddonMessage = function(prefix, text, channel) sent[#sent + 1] = { prefix = prefix, text = text, channel = channel } return 0 end }
+  SendAddonMessage = function(prefix, text, channel)
+    local r = table.remove(results, 1) or 0
+    if r == 0 then sent[#sent + 1] = { prefix = prefix, text = text, channel = channel } end
+    return r
+  end }
 CreateFrame = function() local f = {} function f:RegisterEvent() end function f:SetScript(_, fn) self.fn = fn end return f end
 
 local function freshGroups() return { presets = {}, nextId = 1, keepChanges = true, source = "raid", working = {}, roles = {} } end
@@ -125,8 +130,32 @@ ok = Share:Push()
 check(ok and sent[#sent].channel == "PARTY", "dedupe: another channel gets it")
 raid = true
 
--- not sent: no active layout, an empty one, out of a group, not the leader, in combat
+-- a send the game drops is not counted as sent: the next push of the same layout goes
+local mainSlots = Groups:Find(mainId).slots
+mainSlots[2] = "Changed-Sargeras"
 local before = #sent
+results = { 11 } -- the encounter lockdown, at once
+ok, line = Share:Push()
+check(not ok and #sent == before, "dropped at once: nothing sent")
+eq(line, "Roster 'Main; Mythic' not sent: the game refused it.", "dropped at once: the status line")
+ok = Share:Push()
+check(ok and #sent > before, "dropped at once: the next push sends it")
+mainSlots[2] = "Changed2-Sargeras"
+before = #sent
+results = { 3 } -- throttled, then the group is gone before the retry
+ok = Share:Push()
+check(ok, "throttled: queued")
+grouped, raid = false, false
+runTimers()
+grouped, raid = true, true
+check(#sent == before, "throttled, then dropped: nothing went")
+ok = Share:Push()
+check(ok and #sent > before, "dropped after a wait: the next push sends it")
+mainSlots[2] = slots[2]
+check(Share:Push(), "back to the first slots: sent")
+
+-- not sent: no active layout, an empty one, out of a group, not the leader, in combat
+before = #sent
 Groups:SetActive(nil)
 ok, line = Share:Push()
 check(not ok and #sent == before, "no active layout: nothing sent")
@@ -159,13 +188,20 @@ leaders.player = nil
 CRT.db.groups = freshGroups()
 local ownId = Groups:CreatePreset("My alts", { "Alt-Sargeras" })
 Groups:SetActive(ownId)
-local function deliver(list, from) for _, m in ipairs(list) do Share.Receive("CRTRoster1", m, from) end end
+local function deliver(list, from, channel) for _, m in ipairs(list) do Share.Receive("CRTRoster1", m, channel or "RAID", from) end end
 local function count() return #Groups:Presets() end
 
 -- from someone who isn't the leader or an assistant: ignored
 deliver(firstSent, "Solex-Sargeras")
 eq(count(), 1, "non-lead: nothing stored")
 eq(Groups:Active(), ownId, "non-lead: your active layout kept")
+-- from the leader, but not on a group channel: ignored
+leaders.Solex = "lead"
+for _, ch in ipairs({ "WHISPER", "GUILD", "CHANNEL" }) do
+  deliver(firstSent, "Solex-Sargeras", ch)
+  eq(count(), 1, ch .. ": ignored")
+end
+leaders.Solex = nil
 -- your own messages: ignored, even as the leader
 leaders.Rixxy = "lead"
 deliver(firstSent, "Rixxy-Sargeras")
@@ -224,7 +260,10 @@ eq(again and again.slots[1], slots[1], "replace: the raider's edit replaced")
 eq(again and again.id, got.id, "replace: the same layout")
 eq(Groups:Active(), got.id, "replace: still active")
 -- a layout passed on keeps one (from ...): the newest sender's
-local relayed = Share.Pack("Main; Mythic (from Solex)", copy)
+local kipSlots = {}
+for i = 1, 40 do kipSlots[i] = copy[i] end
+kipSlots[10] = "Kipsown-Sargeras"
+local relayed = Share.Pack("Main; Mythic (from Solex)", kipSlots)
 leaders["Kip-TwistingNether"] = "assist" -- the group names a player of another realm with it
 deliver(relayed, "Kip-TwistingNether")
 eq(count(), 3, "another sender: a copy of their own")
@@ -233,33 +272,59 @@ for _, p in ipairs(Groups:Presets()) do if p.from == "Kip-TwistingNether" then k
 eq(kip and kip.name, "Main; Mythic (from Kip-TwistingNether)", "another sender: named from them, one (from ...)")
 eq(Groups:Active(), kip and kip.id, "another sender: theirs is active now")
 
--- malformed messages: dropped, never an error
-local n0, p0 = count(), #printed
+-- the same slots as your active layout: no copy, no switch, no chat line
+local n1, p1 = count(), #printed
+deliver(Share.Pack("Main; Mythic", kipSlots), "Solex-Sargeras")
+check(count() == n1 and Groups:Active() == kip.id and #printed == p1, "identical to the active layout: nothing happens")
+local function variant(slot, key) local t = {} for i = 1, 40 do t[i] = copy[i] end t[slot] = key return t end
+
+-- relay names: " (2)" endings and "(from ...)" both go; a long name is cut so "(from <sender>)" stays whole
+deliver(Share.Pack("Main (2) (from Solex)", variant(8, "Relay-Sargeras")), "Kip-TwistingNether")
+eq(kip.name, "Main (from Kip-TwistingNether)", "relay: the number and the old sender go")
+eq(Share.StoredName("Team (2025)", "Kip"), "Team (2025)", "a year in the name stays")
+local who = "Averyverylongname-Averyveryverylongrealmnam" -- leaves an odd byte count for the name
+local base, full = Share.StoredName(string.rep("x", 40), who)
+check(#full <= Groups.FROM_NAME_MAX and full:sub(-#who - 7) == "(from " .. who .. ")", "a long name: the sender kept whole, " .. #full .. " bytes: " .. full)
+check(full == base .. " (from " .. who .. ")", "a long name: cut before (from ...)")
+local accents = Share.StoredName(string.rep("\\195\\169", 20), who)
+check(#accents > 0 and #accents % 2 == 0, "a long name: no character cut in two (" .. #accents .. " bytes)")
+
+-- malformed messages: dropped, never an error, nothing stored
+local n0, p0, a0 = count(), #printed, Groups:Active()
+leaders.Solex = "lead"
 for _, m in ipairs({ "garbage", "", "zz|1|1|x", "abc|0|1|x", "abc|2|1|x", "abc|1|99|x", "abc|1|1|not a layout", "SECRET" }) do
-  local okCall, err = pcall(Share.Receive, "CRTRoster1", m, "Solex-Sargeras")
+  local okCall, err = pcall(Share.Receive, "CRTRoster1", m, "RAID", "Solex-Sargeras")
   check(okCall, "malformed: no error for " .. m .. " " .. tostring(err))
 end
-check(pcall(Share.Receive, "CRTRoster1", nil, "Solex-Sargeras"), "malformed: no error for nil")
-check(pcall(Share.Receive, "CRTRoster1", firstSent[1], nil), "malformed: no error for no sender")
-check(pcall(Share.Receive, "CRTRoster1", firstSent[1], "SECRET"), "malformed: no error for a secret sender")
+check(pcall(Share.Receive, "CRTRoster1", nil, "RAID", "Solex-Sargeras"), "malformed: no error for nil")
+check(pcall(Share.Receive, "CRTRoster1", firstSent[1], "RAID", nil), "malformed: no error for no sender")
+check(pcall(Share.Receive, "CRTRoster1", firstSent[1], "RAID", "SECRET"), "malformed: no error for a secret sender")
+check(pcall(Share.Receive, "CRTRoster1", firstSent[1], nil, "Solex-Sargeras"), "malformed: no error for no channel")
+check(count() == n0 and #printed == p0 and Groups:Active() == a0, "malformed: nothing stored, said or switched")
 -- damaged: the parts don't add up to their hash
-local damaged = {}
-for i, m in ipairs(firstSent) do damaged[i] = m end
+local damaged = Share.Pack("Main; Mythic", variant(9, "Damaged-Sargeras"))
 damaged[2] = damaged[2]:gsub("Player", "Plyaer", 1)
 deliver(damaged, "Solex-Sargeras")
-eq(count(), n0, "damaged: nothing stored")
-eq(#printed, p0, "damaged: nothing said")
--- incomplete: one part missing, then the rest after the timeout
-Share.Receive("CRTRoster1", changed[1], "Solex-Sargeras")
-eq(count(), n0, "incomplete: nothing stored yet")
-CLOCK = CLOCK + 120
-for i = 2, #changed do Share.Receive("CRTRoster1", changed[i], "Solex-Sargeras") end
-eq(Groups:Active(), kip.id, "timed out: the late parts make nothing")
--- another prefix: not ours
-deliver(changed, "Solex-Sargeras")
-eq(Groups:Active(), got.id, "complete again: taken")
+check(count() == n0 and #printed == p0 and Groups:Active() == a0, "damaged: nothing stored, said or switched")
+-- out of order: the parts in reverse still make the layout
+local third = Share.Pack("Main; Mythic", variant(8, "Third-Sargeras"))
+check(#third > 2, "out of order: several parts")
+for i = #third, 1, -1 do Share.Receive("CRTRoster1", third[i], "RAID", "Solex-Sargeras") end
+eq(Groups:Active(), got.id, "out of order: taken")
+eq(got.slots[8], "Third-Sargeras", "out of order: the slots right")
 Groups:SetActive(kip.id)
-for _, m in ipairs(changed) do Share.Receive("CRTNote2", m, "Solex-Sargeras") end
+-- incomplete: one part, then the rest after the timeout
+local fourth = Share.Pack("Main; Mythic", variant(8, "Fourth-Sargeras"))
+Share.Receive("CRTRoster1", fourth[1], "RAID", "Solex-Sargeras")
+eq(Groups:Active(), kip.id, "incomplete: nothing yet")
+CLOCK = CLOCK + 120
+for i = 2, #fourth do Share.Receive("CRTRoster1", fourth[i], "RAID", "Solex-Sargeras") end
+check(Groups:Active() == kip.id and got.slots[8] == "Third-Sargeras", "timed out: the late parts make nothing")
+deliver(fourth, "Solex-Sargeras")
+check(Groups:Active() == got.id and got.slots[8] == "Fourth-Sargeras", "complete again: taken")
+-- another prefix: not ours
+Groups:SetActive(kip.id)
+for _, m in ipairs(Share.Pack("Main; Mythic", variant(8, "Fifth-Sargeras"))) do Share.Receive("CRTNote2", m, "RAID", "Solex-Sargeras") end
 eq(Groups:Active(), kip.id, "another prefix: ignored")
 
 print(string.format("%d passed, %d failed", passes, fails))

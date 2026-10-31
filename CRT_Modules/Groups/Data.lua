@@ -580,6 +580,7 @@ end
 -- Name-Realm, a field only these layouts have), its name and slots replaced by each new one, and made the active
 -- layout. It can be edited like any other until the next one replaces it. The player's own layouts are never
 -- touched. Returns its id.
+Groups.FROM_NAME_MAX = 80 -- a received layout's name, "(from <sender>)" included
 function Groups:StoreFrom(from, name, slots)
     local g = gdb()
     local lower = from:lower()
@@ -597,7 +598,7 @@ function Groups:StoreFrom(from, name, slots)
         g.nextId = g.nextId + 1
         g.presets[#g.presets + 1] = preset
     end
-    preset.name = uniqueName(name, 80)
+    preset.name = uniqueName(name, Groups.FROM_NAME_MAX)
     preset.slots = copySlots(slots)
     if g.selected == preset.id then
         g.working = copySlots(slots)

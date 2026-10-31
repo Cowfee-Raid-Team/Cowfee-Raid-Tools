@@ -14,7 +14,7 @@ local ADDON, CRT = ...
 -- Message under the prefix CRTRoster1: "<hash>|<part>|<total>|<data>". hash is the fingerprint of the whole text
 -- (CRT.Comm.Fingerprint) and so its id; data is a part of the text, at most CHUNK bytes.
 -- Game calls (warcraft.wiki.gg, read 2026-10-31): C_ChatInfo.RegisterAddonMessagePrefix(prefix), at most 16
--- characters; CHAT_MSG_ADDON (prefix, text, channel, sender, ...); GetTime.
+-- characters; CHAT_MSG_ADDON (prefix, text, channel, sender, ...), taken only on RAID, PARTY or INSTANCE_CHAT; GetTime.
 
 local Groups = CRT.Groups
 local Shared = CRT.Comm
@@ -28,8 +28,8 @@ local PREFIX = "CRTRoster1"
 local CHUNK = 200
 local MAX_PARTS = 20
 local TIMEOUT = 30 -- seconds the parts of one roster may take to arrive
--- how CRT.Comm names a roster in its chat lines
-local WHAT = { what = "the roster", locked = "Rosters" }
+-- the group channels a roster is taken from
+local CHANNELS = { RAID = true, PARTY = true, INSTANCE_CHAT = true }
 Share.PREFIX = PREFIX
 
 local TEXT = {
@@ -52,6 +52,11 @@ if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
 end
 
 local lastSent = {} -- channel -> hash of the roster last sent there this session
+-- how CRT.Comm names a roster in its chat lines; a roster it drops (a lockdown, a left group) is forgotten as sent,
+-- so the next push sends it again even unchanged
+local WHAT = { what = "the roster", locked = "Rosters", dropped = function()
+    wipe(lastSent)
+end }
 local incoming = {} -- sender -> { hash, total, parts, count, started }, one roster arriving per sender
 
 -- The messages for a layout, in order, and the hash of its text.
@@ -123,10 +128,12 @@ function Share:Push()
     if lastSent[channel] == hash then
         return false, string.format(TEXT.same, preset.name)
     end
+    -- marked sent first: a drop while it waits on the throttle (WHAT.dropped) clears it again
+    lastSent[channel] = hash
     if not Shared:Send(PREFIX, messages, WHAT) then
+        lastSent[channel] = nil
         return false, string.format(TEXT.failed, preset.name)
     end
-    lastSent[channel] = hash
     return true, string.format(TEXT.sent, preset.name)
 end
 
@@ -141,25 +148,66 @@ local function senderOf(sender)
     return NoteComm.Sender(sender)
 end
 
+-- The first n bytes of s, never cutting a character in two.
+local function cut(s, n)
+    while n > 0 and (s:byte(n + 1) or 0) >= 128 and (s:byte(n + 1) or 0) < 192 do
+        n = n - 1
+    end
+    return s:sub(1, n)
+end
+
+-- A received layout's name and the name it is stored under. A layout passed on from someone else loses its
+-- "(from ...)" and " (2)" endings (one or two digits, so a year stays), so it shows only the newest sender. The name
+-- is cut first, so "(from <sender>)" always fits whole.
+local function storedName(name, short)
+    local before
+    repeat
+        before = name
+        name = strtrim((name:gsub("%s*%(from [^()]*%)$", ""):gsub("%s*%(%d%d?%)$", "")))
+    until name == before
+    if name == "" then
+        name = TEXT.unnamed
+    end
+    local suffix = string.format(TEXT.stored, "", short)
+    name = strtrim(cut(name, math.max(1, Groups.FROM_NAME_MAX - #suffix)))
+    return name, string.format(TEXT.stored, name, short)
+end
+Share.StoredName = storedName
+
+-- Whether the slots are the active layout's already.
+local function isActive(slots)
+    local id = Groups:Active()
+    local preset = id and Groups:Find(id)
+    if not (preset and type(preset.slots) == "table") then
+        return false
+    end
+    for i = 1, Groups.NUM_SLOTS do
+        if (preset.slots[i] or "") ~= (slots[i] or "") then
+            return false
+        end
+    end
+    return true
+end
+
 local function store(sender, short, text)
     local name, slots = Share.Unpack(text)
     if not (name and hasNames(slots)) then
         return
     end
-    -- a layout passed on from someone else keeps only the newest sender's "(from ...)"
-    name = strtrim((name:gsub("%s*%(from [^()]*%)$", "")))
-    if name == "" then
-        name = TEXT.unnamed
-    end
-    Groups:StoreFrom(Groups.Normalize(sender), string.format(TEXT.stored, name, short), slots)
-    CRT:Print(string.format(TEXT.received, name, short))
-end
-
-function Share.Receive(prefix, message, sender)
-    if Shared.IsSecret(prefix) or Shared.IsSecret(message) or Shared.IsSecret(sender) then
+    -- the same people in the same slots as your active layout: nothing to add or switch
+    if isActive(slots) then
         return
     end
-    if prefix ~= PREFIX or type(message) ~= "string" or type(sender) ~= "string" then
+    local base, full = storedName(name, short)
+    Groups:StoreFrom(Groups.Normalize(sender), full, slots)
+    CRT:Print(string.format(TEXT.received, base, short))
+end
+
+function Share.Receive(prefix, message, channel, sender)
+    if Shared.IsSecret(prefix) or Shared.IsSecret(message) or Shared.IsSecret(channel) or Shared.IsSecret(sender) then
+        return
+    end
+    if prefix ~= PREFIX or type(message) ~= "string" or type(sender) ~= "string" or not CHANNELS[channel] then
         return
     end
     local short, trusted = senderOf(sender)
@@ -199,6 +247,6 @@ end
 
 local events = CreateFrame("Frame")
 events:RegisterEvent("CHAT_MSG_ADDON")
-events:SetScript("OnEvent", function(_, _, prefix, message, _, sender)
-    Share.Receive(prefix, message, sender)
+events:SetScript("OnEvent", function(_, _, prefix, message, channel, sender)
+    Share.Receive(prefix, message, channel, sender)
 end)

@@ -133,6 +133,22 @@ eq(printed[before2 + 1], "The first thing can't be shared during an encounter. S
 eq(printed[before2 + 2], "Plans can't be shared during an encounter. Share again after the pull ends.", "drop: the second module's line")
 check(Comm:Send("P", { "o" }, "the test") and sent[#sent] == "o", "drop: the queue works after it")
 
+-- what.dropped: told once when its messages are dropped, now or after a throttle wait; never when they all go
+do
+  local told = 0
+  local what = { what = "the roster", dropped = function() told = told + 1 end }
+  check(Comm:Send("P", { "p1", "p2" }, what), "dropped: sent")
+  eq(told, 0, "dropped: not told when they go")
+  results = { 11 }
+  Comm:Send("P", { "q1", "q2" }, what)
+  eq(told, 1, "dropped: told once on a lockdown")
+  results = { 3, 11 }
+  Comm:Send("P", { "r1", "r2" }, what)
+  eq(told, 1, "dropped: not yet while throttled")
+  advance(1)
+  eq(told, 2, "dropped: told once when dropped after the wait")
+end
+
 -- Pace on top: its share goes through the queue, with its own lines
 CRT.Pace = { Export = function() return "mode phase\\n1 30 boss1 72" end, BossName = function() return "Boss" end }
 assert(load(paceSrc))("CowfeeRaidTools", CRT)
