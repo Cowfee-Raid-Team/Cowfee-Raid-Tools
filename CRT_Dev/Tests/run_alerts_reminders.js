@@ -369,6 +369,50 @@ do
   print("ok speak at: at 0 speaks at the cast, on show at the warning")
 end
 
+-- count from N and Before 0: exact through the engine's speech times and the queue's due list
+do
+  fresh()
+  local Rules = CRT.AlertRules
+  assert(R.COUNT_FROM.min == 3 and R.COUNT_FROM.max == 10 and R.COUNT_FROM.default == 3, "count from 3 to 10")
+  assert(R.SPEAK_BEFORE.min == 0.5 and R.SPEAK_BEFORE.max == 10 and R.SPEAK_BEFORE.step == 0.5, "before 0.5 to 10 s")
+  assert(R.CountFrom({}) == 3 and R.CountFrom({ countFrom = 5 }) == 5 and R.CountFrom({ countFrom = 40 }) == 10
+    and R.CountFrom({ countFrom = 4.5 }) == 3 and R.CountFrom({ countFrom = "x" }) == 3, "CountFrom reads in range")
+  assert(R.SpeakBefore({}) == R.SPEAK_BEFORE.default and R.SpeakBefore({ speakBefore = 2.5 }) == 2.5
+    and R.SpeakBefore({ speakBefore = 99 }) == 10 and R.SpeakBefore({ speakBefore = 0 }) == 0.5, "SpeakBefore reads in range")
+  R:Save(3001, nil, { boss = "b", text = "Five", times = "10", warn = 8, speech = "textcount", countFrom = 5, outputs = { speech = true } })
+  R:Save(3001, nil, { boss = "b", text = "Early", times = "10", warn = 8, speech = "text", speakAt = "before", speakBefore = 2.5, outputs = { speech = true } })
+  R:Save(3001, nil, { boss = "b", text = "Both", times = "10", warn = 8, speech = "textcount", countFrom = 4, speakAt = "before", speakBefore = 6, outputs = { speech = true } })
+  R:Save(3001, nil, { boss = "b", text = "Old", times = "10", warn = 8, speech = "textcount", outputs = { speech = true } })
+  local it = block(MYTHIC)
+  local function said(list) local o = {} for _, s in ipairs(list) do o[#o + 1] = s.text .. "@" .. ("%g"):format(s.offset) end return table.concat(o, " ") end
+  assert(said(it[1].speech) == "Five@8 5@5 4@4 3@3 2@2 1@1", said(it[1].speech))
+  assert(said(it[2].speech) == "Early@2.5", said(it[2].speech))
+  assert(said(it[3].speech) == "Both@6 4@4 3@3 2@2 1@1", said(it[3].speech))
+  assert(said(it[4].speech) == "Old@8 3@3 2@2 1@1", "no countFrom: 3 2 1 as before: " .. said(it[4].speech))
+  -- a count from 9 with a short Show from: the text still comes a second before the first number
+  assert(said(Rules.SpeechItems("x", 5, true, true, false, { countFrom = 9 })) == "x@10 9@9 8@8 7@7 6@6 5@5 4@4 3@3 2@2 1@1", "text before the count")
+  assert(said(Rules.SpeechItems("x", 5, true, false, false, { before = 1.5 })) == "x@1.5", "before alone")
+  assert(said(Rules.SpeechItems("x", 5, true, true)) == "x@5 3@3 2@2 1@1", "no opts: unchanged")
+  -- the queue: Early comes due 2.5 s before the cast, not at the warning nor at 0
+  local function line(item)
+    local l = { id = item.id, at = 10, outputs = item.outputs, speech = {} }
+    for i, s in ipairs(item.speech) do l.speech[i] = { at = 10 - s.offset, text = s.text } end
+    return l
+  end
+  local spoken = {}
+  local lines = { line(it[2]) }
+  assert(#Rules.SpeechDue(lines, 7.4, spoken) == 0, "not yet at 7.4")
+  local due = Rules.SpeechDue(lines, 7.5, spoken)
+  assert(#due == 1 and due[1].text == "Early" and due[1].at == 7.5, "due at 7.5")
+  -- the count from 5 comes due one number a second
+  spoken = {}
+  local five = { line(it[1]) }
+  local got = {}
+  for t = 2, 10, 0.5 do for _, d in ipairs(Rules.SpeechDue(five, t, spoken)) do got[#got + 1] = d.text .. "@" .. ("%g"):format(d.at) end end
+  assert(table.concat(got, " ") == "Five@2 5@5 4@6 3@7 2@8 1@9", table.concat(got, " "))
+  print("ok speech: count from N and Before 0 are exact")
+end
+
 -- One source of truth: a reminder that follows an ability timeline gets the same cast times the
 -- Timeline's row (and the Rehearsal, built from those lanes) shows, and its alert counts down to the
 -- same moment as the Rehearsal's cast bar.

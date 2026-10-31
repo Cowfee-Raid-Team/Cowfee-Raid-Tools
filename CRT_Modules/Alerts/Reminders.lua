@@ -7,8 +7,12 @@ local ADDON, CRT = ...
 --   { boss, spellID, text, times, outputs = { alert, bar, speech, text, icon, circle, timeline }, warn, speech,
 --     priority, group, difficulty, enabled, linger, sound, auraSound, glow, iconID, color, speakAt, ticks, fill, countTo, barTo,
 --     absorb, raidNote, speakText }
--- speakText (optional) is read out in place of the text (speechList); only the importer sets it
--- (Timeline/ImportReminders.lua, a line's TTS words), and it stays saved through an edit.
+-- speakText (optional) is read out in place of the text (speechList): the alert editor's Say instead box, and
+-- the importer's TTS words (Timeline/ImportReminders.lua).
+-- countFrom (optional, CountFrom) is where Count down starts: 3 to 10, 3 (the old 3, 2, 1) saved as nothing.
+-- speakBefore (optional, SpeakBefore) is how many seconds before its time Speak at: Before 0 reads the text out,
+-- 0.5 to 10 in half seconds, SPEAK_BEFORE.default saved as nothing. A CRT from before them reads speakAt "before"
+-- as On show and counts 3, 2, 1.
 -- raidNote (optional) = { tag, key, difficulty }: saved as Raid note in Mech Alerts (Notes/MechNote.lua). Its lines in the
 -- boss's raid note alert instead, so the "mine" block skips it (InNote); nothing else changes.
 -- auraSound true also plays the sound when the spell's aura is put on you (Sound/Auras.lua).
@@ -23,8 +27,8 @@ local ADDON, CRT = ...
 -- None of them is saved at its default.
 -- barTo is an older field (Bar ends, "cast"): it stays saved where it was set, and nothing reads it.
 -- where `times` is typed text ("P1 0:02, 1:17; P2 +0:18") or nil for the reference, `speech` is
--- "text", "textcount" (the text, then 3, 2, 1) or "count", `speakAt` is nil (the text is read out when
--- the alert shows) or "zero" (at its time). `group` is the difficulty group it is for, "nh" (Normal/Heroic)
+-- "text", "textcount" (the text, then 3, 2, 1, or from countFrom) or "count", `speakAt` is nil (the text is read
+-- out when the alert shows), "zero" (at its time) or "before" (speakBefore seconds before its time). `group` is the difficulty group it is for, "nh" (Normal/Heroic)
 -- or "mythic" (Reminders.GroupOf). Older reminders have instead `difficulty`, a Difficulty line's text
 -- ("Heroic"), read as its group, or neither: any difficulty, until the pass splits them into one per group
 -- (SplitOne, kept as they were in alerts.anyBackup[encounterID][id]). A reminder on a boss ability
@@ -1107,15 +1111,41 @@ function Reminders.BarTicks(ticks, warn)
     return #on > 0 and on or nil, #off > 0 and off or nil
 end
 
--- What a reminder reads out: its speakText when it has one (set only by the reminders' importer,
--- Timeline/ImportReminders.lua, for a line that says other words than it shows), else what it shows.
+-- Count down from and Speak at: Before 0's seconds, their ranges and what nothing saved means.
+Reminders.COUNT_FROM = { min = 3, max = 10, step = 1, default = 3 }
+Reminders.SPEAK_BEFORE = { min = 0.5, max = 10, step = 0.5, default = 3 }
+
+local function inRange(v, range)
+    if type(v) ~= "number" or v ~= v then
+        return range.default
+    end
+    local stepped = math.floor((v - range.min) / range.step + 0.5) * range.step + range.min
+    if math.abs(stepped - v) > 1e-6 then
+        return range.default -- not on a step: a value nothing here writes
+    end
+    return math.max(range.min, math.min(range.max, stepped))
+end
+
+-- Where a reminder's count down starts (countFrom), 3 to 10; 3 when it has none or one that doesn't read.
+function Reminders.CountFrom(r)
+    return inRange(type(r) == "table" and r.countFrom or nil, Reminders.COUNT_FROM)
+end
+
+-- How many seconds before its time Speak at: Before 0 says the text (speakBefore), 0.5 to 10 on half seconds.
+function Reminders.SpeakBefore(r)
+    return inRange(type(r) == "table" and r.speakBefore or nil, Reminders.SPEAK_BEFORE)
+end
+
+-- What a reminder reads out: its speakText when it has one (Say instead), else what it shows; the count from
+-- countFrom and the text at its Speak at.
 local function speechList(r, text)
     local mode = r.speech
     if type(r.speakText) == "string" and trim(r.speakText) ~= "" then
         text = r.speakText
     end
     return Rules.SpeechItems(text, r.warn or 5, mode ~= "count", mode == "textcount" or mode == "count",
-        r.speakAt == "zero")
+        r.speakAt == "zero", { countFrom = Reminders.CountFrom(r),
+            before = r.speakAt == "before" and Reminders.SpeakBefore(r) or nil })
 end
 
 -- A reminder's icon (its own icon ID, else its spell's texture) and its text (its own, else its spell's name).

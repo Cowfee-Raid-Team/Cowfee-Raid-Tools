@@ -3,9 +3,10 @@ local ADDON, CRT = ...
 -- Saved alerts: one alert's setup without its time, kept to place on any boss's Timeline or to open in
 -- the alert editor. Stored in CRT.db.alerts.saved[id] (ids from nextSavedId) as
 --   { name, saveAs, tags, spellID, iconID, text, color, outputs = { alert, text, icon, bar, circle, timeline, speech },
---     speech, speakAt, sound, glow, warn, linger, absorb }
+--     speech, speakAt, countFrom, speakBefore, speakText, sound, glow, warn, linger, absorb }
 -- where `tags` are the words of the editor's For choice, `saveAs` is "note" or "mine", and `speech` is
--- "text", "textcount" or "count" and `speakAt` nil or "zero" as a reminder keeps them, and `absorb` a shield bar
+-- "text", "textcount" or "count", `speakAt` nil, "zero" or "before", and countFrom, speakBefore and speakText
+-- as a reminder keeps them (Alerts/Reminders.lua), and `absorb` a shield bar
 -- (Reminders.AbsorbOf: { unit, length, anyDifficulty }) as a reminder keeps it. The time, phase,
 -- boss and difficulty of the alert a saved alert was made from are never kept. A saved alert's name
 -- defaults to its text, else its spell's name. Every change tells the alerts windows (CRT.Alerts:Fire)
@@ -176,7 +177,11 @@ function Saved:Save(id, fields)
         text = trim(fields.text),
         color = copy(fields.color),
         speech = fields.speech,
-        speakAt = fields.speakAt == "zero" and "zero" or nil,
+        speakAt = (fields.speakAt == "zero" or fields.speakAt == "before") and fields.speakAt or nil,
+        -- Count down from, Before 0's seconds and Say instead, as a reminder keeps them (nil at their defaults)
+        countFrom = type(fields.countFrom) == "number" and fields.countFrom or nil,
+        speakBefore = type(fields.speakBefore) == "number" and fields.speakBefore or nil,
+        speakText = type(fields.speakText) == "string" and trim(fields.speakText) ~= "" and trim(fields.speakText) or nil,
         sound = fields.sound,
         glow = fields.glow and true or nil,
         warn = type(fields.warn) == "number" and fields.warn or 5,

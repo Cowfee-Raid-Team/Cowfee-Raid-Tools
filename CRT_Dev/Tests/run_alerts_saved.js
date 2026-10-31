@@ -272,6 +272,10 @@ do
   local again = S:Save(id, { text = "Changed", outputs = { bar = true } })
   assert(again == id and S:Get(id).text == "Changed" and S:Get(id).name == "Soak" and S:Get(id).tags[1] == nil and #S:List() == 4, "overwritten")
   assert(S:Save(nil, "nope") == nil, "no fields, nothing saved")
+  -- Count down from, Before 0 with its seconds and Say instead stay on a template
+  local sp = S:Get(S:Save(nil, { text = "Speech", outputs = { speech = true }, speech = "textcount", countFrom = 7,
+    speakAt = "before", speakBefore = 1.5, speakText = " Go " }))
+  assert(sp.countFrom == 7 and sp.speakAt == "before" and sp.speakBefore == 1.5 and sp.speakText == "Go", "the speech settings kept")
   print("ok saved: save strips time and encounter")
 end
 
