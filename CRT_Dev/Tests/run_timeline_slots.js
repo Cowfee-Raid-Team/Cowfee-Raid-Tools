@@ -570,6 +570,25 @@ do
     local head = laneIndex(h, "healers:slot:105:1")
     check(h.labels[head].h == a.labels[1].h and h.labels[laneIndex(h, "healers:halo-home")].h == a.labels[1].h,
       size .. " px: the healer and slot name rows are Abilities rows' height")
+    -- the rows follow the icon size too (View.RowHeight), every row of both layouts alike
+    local rowH = View.RowHeight(size)
+    check(View.ROW_H == rowH and rowH == size + (View.RowHeight(22) - 22) and View.RowHeight(22) == 30,
+      size .. " px: rows are " .. rowH .. " high; the default's stay 30")
+    local same, kinds = true, {}
+    for i, l in ipairs(a.lanes) do
+      kinds[l.kind] = true
+      if a.labels[i].h ~= rowH then same = false end
+    end
+    for i in ipairs(h.lanes) do if h.labels[i].h ~= rowH then same = false end end
+    check(same and kinds.notes and kinds.personal, size .. " px: every Abilities row (Notes and Personal notes too) and every Healer CDs row is " .. rowH)
+    local si
+    for i, l in ipairs(a.lanes) do if l.label == "Surge" then si = i end end
+    check(ai.pt[5] == -(si - 1) * rowH - rowH / 2, size .. " px: an Abilities icon sits in the middle of its shorter or taller row")
+    local hymn = laneIndex(h, "healers:halo-home:64843")
+    local hf = flagsOn(h, hymn)[1]
+    check(hf.pt[5] == -(hymn - 1) * rowH - rowH / 2, size .. " px: and a healer cast in the middle of its row")
+    check(h:LaneAtY((hymn - 1) * rowH + 1) == h.lanes[hymn], size .. " px: the cursor finds the row at its new height")
+    check(h:ContentHeight() == (h.axisH or 20) + #h.lanes * rowH + h.stripH + 16 + 10 + 4, size .. " px: the pop-out's height counts the new rows")
   end
   -- a live change: the open view drawn again follows it
   local h = newView()

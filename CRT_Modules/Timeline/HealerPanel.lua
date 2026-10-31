@@ -306,6 +306,7 @@ function Panel.ProposalText(view, p)
 end
 
 local function place(view, f, i)
+    f:SetHeight(rowH())
     f:ClearAllPoints()
     f:SetPoint("TOPLEFT", view.body, "TOPLEFT", 0, -(i - 1) * rowH())
     f:SetPoint("TOPRIGHT", view.body, "TOPRIGHT", 0, -(i - 1) * rowH())
