@@ -32,6 +32,8 @@ local TEXT = {
     setRole = "Set role",
     gameRole = "Use the game's role",
     unsaved = "Unsaved layout",
+    fromTitle = "from %s",
+    fromBody = "%s sent this roster with a note, and it became your active layout. You can edit it. The next roster they send replaces it.",
     editHelp = "Click a slot to choose a name, drag to move or swap. Right-click a name to invite that player, clear the slot or set their role. A role you set shows a small dot on its icon and wins over the game's role.",
 }
 
@@ -705,9 +707,25 @@ local function refreshPresets()
             b:SetScript("OnClick", function(self)
                 Groups:Select(self.presetId)
             end)
+            -- a layout sent with a note (Groups/Share.lua) says who from
+            b:SetScript("OnEnter", function(self)
+                if not self.from then
+                    return
+                end
+                local who = Groups.Display(self.from)
+                UI.TooltipOwner(GameTooltip, self, "ANCHOR_LEFT")
+                GameTooltip:SetText(self.text:GetText() or "", 1, 1, 1)
+                GameTooltip:AddLine(format(TEXT.fromTitle, who), GOLD[1], GOLD[2], GOLD[3])
+                GameTooltip:AddLine(format(TEXT.fromBody, who), 0.85, 0.85, 0.85, true)
+                GameTooltip:Show()
+            end)
+            b:SetScript("OnLeave", function()
+                GameTooltip:Hide()
+            end)
             presetButtons[i] = b
         end
         b.presetId = preset.id
+        b.from = type(preset.from) == "string" and preset.from or false -- false for your own layouts
         b.text:SetText(preset.name)
         b.active:SetText(UI.GoodText("active"))
         b.active:SetShown(preset.id == Groups:Active())

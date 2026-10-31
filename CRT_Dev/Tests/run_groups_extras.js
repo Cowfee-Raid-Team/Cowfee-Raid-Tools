@@ -206,6 +206,27 @@ do
   check(gslot and gslot.roleHand and gslot.roleHand.shown == true, "a role set by hand shows for a player out of the group")
   G:SetHandRole("Gadios-Area52", nil)
 end
+
+-- A roster sent with a note (Groups:StoreFrom): in the layouts list as active, and its tooltip says who from; your own
+-- layouts have no such tooltip.
+do
+  local id = G:StoreFrom("Kip-Area52", "Mythic (from Kip)", { "Abu-KelThuzad", "", "Solex-Area52" })
+  check(G:Active() == id, "a received roster is the active layout")
+  local mine, theirs
+  for _, b in ipairs(buttons) do
+    if rawget(b, "presetId") == id and b.shown then theirs = b end
+    if rawget(b, "presetId") == CRT.db.groups.selected and b.shown then mine = b end
+  end
+  check(theirs and theirs.text.text == "Mythic (from Kip)" and theirs.active.shown, "in the list, marked active")
+  tip = {}
+  theirs.OnEnter(theirs)
+  check(tip[1] == "Mythic (from Kip)" and tip[2] == "from Kip", "its tooltip names the sender: " .. tostring(tip[2]))
+  check(tostring(tip[3]):find("next roster they send replaces it", 1, true), "and says the next one replaces it: " .. tostring(tip[3]))
+  tip = {}
+  mine.OnEnter(mine)
+  check(#tip == 0, "your own layout: no tooltip")
+  G:Delete(id)
+end
 if fails > 0 then error(fails .. " groups invite checks failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness + tail)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
