@@ -157,6 +157,7 @@ do
     "Soak: {cross} Cross {MOON} Moon",
     "{skull} Kill first",
     "Odd: {rt9} {time:5}",
+    "Soak Ghost at {rt7}: mage, Mesmertism",
   }, "\\n")
   view:SetText(raw)
   local function row(kind, n)
@@ -182,6 +183,11 @@ do
   check(has(rawget(heading.heading, "text"), icon(8) .. " Kill first"), "a heading line shows the icon")
   local odd = row("label", 4)
   check(has(rawget(odd.text, "text"), "{rt9} {time:5}"), "unknown codes stay as written in the view")
+  -- a label with a marker is still an assignment: its class words are coloured too
+  local cls = row("label", 5)
+  local ct = cls and rawget(cls.text, "text")
+  check(has(rawget(cls.label, "text"), "Soak Ghost at " .. icon(7) .. ":") and has(ct, "|cff3fc7ebmage|r") and has(ct, "|cffffffffMesmertism|r"),
+    "Soak Ghost at {rt7}: the icon, the class word and the name coloured: " .. tostring(ct))
   check(Render.Markup(orbData) == rawget(orb.text, "text"), "Render.Markup is what the row draws")
   -- the box behind the view, and the editor's raw text, stay raw
   local edit = mock("EditBox")
