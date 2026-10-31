@@ -13,7 +13,7 @@ const FILES = [
   'CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua',
   'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/Engine.lua',
   'CRT_Modules/Alerts/Reminders.lua', 'CRT_Modules/Alerts/Special.lua', 'CRT_Modules/Alerts/Draft.lua',
-  'CRT_Core/Share.lua', 'CRT_Modules/Alerts/Share.lua', 'CRT_Modules/Notes/AlertShareWindows.lua',
+  'CRT_Core/Share.lua', 'CRT_Modules/Alerts/Share.lua', 'CRT_Core/UI/CodeBox.lua', 'CRT_Modules/Notes/AlertShareWindows.lua',
   'CRT_Data/Bosses/Registry.lua',
 ];
 const d = process.argv[2];

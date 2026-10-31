@@ -25,6 +25,7 @@ local TEXT = {
     skipped = "%d skipped",
     notInSeason = "not in this season",
     skippedTitle = "Skipped lines",
+    more = "and %d more",
     noBoss = "No boss line found.",
     imported = "Imported %d.",
     removed = "Replaced %d.",
@@ -39,7 +40,8 @@ local L = {
     width = 520, height = 520,
     pasteH = 150, listH = 190, rowH = 22,
     checkSize = 22, statusH = 30, buttonH = 22, buttonGap = 6, gap = 6,
-    countW = 170, boxPad = 6,
+    countW = 170,
+    tipLines = 15, -- skipped lines listed in a row's tooltip, then "and N more"
 }
 W.L = L
 
@@ -62,21 +64,6 @@ local function setStatus(text, color)
     win.status:SetText(color and UI.ColorText(text, color) or text)
 end
 
--- A 1 px bordered box on the window's background, with a scroll frame inside it.
-local function scrollBox(parent, name)
-    local box = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    box:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    UI.Tint(box, "SetBackdropColor", "background", 0.6)
-    UI.Tint(box, "SetBackdropBorderColor", "border")
-    local scroll = CreateFrame("ScrollFrame", name, box, "UIPanelScrollFrameTemplate")
-    UI:SkinScrollBar(scroll.ScrollBar)
-    scroll:SetPoint("TOPLEFT", L.boxPad, -L.boxPad)
-    scroll:SetPoint("BOTTOMRIGHT", -(4 + UI.ScrollGutter()), L.boxPad)
-    box.scroll = scroll
-    box.innerW = contentW() - 2 * L.boxPad - 4 - UI.ScrollGutter()
-    return box
-end
-
 -- The preview -----------------------------------------------------------------------------------------------
 
 local function rowTip(row)
@@ -93,7 +80,11 @@ local function rowTip(row)
     end
     if #p.skipped > 0 then
         GameTooltip:AddLine(TEXT.skippedTitle, 1, 0.82, 0, true)
-        for _, s in ipairs(p.skipped) do
+        for i, s in ipairs(p.skipped) do
+            if i > L.tipLines then
+                GameTooltip:AddLine(TEXT.more:format(#p.skipped - L.tipLines), 0.85, 0.85, 0.85, true)
+                break
+            end
             GameTooltip:AddLine(s.reason .. ": " .. s.line, 0.85, 0.85, 0.85, true)
         end
     end
@@ -233,35 +224,16 @@ local function doImport()
         return
     end
     local line, color = resultLine(res)
+    -- the Timeline draws your reminders again on the alerts' change event, which Apply fires once
     setStatus(line, color)
-    -- the Timeline draws your reminders again from the alerts' change event; this redraws it whatever shows
-    if CRT.Timeline.Fire then
-        CRT.Timeline:Fire()
-    end
 end
 
 -- Building ------------------------------------------------------------------------------------------------
 
 local function buildPaste(c)
-    local box = scrollBox(c, "CowfeeRaidToolsTimelineImportPaste")
-    local edit = CreateFrame("EditBox", nil, box.scroll)
-    edit:SetMultiLine(true)
-    edit:SetAutoFocus(false)
-    edit:SetFontObject(_G.CRTFontEditSmall or CRTFontEdit)
-    edit:SetWidth(box.innerW)
-    edit:SetScript("OnEscapePressed", edit.ClearFocus)
-    edit:SetScript("OnTextChanged", function(_, user)
-        if user then
-            readBox()
-        end
+    local box = UI.CodeBox(c, "CowfeeRaidToolsTimelineImportPaste", contentW(), function()
+        readBox()
     end)
-    box.scroll:SetScrollChild(edit)
-    -- a click anywhere in the box puts the cursor in it
-    box:EnableMouse(true)
-    box:SetScript("OnMouseDown", function()
-        edit:SetFocus()
-    end)
-    box.edit = edit
     box:SetPoint("TOPLEFT", 0, 0)
     box:SetPoint("TOPRIGHT", 0, 0)
     box:SetHeight(L.pasteH)
@@ -269,7 +241,7 @@ local function buildPaste(c)
 end
 
 local function buildList(c)
-    local list = scrollBox(c, "CowfeeRaidToolsTimelineImportList")
+    local list = UI.ScrollBox(c, "CowfeeRaidToolsTimelineImportList", contentW())
     list.child = CreateFrame("Frame", nil, list.scroll)
     list.child:SetSize(list.innerW, 1)
     list.scroll:SetScrollChild(list.child)
