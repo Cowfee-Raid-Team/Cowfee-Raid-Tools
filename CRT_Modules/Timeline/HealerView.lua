@@ -386,6 +386,9 @@ local function nameWord(tag, classes)
     return true
 end
 
+-- for the order sent with a pushed note (Timeline/HealerOrderShare.lua), which finds the same healers as HV.Build
+HV.NameIndex, HV.NameWord, HV.ClassWords = nameIndex, nameWord, classWords
+
 -- The player a note line's tags name with nothing else beside them (no role, class or group word, no second
 -- player), or nil.
 local function soleName(m, find, classes)

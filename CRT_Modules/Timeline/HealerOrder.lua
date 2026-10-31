@@ -162,29 +162,43 @@ local function merged(shown, saved, max)
     return out
 end
 
--- An open slot of spec on the boss got a player (key, any case; Timeline/HealerSlots.lua's Assign): the block keeps its
--- place, so slotKey ("slot:<spec>:<n>") becomes the player's key in the boss's order (once: a place they had already
+-- A block's key changed on the boss (Timeline/HealerSlots.lua: a slot got a player, lost one or changed spec): newKey
+-- takes oldKey's place in the boss's saved order (a place newKey had already goes), or with keepOld goes right after
+-- it (the old key is still a block of its own: a roster healer who left a slot). newKey nil: oldKey leaves the order (a
+-- removed slot, so a new slot with its number doesn't take its place). Nothing changes when oldKey isn't in the order.
+function Order.Rekey(encounterID, oldKey, newKey, keepOld)
+    local list, had = Order.Healers(encounterID), false
+    for _, k in ipairs(list or {}) do
+        had = had or k == oldKey
+    end
+    if not had or oldKey == newKey then
+        return
+    end
+    local out = {}
+    for _, k in ipairs(list) do
+        if k == oldKey then
+            if keepOld then
+                out[#out + 1] = k
+            end
+            if newKey then
+                out[#out + 1] = newKey
+            end
+        elseif k ~= newKey then
+            out[#out + 1] = k
+        end
+    end
+    Order.SetHealers(encounterID, out)
+end
+
+-- A slot of spec on the boss got a player (key, any case; Timeline/HealerSlots.lua's Assign): the block keeps its
+-- place, so slotKey (the open slot's "slot:<spec>:<n>", or the player it had) becomes the player's key in the boss's order (once: a place they had already
 -- goes), and a player with no spell order of their own starts from the slot's ("spec:<spec>").
 function Order.SlotAssigned(encounterID, slotKey, key, spec)
     if type(key) ~= "string" or key == "" then
         return
     end
     key = key:lower()
-    local list, had = Order.Healers(encounterID), false
-    for _, k in ipairs(list or {}) do
-        had = had or k == slotKey
-    end
-    if had then
-        local out = {}
-        for _, k in ipairs(list) do
-            if k == slotKey then
-                out[#out + 1] = key
-            elseif k ~= key then
-                out[#out + 1] = k
-            end
-        end
-        Order.SetHealers(encounterID, out)
-    end
+    Order.Rekey(encounterID, slotKey, key)
     local from = Order.Spells("spec:" .. tostring(spec))
     if from and not Order.Spells(key) then
         local copy = {}

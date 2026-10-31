@@ -3,9 +3,10 @@ local ADDON, CRT = ...
 -- Healer CDs' order sent with a pushed note: when the raid leader or an assistant shares a boss's note (Notes/Comm.lua,
 -- every Share and Push note path), their healer order for that boss and the spell order of the healers on it go too
 -- (Timeline/HealerOrder.lua), so raiders see the healers as the lead laid them out (Alex, 2026-10-31).
--- Sending (Share:Push(encounterID)): nothing when the lead has no saved order for the boss or its healers, so a lead
--- who never reorders changes nobody's view. Sent on every push (late joiners get it), only not twice within a few
--- seconds; players who left aren't sent. In combat, a boss fight, or too long, one chat line says it wasn't sent.
+-- Sending (Share:Push(encounterID, noteID)): the order the lead's Healer CDs shows for the boss, saved or not, so raiders
+-- match the lead's view exactly (Alex, 2026-10-31: "Always send"). Sent on every push (late joiners get it), only not
+-- twice within a few seconds; players who left and deleted slots aren't sent. In combat, a boss fight, or too long,
+-- one chat line says it wasn't sent.
 -- Never in combat or a boss fight (Notes.Busy), only by the leader or an assistant, through CRT.Comm:Send on the group
 -- channel.
 -- Receiving (Share.Receive): never while you lead the group (the leader keeps their own order, as with the roster);
@@ -15,8 +16,8 @@ local ADDON, CRT = ...
 --
 -- Message under the prefix CRTHealOrd1: "<hash>|<part>|<total>|<data>", as the roster's (Groups/Share.lua). The text:
 --   line 1  the encounter ID
---   line 2  the healer keys in order, tab-separated (may be empty: the lead has only spell orders; yours stays)
---   then    one line per healer with a spell order: its key, a tab, the spell IDs in order with commas
+--   line 2  the healer keys in order, tab-separated (empty: yours stays; CRT always sends some)
+--   then    one line per healer with spell rows: its spell order's key, a tab, the spell IDs in order with commas
 -- Game calls (warcraft.wiki.gg, read 2026-10-31): C_ChatInfo.RegisterAddonMessagePrefix(prefix), at most 16
 -- characters; CHAT_MSG_ADDON (prefix, text, channel, sender, ...), taken only on RAID, PARTY or INSTANCE_CHAT;
 -- UnitIsGroupLeader; GetTime.
@@ -38,7 +39,7 @@ Share.PREFIX = PREFIX
 
 local TEXT = {
     received = "Healer CDs: %s's healer order for %s is now yours.",
-    busy = "Healer order not sent: not in combat or a boss fight.",
+    busy = "Healer order not sent during combat or a boss fight.",
     tooLong = "Healer order not sent: it is too long to send.",
     thisBoss = "this boss",
 }
@@ -74,79 +75,130 @@ local function rosterPlayers()
     return ok and type(players) == "table" and players or {}
 end
 
--- The boss's saved order without the players who left: a key goes when it is a roster player's (any role: the raid
--- note can give anyone a block), an assigned slot's player, or a slot's own ("slot:...", a key of this boss only).
-function Share.ShownHealers(encounterID, players)
-    local O = Order()
-    local here = {}
-    for _, p in ipairs(players or rosterPlayers()) do
-        if type(p.key) == "string" then
-            here[p.key:lower()] = true
+-- A raid note's lines as the slot and name lookups read them: { kind = "note", noteID, tags, spellID }, none for a
+-- personal note.
+local function noteLines(noteID)
+    local Notes = CRT.Notes
+    local record = noteID ~= nil and Notes and Notes:Get(noteID)
+    if not record or record.personal then
+        return {}
+    end
+    local parsed = Notes:Parsed(noteID)
+    local out = {}
+    for _, t in ipairs(parsed and parsed.timers or {}) do
+        out[#out + 1] = { kind = "note", noteID = noteID, tags = t.tags, spellID = t.spellId }
+    end
+    return out
+end
+
+-- The spell IDs of who's rows as HealerView.Build makes them by default (HealerView.Options that show, by
+-- Timeline/HealerRows.lua's picks).
+local function defaultSpells(who)
+    local HV, Picks = CRT.TimelineHealerView, CRT.TimelineHealerRows
+    local out = {}
+    for _, o in ipairs(HV.Options(who)) do
+        if not Picks or Picks.Shown(who.key, o.spellID, o.default) then
+            out[#out + 1] = o.spellID
         end
     end
-    local Slots = CRT.TimelineHealerSlots
-    for _, s in ipairs(Slots and Slots.List(encounterID) or {}) do
-        if type(s.player) == "string" then
-            here[s.player:lower()] = true
+    return out
+end
+
+local function same1(k)
+    return k
+end
+
+-- The boss's healers as the lead's Healer CDs draws them, the way HealerView.Build finds them: the roster's healers,
+-- the boss's slots (saved, then the note's spec words; an assigned player on the roster shows once, as the slot), then
+-- anyone the note (noteID, the note being shared) gives a listed cooldown. Each { key, spellKey, ids } in the lead's
+-- order (HealerOrder.Apply's), ids their spell rows in theirs. So a raider gets the order the lead sees, saved or not.
+function Share.ShownOrder(encounterID, noteID)
+    local O, HV, Slots = Order(), CRT.TimelineHealerView, CRT.TimelineHealerSlots
+    if not (O and HV and HV.Options) then
+        return {}
+    end
+    local players = rosterPlayers()
+    local people, byKey = {}, {}
+    local function person(p, class)
+        local k = p.key:lower()
+        local who = byKey[k]
+        if not who then
+            who = { p = p, key = k, class = p.class or class, noteSpells = {}, rows = {} } -- rows: for HealerOrder.Apply
+            byKey[k] = who
+            people[#people + 1] = who
+        end
+        return who
+    end
+    for _, p in ipairs(players) do
+        if p.role == "HEALER" and type(p.key) == "string" then
+            person(p)
+        end
+    end
+    local lines = noteLines(noteID)
+    local slots = Slots and Slots.ForView(encounterID, lines) or {}
+    for _, s in ipairs(slots) do
+        local p, keys = Slots.Person(s, slots, players)
+        local who = byKey[keys[1]] or (keys[2] and byKey[keys[2]])
+        if who then
+            who.p, who.class = p, p.class
+        else
+            who = person(p)
+        end
+        who.slot, who.strict, s.who = s, true, who
+        for _, k in ipairs(keys) do
+            byKey[k] = who
+        end
+    end
+    local find, classes = HV.NameIndex(players), HV.ClassWords()
+    for _, m in ipairs(lines) do
+        local e = HV.Listed(m.spellID)
+        for _, tag in ipairs(e and m.tags or {}) do
+            local slot = type(tag) == "string" and Slots and Slots.ForTag(slots, tag)
+            local p = not slot and type(tag) == "string" and find(tag) or nil
+            if not p and not slot and type(tag) == "string" and HV.NameWord(tag, classes) then
+                p = { key = tag, name = tag }
+            end
+            local who = slot and slot.who or (p and person(p, e.class))
+            if who then
+                who.noteSpells[#who.noteSpells + 1] = e
+            end
         end
     end
     local out = {}
-    for _, k in ipairs(O and O.Healers(encounterID) or {}) do
-        if goodKey(k) and (here[k] or k:find("^slot:")) and #out < MAX_KEYS then
-            out[#out + 1] = k
+    for _, who in ipairs(O.Apply(encounterID, people)) do
+        local key = who.key
+        local spellKey = O.SpellKey(who)
+        local ids = O.Sort(defaultSpells(who), O.Spells(spellKey), same1)
+        if goodKey(key) and #out < MAX_KEYS then
+            out[#out + 1] = { key = key, spellKey = spellKey, ids = ids }
         end
     end
     return out
 end
 
--- The keys of the healers on a boss whose spell order may go: those in its order (healers, ShownHealers'), the roster's
--- healers' and the boss's slots' (Timeline/HealerSlots.lua; an open one's by its spec). Each once.
-function Share.BossKeys(encounterID, healers, players)
-    local out, seen = {}, {}
-    local function add(k)
-        if goodKey(k) and not seen[k] then
-            seen[k] = true
-            out[#out + 1] = k
-        end
-    end
-    for _, k in ipairs(healers or {}) do
-        if not k:find("^slot:") then
-            add(k)
-        end
-    end
-    for _, p in ipairs(players or rosterPlayers()) do
-        if p.role == "HEALER" and type(p.key) == "string" then
-            add(p.key:lower())
-        end
-    end
-    local Slots = CRT.TimelineHealerSlots
-    for _, s in ipairs(Slots and Slots.List(encounterID) or {}) do
-        add(s.player and s.player:lower() or ("spec:" .. s.spec))
-    end
-    return out
-end
-
--- The text for a boss's order: nil when nothing of it is saved.
-function Share.Text(encounterID)
-    local O = Order()
-    if not (O and type(encounterID) == "number") then
+-- The text for a boss's order, as the lead sees it (ShownOrder); nil with no healers to send.
+function Share.Text(encounterID, noteID)
+    if type(encounterID) ~= "number" then
         return nil
     end
-    local players = rosterPlayers()
-    local healers = Share.ShownHealers(encounterID, players)
+    local shown = Share.ShownOrder(encounterID, noteID)
+    local healers = {}
+    for i, h in ipairs(shown) do
+        healers[i] = h.key
+    end
     local lines = { tostring(encounterID), table.concat(healers, "\t") }
-    for _, k in ipairs(Share.BossKeys(encounterID, healers, players)) do
+    for _, h in ipairs(shown) do
         local ids = {}
-        for _, id in ipairs(O.Spells(k) or {}) do
+        for _, id in ipairs(h.ids) do
             if type(id) == "number" and id > 0 and id == math.floor(id) and #ids < MAX_SPELLS then
                 ids[#ids + 1] = tostring(id)
             end
         end
-        if #ids > 0 and #lines - 2 < MAX_KEYS then
-            lines[#lines + 1] = k .. "\t" .. table.concat(ids, ",")
+        if #ids > 0 and goodKey(h.spellKey) then
+            lines[#lines + 1] = h.spellKey .. "\t" .. table.concat(ids, ",")
         end
     end
-    if #healers == 0 and #lines == 2 then
+    if #healers == 0 then
         return nil
     end
     return table.concat(lines, "\n")
@@ -223,7 +275,7 @@ end
 -- since gets it again (the receiver takes a repeat quietly). Only the same order on the same channel within GUARD
 -- seconds (a double click) is not sent twice. In combat or a boss fight, or too long for MAX_PARTS, one chat line says
 -- why. Returns whether it went.
-function Share:Push(encounterID)
+function Share:Push(encounterID, noteID)
     if type(encounterID) ~= "number" then
         return false
     end
@@ -231,7 +283,7 @@ function Share:Push(encounterID)
     if not (channel and Shared.IsLeaderOrAssist("player")) then
         return false
     end
-    local text = Share.Text(encounterID)
+    local text = Share.Text(encounterID, noteID)
     if not text then
         return false
     end

@@ -268,7 +268,7 @@ function Comm:Share(id)
     -- never stops the note
     local OrderShare = CRT.HealerOrderShare
     if OrderShare and type(record.encounterID) == "number" then
-        local ok, err = pcall(OrderShare.Push, OrderShare, record.encounterID)
+        local ok, err = pcall(OrderShare.Push, OrderShare, record.encounterID, id)
         if not ok and geterrorhandler then
             geterrorhandler()(err)
         end

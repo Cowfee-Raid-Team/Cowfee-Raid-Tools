@@ -502,6 +502,33 @@ do
   Slots.Assign(Slots.Context(v), v.hvSlots[1], "Halo")
   check(saved(3001) == "me-home,halo-home" and ids(CRT.db.timeline.healerSpellOrder["halo-home"]) == "5",
     "once in the order, at the slot's place, with their own spells: " .. saved(3001))
+  -- cleared: Halo is still a roster healer, so the slot comes back right after him
+  v:Refresh()
+  Slots.Clear(Slots.Context(v), v.hvSlots[1])
+  check(saved(3001) == "me-home,halo-home,slot:105:1", "Clear: the slot back right after a roster healer: " .. saved(3001))
+  -- Leafy (not a roster healer) at the slot's place; a second player takes Leafy's place; Clear puts the slot back there
+  CRT.db.timeline.healerOrder = { [3001] = { "me-home", "slot:105:1", "halo-home" } }
+  v:Refresh()
+  Slots.Assign(Slots.Context(v), v.hvSlots[1], "Leafy")
+  v:Refresh()
+  Slots.Assign(Slots.Context(v), v.hvSlots[1], "Bramble")
+  check(saved(3001) == "me-home,bramble-home,halo-home", "another player takes the old player's place: " .. saved(3001))
+  v:Refresh()
+  Slots.Clear(Slots.Context(v), v.hvSlots[1])
+  check(saved(3001) == "me-home,slot:105:1,halo-home", "Clear: the slot key back at the player's place: " .. saved(3001))
+  -- Change spec: the slot's new key keeps the place
+  v:Refresh()
+  check(Slots.ChangeSpec(Slots.Context(v), v.hvSlots[1], 264) == true, "the slot becomes a Resto Shaman")
+  check(saved(3001) == "me-home,slot:264:1,halo-home", "Change spec: the new key keeps the place: " .. saved(3001))
+  v:Refresh()
+  check(order(v) == "me-home,slot:264:1,halo-home", "drawn there: " .. order(v))
+  -- Remove: the key goes, so a new slot with the same number doesn't take the old place
+  Slots.Remove(Slots.Context(v), v.hvSlots[1], true)
+  check(saved(3001) == "me-home,halo-home", "Remove: the slot's key leaves the order: " .. saved(3001))
+  v:Refresh()
+  Slots.Add(Slots.Context(v), 264)
+  v:Refresh()
+  check(order(v) == "me-home,halo-home,slot:264:1", "a new slot with the old number comes at the bottom: " .. order(v))
   CRT.db.timeline.healerSlots, CRT.db.timeline.healerOrder, CRT.db.timeline.healerSpellOrder = keepSlots, keepOrder, keepSpells
   CRT.db.timeline.healerOrder[3001] = { "slot:105:1", "halo-home", "me-home" }
   v:Refresh()
@@ -528,15 +555,38 @@ function UnitIsGroupAssistant(u) if u == "player" then return group.assist end r
 local function ours() local out = {} for _, m in ipairs(sent) do if m[1] == "CRTHealOrd1" then out[#out + 1] = m[2] end end return out end
 check(Share.PREFIX == "CRTHealOrd1" and #Share.PREFIX <= 16, "its own prefix, at most 16 characters")
 do
-  local text = Share.Text(3001)
-  local id, healers, sp = Share.Read(text)
-  check(id == 3001 and ids(healers) == saved(3001), "the text reads back: the boss and its order")
-  check(sp and ids(sp["halo-home"]) == ids(CRT.db.timeline.healerSpellOrder["halo-home"]) and ids(sp["spec:105"]) == ids(CRT.db.timeline.healerSpellOrder["spec:105"]),
-    "and the spell orders of its healers")
-  local keepSpells = CRT.db.timeline.healerSpellOrder
-  CRT.db.timeline.healerSpellOrder = {}
-  check(Share.Text(3002) == nil, "a boss with nothing ordered: nothing to send")
-  CRT.db.timeline.healerSpellOrder = keepSpells
+  -- what is sent is the view as drawn: every healer in its place, every one's spell rows in theirs
+  local function matches(view, id, note)
+    local eid, healers, sp = Share.Read(Share.Text(id, note))
+    local ok = eid == id and ids(healers) == order(view)
+    for _, l in ipairs(view.lanes) do
+      if l.kind == "healer" and l.hvOrder then
+        local want = ids(spells(view, l.hvOrder.key))
+        if want ~= "" and ids(sp and sp[l.hvOrder.spellKey]) ~= want then ok = false end
+      end
+    end
+    return ok, ids(healers)
+  end
+  v:Refresh()
+  local same, what = matches(v, 3001)
+  check(same, "the text reads back as the view shows it: " .. what .. " vs " .. order(v))
+  local keepSpells, keepOrder = CRT.db.timeline.healerSpellOrder, CRT.db.timeline.healerOrder
+  CRT.db.timeline.healerSpellOrder, CRT.db.timeline.healerOrder = {}, {}
+  local v2 = newView(ref2, 3002)
+  same, what = matches(v2, 3002)
+  check(same and what == "halo-home,me-home", "nothing saved: the default order is still sent, as drawn: " .. what)
+  CRT.db.timeline.healerSpellOrder, CRT.db.timeline.healerOrder = keepSpells, keepOrder
+  -- someone the raid note gives a listed cooldown, not on the roster, keeps their place; a deleted slot's key doesn't go
+  setNote({ "time:20;ph:1;tag:Zed;spellid:" .. spells(v, "halo-home")[1] .. ";" })
+  v:Refresh()
+  check(nameRow(v, "zed") ~= nil, "the note gives Zed a block: " .. order(v))
+  CRT.db.timeline.healerOrder[3001] = { "zed", "slot:257:4", "me-home", "halo-home", "slot:105:1" }
+  v:Refresh()
+  same, what = matches(v, 3001, 1)
+  check(same and what == "zed,me-home,halo-home,slot:105:1", "Zed sent in his place, the deleted slot not: " .. what)
+  CRT.db.timeline.healerOrder[3001] = keepOrder[3001]
+  setNote({})
+  v:Refresh()
   -- the raid leader shares the boss's note: the order goes with it
   group.leader, group.raid = true, true
   setNote({})
@@ -553,12 +603,12 @@ do
   local keep = CRT.db.timeline.healerOrder[3001]
   CRT.db.timeline.healerOrder[3001] = { "gone-home", "me-home", "halo-home" }
   local _, healers = Share.Read(Share.Text(3001))
-  check(ids(healers) == "me-home,halo-home", "keys not on the boss aren't sent: " .. ids(healers))
+  check(ids(healers) == "me-home,halo-home,slot:105:1", "keys not on the boss aren't sent: " .. ids(healers))
   CRT.db.timeline.healerOrder[3001] = keep
-  -- the only-spells case: the healer line is empty
+  -- no boss order saved: the healers still go, in the default order
   CRT.db.timeline.healerOrder[3001] = nil
   local _, none, sp2 = Share.Read(Share.Text(3001))
-  check(none and #none == 0 and sp2["halo-home"] ~= nil, "no boss order, only spell orders: an empty healer line")
+  check(ids(none) == "halo-home,me-home,slot:105:1" and sp2["halo-home"] ~= nil, "no boss order: the default order goes: " .. ids(none))
   CRT.db.timeline.healerOrder[3001] = keep
   local n = #ours()
   group.leader = false
@@ -568,7 +618,7 @@ do
   inCombat = true
   local said = #printed
   check(not Share:Push(3001) and #ours() == n, "nothing in combat")
-  check(#printed == said + 1 and printed[#printed] == Share.TEXT.busy, "and one chat line says why: " .. tostring(printed[#printed]))
+  check(#printed == said + 1 and printed[#printed] == "Healer order not sent during combat or a boss fight.", "and one chat line says why: " .. tostring(printed[#printed]))
   inCombat = false
   local realText = Share.Text
   Share.Text = function() return "3001\\n" .. string.rep("x", 2500) end
