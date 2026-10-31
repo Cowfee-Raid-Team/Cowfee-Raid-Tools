@@ -12,7 +12,7 @@ const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const FILES = [
   'CRT_Modules/Timeline/Data.lua', 'CRT_Modules/Timeline/Database.lua', 'CRT_Modules/Timeline/Reference.lua', 'CRT_Modules/Timeline/Lanes.lua',
   'CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua',
-  'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/Engine.lua',
+  'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/SpecWords.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/Engine.lua',
   'CRT_Modules/Alerts/Reminders.lua', 'CRT_Modules/Alerts/Draft.lua',
   'CRT_Core/UI/CodeBox.lua', 'CRT_Modules/Timeline/ImportReminders.lua', 'CRT_Modules/Timeline/ImportWindow.lua',
   'CRT_Data/Bosses/Registry.lua',
@@ -69,10 +69,49 @@ ph:1;time:478.5;tag:everyone;dur:20;text:Soak;colors:1.0000 0.0745 0.1529 1;
 
 EncounterID:3379;Difficulty:Heroic;Name:Nymrissa Wavecaller
 `;
+// The second sample export of 2026-10-31 (The Twin Fangs, Mythic; factory/samples, not in Git), as it was pasted.
+const TWINFANGS = `EncounterID:3421;Difficulty:Mythic;Name:The Twin Fangs
+ph:1;time:34.4;tag:Dotsanhots;dur:8;spellid:383410;TTS:true;countdown:5;DisplayType:Circle;
+ph:1;time:34.8;tag:11;dur:8;text:;DisplayType:Text;
+ph:1;time:35.8;tag:Dotsanhots;dur:8;spellid:202770;TTS:true;countdown:5;DisplayType:Circle;
+ph:1;time:60.2;tag:Dotsanhots;dur:8;spellid:22812;TTS:true;TTSTimer:3;DisplayType:Text;
+ph:1;time:97.5;tag:Dotsanhots;dur:8;spellid:383410;TTS:true;countdown:5;DisplayType:Circle;
+ph:1;time:98.3;tag:Dotsanhots;dur:8;spellid:202770;TTS:true;countdown:5;DisplayType:Circle;
+ph:1;time:122.7;tag:Dotsanhots;dur:8;spellid:22812;TTS:true;TTSTimer:3;DisplayType:Text;
+ph:1;time:189.9;tag:Dotsanhots;dur:8;spellid:202770;TTS:true;countdown:5;DisplayType:Circle;
+ph:1;time:189.9;tag:Dotsanhots;dur:8;spellid:383410;TTS:true;countdown:5;DisplayType:Circle;
+ph:1;time:215.8;tag:Dotsanhots;dur:8;spellid:22812;TTS:true;TTSTimer:3;DisplayType:Text;
+ph:1;time:251.4;tag:Dotsanhots;dur:8;spellid:202770;TTS:true;countdown:5;DisplayType:Circle;
+ph:1;time:252.1;tag:Dotsanhots;dur:8;spellid:383410;TTS:true;countdown:5;DisplayType:Circle;
+ph:1;time:275.8;tag:Dotsanhots;dur:8;spellid:22812;TTS:true;TTSTimer:3;DisplayType:Text;
+ph:1;time:345.4;tag:Dotsanhots;dur:8;spellid:202770;TTS:true;countdown:5;DisplayType:Circle;
+ph:1;time:345.8;tag:Dotsanhots;dur:8;spellid:383410;TTS:true;countdown:5;DisplayType:Circle;
+ph:1;time:369.8;tag:Dotsanhots;dur:8;spellid:22812;TTS:true;TTSTimer:3;DisplayType:Text;
+ph:1;time:405.4;tag:Dotsanhots;dur:8;spellid:383410;TTS:true;countdown:5;DisplayType:Circle;
+ph:1;time:405.9;tag:Dotsanhots;dur:8;spellid:202770;TTS:true;countdown:5;DisplayType:Circle;
+ph:1;time:430.3;tag:Dotsanhots;dur:8;spellid:22812;TTS:true;TTSTimer:3;DisplayType:Text;
+`;
+// Alex's tag sample of 2026-10-31 (factory/samples, not in Git): one line per tag kind, as it was pasted.
+const TAGS = `EncounterID:3429;Difficulty:Heroic;Name:The Coiled Altar
+ph:1;time:30.4;tag:everyone;dur:8;text:test;
+ph:1;time:33.7;tag:Solex;dur:8;text:test;
+ph:1;time:36.2;tag:1;dur:8;text:test;
+ph:1;time:39.2;tag:71;dur:8;text:test;
+ph:1;time:41.7;tag:72;dur:8;text:test;
+ph:1;time:44.2;tag:73;dur:8;text:test;
+ph:1;time:46.9;tag:tank;dur:8;text:test;
+ph:1;time:49.2;tag:melee;dur:8;text:test;
+ph:1;time:51.8;tag:Group1;dur:8;text:test;
+ph:1;time:88.5;tag:11;dur:8;text:Help!;TTS:Testing;
+ph:2;time:48.1;tag:11;dur:8;text:Last Chance to Incarn;
+ph:3;time:161.9;tag:11;dur:8;text:Personal CDs;
+`;
 const d = process.argv[2];
 const harness = themeLua(d) + `
 local SAMPLE = select(1, ...)
-local sources = { select(2, ...) }
+local TWINFANGS = select(2, ...)
+local TAGS = select(3, ...)
+local sources = { select(4, ...) }
 local registry = table.remove(sources)
 local function mock(kind, parent, template)
   local m = { kind = kind, parent = parent, template = template, shown = true, enabled = true, checked = false, text = "", pts = {}, w = 0, h = 0 }
@@ -123,13 +162,23 @@ format = string.format
 SOUNDKIT = { RAID_WARNING = 8959 }
 C_TTSSettings = { GetVoiceOptionID = function() return 1 end }
 C_VoiceChat = { SpeakText = function() end }
-C_Spell = { GetSpellName = function(id) return "Spell" .. id end, GetSpellTexture = function(id) return "tex" .. id end }
-function UnitName(u) if u == "player" then return "Solex" end end
-function UnitGroupRolesAssigned() return "DAMAGER" end
-local classID = 11
-function UnitClass() return "Druid", "DRUID", classID end
-function IsInRaid() return false end
-function GetNumGroupMembers() return 0 end
+-- spell 1 is one the game doesn't know
+C_Spell = { GetSpellName = function(id) if id ~= 1 then return "Spell" .. id end end, GetSpellTexture = function(id) return "tex" .. id end }
+-- you: a Balance Druid (spec 102), DPS, on Area52; raid = nil out of a raid, else { index, subgroup }
+local SPECS = { [71] = { "Arms", "DAMAGER" }, [72] = { "Fury", "DAMAGER" }, [73] = { "Protection", "TANK" }, [102] = { "Balance", "DAMAGER" }, [105] = { "Restoration", "HEALER" } }
+function GetSpecializationInfoByID(id) local s = SPECS[id] if s then return id, s[1], "", 1, s[2] end end
+local CLASSES = { [1] = { "Warrior", "WARRIOR" }, [2] = { "Paladin", "PALADIN" }, [3] = { "Hunter", "HUNTER" }, [6] = { "Death Knight", "DEATHKNIGHT" }, [8] = { "Mage", "MAGE" }, [11] = { "Druid", "DRUID" } }
+local classID, playerName, role, raid, specID = 11, "Solex", "DAMAGER", nil, 102
+function GetNumClasses() return 13 end
+function GetClassInfo(id) local c = CLASSES[id] if c then return c[1], c[2], id end end
+function UnitName(u) if u == "player" then return playerName end end
+function GetNormalizedRealmName() return "Area52" end
+function UnitGroupRolesAssigned() return role end
+function UnitClass() local c = CLASSES[classID] return c[1], c[2], classID end
+function IsInRaid() return raid ~= nil end
+function GetNumGroupMembers() return raid and 20 or 0 end
+function UnitIsUnit(a, b) return raid ~= nil and b == "player" and a == "raid" .. raid.index end
+function GetRaidRosterInfo(i) if raid and i == raid.index then return playerName, 0, raid.subgroup end return "Other", 0, 1 end
 function GetDifficultyInfo(id) return ({ [16] = "Mythic", [15] = "Heroic" })[id] end
 CRTFontNormal, CRTFontSmall, CRTFontEdit, CRTFontEditSmall = {}, {}, {}, {}
 local tip = { lines = {} }
@@ -176,6 +225,8 @@ local CRT = {
 function CRT:Print(m) printed[#printed + 1] = m end
 CRT_THEME(CRT, UI)
 CRT.TimelineJournal = { Rows = function() return {} end, IsHidden = function() return false end }
+CRT.Groups = { PlayerSpecID = function() return specID end,
+  SpecInfo = function(id) local _, name = GetSpecializationInfoByID(id) return name end }
 for i, src in ipairs(sources) do
   assert(load(src, "src" .. i))("CowfeeRaidTools", CRT)
 end
@@ -209,7 +260,10 @@ local function near(a, b) return type(a) == "number" and math.abs(a - b) < 1e-6 
 local function strip(s) return (tostring(s or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
 local function colorOf(s) return tostring(s or ""):match("^|cff(%x%x%x%x%x%x)") end
 local function bossOf(parsed, id) for _, b in ipairs(parsed.bosses) do if b.encounterID == id then return b end end end
-local function fresh() CRT.db.alerts.reminders = {} CRT.db.alerts.nextId = 1 combat = false classID = 11 end
+local function fresh()
+  CRT.db.alerts.reminders = {} CRT.db.alerts.nextId = 1 combat = false
+  classID, playerName, role, raid, specID = 11, "Solex", "DAMAGER", nil, 102
+end
 local function count(enc) return #R:List(enc) end
 local function click(b) assert(b and b.OnClick, "clickable") b.OnClick(b, "LeftButton") end
 local function paste(win, text) local edit = win.paste.edit edit.text = text edit.OnTextChanged(edit, true) end
@@ -274,18 +328,243 @@ check("tags: everyone and your own class are imported, another class skipped", f
   assert(I.ForPlayer("everyone", 11) == true and I.ForPlayer("Everyone", 8) == true, "everyone")
   assert(I.ForPlayer("11", 11) == true, "your class")
   local ok, why = I.ForPlayer("11", 8)
-  assert(ok == false and why == "for another tag (11)", "another class: " .. tostring(why))
+  assert(ok == false and why == "for another class (Druid)", "another class: " .. tostring(why))
   local okNone, whyNone = I.ForPlayer(nil, 11)
   assert(okNone == false and whyNone == I.TEXT.noTag, "no tag")
   assert(I.PlayerClassID() == 11, "the player's class from UnitClass")
   classID = 8
-  local plan = I.Plan(I.Parse(SAMPLE), I.PlayerClassID())
+  local plan = I.Plan(I.Parse(SAMPLE), I.Me())
   local ula
   for _, b in ipairs(plan.bosses) do if b.encounterID == 3492 then ula = b end end
   assert(#ula.reminders == 2 and #ula.skipped == 14, "a mage gets only the two Soaks: " .. #ula.reminders)
-  assert(ula.skipped[1].reason == "for another tag (11)", ula.skipped[1].reason)
-  assert(ula.reminders[1].import.tag == "everyone", "the tag kept")
+  assert(ula.skipped[1].reason == "for another class (Druid)", ula.skipped[1].reason)
+  assert(ula.reminders[1].import.tag == "everyone" and ula.reminders[1].import.tagKind == "everyone", "the tag and its kind kept")
   classID = 11
+end)
+
+check("tags: Me reads you once, guarded", function()
+  fresh()
+  raid = { index = 7, subgroup = 3 }
+  local me = I.Me()
+  assert(me.name == "Solex" and me.realm == "Area52" and me.classID == 11 and me.classFile == "DRUID", "name, realm, class")
+  assert(me.specID == 102 and me.role == "DAMAGER" and me.group == 3, "spec, role, group from the raid roster")
+  raid = nil
+  assert(I.Me().group == 1, "out of a raid you count as group 1, as the note alerts do")
+  role = "NONE"
+  specID = 105
+  local okInfo = GetSpecializationInfoByID
+  GetSpecializationInfoByID = function(id) if id == 105 then return 105, "Restoration", "", 1, "HEALER", "DRUID", "Druid" end end
+  assert(I.Me().role == "HEALER", "no role picked: the spec's role")
+  GetSpecializationInfoByID = okInfo
+  local realUnitName = UnitName
+  UnitName = function() error("no") end
+  issecretvalue = function(v) return v == "Area52" end
+  local blind = I.Me()
+  assert(blind.name == nil and blind.realm == nil and blind.classID == 11, "an error or a secret leaves that field out")
+  issecretvalue = function() return false end
+  UnitName = realUnitName
+  fresh()
+end)
+
+check("tags: a player's name, with or without realm, any case", function()
+  fresh()
+  local me = { name = "Dotsanhots", realm = "Area52", classID = 11, classFile = "DRUID" }
+  for _, tag in ipairs({ "Dotsanhots", "dotsanhots", "DOTSANHOTS", "Dotsanhots-Area52", "dotsanhots-area52" }) do
+    local ok, why, kind = I.ForPlayer(tag, me)
+    assert(ok == true and kind == "player", tag .. ": " .. tostring(why))
+  end
+  local ok, why, kind = I.ForPlayer("Dotsanhots-Stormrage", me)
+  assert(ok == false and kind == "player" and why == "for another player (Dotsanhots-Stormrage)", "another realm: " .. tostring(why))
+  ok, why = I.ForPlayer("Dotsanhots", { name = "Solex", classID = 11, classFile = "DRUID" })
+  assert(ok == false and why == "for another player (Dotsanhots)", tostring(why))
+end)
+
+check("tags: each kind matches and fails", function()
+  local me = { name = "Solex", realm = "Area52", classID = 11, classFile = "DRUID", specID = 105, role = "HEALER", group = 3 }
+  local function is(tag, want, wantKind, wantWhy)
+    local ok, why, kind = I.ForPlayer(tag, me)
+    assert(ok == want and kind == wantKind, tag .. ": " .. tostring(ok) .. " " .. tostring(kind) .. " " .. tostring(why))
+    if wantWhy then assert(why == wantWhy, tag .. ": " .. tostring(why)) end
+  end
+  is("everyone", true, "everyone")
+  is("11", true, "class") is("2", false, "class", "for another class (Paladin)")
+  is("druid", true, "class") is("DRUID", true, "class")
+  is("Death Knight", false, "class", "for another class (Death Knight)") is("deathknight", false, "class", "for another class (Death Knight)")
+  is("healer", true, "role") is("heal", true, "role") is("tank", false, "role", "for another role (Tank)")
+  is("dps", false, "role", "for another role (DPS)") is("damager", false, "role", "for another role (DPS)")
+  is("RestoDruid", true, "spec") is("HolyPaladin", false, "spec", "for another spec (Holy Paladin)")
+  is("g3", true, "group") is("group3", true, "group") is("Grp3", true, "group") is("g2", false, "group", "for another group (2)")
+  is("72", false, "spec", "for another spec (Fury)") is("999", false, "spec", "for another spec (999)")
+  is("105", true, "spec")
+  is("Dots, Bob", false, nil, "for another tag (Dots, Bob)") is("x1", false, nil, "for another tag (x1)")
+  is("Group3", true, "group") is("GROUP3", true, "group") is("Group1", false, "group", "for another group (1)") is("group9", false, nil)
+  -- a healer is neither melee nor ranged, as the note alerts read them
+  is("melee", false, "position", "for another position (Melee)") is("ranged", false, "position", "for another position (Ranged)")
+  local arms = { name = "Solex", classID = 1, classFile = "WARRIOR", specID = 71, role = "DAMAGER", position = "melee", group = 1 }
+  assert(I.ForPlayer("melee", arms) == true and I.ForPlayer("71", arms) == true and I.ForPlayer("1", arms) == true, "an Arms Warrior")
+  local okR, whyR = I.ForPlayer("ranged", arms)
+  assert(okR == false and whyR == "for another position (Ranged)", tostring(whyR))
+  is("Solex", true, "player") is("Bob", false, "player", "for another player (Bob)")
+  -- your own name first, as the note alerts read it
+  local tank = { name = "Tank", classID = 11, classFile = "DRUID", role = "HEALER", group = 1 }
+  assert(I.ForPlayer("Tank", tank) == true, "a player named Tank keeps their lines")
+  -- a bare number is a class ID, never a group, until an export shows otherwise
+  local ok3, why3, kind3 = I.ForPlayer("3", me)
+  assert(ok3 == false and kind3 == "class" and why3 == "for another class (Hunter)", tostring(why3))
+end)
+
+check("tags: g3 and group3 against your raid group", function()
+  fresh()
+  local text = "EncounterID:3492;Difficulty:Heroic;Name:Ula'tek\\nph:1;time:5;tag:g3;text:Three;\\nph:1;time:6;tag:group3;text:Three again;\\nph:1;time:7;tag:grp2;text:Two;\\n"
+  raid = { index = 4, subgroup = 3 }
+  local plan = I.Plan(I.Parse(text), I.Me())
+  assert(plan.count == 2 and plan.bosses[1].skipped[1].reason == "for another group (2)", "group 3: " .. plan.count)
+  assert(plan.bosses[1].reminders[1].import.tagKind == "group", "the kind kept")
+  raid = { index = 4, subgroup = 2 }
+  plan = I.Plan(I.Parse(text), I.Me())
+  assert(plan.count == 1 and plan.bosses[1].reminders[1].text == "Two", "group 2")
+  fresh()
+end)
+
+check("twin fangs: parse spellid, TTS, countdown, TTSTimer, DisplayType", function()
+  local p = I.Parse(TWINFANGS)
+  local b = p.bosses[1]
+  assert(b.encounterID == 3421 and b.difficulty == "Mythic" and #b.reminders == 19 and #b.skipped == 0, "19 lines: " .. #b.reminders)
+  local first = b.reminders[1]
+  assert(first.spellID == 383410 and first.tts == true and first.countdown == 5 and first.display == "Circle" and first.text == "", "the first line")
+  assert(first.extra == nil, "nothing left unknown")
+  local barkskin = b.reminders[4]
+  assert(barkskin.spellID == 22812 and barkskin.ttsTimer == 3 and barkskin.display == "Text" and barkskin.countdown == nil, "a TTSTimer line")
+  local q = I.Parse("EncounterID:3421;Difficulty:Mythic\\nph:1;time:5;tag:everyone;spellid:abc;countdown:soon;DisplayType:Bar;TTS:;\\n")
+  local x = q.bosses[1].reminders[1]
+  assert(x.spellID == nil and x.extra.spellid == "abc" and x.extra.countdown == "soon" and x.extra.DisplayType == "Bar" and x.extra.TTS == "", "what doesn't read is kept as written")
+  assert(I.Display(x.display) == nil, "a DisplayType not listed ticks nothing more")
+end)
+
+check("twin fangs: Dotsanhots imports them, anyone else skips them", function()
+  fresh()
+  playerName = "Dotsanhots"
+  local plan = I.Plan(I.Parse(TWINFANGS), I.Me())
+  local b = plan.bosses[1]
+  assert(plan.count == 19 and #b.skipped == 0 and b.group == "mythic", "all 19: " .. plan.count)
+  playerName = "Solex"
+  plan = I.Plan(I.Parse(TWINFANGS), I.Me())
+  b = plan.bosses[1]
+  assert(plan.count == 1 and #b.skipped == 18 and b.skipped[1].reason == "for another player (Dotsanhots)", "only the Druid line: " .. plan.count)
+  fresh()
+end)
+
+check("twin fangs: spell icon and name, speech and display on the reminder", function()
+  fresh()
+  playerName = "Dotsanhots"
+  local res = I.Apply(I.Plan(I.Parse(TWINFANGS), I.Me()), { replace = true })
+  assert(res.added == 19 and res.duplicates == 0, "19 added, the two at 189.9 both: " .. res.added .. ", " .. res.duplicates)
+  local list = R:List(3421)
+  local circle, timer, druid
+  for _, e in ipairs(list) do
+    local r = e.r
+    if r.spellID == 383410 and not circle then circle = r end
+    if r.spellID == 22812 and not timer then timer = r end
+    if r.spellID == nil then druid = r end
+  end
+  -- spellid: the icon and the spell's name as the text
+  assert(circle.text == "Spell383410" and circle.group == "mythic" and circle.import.text == "", "the spell's name: " .. tostring(circle.text))
+  local items = R:Items(3421, 1, circle)
+  assert(items[1].spellID == 383410 and items[1].icon == "tex383410", "the spell's icon")
+  -- TTS + countdown 5: the text, then 3, 2, 1 (the nearest the reminders count)
+  assert(circle.outputs.speech == true and circle.speech == "textcount" and circle.speakAt == nil, "text and count: " .. tostring(circle.speech))
+  assert(circle.import.countdown == 5 and circle.import.tagKind == "player", "the count kept")
+  local spoken = {}
+  for _, s in ipairs(items[1].speech) do spoken[#spoken + 1] = s.text .. "@" .. ("%g"):format(s.offset) end
+  assert(table.concat(spoken, " ") == "Spell383410@8 3@3 2@2 1@1", table.concat(spoken, " "))
+  -- DisplayType Circle: the circle, with the new alert's defaults
+  assert(circle.outputs.circle and circle.outputs.alert and circle.outputs.bar and not circle.outputs.text, "Circle")
+  -- TTS + TTSTimer 3 with Show from 8: spoken at the nearer of 8 and 0 seconds, so at the time
+  assert(timer.speech == "text" and timer.speakAt == "zero" and timer.import.ttsTimer == 3, "TTSTimer: " .. tostring(timer.speakAt))
+  assert(timer.outputs.text and timer.outputs.alert and timer.outputs.bar and not timer.outputs.circle, "Text")
+  -- no TTS: silent; DisplayType Text; no spell, no text: the placeholder
+  assert(druid.outputs.speech == false and druid.outputs.text and druid.text == I.TEXT.placeholder and druid.import.tagKind == "class", "the Druid line")
+  assert(not R:Items(3421, 2, druid)[1].outputs.speech, "says nothing")
+  -- again without Replace: nothing doubled (the two at 189.9 differ by spell)
+  local again = I.Apply(I.Plan(I.Parse(TWINFANGS), I.Me()), { replace = false })
+  assert(again.added == 0 and again.duplicates == 19, "no duplicates: " .. again.added)
+  fresh()
+end)
+
+check("speech rules: TTS, countdown and TTSTimer onto Read out", function()
+  local function sp(line, warn) local a, b, c = I.Speech(line, warn) return tostring(a) .. "/" .. tostring(b) .. "/" .. tostring(c) end
+  assert(sp({}, 8) == "false/false/nil", "no TTS: silent")
+  assert(sp({ tts = false, countdown = 5 }, 8) == "false/true/nil", "a count alone")
+  assert(sp({ tts = true }, 8) == "true/false/nil", "the text when it shows")
+  assert(sp({ tts = true, ttsTimer = 3 }, 8) == "true/false/zero", "3 s: nearer the time")
+  assert(sp({ tts = true, ttsTimer = 6 }, 8) == "true/false/nil", "6 s: nearer the show")
+  assert(sp({ tts = true, ttsTimer = 4 }, 8) == "true/false/nil", "half way: when it shows")
+  assert(sp({ tts = true, countdown = 0 }, 8) == "true/false/nil", "a count of 0 counts nothing")
+  assert(sp({ tts = "Testing" }, 8) == "true/false/nil" and I.Words({ tts = "Testing" }) == "Testing" and I.Words({ tts = true }) == nil, "TTS words")
+end)
+
+check("tag sample: each tag kind, as a Druid and as an Arms Warrior", function()
+  fresh()
+  local function reasons(plan)
+    local out = {}
+    for _, s in ipairs(plan.bosses[1].skipped) do out[#out + 1] = s.reason end
+    return table.concat(out, " / ")
+  end
+  -- you: Solex, Balance Druid, ranged DPS, not in a raid (group 1)
+  local plan = I.Plan(I.Parse(TAGS), I.Me())
+  assert(plan.count == 6, "everyone, Solex, Group1 and three Druid lines: " .. plan.count)
+  assert(reasons(plan) == "for another class (Warrior) / for another spec (Arms) / for another spec (Fury) / for another spec (Protection) / for another role (Tank) / for another position (Melee)", reasons(plan))
+  -- an Arms Warrior in raid group 2
+  classID, specID, raid = 1, 71, { index = 5, subgroup = 2 }
+  plan = I.Plan(I.Parse(TAGS), I.Me())
+  assert(plan.count == 5, "everyone, Solex, 1, 71, melee: " .. plan.count)
+  assert(reasons(plan) == "for another spec (Fury) / for another spec (Protection) / for another role (Tank) / for another group (1) / for another class (Druid) / for another class (Druid) / for another class (Druid)", reasons(plan))
+  local kinds = {}
+  for _, r in ipairs(plan.bosses[1].reminders) do kinds[#kinds + 1] = r.import.tagKind end
+  assert(table.concat(kinds, ",") == "everyone,player,class,spec,position", table.concat(kinds, ","))
+  -- Protection: the tank line too
+  specID, role = 73, "TANK"
+  plan = I.Plan(I.Parse(TAGS), I.Me())
+  assert(plan.count == 5 and reasons(plan):find("for another spec (Arms)", 1, true) and reasons(plan):find("for another position (Melee)", 1, true), reasons(plan))
+  fresh()
+end)
+
+check("tag sample: TTS words are read out in place of the text", function()
+  fresh()
+  I.Apply(I.Plan(I.Parse(TAGS), I.Me()), { replace = true })
+  local help
+  for _, e in ipairs(R:List(3429)) do if e.r.text == "Help!" then help = e end end
+  assert(help and help.r.speakText == "Testing" and help.r.speech == "text" and help.r.outputs.speech, "the words kept")
+  local items = R:Items(3429, help.id, help.r)
+  assert(items[1].text == "Help!" and items[1].speech[1].text == "Testing", "shows Help!, says Testing: " .. tostring(items[1].speech[1].text))
+  local plain
+  for _, e in ipairs(R:List(3429)) do if e.r.text == "Personal CDs" then plain = e.r end end
+  assert(plain.speakText == nil and plain.outputs.speech == false, "no TTS: silent, no words")
+  fresh()
+end)
+
+check("spellid: an unknown spell keeps its id, text the placeholder; given text wins", function()
+  fresh()
+  local text = "EncounterID:3492;Difficulty:Heroic;Name:Ula'tek\\nph:1;time:5;tag:everyone;spellid:1;\\nph:1;time:6;tag:everyone;spellid:22812;text:Bark now;\\n"
+  local plan = I.Plan(I.Parse(text), I.Me())
+  local a, b = plan.bosses[1].reminders[1], plan.bosses[1].reminders[2]
+  assert(a.spellID == 1 and a.text == I.TEXT.placeholder and a.import.text == "", "unknown spell: " .. tostring(a.text))
+  assert(b.spellID == 22812 and b.text == "Bark now", "the line's text: " .. tostring(b.text))
+end)
+
+check("first sample: imports as before (no spell, no circle or text, silent without TTS)", function()
+  fresh()
+  I.Apply(I.Plan(I.Parse(SAMPLE), I.Me()), { replace = true })
+  for _, enc in ipairs({ 3492, 3513, 3455, 3429, 3497 }) do
+    for _, e in ipairs(R:List(enc)) do
+      local r, o = e.r, e.r.outputs
+      assert(r.spellID == nil and o.alert and o.bar and not o.circle and not o.text and not o.icon, "the outputs: " .. tostring(r.text))
+      assert(o.speech == false and r.speakAt == nil and r.import.countdown == nil and r.import.ttsTimer == nil, "no TTS key: silent")
+      assert(r.import.tagKind == "class" or r.import.tagKind == "everyone", "the kind: " .. tostring(r.import.tagKind))
+    end
+  end
+  assert(count(3492) == 16, "16 on Ula'tek")
+  fresh()
 end)
 
 check("times: phase 1 from the pull, a later phase from its start", function()
@@ -528,7 +807,7 @@ check("window: the preview counts each boss, Import N", function()
   for _, row in ipairs(win.list.rows) do if row.boss and row.boss.encounterID == 3492 then ula = row end end
   assert(strip(ula.count.text) == "2 to import \\194\\183 14 skipped", strip(ula.count.text))
   ula.OnEnter(ula)
-  assert(tip.shown and tip.title == "Ula'tek" and tip.lines[1] == Win.TEXT.skippedTitle and tip.lines[2]:find("for another tag (11)", 1, true), "why, in the tooltip: " .. tostring(tip.lines[2]))
+  assert(tip.shown and tip.title == "Ula'tek" and tip.lines[1] == Win.TEXT.skippedTitle and tip.lines[2]:find("for another class (Druid)", 1, true), "why, in the tooltip: " .. tostring(tip.lines[2]))
   assert(win.importBtn.text == "Import 2", win.importBtn.text)
   classID = 11
 end)
@@ -604,7 +883,9 @@ print(ok_ .. " passed, " .. fail .. " failed")
 if fail > 0 then error(fail .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-lua.lua_checkstack(L, FILES.length + 3);
+lua.lua_checkstack(L, FILES.length + 5);
 lua.lua_pushstring(L, to_luastring(SAMPLE));
+lua.lua_pushstring(L, to_luastring(TWINFANGS));
+lua.lua_pushstring(L, to_luastring(TAGS));
 for (const p of FILES) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
-if (lua.lua_pcall(L, FILES.length + 1, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, FILES.length + 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
