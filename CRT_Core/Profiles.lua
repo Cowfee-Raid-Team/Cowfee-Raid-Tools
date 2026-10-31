@@ -67,6 +67,7 @@ Profiles.SHARE = {
     debuffs = true,
     notes = {
         list = false, nextId = false, history = false, links = false, personalText = false, showOutsideRaid = true, shareTarget = true,
+        pushRoster = true, -- the note editor's Send my roster with the note
         window = true, assignments = true, personal = true, editor = true, alert = true,
         trustedOnly = false, -- whose notes you accept stays yours
         personalShifts = false, autoAcceptCooldowns = false, -- your own cooldown times, and whose changes you accept

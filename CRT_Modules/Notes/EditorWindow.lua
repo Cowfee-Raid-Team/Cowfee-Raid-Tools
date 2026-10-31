@@ -54,6 +54,12 @@ local TEXT = {
     pushPersonal = "A personal note is your own. It isn't shared.",
     pushBusy = "Notes can't be shared in combat or during a boss fight.",
     pushGone = "This note was deleted, so there is nothing to share.",
+    roster = "Send my roster with the note",
+    rosterHelpTitle = "Send my roster",
+    rosterHelp = "Push note also sends your active Raid Groups layout, so everyone's Late Tracker expects the same "
+        .. "people. Raiders get it as their active layout, named \"<layout> (from <you>)\".\n\n"
+        .. "It goes only when it changed since you last sent it. Someone who joins later gets it on your next push "
+        .. "after a change, or after you /reload.",
     close = CLOSE or "Close",
     unsaved = "Unsaved changes.",
     saved = "Saved.",
@@ -93,6 +99,7 @@ local TEXT = {
 local L = {
     width = 900, height = 580, minWidth = 680, minHeight = 420,
     paletteW = 270, gap = 10, footerH = 28, rawH = 150,
+    rosterH = 26, -- Send my roster with the note, at the foot of the palette's column over Push note
     rowGap = 4, timeW = 36, phaseW = 32, infoH = 18, timerAlpha = 0.5, headingH = 20, blankH = 8,
 }
 -- a chip's height and the palette's sizes: Notes/Palette.lua's (L.chipH below)
@@ -519,6 +526,11 @@ end
 
 local layoutLeft -- the rows, the banner over them and the raw text under them (below)
 
+-- Send my roster with the note (CRTDB.notes.pushRoster, on unless turned off)
+local function rosterOn()
+    return CRT.db.notes.pushRoster ~= false
+end
+
 -- Whether Push note can share the open note, and why not: never a personal note, nor in combat or a boss fight
 -- (Notes.Busy, or the moment one starts: W.fight, set by the window's events), nor when CRT can't share
 -- (Comm:CanShare: not in a group, not the leader or an assistant, a share still running).
@@ -591,6 +603,7 @@ function Editor.Refresh()
     end
     -- Raw text can't show while Add assignment holds the left side: greyed until Done
     W.rawButton:SetEnabled(not W.assignOn)
+    W.roster:SetChecked(rosterOn())
     refreshPush()
     local status = ""
     if W.notice then
@@ -602,6 +615,8 @@ function Editor.Refresh()
         status = UI.WarnText(why or "")
     elseif dirty then
         status = UI.WarnText(TEXT.unsaved)
+    elseif W.rosterStatus then
+        status = W.rosterStatus -- whether the last push sent the roster, and why not
     end
     W.status:SetText(status)
 end
@@ -716,7 +731,8 @@ end
 
 -- Push note: unsaved changes saved first (Save; a refused save stops it, its notice or the reason on the status
 -- line), then the note shared the way Notes > Share to raid shares it (CRT.NotesPage.ShareNote). Asked again at the
--- click, as Save is. Returns whether it was shared.
+-- click, as Save is. Then, with Send my roster on, the active Raid Groups layout goes too (Groups/Share.lua); the status
+-- line says whether it went. Returns whether the note was shared.
 function Editor.Push()
     local ok, why = canPush()
     if not (ok and W.session) then
@@ -735,6 +751,11 @@ function Editor.Push()
         end
     end
     CRT.NotesPage.ShareNote(W.source.id)
+    W.rosterStatus = nil
+    if rosterOn() and CRT.RosterShare then
+        local sent, line = CRT.RosterShare:Push()
+        W.rosterStatus = line and (sent and UI.GoodText(line) or UI.WarnText(line)) or nil
+    end
     Editor.Refresh()
     return true
 end
@@ -817,7 +838,7 @@ local function buildPalette(c)
         end,
     })
     right:SetPoint("TOPRIGHT", 0, 0)
-    right:SetPoint("BOTTOMRIGHT", 0, L.footerH + 4)
+    right:SetPoint("BOTTOMRIGHT", 0, L.footerH + 4 + L.rosterH)
     W.right = right
 end
 
@@ -887,6 +908,19 @@ local function buildFooter(c)
     quickText:SetText(TEXT.quickFill)
     UI.HelpRight(quickText, TEXT.helpTitle, TEXT.help)
     W.quick = quick
+    -- Send my roster with the note: at the foot of the palette's column, over Push note
+    local roster = CreateFrame("CheckButton", nil, c, "UICheckButtonTemplate")
+    roster:SetSize(24, 24)
+    roster:SetPoint("BOTTOMLEFT", c, "BOTTOMRIGHT", -L.paletteW - 2, L.footerH + 2)
+    UI:SkinCheckButton(roster)
+    roster:SetScript("OnClick", function(self)
+        Notes:Set(nil, "pushRoster", self:GetChecked() and true or false)
+    end)
+    local rosterText = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    rosterText:SetPoint("LEFT", roster, "RIGHT", 2, 0)
+    rosterText:SetText(TEXT.roster)
+    UI.HelpRight(rosterText, TEXT.rosterHelpTitle, TEXT.rosterHelp)
+    W.roster = roster
     W.close = UI.PanelButton(c, TEXT.close, 24, function()
         W.window:Hide()
     end)
@@ -1067,6 +1101,7 @@ function Editor.Open(source)
     end
     if not (same and W.window:IsShown() and W.session) then
         W.assignOn = false -- another note: its rows first
+        W.rosterStatus = nil
         W.source = { id = source.id, personal = source.personal and true or nil }
         loadSession()
         openSource() -- worked out once for this open; a layout edit later never changes it
