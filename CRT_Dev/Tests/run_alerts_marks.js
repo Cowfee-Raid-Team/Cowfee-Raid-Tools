@@ -1196,6 +1196,33 @@ do
   end
   print("ok personal: blue flags with their own size")
 
+  -- review round 1: the lines of a personal note are personal too, on a spell row and on Notes alike
+  do
+    local v = setup("P1 0:40")
+    CRT.db.notes.list[9] = { raw = "EncounterID:3001;Name:Mine\\ntime:30;ph:1;spellid:4242;text:Own soak;\\ntime:35;ph:1;text:Own words;",
+      encounterID = 3001, name = "Mine", personal = true }
+    v:Refresh()
+    local P, E, accent = CRT.PALETTE.personal, CRT.PALETTE.personalEdge, CRT.PALETTE.accent
+    local function same(c, want) return c and math.abs(c[1] - want[1]) < 1e-6 and math.abs(c[2] - want[2]) < 1e-6 and math.abs(c[3] - want[3]) < 1e-6 end
+    local onSpell, onNotes = flagAt(v, 30, false), flagAt(v, 35, false)
+    assert(onSpell and onSpell.mark.personalNote and onSpell.mark.row == laneIndex(v, "Soulcoil"), "a personal note's spell line on its spell row")
+    assert(onSpell.edge.shown and same(onSpell.edge.color, E), "drawn with the personal edge")
+    assert(onNotes and onNotes.mark.row == laneIndex(v, "Notes") and same(onNotes.head.color, P) and same(onNotes.pole.color, P)
+      and onNotes.rim.shown and same(onNotes.rim.color, E), "a personal note's text line on Notes is the personal blue with its edge")
+    assert(onNotes.w == 20 and onNotes.head.w == 12 and onNotes.head.h == 14, "at the raid flags' size on those rows")
+    local raid = flagAt(v, 20, false)
+    assert(not raid.mark.personalNote and same(raid.edge.color, accent), "the raid note's lines keep the accent")
+    CRT.db.notes.list[9] = nil
+    -- the rows' tops and heights are worked out once per draw: reading them reads no setting
+    v:Refresh()
+    local realSettings, reads = CRT.Timeline.Settings, 0
+    CRT.Timeline.Settings = function(self) reads = reads + 1 return realSettings(self) end
+    for i = 1, #v.lanes + 2 do v:RowTop(i) v:RowH(i) v:RowAtY(i * 10) end
+    CRT.Timeline.Settings = realSettings
+    assert(reads == 0, "RowTop, RowH and RowAtY read the draw's rows, not the settings: " .. reads)
+  end
+  print("ok personal: a personal note's lines are personal too")
+
   do
     local v, id = setup("P1 0:40")
     asMember()

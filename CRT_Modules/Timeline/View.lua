@@ -235,24 +235,22 @@ local function syncRowH()
     return ROW_H
 end
 
--- The Personal note size setting (Timeline > Settings), as set: a size in pixels, or nil while it is unset (0, Core.lua's
--- default, or nothing saved).
-local function personalSizeSet()
+-- The size your own notes are drawn at on the Personal notes row: the Personal note size setting (Timeline > Settings),
+-- or while it is unset (0, Core.lua's default, or nothing saved) the Icon size, so nothing changes until it is moved.
+-- The row is View.RowHeight of it (Methods:RowH). asSet: nil while it is unset, in place of the Icon size.
+function View.PersonalNoteSize(asSet)
     local size = settings().personalNoteSize
-    return type(size) == "number" and size > 0 and size or nil
-end
-
--- The size your own notes are drawn at on the Personal notes row: the Personal note size setting, or while it is unset
--- the Icon size, so nothing changes until it is moved. The row is View.RowHeight of it (Methods:RowH).
-function View.PersonalNoteSize()
-    return personalSizeSet() or View.IconSize()
+    if type(size) == "number" and size > 0 then
+        return size
+    end
+    return not asSet and View.IconSize() or nil
 end
 
 -- A flag's button side, flag width and head height for mark m. A raid note line's are FLAG_BTN_W, FLAG_W and
 -- FLAG_HEAD, and so are your own reminders' while Personal note size is unset; once it is set, theirs are those sizes
 -- grown or shrunk by it over the Icon size default (at the default they are the same), so Icon size leaves them alone.
 function View.FlagSize(m)
-    local size = m and m.mine and personalSizeSet()
+    local size = m and m.mine and View.PersonalNoteSize(true)
     local base = DEFAULT_ICON or View.IconSize()
     if not size or not base or base <= 0 then
         return FLAG_BTN_W, FLAG_W, FLAG_HEAD
@@ -261,10 +259,12 @@ function View.FlagSize(m)
     return math.floor(FLAG_BTN_W * k + 0.5), math.floor(FLAG_W * k + 0.5), math.floor(FLAG_HEAD * k + 0.5)
 end
 
--- The theme keys mark m's flag is drawn in, its fill and its edge: a raid note line in the accent, your own
--- reminders in the personal blue with its lighter edge (CRT_Dev/StyleGuide.md), on Personal notes and Healer CDs alike.
+-- The theme keys mark m's flag is drawn in, its fill and its edge: a raid note line in the accent; your own reminders
+-- and the lines of your personal notes (personalNote, NoteAndReminderMarks) in the personal blue with its lighter edge
+-- (CRT_Dev/StyleGuide.md), on every row they show on, Healer CDs' too. A raid line you moved for yourself (hvOwn) is
+-- still the raid's.
 function View.FlagColors(m)
-    if m and m.mine then
+    if m and (m.mine or m.personalNote) then
         return "personal", "personalEdge"
     end
     return "accent", "accent"
@@ -846,22 +846,41 @@ end
 
 -- Row geometry. Every row is ROW_H high but the Personal notes lane, View.RowHeight(View.PersonalNoteSize()) high (the
 -- same row rule at its own size). It is the last lane of the Abilities layout and Healer CDs has none, so only the
--- Ignored mechanics list under it moves. Rows past the lanes (that list's) are ROW_H.
-function Methods:RowH(row)
-    local lane = self.lanes and self.lanes[row]
-    if lane and lane.kind == "personal" then
-        return View.RowHeight(View.PersonalNoteSize())
+-- Ignored mechanics list under it moves. Rows past the lanes (that list's) are ROW_H. SyncRows works the heights and
+-- tops out once per draw (Refresh, ContentHeight), into self.rowHs and self.rowTops (row #lanes + 1's top is the lanes'
+-- height); RowH, RowTop and RowAtY read them, and work them out first for lanes not yet measured.
+function Methods:SyncRows()
+    local lanes = self.lanes or {}
+    local personal = View.RowHeight(View.PersonalNoteSize())
+    local hs, tops, top = {}, { 0 }, 0
+    for i, lane in ipairs(lanes) do
+        hs[i] = lane.kind == "personal" and personal or ROW_H
+        top = top + hs[i]
+        tops[i + 1] = top
     end
-    return ROW_H
+    self.rowHs, self.rowTops, self.rowsFor, self.rowsH = hs, tops, lanes, ROW_H
+end
+
+-- The heights, the tops and the number of lanes measured, measured again when the lanes or the row height changed.
+function Methods:Rows()
+    if self.rowsFor ~= (self.lanes or self.rowsFor) or self.rowsH ~= ROW_H or not self.rowTops then
+        self:SyncRows()
+    end
+    return self.rowHs, self.rowTops, #self.rowHs
+end
+
+function Methods:RowH(row)
+    local hs = self:Rows()
+    return hs[row] or ROW_H
 end
 
 -- Pixels from the track's top to the top of row.
 function Methods:RowTop(row)
-    local top = 0
-    for i = 1, math.min(row - 1, #(self.lanes or {})) do
-        top = top + self:RowH(i)
+    local _, tops, n = self:Rows()
+    if row <= n + 1 then
+        return tops[math.max(1, row)]
     end
-    return top + math.max(0, row - 1 - #(self.lanes or {})) * ROW_H
+    return tops[n + 1] + (row - 1 - n) * ROW_H
 end
 
 -- The row at y pixels down from the track's top (past the lanes too), or nil above it.
@@ -869,15 +888,13 @@ function Methods:RowAtY(y)
     if not y or y < 0 then
         return nil
     end
-    local top = 0
-    for i = 1, #(self.lanes or {}) do
-        local h = self:RowH(i)
-        if y < top + h then
+    local _, tops, n = self:Rows()
+    for i = 1, n do
+        if y < tops[i + 1] then
             return i
         end
-        top = top + h
     end
-    return #(self.lanes or {}) + math.floor((y - top) / ROW_H) + 1
+    return n + math.floor((y - tops[n + 1]) / ROW_H) + 1
 end
 
 -- base is a recorded pull or { reference = ref }; overlay is a pull laid over a reference.
@@ -1833,8 +1850,10 @@ function Methods:NoteAndReminderMarks(lanes, length)
             local rawLines = Notes:RawLines(n.id) -- the lines as drawn, so a move can tell one has changed
             for _, timer in ipairs(note and note.timers or {}) do
                 local raw = rawLines[timer.line]
+                -- personalNote: a line of one of your personal notes, drawn in the personal colours (View.FlagColors)
                 add({ ph = timer.ph, time = timer.time, tags = timer.tags, noteID = n.id, line = timer.line,
-                    difficulty = n.record.difficulty, kind = "note", expected = raw, encounterID = encounterID },
+                    difficulty = n.record.difficulty, kind = "note", expected = raw, encounterID = encounterID,
+                    personalNote = n.record.personal and true or nil },
                     timer.spellId, timer.text, timer.iconID)
             end
         end
@@ -1907,7 +1926,7 @@ function Methods:Flag(n)
             tex:Hide()
             f.sel[i] = tex
         end
-        -- inside it a thin dark border, so the outline shows on a text-coloured flag as well as an accent one
+        -- inside it a thin dark border, so the outline shows on a personal-blue flag as well as an accent one
         f.selIn = {}
         local w = SELECT_W
         for i, side in ipairs({ { "TOPLEFT", "TOPRIGHT", 0, -w }, { "BOTTOMLEFT", "BOTTOMRIGHT", 0, w },
@@ -4349,6 +4368,7 @@ end
 -- Healer CDs (Timeline/Page.lua).
 function Methods:ContentHeight()
     syncRowH()
+    self:SyncRows()
     local rows = #(self.lanes or {}) + (self.ignoredRows or 0)
     return (self.axisH or AXIS_H) + self:RowTop(rows + 1) + self.stripH + UNKNOWN_H + BAR_H + 4
 end
@@ -4409,6 +4429,7 @@ function Methods:Refresh(relayout)
         self:BuildLanes()
     end
     local lanes = self.lanes
+    self:SyncRows() -- the rows' heights and tops for this draw (the Personal notes row at its own size)
     local width = self:VisibleWidth()
     local length = pull and math.max(1, self.extra.length or 0) or 1
     self.trackW = pull and math.max(1, length * width / clampSpan(s.span)) or 1

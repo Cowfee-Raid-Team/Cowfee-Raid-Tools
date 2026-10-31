@@ -7,7 +7,7 @@ const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local dataSrc, dbSrc, refSrc, lanesSrc, refPageSrc, settingsTabSrc, pageSrc, journalSrc, regSrc, seasonSrc, nekSrc, reviewSrc, rehSrc, rehWinSrc, slashSrc, toggleSrc = ...
+local dataSrc, dbSrc, refSrc, lanesSrc, refPageSrc, settingsTabSrc, pageSrc, journalSrc, regSrc, seasonSrc, nekSrc, reviewSrc, rehSrc, rehWinSrc, slashSrc, toggleSrc, viewSrc = ...
 local strings, checks, edits, buttons, dropdowns, sliders = {}, {}, {}, {}, {}, {}
 pills = {}
 selectedTabButton = nil
@@ -145,9 +145,7 @@ CRT.Notes = { FindForEncounter = function(_, enc) return noteFor[enc] end, OnCha
   Get = function(_, id) return { name = "Note " .. id } end }
 CRT.NoteComm = { CanShare = function() if canShare then return true end return false, "Only the raid leader or an assistant can share notes." end,
   Share = function(_, id) shared[#shared + 1] = id end }
-CRT.TimelineView = { Create = function() return view end, Format = function(t) return string.format("%d:%02d", math.floor(t / 60), t % 60) end,
-  -- View.PersonalNoteSize's rule (run_alerts_marks.js tests the real one): the setting once set, else Icon size
-  PersonalNoteSize = function() local s = CRT.db.timeline return (s.personalNoteSize or 0) > 0 and s.personalNoteSize or s.iconSize end }
+CRT.TimelineView = { Create = function() return view end, Format = function(t) return string.format("%d:%02d", math.floor(t / 60), t % 60) end }
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
 local T = CRT.Timeline
 local function pull(id, len, kill) return { id = id, length = len, kill = kill, casts = {}, deaths = {} } end
@@ -159,6 +157,13 @@ CRT.db.timeline.nextId = 13
 assert(load(dbSrc, "Database.lua"))("CowfeeRaidTools", CRT)
 assert(load(refSrc, "Reference.lua"))("CowfeeRaidTools", CRT)
 assert(load(lanesSrc, "Lanes.lua"))("CowfeeRaidTools", CRT)
+-- the real View.PersonalNoteSize (CRT_Modules/Timeline/View.lua), loaded (after Lanes.lua, which it reads) on its own CRT table that reads this one's
+-- Timeline; the page keeps the stub view
+do
+  local own = setmetatable({}, { __index = CRT })
+  assert(load(viewSrc, "View.lua"))("CowfeeRaidTools", own)
+  CRT.TimelineView.PersonalNoteSize = rawget(own, "TimelineView").PersonalNoteSize
+end
 -- Boss library wiring (CRT_Data/Bosses/Registry.lua, then the tests' sample pack (CRT_Dev/Tests/SamplePack: test data, never the shipped season), then the ADDON_LOADED the game fires once every file has loaded).
 local function loadBosses(CRT, reg, season, nek)
   local real, handler = CreateFrame, nil
@@ -1710,4 +1715,6 @@ for (const p of process.argv.slice(2, 17)) {
 }
 // CRT_Core/UI/Toggle.lua, found from Page.lua's place (CRT_Modules/Timeline/Page.lua)
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(path.dirname(process.argv[8]), '..', '..', 'CRT_Core', 'UI', 'Toggle.lua'), 'utf8')));
-if (lua.lua_pcall(L, 16, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+// CRT_Modules/Timeline/View.lua, beside Page.lua, for its View.PersonalNoteSize
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(path.dirname(process.argv[8]), 'View.lua'), 'utf8')));
+if (lua.lua_pcall(L, 17, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
