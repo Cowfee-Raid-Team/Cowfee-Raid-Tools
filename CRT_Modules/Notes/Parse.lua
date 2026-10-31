@@ -405,13 +405,31 @@ function Parser.JoinClassWords(words)
     return out
 end
 
+-- A label with its raid marker codes ({cross}, {rt7}, any case: the codes CRT.MarkerCodes knows) taken out, and
+-- whether it had one. Other {..} codes stay in.
+local function withoutMarkers(t)
+    local Codes = CRT.MarkerCodes
+    if not (Codes and t:find("{", 1, true)) then
+        return t, false
+    end
+    local had = false
+    t = t:gsub("{([^{}]*)}", function(code)
+        if Codes.Number(code) then
+            had = true
+            return " "
+        end
+    end)
+    return trim(t), had
+end
+
 -- Whether the part before a line's colon reads as an assignment's label: short, with no markup ("{time:1:30}" and
--- the other {..} codes of shared notes, "|c" colours), and not a phase heading ("Phase 2: kite adds left"). The note
--- editor's label lines (EditModel.lua) and the integrations' class names read the same lines.
+-- the other {..} codes of shared notes, "|c" colours, "|T" icons), and not a phase heading ("Phase 2: kite adds
+-- left"). Raid marker codes are no markup and no word ("Soak Ghost at {cross}"). The note editor's label lines
+-- (EditModel.lua), the rendered note, the alerts and the integrations' class names read the same lines.
 local LABEL_MAX_WORDS = 4 -- a label longer than this ("Stack on the boss and then: ...") is a sentence
 function Parser.LooksLikeLabel(label)
-    local t = trim(label)
-    if t == "" or t:find("{", 1, true) or t:find("|", 1, true) then
+    local t, marked = withoutMarkers(trim(label))
+    if (t == "" and not marked) or t:find("{", 1, true) or t:find("|", 1, true) then
         return false
     end
     local n = 0

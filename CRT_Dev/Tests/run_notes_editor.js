@@ -344,6 +344,22 @@ do
   for i, r in ipairs(kinds.rows) do got[i] = r.kind end
   assert(table.concat(got, ",") == "text,text,text,text,text,label,label", table.concat(got, ","))
   assert(not kinds:Add(1, "Abu") and not kinds:Add(3, "Abu") and kinds:Add(6, "Cheo"), "only the real labels take names")
+  -- raid marker codes in a label are no markup (Alex's Soak Ghosts note, 2026-10-31): start, middle, end, {rtN}, any
+  -- case; other braces, |T icons and |c colours still are
+  local MARKED = { "Soak Ghost at {cross}: Mesmertism", "{rt3} Soak: Abu", "Soak {Triangle} Ghost: Abu", "Soak at {SQUARE}: Abu",
+    "{skull}: Abu", "{star}{rt2} Left Right: Abu", "Soak {orb}: Abu", "Soak {spell:1234}: Abu", "{rt9} Soak: Abu",
+    "Soak |TInterface\\\\TargetingFrame\\\\UI-RaidTargetingIcon_7:0|t: Abu", "{cross} Stack on the boss then: Abu", "{cross" }
+  local marked = Model.New(table.concat(MARKED, "\\n"))
+  got = {}
+  for i, r in ipairs(marked.rows) do got[i] = r.kind end
+  assert(table.concat(got, ",") == "label,label,label,label,label,label,text,text,text,text,text,heading", table.concat(got, ","))
+  assert(table.concat(marked:Names(1), "/") == "Mesmertism" and marked.rows[1].label == "Soak Ghost at {cross}", "the name after the colon: " .. table.concat(marked:Names(1), "/"))
+  assert(Parser.LooksLikeLabel("{RT7} at {Cross}") and not Parser.LooksLikeLabel("{time") and not Parser.LooksLikeLabel("{}") and not Parser.LooksLikeLabel("{ cross }"), "the parser's own answer")
+  assert(marked:BeginDrag({ token = "Rixxy", kind = "player" }) and marked:Drop(1) and marked:LineText(1) == "Soak Ghost at {cross}: Mesmertism, Rixxy", "a drop on it: " .. marked:LineText(1))
+  assert(marked:BeginDrag({ row = 1, index = 1 }) and marked:Drop(2) and marked:LineText(2) == "{rt3} Soak: Abu, Mesmertism" and marked:LineText(1) == "Soak Ghost at {cross}: Rixxy", "a move off it: " .. marked:LineText(1))
+  assert(marked:Remove(4, 1) and marked:LineText(4) == "Soak at {SQUARE}: ", "a removal keeps the code: [" .. marked:LineText(4) .. "]")
+  assert(not marked:Add(7, "Abu") and not marked:Add(10, "Abu"), "the markup lines take no name")
+  onlyChanged(table.concat(MARKED, "\\n"), marked:Text(), { 1, 2, 4 })
 end
 print("ok a word no row can take is never lost; label punctuation kept; phase headings and markup lines stay text")
 
