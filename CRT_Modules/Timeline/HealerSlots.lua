@@ -441,10 +441,12 @@ function Slots.Assign(ctx, s, name)
     if canEditRaid() then
         eachLine(ctx, s, withTag(Groups and Groups.Display and Groups.Display(key) or key))
     end
-    -- the slot's block keeps its place on Healer CDs under the new player's key (the open slot's, or the old player's)
+    -- the slot's block keeps its place on Healer CDs under the new player's key (the open slot's, or the old player's;
+    -- an old player who is a roster healer keeps theirs, the new one right after)
     local Order = CRT.TimelineHealerOrder
     if Order and Order.SlotAssigned then
-        Order.SlotAssigned(ctx.encounterID, orderKey(s), key, s.spec)
+        local old = orderKey(s)
+        Order.SlotAssigned(ctx.encounterID, old, key, s.spec, s.player ~= nil and rosterHealer(old))
     end
     local saved = Slots.Ensure(ctx.encounterID, s) or {}
     saved.player, s.player = key, key

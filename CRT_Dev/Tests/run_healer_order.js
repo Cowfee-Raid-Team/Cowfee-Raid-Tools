@@ -506,7 +506,14 @@ do
   v:Refresh()
   Slots.Clear(Slots.Context(v), v.hvSlots[1])
   check(saved(3001) == "me-home,halo-home,slot:105:1", "Clear: the slot back right after a roster healer: " .. saved(3001))
+  -- a roster healer on the slot hands it to Bramble: Halo keeps his place, Bramble comes right after
+  v:Refresh()
+  Slots.Assign(Slots.Context(v), v.hvSlots[1], "Halo")
+  v:Refresh()
+  Slots.Assign(Slots.Context(v), v.hvSlots[1], "Bramble")
+  check(saved(3001) == "me-home,halo-home,bramble-home", "another player after a roster healer: the healer keeps his place: " .. saved(3001))
   -- Leafy (not a roster healer) at the slot's place; a second player takes Leafy's place; Clear puts the slot back there
+  CRT.db.timeline.healerSlots = { [3001] = { { spec = 105, n = 1 } } }
   CRT.db.timeline.healerOrder = { [3001] = { "me-home", "slot:105:1", "halo-home" } }
   v:Refresh()
   Slots.Assign(Slots.Context(v), v.hvSlots[1], "Leafy")
@@ -584,6 +591,20 @@ do
   v:Refresh()
   same, what = matches(v, 3001, 1)
   check(same and what == "zed,me-home,halo-home,slot:105:1", "Zed sent in his place, the deleted slot not: " .. what)
+  -- two open slots of one spec: the spec's spell line goes once, so the message still reads
+  local keepSlots2 = CRT.db.timeline.healerSlots
+  CRT.db.timeline.healerSlots = { [3001] = { { spec = 105, n = 1 }, { spec = 105, n = 2 } } }
+  local twoID, two, sp3 = Share.Read(Share.Text(3001))
+  check(twoID == 3001 and ids(two):find("slot:105:1", 1, true) and ids(two):find("slot:105:2", 1, true) and sp3["spec:105"] ~= nil,
+    "two slots of one spec: both sent, their spell line once: " .. ids(two))
+  CRT.db.timeline.healerSlots = keepSlots2
+  -- a saved spell the defaults don't have (a note spell the lead dragged) goes after them
+  local keepHalo = CRT.db.timeline.healerSpellOrder["halo-home"]
+  CRT.db.timeline.healerSpellOrder["halo-home"] = { 777777 }
+  local _, _, sp4 = Share.Read(Share.Text(3001))
+  local haloIds = sp4 and sp4["halo-home"] or {}
+  check(haloIds[#haloIds] == 777777 and #haloIds == #spells(v, "halo-home") + 1, "the lead's other saved spells go after the drawn ones: " .. ids(haloIds))
+  CRT.db.timeline.healerSpellOrder["halo-home"] = keepHalo
   CRT.db.timeline.healerOrder[3001] = keepOrder[3001]
   setNote({})
   v:Refresh()
@@ -699,7 +720,16 @@ do
   check(saved(3001) == "me-home,halo-home", "the first part timed out: nothing taken")
   deliver(parts, "Lead-Home")
   check(saved(3001) == "halo-home,me-home", "sent whole again: taken")
+  -- two open slots of one spec, sent by the lead's Text: a raider takes it
+  local keepSlots3 = CRT.db.timeline.healerSlots
+  CRT.db.timeline.healerSlots = { [3001] = { { spec = 105, n = 1 }, { spec = 105, n = 2 } } }
+  local twoText = Share.Text(3001)
+  CRT.db.timeline.healerSlots = keepSlots3
+  local _, twoKeys = Share.Read(twoText)
+  deliver(Share.Pack(twoText), "Lead-Home")
+  check(twoKeys and saved(3001) == ids(twoKeys) and saved(3001):find("slot:105:2", 1, true), "two slots of one spec: the raider takes the order: " .. saved(3001))
   -- malformed: dropped, never an error
+  local beforeBad, beforeSpells = saved(3001), ids(CRT.db.timeline.healerSpellOrder["halo-home"])
   local bad = { "garbage", "", "zz|1|1|x", "abc|0|1|x", "abc|2|1|x", "abc|1|99|x", "SECRET" }
   for _, text in ipairs({ "notanumber\\nx", "3001", "3001\\na\\ta", "3001\\nx\\nhalo-home\\t1,,2", "3001\\nx\\nhalo-home\\tabc",
     "3001\\nx\\nhalo-home\\t1\\nhalo-home\\t2" }) do
@@ -714,7 +744,7 @@ do
   end
   check(pcall(Share.Receive, "CRTHealOrd1", nil, "RAID", "Lead-Home") and pcall(Share.Receive, "CRTHealOrd1", lead[1], "RAID", nil),
     "malformed: no error for no message or no sender")
-  check(saved(3001) == "halo-home,me-home" and ids(CRT.db.timeline.healerSpellOrder["halo-home"]) == "9,10", "malformed: nothing taken")
+  check(saved(3001) == beforeBad and ids(CRT.db.timeline.healerSpellOrder["halo-home"]) == beforeSpells, "malformed: nothing taken")
 end
 
 if fails > 0 then error(fails .. " healer order checks failed") end

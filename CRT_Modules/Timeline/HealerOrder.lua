@@ -191,14 +191,15 @@ function Order.Rekey(encounterID, oldKey, newKey, keepOld)
 end
 
 -- A slot of spec on the boss got a player (key, any case; Timeline/HealerSlots.lua's Assign): the block keeps its
--- place, so slotKey (the open slot's "slot:<spec>:<n>", or the player it had) becomes the player's key in the boss's order (once: a place they had already
--- goes), and a player with no spell order of their own starts from the slot's ("spec:<spec>").
-function Order.SlotAssigned(encounterID, slotKey, key, spec)
+-- place, so slotKey (the open slot's "slot:<spec>:<n>", or the player it had) becomes the player's key in the boss's
+-- order (once: a place they had already goes), or with keepOld comes right after it (the player it had is a roster
+-- healer, a block of their own still); a player with no spell order of their own starts from the slot's ("spec:<spec>").
+function Order.SlotAssigned(encounterID, slotKey, key, spec, keepOld)
     if type(key) ~= "string" or key == "" then
         return
     end
     key = key:lower()
-    Order.Rekey(encounterID, slotKey, key)
+    Order.Rekey(encounterID, slotKey, key, keepOld)
     local from = Order.Spells("spec:" .. tostring(spec))
     if from and not Order.Spells(key) then
         local copy = {}

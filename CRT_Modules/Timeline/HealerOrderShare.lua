@@ -169,6 +169,18 @@ function Share.ShownOrder(encounterID, noteID)
         local key = who.key
         local spellKey = O.SpellKey(who)
         local ids = O.Sort(defaultSpells(who), O.Spells(spellKey), same1)
+        -- then the lead's saved spells the defaults don't have (a note spell for them alone they dragged), so a raider
+        -- keeps the lead's place for it
+        local have = {}
+        for _, id in ipairs(ids) do
+            have[id] = true
+        end
+        for _, id in ipairs(O.Spells(spellKey) or {}) do
+            if not have[id] then
+                have[id] = true
+                ids[#ids + 1] = id
+            end
+        end
         if goodKey(key) and #out < MAX_KEYS then
             out[#out + 1] = { key = key, spellKey = spellKey, ids = ids }
         end
@@ -187,6 +199,7 @@ function Share.Text(encounterID, noteID)
         healers[i] = h.key
     end
     local lines = { tostring(encounterID), table.concat(healers, "\t") }
+    local written = {} -- each spell order's key once: two open slots of one spec share theirs ("spec:<id>")
     for _, h in ipairs(shown) do
         local ids = {}
         for _, id in ipairs(h.ids) do
@@ -194,7 +207,8 @@ function Share.Text(encounterID, noteID)
                 ids[#ids + 1] = tostring(id)
             end
         end
-        if #ids > 0 and goodKey(h.spellKey) then
+        if #ids > 0 and goodKey(h.spellKey) and not written[h.spellKey] then
+            written[h.spellKey] = true
             lines[#lines + 1] = h.spellKey .. "\t" .. table.concat(ids, ",")
         end
     end
