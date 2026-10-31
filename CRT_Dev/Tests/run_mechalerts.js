@@ -1794,6 +1794,11 @@ check("speak at: Mech Alerts panel has it too", function()
   row.opts.set("before")
   assert(keyList() == "show,zero,before" and list()[3].label == "Before 0" and row.opts.get() == "before", "listed while it has it")
   assert(R:Get(ENC, id).speakAt == "before", "kept")
+  -- the count box: "Count down", or where it starts when that is past 3 (set in the alert editor)
+  assert(p.also.count.label.text == "Count down", "its words: " .. tostring(p.also.count.label.text))
+  local D = CRT.AlertDraft
+  assert(D.CountWords({ countFrom = 6 }, "Count down", "Count down from %d") == "Count down from 6", "from 6")
+  assert(D.CountWords({ countFrom = 3 }, "Count down", "Count down from %d") == "Count down" and D.CountWords(nil, "Count down", "x %d") == "Count down", "3 or none: plain")
   assert(#errors == 0, tostring(errors[1]))
 end)
 

@@ -2141,10 +2141,19 @@ do
   local r = R:Get(ENC, 1)
   assert(r and r.countFrom == 5 and r.speech == "textcount" and r.speakAt == "before" and r.speakBefore == 2.5 and r.speakText == "Move now", "saved: " .. tostring(r and r.speakBefore))
   local items = R:Items(ENC, 1, r)
-  assert(items[1].speech[1].text == "Move now" and items[1].speech[1].offset == 2.5 and items[1].speech[2].text == "5", "it says Move now 2.5 s before, then 5 4 3 2 1")
+  assert(items[1].speech[1].text == "Move now" and items[1].speech[1].offset == 2.5 and items[1].speech[2].text == "1" and #items[1].speech == 2, "it says Move now 2.5 s before, then 1 (the numbers up to the text's second left out)")
   -- read back
   E:Open(ENC, 1)
   assert(w.sayInstead.text == "Move now" and cf.opts.get() == 5 and value("Speak at") == "before" and sb.opts.get() == 2.5 and sb.shown, "reads back")
+  -- the count's start only while Count down is on, the seconds only while Speak at is Before 0
+  setCheck(w.also.count, false) pick("Speak at", "zero")
+  click(w.saveBtn)
+  r = R:Get(ENC, 1)
+  assert(r.countFrom == nil and r.speakBefore == nil and r.speakAt == "zero", "off: neither saved: " .. tostring(r.countFrom) .. ", " .. tostring(r.speakBefore))
+  E:Open(ENC, 1)
+  setCheck(w.also.count, true) cf.opts.set(5) pick("Speak at", "before") sb.opts.set(2.5)
+  click(w.saveBtn)
+  E:Open(ENC, 1)
   -- the defaults are saved as nothing
   cf.opts.set(3) sb.opts.set(3) typeInto(w.sayInstead, "  ")
   click(w.saveBtn)

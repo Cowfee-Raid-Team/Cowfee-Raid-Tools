@@ -91,7 +91,8 @@ local TEXT = {
     countImpact = "Each impact",
     countHelp = "What the bar's number counts down to: the end of the cast, or the next hit.",
     speak = "Speak the text",
-    count = "Count down 3 2 1",
+    count = "Count down",
+    countFrom = "Count down from %d", -- a count that starts past 3 (set in the alert editor)
     glow = "Glow at 0",
     speakAt = "Speak at",
     onShow = "On show",
@@ -835,6 +836,7 @@ local function drawPanel()
     drawBarRows(d)
     panel.also.speak:SetChecked(d.speak and true or false)
     panel.also.count:SetChecked(d.count and true or false)
+    panel.also.count.label:SetText(CRT.AlertDraft.CountWords(d, TEXT.count, TEXT.countFrom))
     panel.also.glow:SetChecked(d.glow and true or false)
     local auraOK = d.spellID ~= nil and CRT.Sound.Normalize(d.sound) ~= nil and CRT.SoundAuras:Available()
     panel.auraSound:SetChecked(d.auraSound and true or false)

@@ -348,6 +348,14 @@ check("tags: Me reads you once, guarded", function()
   local me = I.Me()
   assert(me.name == "Solex" and me.realm == "Area52" and me.classID == 11 and me.classFile == "DRUID", "name, realm, class")
   assert(me.specID == 102 and me.role == "DAMAGER" and me.group == 3, "spec, role, group from the raid roster")
+  -- a secret answer from UnitIsUnit is asked about (issecretvalue) before it is used, and never taken as you
+  local SECRET = {}
+  local realIsUnit, asked = UnitIsUnit, false
+  UnitIsUnit = function() return SECRET end
+  issecretvalue = function(v) if v == SECRET then asked = true return true end return false end
+  assert(I.Me().group == nil and asked, "a secret answer: no group, asked first")
+  UnitIsUnit = realIsUnit
+  issecretvalue = function() return false end
   raid = nil
   assert(I.Me().group == 1, "out of a raid you count as group 1, as the note alerts do")
   role = "NONE"

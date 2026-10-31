@@ -353,7 +353,11 @@ local function subgroup()
     end
     local okN, n = pcall(GetNumGroupMembers)
     for i = 1, (okN and number(n)) or 0 do
-        local okMe, me = pcall(UnitIsUnit, "raid" .. i, "player")
+        -- the answer read only once it is known not to be secret
+        local okMe, me = pcall(function()
+            local v = UnitIsUnit("raid" .. i, "player")
+            return readable(v) and v == true
+        end)
         if okMe and me == true then
             local ok, _, _, group = pcall(GetRaidRosterInfo, i)
             return ok and number(group) or nil
@@ -430,7 +434,8 @@ local function nameOf(tag)
     return name, realm
 end
 
--- Whether a tag is your name, in any case; a realm, when it has one, must be yours.
+-- Whether a tag is your name, in any case; a realm, when it has one, must be yours. CRT has no case-folding name
+-- normaliser (Groups.Normalize only adds the realm), and lower() folds ASCII letters only: "Ä" and "ä" differ.
 local function namesMe(tag, me)
     local name, realm = nameOf(tag)
     if not (name and me.name) or name:lower() ~= me.name:lower() then

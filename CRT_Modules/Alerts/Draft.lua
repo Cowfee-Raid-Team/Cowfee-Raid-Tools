@@ -224,6 +224,13 @@ function Draft.SetSpeakAt(draft, key)
     draft.speakAt = SPEAK_AT[key]
 end
 
+-- The words of a count box with no slider (the Mech Alerts panel's), in the caller's words: plain, or from (with
+-- a %d) when the draft's count starts past 3, so "Count down from 6".
+function Draft.CountWords(draft, plain, from)
+    local n = draft and Reminders.CountFrom({ countFrom = draft.countFrom })
+    return (n and n > Reminders.COUNT_FROM.default) and string.format(from, n) or plain
+end
+
 -- The Say instead words as a reminder saves them (speakText), or nil for an empty box.
 function Draft.SpeakText(draft)
     local s = trim(draft and draft.speakText)
@@ -539,11 +546,12 @@ function Draft.BuildReminder(ctx, draft)
         r.speech = speech
     end
     r.speakAt = SPEAK_AT[draft.speakAt]
-    -- Count down from, Before 0's seconds and Say instead; each default (3, 3 s, an empty box) is saved as nothing
+    -- Count down from (only while Count down is on), Before 0's seconds (only while Speak at is Before 0) and Say
+    -- instead; each default (3, 3 s, an empty box) is saved as nothing
     local from = Reminders.CountFrom({ countFrom = draft.countFrom })
-    r.countFrom = from ~= Reminders.COUNT_FROM.default and from or nil
+    r.countFrom = (draft.count and from ~= Reminders.COUNT_FROM.default) and from or nil
     local before = Reminders.SpeakBefore({ speakBefore = draft.speakBefore })
-    r.speakBefore = before ~= Reminders.SPEAK_BEFORE.default and before or nil
+    r.speakBefore = (r.speakAt == "before" and before ~= Reminders.SPEAK_BEFORE.default) and before or nil
     r.speakText = Draft.SpeakText(draft)
     r.warn = draft.warn
     r.linger = draft.linger > 0 and draft.linger or nil

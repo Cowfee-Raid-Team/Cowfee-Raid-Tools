@@ -392,6 +392,11 @@ do
   -- a count from 9 with a short Show from: the text still comes a second before the first number
   assert(said(Rules.SpeechItems("x", 5, true, true, false, { countFrom = 9 })) == "x@10 9@9 8@8 7@7 6@6 5@5 4@4 3@3 2@2 1@1", "text before the count")
   assert(said(Rules.SpeechItems("x", 5, true, false, false, { before = 1.5 })) == "x@1.5", "before alone")
+  -- Before 0 inside the count: the numbers up to the text's second are left out, the later ones stay on time
+  assert(said(Rules.SpeechItems("x", 8, true, true, false, { countFrom = 5, before = 3 })) == "x@3 2@2 1@1", "before 3, from 5")
+  assert(said(Rules.SpeechItems("x", 8, true, true, false, { countFrom = 5, before = 2.5 })) == "x@2.5 1@1", "before 2.5, from 5")
+  assert(said(Rules.SpeechItems("x", 8, true, true, false, { countFrom = 3, before = 0.5 })) == "x@0.5", "before 0.5: no number after it")
+  assert(said(Rules.SpeechItems("x", 8, true, true, false, { countFrom = 4, before = 5 })) == "x@5 4@4 3@3 2@2 1@1", "the text a second before the count: all kept")
   assert(said(Rules.SpeechItems("x", 5, true, true)) == "x@5 3@3 2@2 1@1", "no opts: unchanged")
   -- the queue: Early comes due 2.5 s before the cast, not at the warning nor at 0
   local function line(item)

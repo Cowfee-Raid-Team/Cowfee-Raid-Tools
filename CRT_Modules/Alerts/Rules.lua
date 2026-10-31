@@ -181,7 +181,9 @@ end
 -- The spoken parts of one alert as { { offset, text } }, offset in seconds before it is due: `speak` says
 -- the text at `warn` seconds (when counting, at least a second before the count's first number), at 0 when
 -- `atZero` (Speak at: At 0), or at opts.before seconds (Speak at: Before 0); `count` says the numbers from
--- opts.countFrom (3 without) down to 1, each at its own second. opts is optional.
+-- opts.countFrom (3 without) down to 1, each at its own second. With the text said at Before 0 inside the count,
+-- the numbers up to the text's second are left out (only those a full second after it are said), so the text never
+-- lands on a number and the numbers after it stay on time. opts is optional.
 function Rules.SpeechItems(text, warn, speak, count, atZero, opts)
     local out = {}
     local from = opts and type(opts.countFrom) == "number" and opts.countFrom or 3
@@ -196,8 +198,12 @@ function Rules.SpeechItems(text, warn, speak, count, atZero, opts)
         out[1] = { offset = offset, text = text }
     end
     if count then
+        -- the text at Before 0: only the numbers a full second after it
+        local top = (speak and before) and math.min(from, before - 1) or from
         for n = from, 1, -1 do
-            out[#out + 1] = { offset = n, text = tostring(n) }
+            if n <= top then
+                out[#out + 1] = { offset = n, text = tostring(n) }
+            end
         end
     end
     return out
