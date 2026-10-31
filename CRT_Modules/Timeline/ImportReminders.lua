@@ -22,12 +22,16 @@ local ADDON, CRT = ...
 --                               spellID, tts, countdown, ttsTimer, display, extra }, skipped { { line, reason } };
 --                               lines before any header are skipped at the top
 --   Import.Me()                 you, read once per import: { name, realm, classID, classFile, specID, role, group }
---   Import.Plan(parsed, me)     what would be imported for you: per boss its group, whether the season knows it,
---                               the reminders for you (ForPlayer) as reminder tables, and every skipped line
---   Import.Apply(plan, opts)    writes them through the reminders' own save path (Alerts/Draft.lua, Alerts/Reminders.lua)
+--   Import.Plan(parsed, me)     every line of each boss: yours (ForPlayer) ticked, others' and the ones that don't
+--                               read not, each line with who it is for and its reminder table (see Plan)
+--   Import.Tick, TickGroup, TickAll, Count, Lines   the ticks the import window changes, and its groups of lines
+--   Import.Apply(plan, opts)    writes the ticked lines through the reminders' own save path (Alerts/Draft.lua,
+--                               Alerts/Reminders.lua)
+--   Import.ForWho(r)            "for Solex" for a reminder imported for someone else (its flag and the alert editor)
 --
 -- Saved data (additive): each imported reminder has import = { source = Import.SOURCE, tag, tagKind, ph, time, dur,
--- text, countdown, ttsTimer, extra, bossExtra } (text only when the line's was empty; countdown and ttsTimer the
+-- text, countdown, ttsTimer, forOther, extra, bossExtra } (forOther true only for a line imported for someone else;
+-- text only when the line's was empty; countdown and ttsTimer the
 -- line's own numbers, as written before they are fitted to the reminder's ranges; extra and bossExtra only when
 -- there are unknown fields). Its spell is the reminder's own spellID; the count, Before 0 and TTS words are its
 -- countFrom, speakAt/speakBefore and speakText (Alerts/Reminders.lua).
@@ -61,6 +65,22 @@ local TEXT = {
     },
     roles = { TANK = "Tank", HEALER = "Healer", DAMAGER = "DPS" },
     positions = { melee = "Melee", ranged = "Ranged" },
+    -- who a line is for, as the import window lists it and an imported line for someone else says it
+    everyoneWho = "Everyone",
+    groupWho = "Group %d",
+    forWho = "for %s",
+    -- the import window's groups of lines for others, by the tag's kind, and of lines that don't read
+    groupLabels = {
+        player = "For another player (%d)",
+        class = "For another class (%d)",
+        group = "For another group (%d)",
+        role = "For another role (%d)",
+        spec = "For another spec (%d)",
+        position = "For another position (%d)",
+        tag = "For another tag (%d)",
+        none = "No tag (%d)",
+    },
+    unread = "Couldn't read (%d)",
     badBoss = "no encounter ID",
     badDifficulty = "unknown difficulty (%s)",
     noDifficulty = "no difficulty",
@@ -569,24 +589,61 @@ local TAG_KINDS = {
 }
 Import.TAG_KINDS = TAG_KINDS
 
--- Who a line is for: true and the tag's kind when it is yours, else false, why (naming the kind) and the kind (nil
--- for a tag no kind takes). me is Import.Me()'s (a class ID alone also works).
+-- Who a tag of a kind is, in words: "Everyone", "Group 1", the kind's label ("Arms", "Warrior", "Tank"), else the
+-- tag as written ("Solex").
+local function whoOf(kind, tag)
+    if kind.key == "everyone" then
+        return TEXT.everyoneWho
+    elseif kind.key == "group" then
+        return string.format(TEXT.groupWho, groupOf(tag))
+    end
+    local ok, label = false, nil
+    if kind.label then
+        ok, label = pcall(kind.label, tag)
+    end
+    return (ok and type(label) == "string" and label ~= "") and label or tag
+end
+
+-- Who a line is for: true, nil, the tag's kind and who when it is yours; else false, why (naming the kind), the
+-- kind (nil for a tag no kind takes) and who. me is Import.Me()'s (a class ID alone also works).
 function Import.ForPlayer(tag, me)
     if type(tag) ~= "string" or trim(tag) == "" then
-        return false, TEXT.noTag
+        return false, TEXT.noTag, nil, nil
     end
     tag = trim(tag)
     me = meOf(me)
     for _, kind in ipairs(TAG_KINDS) do
         local ok, mine = pcall(kind.matches, tag, me)
         if ok and mine == true then
-            return true, nil, kind.key
+            return true, nil, kind.key, whoOf(kind, tag)
         elseif ok and mine == false then
             local okLabel, label = pcall(kind.label, tag)
-            return false, string.format(TEXT.other[kind.key], okLabel and label or tag), kind.key
+            return false, string.format(TEXT.other[kind.key], okLabel and label or tag), kind.key, whoOf(kind, tag)
         end
     end
-    return false, string.format(TEXT.otherTag, tag), nil
+    return false, string.format(TEXT.otherTag, tag), nil, tag
+end
+
+-- "for Solex": who an imported reminder was for, when it was imported for someone else (import.forOther), from
+-- its import.tag and tagKind; nil for any other reminder. Shown on its Timeline flag and in the alert editor.
+function Import.ForWho(r)
+    local imp = type(r) == "table" and type(r.import) == "table" and r.import or nil
+    if not (imp and imp.forOther and type(imp.tag) == "string") then
+        return nil
+    end
+    local tag = trim(imp.tag)
+    local who = tag
+    for _, kind in ipairs(TAG_KINDS) do
+        if kind.key == imp.tagKind then
+            -- with nobody as you, a kind's matches says whether the tag is of it (false) or not (nil)
+            local ok, of = pcall(kind.matches, tag, {})
+            if ok and of ~= nil then
+                who = whoOf(kind, tag)
+                break
+            end
+        end
+    end
+    return string.format(TEXT.forWho, who)
 end
 
 -- What a line says aloud, as the reminder's Read out choices (Alerts/Draft.lua's speak, count and speakAt):
@@ -665,8 +722,8 @@ end
 -- The reminder a line becomes, made as the alert editor makes a new one (Draft.New, Draft.BuildReminder): Only
 -- me, its time typed, its spell (the icon), its text (else the spell's name, else the placeholder), colour, Show
 -- from, what it reads out (Import.Speech) and how it shows (Import.Display); the rest the editor's defaults.
--- kind is the tag's kind (ForPlayer).
-local function reminderOf(boss, line, kind)
+-- kind is the tag's kind (ForPlayer); forOther marks a line for someone else (import.forOther).
+local function reminderOf(boss, line, kind, forOther)
     local Draft = CRT.AlertDraft
     local draft = Draft.New()
     Draft.SetGroup(draft, boss.group)
@@ -692,14 +749,19 @@ local function reminderOf(boss, line, kind)
     r.times = Import.Times(line.ph, line.time)
     r.import = { source = Import.SOURCE, tag = line.tag, tagKind = kind, ph = line.ph, time = line.time,
         dur = line.dur, text = line.text == "" and "" or nil, countdown = line.countdown, ttsTimer = line.ttsTimer,
-        extra = line.extra, bossExtra = boss.extra }
+        forOther = forOther or nil, extra = line.extra, bossExtra = boss.extra }
     return r
 end
 
--- What the parsed text would import for you (me: Import.Me()'s, or a class ID alone): { bosses = { { encounterID, name, difficulty, group,
--- known, reminders = { reminder tables }, skipped = { { line, reason } }, reason } }, skipped, count }. A boss
--- with a reason (no encounter ID, an unknown difficulty) imports nothing; known is false for a boss the season
--- doesn't have (still imported, by its encounter ID). count is how many reminders would be written.
+-- What the parsed text would import (me: Import.Me()'s, or a class ID alone): { bosses = { boss }, skipped, count }.
+-- A boss is { encounterID, name, difficulty, group, known, reason, lines, reminders, skipped }:
+--   lines      every line, in the order pasted, then the ones that don't read: { mine, kind, reason, who,
+--              reminder, line (the raw text), ticked }. A line that reads has its reminder (one for someone else
+--              has import.forOther); one that doesn't (junk, a bad phase, a boss with a reason) has none and is
+--              never ticked. Yours start ticked; Tick, TickGroup and TickAll change that
+--   reminders  your lines' reminders; skipped every other line as { line, reason }
+-- A boss with a reason (no encounter ID, an unknown difficulty) imports nothing; known is false for a boss the season
+-- doesn't have (still imported, by its encounter ID). count is how many ticked lines would be written (Count).
 function Import.Plan(parsed, me)
     me = meOf(me)
     local out = { bosses = {}, skipped = parsed and parsed.skipped or {}, count = 0 }
@@ -707,34 +769,134 @@ function Import.Plan(parsed, me)
     for _, b in ipairs(parsed and parsed.bosses or {}) do
         local def = b.encounterID and Bosses and Bosses.Get and Bosses:Get(b.encounterID)
         local p = { encounterID = b.encounterID, name = (def and def.name) or b.name, difficulty = b.difficulty,
-            known = def ~= nil and def ~= false, extra = b.extra, reminders = {}, skipped = {} }
+            known = def ~= nil and def ~= false, extra = b.extra, reminders = {}, skipped = {}, lines = {} }
         p.bossName = p.name
-        for _, s in ipairs(b.skipped) do
-            p.skipped[#p.skipped + 1] = s
-        end
         if not b.encounterID then
             p.reason = TEXT.badBoss
         else
             p.group, p.reason = Import.Group(b.difficulty)
         end
-        if not p.reason then
-            for _, line in ipairs(b.reminders) do
-                local mine, why, kind = Import.ForPlayer(line.tag, me)
+        for _, line in ipairs(b.reminders) do
+            if p.reason then
+                p.lines[#p.lines + 1] = { mine = false, reason = p.reason, line = line.line, ticked = false }
+            else
+                local mine, why, kind, who = Import.ForPlayer(line.tag, me)
+                local l = { mine = mine, kind = kind or (why == TEXT.noTag and "none" or "tag"), reason = why,
+                    who = who, line = line.line, ph = line.ph, time = line.time, ticked = mine }
+                l.reminder = reminderOf(p, line, kind, not mine)
+                p.lines[#p.lines + 1] = l
                 if mine then
-                    p.reminders[#p.reminders + 1] = reminderOf(p, line, kind)
-                else
-                    p.skipped[#p.skipped + 1] = { line = line.line, reason = why }
+                    p.reminders[#p.reminders + 1] = l.reminder
                 end
             end
-        else
-            for _, line in ipairs(b.reminders) do
-                p.skipped[#p.skipped + 1] = { line = line.line, reason = p.reason }
+        end
+        for _, s in ipairs(b.skipped) do
+            p.lines[#p.lines + 1] = { mine = false, reason = s.reason, line = s.line, ticked = false }
+        end
+        for _, l in ipairs(p.lines) do
+            if not l.mine then
+                p.skipped[#p.skipped + 1] = { line = l.line, reason = l.reason }
             end
         end
-        out.count = out.count + #p.reminders
         out.bosses[#out.bosses + 1] = p
     end
+    Import.Count(out)
     return out
+end
+
+-- How many ticked lines the plan would write, kept in plan.count.
+function Import.Count(plan)
+    local n = 0
+    for _, p in ipairs(plan and plan.bosses or {}) do
+        for _, l in ipairs(p.lines or {}) do
+            if l.ticked and l.reminder then
+                n = n + 1
+            end
+        end
+    end
+    if plan then
+        plan.count = n
+    end
+    return n
+end
+
+-- Ticks or unticks one line (a line that doesn't read stays unticked), and counts again.
+function Import.Tick(plan, line, on)
+    if line and line.reminder then
+        line.ticked = on and true or false
+    end
+    return Import.Count(plan)
+end
+
+-- Ticks or unticks every line of a group (Import.Lines).
+function Import.TickGroup(plan, group, on)
+    for _, l in ipairs(group and group.lines or {}) do
+        if l.reminder then
+            l.ticked = on and true or false
+        end
+    end
+    return Import.Count(plan)
+end
+
+-- Whether a group's lines are all ticked (true), none (false) or some (nil).
+function Import.GroupTicked(group)
+    local on, off = false, false
+    for _, l in ipairs(group and group.lines or {}) do
+        if l.ticked then
+            on = true
+        else
+            off = true
+        end
+    end
+    if on and off then
+        return nil
+    end
+    return on
+end
+
+-- Tick every line, for everyone: on ticks every line that reads; off goes back to only yours.
+function Import.TickAll(plan, on)
+    for _, p in ipairs(plan and plan.bosses or {}) do
+        for _, l in ipairs(p.lines or {}) do
+            if l.reminder then
+                l.ticked = (on or l.mine) and true or false
+            end
+        end
+    end
+    return Import.Count(plan)
+end
+
+-- A boss's lines as the import window lists them: { mine = { yours }, groups = { { kind, label, lines } } (lines for
+-- others, one group per tag kind in the order they come, label "For another spec (3)"), unread = { lines that don't
+-- read }, unreadLabel = "Couldn't read (2)" }.
+function Import.Lines(p)
+    local out = { mine = {}, groups = {}, unread = {} }
+    local byKind = {}
+    for _, l in ipairs(p and p.lines or {}) do
+        if not l.reminder then
+            out.unread[#out.unread + 1] = l
+        elseif l.mine then
+            out.mine[#out.mine + 1] = l
+        else
+            local g = byKind[l.kind]
+            if not g then
+                g = { kind = l.kind, lines = {} }
+                byKind[l.kind] = g
+                out.groups[#out.groups + 1] = g
+            end
+            g.lines[#g.lines + 1] = l
+        end
+    end
+    for _, g in ipairs(out.groups) do
+        g.label = string.format(TEXT.groupLabels[g.kind] or TEXT.groupLabels.tag, #g.lines)
+    end
+    out.unreadLabel = string.format(TEXT.unread, #out.unread)
+    return out
+end
+
+-- A line's time as the import window shows it: "0:30.4" from the pull, "P2 +0:48.1" in a later phase.
+function Import.ShowTime(ph, time)
+    return (Import.Times(ph, time):gsub("^P1 ", ""))
 end
 
 -- Writing ---------------------------------------------------------------------------------------------------
@@ -783,8 +945,23 @@ local function targets(plan)
     return out
 end
 
+-- The reminders of a boss's ticked lines (yours, unless others were ticked); a plan made without lines, its own
+-- reminders.
+local function ticked(p)
+    if not p.lines then
+        return p.reminders or {}
+    end
+    local out = {}
+    for _, l in ipairs(p.lines) do
+        if l.ticked and l.reminder then
+            out[#out + 1] = l.reminder
+        end
+    end
+    return out
+end
+
 -- One boss and group: with replace, what this importer wrote before is deleted (once for the pair); then each of
--- its pasted reminders is saved unless the same one (group, time, text) is already there.
+-- its ticked lines is saved unless the same one (group, time, text) is already there.
 local function applyTarget(t, replace, res)
     local R = CRT.AlertReminders
     if replace then
@@ -803,7 +980,7 @@ local function applyTarget(t, replace, res)
         end
     end
     for _, p in ipairs(t.bosses) do
-        for _, r in ipairs(p.reminders) do
+        for _, r in ipairs(ticked(p)) do
             local key = sameKey(t.group, r)
             if key and seen[key] then
                 res.duplicates = res.duplicates + 1
