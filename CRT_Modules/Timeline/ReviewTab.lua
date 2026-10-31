@@ -41,8 +41,9 @@ local BODY_Y, BODY_ROW3_Y = -64, -96
 local RECORD_X, OVERLAY_X = 8, 170
 local PILL_GAP = 4 -- between the pill and the words on each side of it
 -- the second row holds Share note too (Page.lua) from this width: the checkboxes end near 400, then
--- Rehearse, Pop out and Share note with their (?) icons
-local WIDE_W = 880
+-- Import reminders, Rehearse, Pop out and Share note with their (?) icons
+local WIDE_W = 930
+ReviewTab.WIDE_W = WIDE_W
 
 local function settings()
     return Timeline:Settings()

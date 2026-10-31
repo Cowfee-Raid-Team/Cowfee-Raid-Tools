@@ -37,6 +37,8 @@ local TEXT = {
     made = "Made a raid note for %s. It is on Raid Notes.",
     phaseCopy = "Moved the phase line in an ability timeline of your own (shipped ability timelines never change). It is listed as yours.",
     rehearse = "Rehearse",
+    importReminders = "Import reminders",
+    importHelp = "Opens a window to paste an export of timed reminders. Each line for you becomes one of your own reminders on the Personal notes row, never a raid note line. It can't import during combat.",
     advancedBlurb = "An ability timeline is a boss's planned cast times, typed or pasted as text on the left. The Review tab draws it, alerts take their times from it, and the Rehearsal plays it. Right-click a Journal ability on the right to give it a row, a type, your own name, or a Mech Alert.",
     rehearseHelp = "Plays this fight out in a window of its own, a stand-in boss frame and cast bar, with your real alerts firing on time. It can't start in combat and stops if combat begins; nothing is sent to the group. /crt timeline rehearse does the same.",
     noRehearse = "Nothing to rehearse: pick a boss with an ability timeline or a pull on the Timeline's Review tab.",
@@ -71,7 +73,7 @@ local TABS = {
 local page, view, emptyLabel, unnamedHelp
 local reviewFrame, holder, recent, refTab, settingsTab
 local shareButton, shareHelp
-local rehearseButton, popButton
+local rehearseButton, popButton, importButton
 local placeRows -- the Review tab's rows (ReviewTab's placeOrder), placed again as Share note shows or hides
 local tabButtons, tabFrames = {}, {}
 local controls = {} -- the Review tab's controls, which refresh() redraws
@@ -340,9 +342,10 @@ local function togglePull(pullID)
     refresh()
 end
 
--- The second row's buttons at the right: Rehearse, Pop out, then Share note. In a frame too narrow for
--- all of them (ReviewTab's placeOrder decides), Share note goes to the right of the third row and Pop out
--- takes the end of the second; a hidden Share note leaves Pop out at the end too. True when it shows.
+-- The second row's buttons at the right: Import reminders, Rehearse, Pop out, then Share note. In a frame
+-- too narrow for all of them (ReviewTab's placeOrder decides), Share note goes to the right of the third row
+-- with Import reminders before it, and Pop out takes the end of the second; a hidden Share note leaves Pop
+-- out at the end too (and Import reminders at the third row's end). True when the third row is used.
 local HELP_ROOM = UI.HELP_GAP + UI.HELP_SIZE + 6 -- a (?) after a button, then the gap to the next
 local function placeShare(wide)
     if not (shareButton and popButton) then
@@ -361,6 +364,17 @@ local function placeShare(wide)
         popButton:SetPoint("RIGHT", shareButton, "LEFT", -HELP_ROOM, 0)
     else
         popButton:SetPoint("TOPRIGHT", reviewFrame, "TOPRIGHT", rightX, ReviewTab.ROW2_Y)
+    end
+    if importButton then
+        importButton:ClearAllPoints()
+        if wide then
+            importButton:SetPoint("RIGHT", rehearseButton, "LEFT", -HELP_ROOM, 0)
+        elseif shown then
+            importButton:SetPoint("RIGHT", shareButton, "LEFT", -HELP_ROOM, 0)
+        else
+            importButton:SetPoint("TOPRIGHT", reviewFrame, "TOPRIGHT", rightX, ReviewTab.ROW3_Y)
+        end
+        return shown or not wide
     end
     return shown
 end
@@ -888,6 +902,17 @@ local function buildPopControls()
         Timeline:Rehearse()
     end)
     UI.HelpRight(rehearseButton, TEXT.rehearse, TEXT.rehearseHelp)
+
+    -- Import reminders: the paste window (Timeline/ImportWindow.lua), as wide as its label
+    importButton = button(reviewFrame, TEXT.importReminders, 90)
+    local importText = importButton:GetFontString()
+    importButton:SetWidth(UI.PanelButtonWidth(importText and importText:GetStringWidth() or 0))
+    importButton:SetScript("OnClick", function()
+        if CRT.TimelineImportWindow then
+            CRT.TimelineImportWindow.Open()
+        end
+    end)
+    UI.HelpRight(importButton, TEXT.importReminders, TEXT.importHelp)
 
     reviewFrame:SetScript("OnUpdate", followRehearsal)
 
