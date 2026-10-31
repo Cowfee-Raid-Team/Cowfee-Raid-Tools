@@ -1,7 +1,8 @@
-// The Raid Notes integrations' note text: the real CRT_Modules/Notes/Parse.lua (the shared class words) and
+// The Raid Notes integrations' note text: the real CRT_Core/MarkerText.lua (the marker codes a label may hold),
+// CRT_Modules/Notes/Parse.lua (the shared class words) and
 // CRT_Core/Integrations/NoteTargets.lua, NSRT.lua and MRT.lua, turning a CRT note into each target's text.
 // Only the text bridge is checked here; nothing is sent.
-// Usage: node run_note_targets.js CRT_Modules/Notes/Parse.lua CRT_Core/Integrations/NoteTargets.lua CRT_Core/Integrations/NSRT.lua CRT_Core/Integrations/MRT.lua
+// Usage: node run_note_targets.js CRT_Core/MarkerText.lua CRT_Modules/Notes/Parse.lua CRT_Core/Integrations/NoteTargets.lua CRT_Core/Integrations/NSRT.lua CRT_Core/Integrations/MRT.lua
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
@@ -172,6 +173,14 @@ check("assignment lines: which class words count", function()
   assert(table.concat(cut, ",") == "priest", "another word pattern, the same list: " .. table.concat(cut, ","))
 end)
 
+-- a raid marker in an assignment's label (#1233): the line is still an assignment, its code sent as written
+check("NSRT: a marker in the label keeps the line an assignment", function()
+  local text = NSRT.ToNSRTText("EncounterID:3001;Name:Boss\\nSoak at {cross}: monk\\n{RT3} Soak: priest, Abu\\nSoak {spell:5}: monk")
+  assert(text:find("\\nSoak at {cross}: Monk\\n", 1, true), "the class as its English name, the code as written: " .. text)
+  assert(text:find("\\n{RT3} Soak: Priest, Abu\\n", 1, true), "a marker first, any case: " .. text)
+  assert(text:find("\\nSoak {spell:5}: monk$"), "other markup still keeps it text: " .. text)
+end)
+
 -- shield: (a shield bar) is CRT's own: never sent through the bridge, the rest of the line as before
 check("NSRT: a line's shield: option is left out", function()
   local text = NSRT.ToNSRTText("EncounterID:3001;Name:Boss\\ntime:183;ph:1;tag:everyone;text:Break it;show:bar;shield:boss2,15,any;spellid:5;")
@@ -213,7 +222,7 @@ end)
 if checks.failed then error(checks.failed .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const names = ['CRT_Modules/Notes/Parse.lua', 'CRT_Core/Integrations/NoteTargets.lua', 'CRT_Core/Integrations/NSRT.lua', 'CRT_Core/Integrations/MRT.lua'];
+const names = ['CRT_Core/MarkerText.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Core/Integrations/NoteTargets.lua', 'CRT_Core/Integrations/NSRT.lua', 'CRT_Core/Integrations/MRT.lua'];
 const files = process.argv.slice(2);
 if (files.length !== names.length) { console.error('usage: node run_note_targets.js ' + names.join(' ')); process.exit(2); }
 files.forEach((p, i) => { lua.lua_pushstring(L, to_luastring(names[i])); lua.lua_pushstring(L, to_luastring(fs.readFileSync(p, 'utf8'))); });
