@@ -270,6 +270,26 @@ function View.FlagColors(m)
     return "accent", "accent"
 end
 
+-- The colour of your own reminder's flag and its length bar on the Personal notes row: the reminder's own colour where
+-- the alerts draw it too (Alerts:OwnColor: with Use custom colours on), else nil for the personal blue. Never a hidden value.
+function View.OwnFlagColor(m)
+    local Alerts = CRT.Alerts
+    if not (m and m.mine and type(m.color) == "table" and Alerts and Alerts.OwnColor) then
+        return nil
+    end
+    return Alerts:OwnColor({ color = m.color })
+end
+
+-- How long your own reminder's alert shows before its time (its Show from, warn), for the bar drawn before its flag on
+-- the Personal notes row; nil for none.
+function View.ShowFor(m)
+    local s = m and m.mine and m.showFor
+    if type(s) ~= "number" or s ~= s or s <= 0 then
+        return nil
+    end
+    return s
+end
+
 local function rgba(key, alpha)
     local c = CRT.PALETTE[key] or CRT.PALETTE.text or { 1, 1, 1 } -- a palette without the key (an old theme) draws white
     return c[1], c[2], c[3], alpha or 1
@@ -1863,8 +1883,9 @@ function Methods:NoteAndReminderMarks(lanes, length)
         -- nor one of another difficulty group than the view's, nor one saved as Raid note (its note lines are drawn)
         if e.r.enabled ~= false and not (Reminders.InNote and Reminders.InNote(e.r)) and self:ShowsReminder(e.r) then
             for index, at in ipairs((self:ReminderTimes(encounterID, e.r))) do
+                -- its colour and how long its alert shows before its time (Show from), for the Personal notes row
                 add({ ph = at.ph, time = at.t, mine = true, encounterID = encounterID, id = e.id, index = index,
-                    kind = "mine" }, e.r.spellID, e.r.text, e.r.iconID)
+                    kind = "mine", color = e.r.color, showFor = e.r.warn }, e.r.spellID, e.r.text, e.r.iconID)
             end
         end
     end
@@ -3890,6 +3911,7 @@ end
 function Methods:DrawMarks(length)
     local level = (self.track:GetFrameLevel() or 0) + 8
     local HealerView = CRT.TimelineHealerView
+    local lengthBars = 0 -- your reminders' bars on the Personal notes row, from the pool self.lengthBars
     for n, m in ipairs(self.marks) do
         local f = self:Flag(n)
         f.mark = m
@@ -3919,6 +3941,30 @@ function Methods:DrawMarks(length)
         f.pole:SetColorTexture(rgba(key))
         f.head:SetColorTexture(rgba(key))
         f.rim:SetColorTexture(rgba(edgeKey))
+        -- your own reminder in its own colour (View.OwnFlagColor), its personal edge kept so it still reads as yours
+        local own = View.OwnFlagColor(m)
+        if own then
+            f.pole:SetColorTexture(own[1], own[2], own[3], 1)
+            f.head:SetColorTexture(own[1], own[2], own[3], 1)
+        end
+        -- on the Personal notes row, a bar over the seconds its alert shows before its time (View.ShowFor)
+        local showFor = not inline and View.ShowFor(m)
+        local lane = self.lanes and self.lanes[m.row]
+        if showFor and lane and lane.kind == "personal" and m.t > 0 then
+            lengthBars = lengthBars + 1
+            self.lengthBars = self.lengthBars or {}
+            local bar = self:Tex(self.lengthBars, lengthBars, "BORDER", 1, 1, 1, 1)
+            if own then
+                bar:SetColorTexture(own[1], own[2], own[3], BAR_ALPHA)
+            else
+                bar:SetColorTexture(rgba(key, BAR_ALPHA))
+            end
+            local from = View.TimeToX(math.max(0, m.t - showFor), length, self.trackW)
+            bar:ClearAllPoints()
+            bar:SetSize(math.max(1, x - from), math.min(DUR_H, math.max(1, rowH - 6)))
+            bar:SetPoint("LEFT", self.track, "TOPLEFT", from, -rowTop - rowH / 2)
+            bar:Show()
+        end
         local icon = chipIcon(m) or (inline and m.hvLane.icon) or nil
         f.icon:SetTexture(icon)
         f.edge:SetColorTexture(rgba(edgeKey))
@@ -3935,6 +3981,7 @@ function Methods:DrawMarks(length)
         f.rim:SetShown(icon == nil and edgeKey ~= key and not m.tooSoon)
     end
     hideFrom(self.flags, #self.marks + 1)
+    hideFrom(self.lengthBars or {}, lengthBars + 1)
 end
 
 function Methods:Label(n)
