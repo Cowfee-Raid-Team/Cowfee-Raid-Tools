@@ -53,9 +53,10 @@ local NAME_X = 42 -- where a lane's name starts in its label, after the tick and
 -- without it
 local DEFAULT_ICON = CRT.defaults and CRT.defaults.timeline and CRT.defaults.timeline.iconSize
 local ROW_INSET = 4 -- a row's gap above and below a cast's icon: the default's rows are 30 high
--- Every lane's height (Abilities, Deaths, Notes, Personal notes, Healer CDs' healers and slots alike): the icon size
--- plus a gap above and below (View.RowHeight). It follows the Icon size setting; each draw reads it again
--- (syncRowH), and View.ROW_H is the height last drawn, for Timeline/HealerView.lua and the files beside it.
+-- Every lane's height (Abilities, Deaths, Notes, Healer CDs' healers and slots alike): the icon size plus a gap above
+-- and below (View.RowHeight). It follows the Icon size setting; each draw reads it again (syncRowH), and View.ROW_H is
+-- the height last drawn, for Timeline/HealerView.lua and the files beside it. The Personal notes lane is the one row
+-- of its own height, by the same rule at Personal note size (Methods:RowH).
 local ROW_H = (DEFAULT_ICON or 0) + 2 * ROW_INSET -- set again from the setting before every draw
 View.ROW_H = ROW_H
 local AXIS_H = 20
@@ -232,6 +233,41 @@ local function syncRowH()
     ROW_H = View.RowHeight(View.IconSize())
     View.ROW_H = ROW_H
     return ROW_H
+end
+
+-- The size your own notes are drawn at on the Personal notes row: the Personal note size setting (Timeline > Settings),
+-- or while it is unset (0, Core.lua's default, or nothing saved) the Icon size, so nothing changes until it is moved.
+-- The row is View.RowHeight of it (Methods:RowH). asSet: nil while it is unset, in place of the Icon size.
+function View.PersonalNoteSize(asSet)
+    local size = settings().personalNoteSize
+    if type(size) == "number" and size > 0 then
+        return size
+    end
+    return not asSet and View.IconSize() or nil
+end
+
+-- A flag's button side, flag width and head height for mark m. A raid note line's are FLAG_BTN_W, FLAG_W and
+-- FLAG_HEAD, and so are your own reminders' while Personal note size is unset; once it is set, theirs are those sizes
+-- grown or shrunk by it over the Icon size default (at the default they are the same), so Icon size leaves them alone.
+function View.FlagSize(m)
+    local size = m and m.mine and View.PersonalNoteSize(true)
+    local base = DEFAULT_ICON or View.IconSize()
+    if not size or not base or base <= 0 then
+        return FLAG_BTN_W, FLAG_W, FLAG_HEAD
+    end
+    local k = size / base
+    return math.floor(FLAG_BTN_W * k + 0.5), math.floor(FLAG_W * k + 0.5), math.floor(FLAG_HEAD * k + 0.5)
+end
+
+-- The theme keys mark m's flag is drawn in, its fill and its edge: a raid note line in the accent; your own reminders
+-- and the lines of your personal notes (personalNote, NoteAndReminderMarks) in the personal blue with its lighter edge
+-- (CRT_Dev/StyleGuide.md), on every row they show on, Healer CDs' too. A raid line you moved for yourself (hvOwn) is
+-- still the raid's.
+function View.FlagColors(m)
+    if m and (m.mine or m.personalNote) then
+        return "personal", "personalEdge"
+    end
+    return "accent", "accent"
 end
 
 local function rgba(key, alpha)
@@ -808,6 +844,59 @@ function View.Create(parent)
     return view
 end
 
+-- Row geometry. Every row is ROW_H high but the Personal notes lane, View.RowHeight(View.PersonalNoteSize()) high (the
+-- same row rule at its own size). It is the last lane of the Abilities layout and Healer CDs has none, so only the
+-- Ignored mechanics list under it moves. Rows past the lanes (that list's) are ROW_H. SyncRows works the heights and
+-- tops out once per draw (Refresh, ContentHeight), into self.rowHs and self.rowTops (row #lanes + 1's top is the lanes'
+-- height); RowH, RowTop and RowAtY read them, and work them out first for lanes not yet measured.
+function Methods:SyncRows()
+    local lanes = self.lanes or {}
+    local personal = View.RowHeight(View.PersonalNoteSize())
+    local hs, tops, top = {}, { 0 }, 0
+    for i, lane in ipairs(lanes) do
+        hs[i] = lane.kind == "personal" and personal or ROW_H
+        top = top + hs[i]
+        tops[i + 1] = top
+    end
+    self.rowHs, self.rowTops, self.rowsFor, self.rowsH = hs, tops, lanes, ROW_H
+end
+
+-- The heights, the tops and the number of lanes measured, measured again when the lanes or the row height changed.
+function Methods:Rows()
+    if self.rowsFor ~= (self.lanes or self.rowsFor) or self.rowsH ~= ROW_H or not self.rowTops then
+        self:SyncRows()
+    end
+    return self.rowHs, self.rowTops, #self.rowHs
+end
+
+function Methods:RowH(row)
+    local hs = self:Rows()
+    return hs[row] or ROW_H
+end
+
+-- Pixels from the track's top to the top of row.
+function Methods:RowTop(row)
+    local _, tops, n = self:Rows()
+    if row <= n + 1 then
+        return tops[math.max(1, row)]
+    end
+    return tops[n + 1] + (row - 1 - n) * ROW_H
+end
+
+-- The row at y pixels down from the track's top (past the lanes too), or nil above it.
+function Methods:RowAtY(y)
+    if not y or y < 0 then
+        return nil
+    end
+    local _, tops, n = self:Rows()
+    for i = 1, n do
+        if y < tops[i + 1] then
+            return i
+        end
+    end
+    return n + math.floor((y - tops[n + 1]) / ROW_H) + 1
+end
+
 -- base is a recorded pull or { reference = ref }; overlay is a pull laid over a reference.
 function Methods:SetData(base, encounterID, overlay, bossName, group)
     self.pull, self.encounterID, self.overlay, self.bossName, self.group = base, encounterID, overlay, bossName, group
@@ -833,7 +922,7 @@ function Methods:Highlight(spellID, name)
         v:UpdateScrollChildRect()
     end
     local range = v:GetVerticalScrollRange() or 0
-    local top = (row - 1) * ROW_H - ((v:GetHeight() or 0) - ROW_H) / 2
+    local top = self:RowTop(row) - ((v:GetHeight() or 0) - self:RowH(row)) / 2
     v:SetVerticalScroll(math.max(0, math.min(range, top)))
     return true
 end
@@ -868,11 +957,11 @@ function Methods:DrawHighlight(lanes)
     if not self.highlightTex then
         self.highlightTex = self.body:CreateTexture(nil, "ARTWORK")
     end
-    local tex, y = self.highlightTex, -(self.highlightRow - 1) * ROW_H
+    local tex, y = self.highlightTex, -self:RowTop(self.highlightRow)
     tex:SetColorTexture(HIGHLIGHT[1], HIGHLIGHT[2], HIGHLIGHT[3], 0.22)
     tex:ClearAllPoints()
     tex:SetPoint("TOPLEFT", self.body, "TOPLEFT", 0, y)
-    tex:SetPoint("BOTTOMRIGHT", self.body, "TOPRIGHT", 0, y - ROW_H)
+    tex:SetPoint("BOTTOMRIGHT", self.body, "TOPRIGHT", 0, y - self:RowH(self.highlightRow))
     tex:Show()
 end
 
@@ -1761,8 +1850,10 @@ function Methods:NoteAndReminderMarks(lanes, length)
             local rawLines = Notes:RawLines(n.id) -- the lines as drawn, so a move can tell one has changed
             for _, timer in ipairs(note and note.timers or {}) do
                 local raw = rawLines[timer.line]
+                -- personalNote: a line of one of your personal notes, drawn in the personal colours (View.FlagColors)
                 add({ ph = timer.ph, time = timer.time, tags = timer.tags, noteID = n.id, line = timer.line,
-                    difficulty = n.record.difficulty, kind = "note", expected = raw, encounterID = encounterID },
+                    difficulty = n.record.difficulty, kind = "note", expected = raw, encounterID = encounterID,
+                    personalNote = n.record.personal and true or nil },
                     timer.spellId, timer.text, timer.iconID)
             end
         end
@@ -1804,6 +1895,11 @@ function Methods:Flag(n)
         f.head = f:CreateTexture(nil, "ARTWORK")
         f.head:SetPoint("TOPLEFT", f, "TOPLEFT", inset, -3)
         f.head:SetSize(FLAG_W, FLAG_HEAD)
+        -- your own reminder's edge: 1 px round the head, under it (View.FlagColors' edge), shown by DrawMarks
+        f.rim = f:CreateTexture(nil, "ARTWORK", nil, -1)
+        f.rim:SetPoint("TOPLEFT", f.head, "TOPLEFT", -1, 1)
+        f.rim:SetPoint("BOTTOMRIGHT", f.head, "BOTTOMRIGHT", 1, -1)
+        f.rim:Hide()
         -- An alert with a spell (or an icon) shows that icon in place of the flag, in an edge of the
         -- flag's color (raid note or your reminder). The pole stays below it, marking the time.
         f.edge = f:CreateTexture(nil, "ARTWORK", nil, 1)
@@ -1830,7 +1926,7 @@ function Methods:Flag(n)
             tex:Hide()
             f.sel[i] = tex
         end
-        -- inside it a thin dark border, so the outline shows on a text-coloured flag as well as an accent one
+        -- inside it a thin dark border, so the outline shows on a personal-blue flag as well as an accent one
         f.selIn = {}
         local w = SELECT_W
         for i, side in ipairs({ { "TOPLEFT", "TOPRIGHT", 0, -w }, { "BOTTOMLEFT", "BOTTOMRIGHT", 0, w },
@@ -2032,24 +2128,28 @@ function Methods:UpdateMove()
     local g = self:Ghost()
     -- a Healer CDs cooldown cast's ghost is a square where its icon would sit (DrawMarks), a flag's a flag
     local HealerView = m.hvLane ~= nil and CRT.TimelineHealerView
-    local gw = HealerView and HealerView.CastW() or FLAG_BTN_W
+    local bw, fw, fh = View.FlagSize(m)
+    local gw = HealerView and HealerView.CastW() or bw
     local xt = View.TimeToX(t, math.max(1, self.extra.length or 0), self.trackW)
-    local x = HealerView and (xt - gw / 2) or (xt - 1 - (FLAG_BTN_W - FLAG_W) / 2)
-    local key = m.mine and "text" or "accent"
+    local x = HealerView and (xt - gw / 2) or (xt - 1 - (bw - fw) / 2)
+    local key = View.FlagColors(m)
+    local rowTop, rowH = self:RowTop(m.row), self:RowH(m.row)
     g.head:SetColorTexture(rgba(key, 0.6))
     g.pole:SetColorTexture(rgba(key, 0.6))
     g:SetSize(gw, gw)
     g.pole:SetShown(not HealerView)
-    g.pole:SetSize(2, ROW_H - 6)
+    g.pole:SetSize(2, rowH - 6)
+    g.pole:ClearAllPoints()
+    g.pole:SetPoint("TOPLEFT", g, "TOPLEFT", (bw - fw) / 2, -3)
     g.head:ClearAllPoints()
     if HealerView then
         g.head:SetAllPoints(g)
     else
-        g.head:SetPoint("TOPLEFT", g, "TOPLEFT", (FLAG_BTN_W - FLAG_W) / 2, -3)
-        g.head:SetSize(FLAG_W, FLAG_HEAD)
+        g.head:SetPoint("TOPLEFT", g, "TOPLEFT", (bw - fw) / 2, -3)
+        g.head:SetSize(fw, fh)
     end
     g:ClearAllPoints()
-    g:SetPoint("TOPLEFT", self.track, "TOPLEFT", x, -(m.row - 1) * ROW_H - (HealerView and (ROW_H - gw) / 2 or 0))
+    g:SetPoint("TOPLEFT", self.track, "TOPLEFT", x, -rowTop - (HealerView and (rowH - gw) / 2 or 0))
     g:SetFrameLevel((mv.f:GetFrameLevel() or 0) + 1)
     -- the cooldown bands at the ghost, on its row; Alt keeps the grabbed time, so it counts as another cast
     local alt = IsAltKeyDown()
@@ -2062,10 +2162,10 @@ function Methods:UpdateMove()
     local w = g.label:GetStringWidth() or 0
     local left = self.hscroll:GetHorizontalScroll()
     local right = left + self:VisibleWidth()
-    local lx, ly = x + gw / 2 - w / 2, -(m.row - 1) * ROW_H + 4
+    local lx, ly = x + gw / 2 - w / 2, -rowTop + 4
     local anchor = "BOTTOMLEFT"
     if m.row == 1 then
-        lx, ly, anchor = x + gw, -FLAG_HEAD, "BOTTOMLEFT"
+        lx, ly, anchor = x + gw, -fh, "BOTTOMLEFT"
         if lx + w > right - 3 then
             lx = x - w - 4
         end
@@ -2200,7 +2300,7 @@ function Methods:IconSpellAt(x, y)
             end
             local half = (b:GetWidth() or 0) / 2
             if row and math.abs(x - View.TimeToX(b.mark.t, length, self.trackW)) <= half
-                and math.abs(y - ((row - 1) * ROW_H + ROW_H / 2)) <= half then
+                and math.abs(y - (self:RowTop(row) + self:RowH(row) / 2)) <= half then
                 local spellID = castSpell(b.lane, b.mark)
                 if spellID then
                     return spellID
@@ -2213,7 +2313,7 @@ end
 
 -- The lane at y down from the track's top (as cursorOnTrack gives it), else nil (the empty space below).
 function Methods:LaneAtY(y)
-    local row = y and y >= 0 and math.floor(y / ROW_H) + 1 or nil
+    local row = self:RowAtY(y)
     return row and self.lanes[row] or nil
 end
 
@@ -2945,7 +3045,7 @@ function Methods:PlaceStrip()
     self.bar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -SCROLLBAR_W, h + UNKNOWN_H + 2)
     self.vscroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -SCROLLBAR_W, h + UNKNOWN_H + BAR_H + 4)
     -- the lanes' window changed height: the track still reaches its bottom
-    local area = math.max(math.max(1, #self.lanes * ROW_H), self.vscroll:GetHeight() or 0)
+    local area = math.max(math.max(1, self:RowTop(#self.lanes + 1)), self.vscroll:GetHeight() or 0)
     self.body:SetSize(math.max(1, self.vscroll:GetWidth() or 1), area)
     self.track:SetSize(self.trackW, area)
     if self.hscroll.UpdateScrollChildRect then
@@ -3165,7 +3265,8 @@ end
 -- and others, the other casts' times (OtherCasts when nil). extra is one more cast's time: the grabbed one
 -- while Alt adds a time and leaves it there.
 function Methods:BandSpec(m, t, row, others, extra)
-    return { t = t or m.t, row = row or m.row, spellID = m.spellID, key = m.mine and "text" or "accent",
+    local _, edge = View.FlagColors(m) -- the flag's edge colour
+    return { t = t or m.t, row = row or m.row, spellID = m.spellID, key = edge,
         others = others or self:OtherCasts(m), extra = extra }
 end
 
@@ -3179,7 +3280,7 @@ function Methods:ChipBands(cm, t, x, y)
     if not lane then
         return nil
     end
-    local row = math.floor(y / ROW_H) + 1
+    local row = self:RowAtY(y)
     local mark, known
     if cm.kind == "cooldown" then
         local mine = cooldownDropMine(self, lane)
@@ -3239,7 +3340,7 @@ function Methods:DrawBands(spec)
         -- on Healer CDs as tall as its casts' own bands (HealerView.BandInset, from the Icon size)
         local HealerView = self.mode == "healers" and CRT.TimelineHealerView
         local inset = HealerView and HealerView.BandInset() or BAND_INSET
-        local top, h = -(spec.row - 1) * ROW_H - inset, ROW_H - 2 * inset
+        local top, h = -self:RowTop(spec.row) - inset, self:RowH(spec.row) - 2 * inset
         local function put(x0, x1, r, g, b, a, sub)
             if x1 - x0 <= 0 then
                 return
@@ -3781,7 +3882,8 @@ function Methods:TrackMenu(x, y)
     end)
 end
 
--- Draws the markers above the icons: raid note lines in the accent, your reminders in the text colour. A button
+-- Draws the markers above the icons: raid note lines in the accent, your reminders in the personal blue with a
+-- lighter edge, at Personal note size once it is set (View.FlagColors, View.FlagSize). A button
 -- sits a level above every cast icon, so a flag over an icon is the one clicked. A cast on a Healer CDs
 -- cooldown row (m.hvLane) is its icon alone, centred on its time in the middle of its row between its bands
 -- (HealerView.CastW() square, no pole); every other marker is a flag at its row's top.
@@ -3795,23 +3897,31 @@ function Methods:DrawMarks(length)
         f:ClearAllPoints()
         local x = View.TimeToX(m.t, length, self.trackW)
         local inline = m.hvLane ~= nil and HealerView ~= nil
-        local w = inline and HealerView.CastW() or FLAG_BTN_W
+        local bw, fw, fh = View.FlagSize(m) -- your own reminders' follow Personal note size once it is set
+        local w = inline and HealerView.CastW() or bw
+        local rowTop, rowH = self:RowTop(m.row), self:RowH(m.row)
         f:SetSize(w, w)
         f.icon:SetSize(w - 2, w - 2)
         f.pole:SetShown(not inline)
-        f.pole:SetSize(2, ROW_H - 6)
+        f.pole:SetSize(2, rowH - 6)
+        f.pole:ClearAllPoints()
+        f.pole:SetPoint("TOPLEFT", f, "TOPLEFT", (bw - fw) / 2, -3)
+        f.head:ClearAllPoints()
+        f.head:SetPoint("TOPLEFT", f, "TOPLEFT", (bw - fw) / 2, -3)
+        f.head:SetSize(fw, fh)
         if inline then
-            f:SetPoint("CENTER", self.track, "TOPLEFT", x, -(m.row - 1) * ROW_H - ROW_H / 2)
+            f:SetPoint("CENTER", self.track, "TOPLEFT", x, -rowTop - rowH / 2)
         else
-            f:SetPoint("TOPLEFT", self.track, "TOPLEFT", x - 1 - (FLAG_BTN_W - FLAG_W) / 2, -(m.row - 1) * ROW_H)
+            f:SetPoint("TOPLEFT", self.track, "TOPLEFT", x - 1 - (bw - fw) / 2, -rowTop)
         end
         f:SetFrameLevel(level)
-        local key = m.mine and "text" or "accent"
+        local key, edgeKey = View.FlagColors(m)
         f.pole:SetColorTexture(rgba(key))
         f.head:SetColorTexture(rgba(key))
+        f.rim:SetColorTexture(rgba(edgeKey))
         local icon = chipIcon(m) or (inline and m.hvLane.icon) or nil
         f.icon:SetTexture(icon)
-        f.edge:SetColorTexture(rgba(key))
+        f.edge:SetColorTexture(rgba(edgeKey))
         if m.tooSoon then
             -- Healer CDs: cast while its cooldown from the cast before is still running, in the theme's bad colour
             local bad = CRT.PALETTE.bad or DEATH_RED
@@ -3821,6 +3931,8 @@ function Methods:DrawMarks(length)
         f.icon:SetShown(icon ~= nil)
         f.edge:SetShown(icon ~= nil)
         f.head:SetShown(icon == nil)
+        -- the edge round the head shows only where the edge differs from the fill (your own reminders)
+        f.rim:SetShown(icon == nil and edgeKey ~= key and not m.tooSoon)
     end
     hideFrom(self.flags, #self.marks + 1)
 end
@@ -3939,7 +4051,7 @@ function Methods:DrawIgnored(after, rows)
         end)
         self.ignoredHead = head
     end
-    local y = -after * ROW_H
+    local y = -self:RowTop(after + 1)
     head:SetSize(LABEL_W - 4, ROW_H)
     head:ClearAllPoints()
     head:SetPoint("TOPLEFT", self.body, "TOPLEFT", 2, y)
@@ -4256,8 +4368,9 @@ end
 -- Healer CDs (Timeline/Page.lua).
 function Methods:ContentHeight()
     syncRowH()
+    self:SyncRows()
     local rows = #(self.lanes or {}) + (self.ignoredRows or 0)
-    return (self.axisH or AXIS_H) + rows * ROW_H + self.stripH + UNKNOWN_H + BAR_H + 4
+    return (self.axisH or AXIS_H) + self:RowTop(rows + 1) + self.stripH + UNKNOWN_H + BAR_H + 4
 end
 
 -- A deaths row's marks as drawn at this zoom: the deaths of one pull (one age) that would overlap, the next
@@ -4316,10 +4429,11 @@ function Methods:Refresh(relayout)
         self:BuildLanes()
     end
     local lanes = self.lanes
+    self:SyncRows() -- the rows' heights and tops for this draw (the Personal notes row at its own size)
     local width = self:VisibleWidth()
     local length = pull and math.max(1, self.extra.length or 0) or 1
     self.trackW = pull and math.max(1, length * width / clampSpan(s.span)) or 1
-    local height = math.max(1, #lanes * ROW_H)
+    local height = math.max(1, self:RowTop(#lanes + 1))
     local ignoredRows = #self.ignoredLanes > 0 and (1 + (s.ignoredOpen and #self.ignoredLanes or 0)) or 0
     self.ignoredRows = ignoredRows
     -- the track reaches at least the bottom of the window, so the empty space under the lanes takes
@@ -4352,17 +4466,17 @@ function Methods:Refresh(relayout)
     local size = View.IconSize()
     local used, bars, leads, ticks = 0, 0, 0, 0
     for i, lane in ipairs(lanes) do
-        local y = -(i - 1) * ROW_H
+        local y, rowH = -self:RowTop(i), self:RowH(i) -- the Personal notes row at its own height
         local l = self:Label(i)
         l.lane = lane
-        l:SetSize(LABEL_W - 4, ROW_H)
+        l:SetSize(LABEL_W - 4, rowH)
         l.check:SetShown(CRT.Timeline.Ignorable(lane))
         l.check:SetChecked(true)
         l.icon:SetDesaturated(false)
         l.icon:SetAlpha(1)
         l:SetPoint("TOPLEFT", self.body, "TOPLEFT", 2, y)
         l.stripe:SetPoint("TOPLEFT", self.body, "TOPLEFT", 0, y)
-        l.stripe:SetPoint("BOTTOMRIGHT", self.body, "TOPRIGHT", 0, y - ROW_H)
+        l.stripe:SetPoint("BOTTOMRIGHT", self.body, "TOPRIGHT", 0, y - rowH)
         -- a reference row is tinted faintly in its type's color; other rows keep the alternate stripe
         local tint = lane.kind == "reference" and lane.color
         if lane.tint then -- a healer's block (Healer CDs), in the game's class colour with its own alpha
@@ -4425,7 +4539,7 @@ function Methods:Refresh(relayout)
         else
             l.text:SetTextColor(rgba("text"))
         end
-        local mid = y - ROW_H / 2
+        local mid = y - rowH / 2
         if lane.kind == "reference" then
             bars, leads = self:DrawPlan(lane, mid, length, bars, leads)
         end
@@ -4442,7 +4556,7 @@ function Methods:Refresh(relayout)
             b.mark, b.lane = mark, lane
             b:SetSize(size, size)
             b:ClearAllPoints()
-            b:SetPoint("CENTER", self.track, "TOPLEFT", View.TimeToX(mark.t, length, self.trackW), y - ROW_H / 2)
+            b:SetPoint("CENTER", self.track, "TOPLEFT", View.TimeToX(mark.t, length, self.trackW), mid)
             b:SetFrameLevel((self.track:GetFrameLevel() or 0) + 5 - math.min(mark.age or 0, 4))
             local several = mark.deaths and #mark.deaths > 1
             b.count:SetText(several and tostring(#mark.deaths) or "")

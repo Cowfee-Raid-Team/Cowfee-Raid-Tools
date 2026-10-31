@@ -7,7 +7,7 @@ const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local dataSrc, dbSrc, refSrc, lanesSrc, refPageSrc, settingsTabSrc, pageSrc, journalSrc, regSrc, seasonSrc, nekSrc, reviewSrc, rehSrc, rehWinSrc, slashSrc, toggleSrc = ...
+local dataSrc, dbSrc, refSrc, lanesSrc, refPageSrc, settingsTabSrc, pageSrc, journalSrc, regSrc, seasonSrc, nekSrc, reviewSrc, rehSrc, rehWinSrc, slashSrc, toggleSrc, viewSrc = ...
 local strings, checks, edits, buttons, dropdowns, sliders = {}, {}, {}, {}, {}, {}
 pills = {}
 selectedTabButton = nil
@@ -157,6 +157,13 @@ CRT.db.timeline.nextId = 13
 assert(load(dbSrc, "Database.lua"))("CowfeeRaidTools", CRT)
 assert(load(refSrc, "Reference.lua"))("CowfeeRaidTools", CRT)
 assert(load(lanesSrc, "Lanes.lua"))("CowfeeRaidTools", CRT)
+-- the real View.PersonalNoteSize (CRT_Modules/Timeline/View.lua), loaded (after Lanes.lua, which it reads) on its own CRT table that reads this one's
+-- Timeline; the page keeps the stub view
+do
+  local own = setmetatable({}, { __index = CRT })
+  assert(load(viewSrc, "View.lua"))("CowfeeRaidTools", own)
+  CRT.TimelineView.PersonalNoteSize = rawget(own, "TimelineView").PersonalNoteSize
+end
 -- Boss library wiring (CRT_Data/Bosses/Registry.lua, then the tests' sample pack (CRT_Dev/Tests/SamplePack: test data, never the shipped season), then the ADDON_LOADED the game fires once every file has loaded).
 local function loadBosses(CRT, reg, season, nek)
   local real, handler = CreateFrame, nil
@@ -412,6 +419,32 @@ do
   assert(recHelp.pt[4] == 8 and recHelp.pt[5] > -200, "Recording moved up into the left column: " .. tostring(recHelp.pt[5]))
 end
 print("ok Settings has no Rows block")
+
+-- #1226: Personal note size, right under Icon size, with its range and step; it writes personalNoteSize and redraws
+do
+  local icon, own = find(sliders, "Icon size"), find(sliders, "Personal note size")
+  assert(own, "a Personal note size slider on Settings")
+  assert(own.pt[4] == icon.pt[4] and own.pt[5] == icon.pt[5] - 32, "right under Icon size, in View: " .. tostring(own.pt[5]) .. " vs " .. tostring(icon.pt[5]))
+  assert(own.opts.min == icon.opts.min and own.opts.max == icon.opts.max and own.opts.step == icon.opts.step, "the same range and step as Icon size")
+  local hide
+  for _, c in ipairs(checks) do if c.Label and c.Label.text == "Hide rows with no casts in this pull" then hide = c end end
+  assert(hide.pt[5] < own.pt[5], "Hide rows with no casts moved under it")
+  local help = helps["Personal note size"]
+  assert(help and helpTargets["Personal note size"] == own and help:find("only your own notes' flags", 1, true), "a (?) says it changes only your own notes' flags: " .. tostring(help))
+  -- unset it shows Icon size, and follows it
+  CRT.db.timeline.personalNoteSize = 0
+  T:Set("iconSize", 24)
+  assert(own.opts.get() == 24, "unset: it shows Icon size")
+  local before = view.refreshes
+  own.opts.set(26)
+  assert(T:Settings().personalNoteSize == 26 and own.opts.get() == 26, "the slider writes personalNoteSize")
+  assert(view.refreshes > before, "and the view redraws at once")
+  T:Set("iconSize", 20)
+  assert(own.opts.get() == 26, "once set, Icon size leaves it alone")
+  T:Set("iconSize", 22)
+  T:Set("personalNoteSize", 0)
+end
+print("ok Personal note size slider")
 print("ok fit button")
 
 -- new lines of the Journal abilities list are skinned (their tick)
@@ -1682,4 +1715,6 @@ for (const p of process.argv.slice(2, 17)) {
 }
 // CRT_Core/UI/Toggle.lua, found from Page.lua's place (CRT_Modules/Timeline/Page.lua)
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(path.dirname(process.argv[8]), '..', '..', 'CRT_Core', 'UI', 'Toggle.lua'), 'utf8')));
-if (lua.lua_pcall(L, 16, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+// CRT_Modules/Timeline/View.lua, beside Page.lua, for its View.PersonalNoteSize
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(path.dirname(process.argv[8]), 'View.lua'), 'utf8')));
+if (lua.lua_pcall(L, 17, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

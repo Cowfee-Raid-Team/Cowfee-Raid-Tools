@@ -1,7 +1,7 @@
 local ADDON, CRT = ...
 
 -- The Timeline page's Settings tab: the view (how much time is visible, the axis labels, the icon
--- size, Hide rows with no casts), the deaths filters, recording (with deleting the boss's pulls), and
+-- size, your own notes' size, Hide rows with no casts), the deaths filters, recording (with deleting the boss's pulls), and
 -- where the Timeline's tooltips open (the timeline area of UI/Tooltip.lua). Every control writes through
 -- Timeline:Set. Each row's own show or hide and your own spells are on the Advanced tab's Journal
 -- abilities (ReferencePage.lua, /crt dev only). The Timeline page builds it with Build(parent, ctx) and
@@ -34,12 +34,16 @@ local CHECKS_TO_SLIDER = 24 -- from the role checkboxes to First deaths only
 local DELETE_GAP = 10 -- above Delete this boss's pulls
 local SECTION_GAP = 10 -- from a section's last row to the next heading
 local VIEW_Y, DEATHS_Y = -8, -8
-local RECORDING_Y = VIEW_Y - HEADING_GAP - 3 * ROW_STEP - CHECK_STEP - SECTION_GAP
+local RECORDING_Y = VIEW_Y - HEADING_GAP - 4 * ROW_STEP - CHECK_STEP - SECTION_GAP
+-- Icon size's range and step, which Personal note size shares
+local ICON_SIZES = { min = 16, max = 32, step = 1 }
 local TOOLTIPS_Y = DEATHS_Y - HEADING_GAP - DROPDOWN_TO_CHECKS - CHECKS_TO_SLIDER - 2 * ROW_STEP - SECTION_GAP
 
 local TEXT = {
     hideEmpty = "Hide rows with no casts in this pull",
     viewHelp = "How much time is visible at once (the mouse wheel zooms too), how often the time axis is labelled, and how big the cast icons are. Auto labels the axis more often as you zoom in. Hide rows with no casts leaves out a recorded pull's rows with no cast in that pull, for every boss.",
+    personalSize = "Personal note size",
+    personalSizeHelp = "The size of your own notes' flags on the Personal notes row, and that row's height. It changes only your own notes' flags: raid note flags stay as they are.\n\nUntil you move it, it follows Icon size.",
     deathsHelp = "Whether deaths share one row or each player gets a row, which roles show, and whether only the first few deaths show (0 shows all). Overlay pulls is how many pulls the Deaths from the last pulls checkbox covers on the Review tab; the number there changes it too.",
 }
 
@@ -157,7 +161,19 @@ function SettingsTab.Build(f, ctx)
         end,
     }), f, LEFT_X, y)
     y = y - ROW_STEP
-    settingSlider(f, LEFT_X, y, "Icon size", "iconSize", 16, 32, 1)
+    settingSlider(f, LEFT_X, y, "Icon size", "iconSize", ICON_SIZES.min, ICON_SIZES.max, ICON_SIZES.step)
+    y = y - ROW_STEP
+    -- personalNoteSize: 0 (unset) shows and follows Icon size (View.PersonalNoteSize); moved, it keeps its own size
+    local personalSize = slider(f, LEFT_X, y, TEXT.personalSize, {
+        min = ICON_SIZES.min, max = ICON_SIZES.max, step = ICON_SIZES.step,
+        get = function()
+            return View.PersonalNoteSize()
+        end,
+        set = function(value)
+            Timeline:Set("personalNoteSize", value)
+        end,
+    })
+    UI.HelpRight(personalSize, TEXT.personalSize, TEXT.personalSizeHelp)
     y = y - ROW_STEP
     checkbox(f, LEFT_X, y, TEXT.hideEmpty, function()
         return settings().hideEmpty

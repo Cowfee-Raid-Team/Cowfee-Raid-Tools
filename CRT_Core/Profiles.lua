@@ -97,7 +97,7 @@ Profiles.SHARE = {
         season = false, history = false, nextId = false,
     },
     timeline = {
-        record = true, minPull = true, keep = true, span = true, grid = true, iconSize = true, deathRows = true, roles = true,
+        record = true, minPull = true, keep = true, span = true, grid = true, iconSize = true, personalNoteSize = true, deathRows = true, roles = true,
         firstDeaths = true, overlay = true, overlayOn = true, hideEmpty = true, popout = true, tooltipMode = true, tooltipSpot = true,
         popView = false, -- the pop-out's view: page state
         bosses = false, rows = false, references = false, nextRef = false, nextId = false,

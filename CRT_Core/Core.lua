@@ -357,6 +357,9 @@ local defaults = {
         span = 300, -- seconds visible
         grid = "auto", -- seconds between axis labels, or "auto" by the zoom (View.Ticks)
         iconSize = 22,
+        -- the Personal notes row's flags and height (Timeline/View.lua's View.PersonalNoteSize); 0 follows iconSize until
+        -- the Personal note size slider is moved
+        personalNoteSize = 0,
         deathRows = "combined", -- or "player"
         roles = { TANK = true, HEALER = true, DAMAGER = true },
         firstDeaths = 0, -- show only the first N deaths, 0 for all

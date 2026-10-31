@@ -49,9 +49,11 @@ CRT.THEME_MODERN = "cowfee" -- old saved data with the Modern look on
 --   muted        quiet text: the small note beside a window's title, a roll someone else won, the menu's group labels
 --   outline      a dark edge that must stand out on any fill: the alert bars' Border; the theme's darkest colour
 --   steelLight, steelDark   the lit (top, left) and shaded (bottom, right) edges of the Classic menu headers' bevel
+--   personal, personalEdge  your own reminders' flags on the Timeline: a blue fill and its lighter blue edge, apart from
+--                the raid note's accent flags
 CRT.THEME_KEYS = { "background", "surface", "border", "selected", "accent", "label", "heading", "text", "good",
     "warn", "bad", "knob", "knobBorder", "knobShine", "knobText", "check", "checkBorder", "titleTop", "titleBottom", "muted",
-    "outline", "steelLight", "steelDark" }
+    "outline", "steelLight", "steelDark", "personal", "personalEdge" }
 
 local function hex(h)
     return { tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255 }
@@ -96,6 +98,8 @@ CRT.THEMES = {
         outline = hex("1A120C"),
         steelLight = hex("C9CCD1"), -- the game's panel steel
         steelDark = hex("2E3033"),
+        personal = hex("3D7FD6"), -- a blue flag
+        personalEdge = hex("9CC7F5"), -- its lighter blue edge
     },
     midnight = {
         background = hex("050505"),
@@ -121,6 +125,8 @@ CRT.THEMES = {
         outline = hex("000000"),
         steelLight = hex("9E9E9E"), -- the muted grey
         steelDark = hex("2E2E2E"), -- the border grey
+        personal = hex("4A8BD8"), -- a blue flag
+        personalEdge = hex("A8CFF7"), -- its lighter blue edge
     },
     nitro = {
         background = hex("06080A"),
@@ -146,6 +152,8 @@ CRT.THEMES = {
         outline = hex("000000"),
         steelLight = hex("8A9DB0"), -- the muted blue-grey
         steelDark = hex("28313B"), -- the border
+        personal = hex("2F6BD6"), -- a blue flag
+        personalEdge = hex("9EC2FF"), -- its lighter blue edge
     },
     cowfee = {
         background = hex("17110E"), -- Cold Brew
@@ -171,6 +179,8 @@ CRT.THEMES = {
         outline = hex("17110E"), -- Cold Brew, the background
         steelLight = hex("D9B48A"), -- Hazelnut
         steelDark = hex("5A4231"), -- Walnut
+        personal = hex("3D7AC7"), -- a blue flag
+        personalEdge = hex("A3C9F0"), -- its lighter blue edge
     },
 }
 
