@@ -406,11 +406,16 @@ function Parser.JoinClassWords(words)
 end
 
 -- A label with its raid marker codes ({cross}, {rt7}, any case: the codes CRT.MarkerCodes knows) taken out, and
--- whether it had one. Other {..} codes stay in.
+-- whether it had one. Other {..} codes stay in. It needs CRT_Core/MarkerText.lua loaded first (the .toc does, and so
+-- must every test harness that reads a label): without it a label with braces raises an error here, never quietly
+-- refusing every marker as before.
 local function withoutMarkers(t)
-    local Codes = CRT.MarkerCodes
-    if not (Codes and t:find("{", 1, true)) then
+    if not t:find("{", 1, true) then
         return t, false
+    end
+    local Codes = CRT.MarkerCodes
+    if not Codes then
+        error("Notes/Parse.lua: CRT.MarkerCodes is missing; load CRT_Core/MarkerText.lua first", 2)
     end
     local had = false
     t = t:gsub("{([^{}]*)}", function(code)
