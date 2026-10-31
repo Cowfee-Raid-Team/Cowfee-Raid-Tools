@@ -168,7 +168,8 @@ local CRT = {
     overlayOn = false, hideEmpty = true, nextId = 1 },
     notes = { list = {}, nextId = 1, alert = {}, window = {} },
     groups = { presets = {}, nextId = 1, working = {} }, classCache = {}, roleCache = {}, ui = {} },
-  PALETTE = { accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, surface = { 0.165, 0.122, 0.098 }, text = { 0.95, 0.90, 0.84 } },
+  PALETTE = { accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, surface = { 0.165, 0.122, 0.098 }, text = { 0.95, 0.90, 0.84 },
+    personal = { 0.24, 0.50, 0.84 }, personalEdge = { 0.61, 0.78, 0.96 } },
 }
 local printed = {}
 function CRT:Print(m) printed[#printed + 1] = m end
@@ -636,6 +637,16 @@ do
   cx, cy = screenX(v, 80), laneY(laneIndex(v, "healers:me-home:31821"))
   hs.OnMouseDown(hs, "LeftButton") hs.OnMouseUp(hs, "LeftButton")
   check(#N:RawLines(1) == nLines + 1 and #R:List(3001) == 1 and printed[#printed]:find("for you", 1, true), "your own row: one of your reminders")
+  -- #1226: it is drawn with the personal edge, as on Personal notes; the raid note's casts keep the accent
+  do
+    local own = flagsOn(v, laneIndex(v, "healers:me-home:31821"))
+    local mineFlag
+    for _, f in ipairs(own) do if f.mark.mine then mineFlag = f end end
+    local E = CRT.PALETTE.personalEdge
+    check(mineFlag and mineFlag.edge.shown and mineFlag.edge.color[1] == E[1] and mineFlag.edge.color[3] == E[3],
+      "your own reminder on Healer CDs has the personal edge")
+    check(mineFlag and mineFlag.w == HV.CastW(), "and the cast icon's size, as every cast there")
+  end
   group.leader = true
   CRT.db.alerts.reminders = {}
   -- Abilities: every flag as before, the pooled ones put back; no shadow there

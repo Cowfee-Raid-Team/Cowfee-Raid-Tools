@@ -96,7 +96,9 @@ local CRT = {
     deathRows = "combined", roles = { TANK = true, HEALER = true, DAMAGER = true }, firstDeaths = 0, overlay = 3,
     overlayOn = false, hideEmpty = true, nextId = 1 },
     notes = { list = {}, nextId = 1, alert = {}, window = {} } },
-  PALETTE = { accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, surface = { 0.165, 0.122, 0.098 }, text = { 0.95, 0.90, 0.84 } },
+  PALETTE = { accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, surface = { 0.165, 0.122, 0.098 }, text = { 0.95, 0.90, 0.84 },
+    personal = { 0.24, 0.50, 0.84 }, personalEdge = { 0.61, 0.78, 0.96 } }, -- the harness's own (Themes.lua fills them in the game)
+  defaults = { timeline = { iconSize = 22 } }, -- Core.lua's Icon size default
   Groups = { ClassColor = function() return 1, 1, 1 end },
 }
 local printed = {}
@@ -370,7 +372,7 @@ do
   local notesLane = laneIndex(v, "Notes")
   local personal = laneIndex(v, "Personal notes")
   assert(notesLane == #v.lanes - 1 and personal == #v.lanes, "a Notes lane at the bottom, then Personal notes")
-  local accent, text = CRT.PALETTE.accent, CRT.PALETTE.text
+  local accent, personalColor = CRT.PALETTE.accent, CRT.PALETTE.personal
   local function check(t, mine, row, color, what)
     local f = flagAt(v, t, mine)
     assert(f, what .. ": no marker")
@@ -388,8 +390,8 @@ do
   check(20, false, soul, accent, "heroic spell line")
   check(25, false, soul, accent, "mythic spell line")
   check(75, false, notesLane, accent, "text line in P2")
-  check(40, true, personal, text, "reminder with a spell on Personal notes")
-  check(90, true, personal, text, "reminder without a spell on Personal notes")
+  check(40, true, personal, personalColor, "reminder with a spell on Personal notes")
+  check(90, true, personal, personalColor, "reminder without a spell on Personal notes")
   -- a marker over a cast icon stays the one clicked: its level is above every icon's
   local topIcon = 0
   for _, b in ipairs(v.icons) do if b.level and b.level > topIcon then topIcon = b.level end end
@@ -877,10 +879,10 @@ do
     local v, id = setup("P1 0:40")
     CRT.AlertReminders:Save(3001, nil, { text = "By icon", times = "P1 0:55", boss = "Nek", iconID = 135940 })
     v:Refresh()
-    local accent, text = CRT.PALETTE.accent, CRT.PALETTE.text
+    local accent, edge = CRT.PALETTE.accent, CRT.PALETTE.personalEdge
     local rem = flagAt(v, 40, true)
     assert(rem.icon.shown and rem.icon.tex == "tex4343", "reminder with a spell shows its icon: " .. tostring(rem.icon.tex))
-    assert(rem.edge.shown and rem.edge.color[1] == text[1] and rem.edge.color[2] == text[2], "text-coloured edge on your reminder")
+    assert(rem.edge.shown and rem.edge.color[1] == edge[1] and rem.edge.color[2] == edge[2], "the personal edge on your reminder")
     assert(rem.head.shown == false, "no flag head under an icon")
     assert(rem.icon.w == 18 and rem.icon.h == 18 and rem.w == 20 and rem.h == 20, "the icon sits inside the 20 x 20 button")
     local note = flagAt(v, 20, false)
@@ -1127,6 +1129,73 @@ do
   end
   print("ok personal: double-click makes a personal alert")
 
+  -- #1226: your own reminders' flags are blue, with their own size (Personal note size) -----------------------------
+  do
+    local S = CRT.db.timeline
+    local v = setup("P1 0:40")
+    CRT.AlertReminders:Save(3001, nil, { text = "No spell", times = "P1 0:55", boss = "Nek" })
+    v:Refresh()
+    local P, E, accent = CRT.PALETTE.personal, CRT.PALETTE.personalEdge, CRT.PALETTE.accent
+    local function same(c, want) return c and math.abs(c[1] - want[1]) < 1e-6 and math.abs(c[2] - want[2]) < 1e-6 and math.abs(c[3] - want[3]) < 1e-6 end
+    local personal = laneIndex(v, "Personal notes")
+    -- the colours are the theme's personal keys (the style guide's), read when drawing
+    local plain, withIcon = flagAt(v, 55, true), flagAt(v, 40, true)
+    assert(same(plain.head.color, P) and same(plain.pole.color, P), "a personal flag is the personal blue")
+    assert(plain.rim and plain.rim.shown and same(plain.rim.color, E), "with the lighter personal edge round its head")
+    assert(withIcon.edge.shown and same(withIcon.edge.color, E) and not withIcon.rim.shown, "a personal spell icon has the personal edge")
+    -- raid note flags as they were: accent, 20 px button, 12 x 14 flag, no edge round the head
+    local raidIcon, raidText = flagAt(v, 20, false), flagAt(v, 45, false)
+    assert(same(raidIcon.edge.color, accent) and raidIcon.w == 20 and raidIcon.h == 20 and raidIcon.icon.w == 18, "a raid note line with a spell is unchanged")
+    assert(same(raidText.head.color, accent) and same(raidText.pole.color, accent) and raidText.head.w == 12 and raidText.head.h == 14
+      and raidText.pole.h == 24 and raidText.w == 20 and not raidText.rim.shown, "a raid note text flag is unchanged")
+    -- unset (Core.lua's 0, or nothing saved) follows Icon size: the row as every row, the flags as raid flags
+    assert((S.personalNoteSize or 0) == 0 and View.PersonalNoteSize() == 22, "unset: Personal note size is Icon size's 22")
+    CRT.Timeline:Set("iconSize", 28)
+    v:Refresh()
+    assert(View.PersonalNoteSize() == 28 and v:RowH(personal) == View.RowHeight(28) and v.labels[personal].h == View.RowHeight(28),
+      "unset: Icon size 28 makes the Personal notes row " .. View.RowHeight(28) .. " high: " .. tostring(v.labels[personal].h))
+    plain = flagAt(v, 55, true)
+    assert(plain.w == 20 and plain.head.w == 12 and plain.head.h == 14 and plain.pole.h == View.RowHeight(28) - 6, "unset: a personal flag is a raid flag's size")
+    S.personalNoteSize = 0
+    v:Refresh()
+    assert(View.PersonalNoteSize() == 28, "0 is unset too")
+    -- set: it sizes the personal flags and the Personal notes row, by the same row rule; Icon size leaves them alone
+    CRT.Timeline:Set("iconSize", 22)
+    CRT.Timeline:Set("personalNoteSize", 26)
+    v:Refresh()
+    local rowH = View.RowHeight(26)
+    assert(View.PersonalNoteSize() == 26 and v:RowH(personal) == rowH and v.labels[personal].h == rowH and v.labels[1].h == 30,
+      "set to 26: the Personal notes row is " .. rowH .. ", the others stay 30: " .. tostring(v.labels[personal].h))
+    plain, withIcon = flagAt(v, 55, true), flagAt(v, 40, true)
+    assert(plain.w == 24 and plain.h == 24 and plain.head.w == 14 and plain.head.h == 17 and plain.pole.h == rowH - 6,
+      "set to 26: a personal flag grows by 26/22: " .. tostring(plain.w) .. " " .. tostring(plain.head.w) .. "x" .. tostring(plain.head.h))
+    assert(plain.head.pt[4] == 5 and plain.pt[5] == -(personal - 1) * 30, "its flag centred in its button, at its row's top")
+    assert(withIcon.w == 24 and withIcon.icon.w == 22, "a personal spell icon grows too")
+    raidText = flagAt(v, 45, false)
+    assert(raidText.w == 20 and raidText.head.w == 12 and raidText.head.h == 14 and raidText.pole.h == 24, "raid flags stay as they are")
+    CRT.Timeline:Set("iconSize", 18)
+    v:Refresh()
+    plain = flagAt(v, 55, true)
+    assert(v:RowH(personal) == rowH and v.labels[personal].h == rowH and plain.w == 24 and v.labels[1].h == View.RowHeight(18),
+      "once set, Icon size leaves the personal flags and their row alone")
+    assert(plain.pt[5] == -(personal - 1) * View.RowHeight(18), "the Personal notes row starts under the shorter rows")
+    -- the row's taller part is still the row: the cursor and the view's height count it
+    local top = (personal - 1) * View.RowHeight(18)
+    assert(v:LaneAtY(top + rowH - 1) == v.lanes[personal] and v:LaneAtY(top + rowH + 1) == nil, "the cursor finds the Personal notes row at its own height")
+    assert(v:ContentHeight() == (v.axisH or 20) + top + rowH + v.stripH + 16 + 10 + 4, "the view's height counts it")
+    -- a selected personal flag's bands fill its own row
+    local bands, realCD = {}, CRT.AlertCooldowns
+    CRT.AlertCooldowns = { Length = function(_, id) return id == 4343 and 30 or nil end, List = function() return {} end, Filter = function() return "mine" end }
+    v:Select(flagAt(v, 40, true).mark)
+    for _, t in ipairs(v.bandTex or {}) do if t:IsShown() and t.h > 1 then bands[#bands + 1] = t end end
+    v:ClearSelection()
+    CRT.AlertCooldowns = realCD
+    S.personalNoteSize = 0
+    S.iconSize = 22
+    assert(#bands > 0 and bands[1].h == rowH - 4 and bands[1].pt[5] == -top - 2, "a personal flag's bands span its own row: " .. tostring(bands[1] and bands[1].h))
+  end
+  print("ok personal: blue flags with their own size")
+
   do
     local v, id = setup("P1 0:40")
     asMember()
@@ -1291,7 +1360,7 @@ do
   -- CRT_Modules/Alerts/Cooldowns.lua's Length, as the list would give it: 4242 lasts 60 s, 5151 30 s, anything else unknown
   local lengths = { [4242] = 60, [5151] = 30 }
   CRT.AlertCooldowns = { Length = function(_, id) return lengths[id] end, List = function() return {} end, Filter = function() return "mine" end }
-  local accent, text, red = CRT.PALETTE.accent, CRT.PALETTE.text, { 0.89, 0.29, 0.29 }
+  local accent, text, red = CRT.PALETTE.accent, CRT.PALETTE.personalEdge, { 0.89, 0.29, 0.29 } -- text: your reminders' colour, the personal edge (#1226)
   local HEAD = "EncounterID:3001;Difficulty:Heroic;Name:Nek\\n"
   local function setup(lines, rems)
     CRT.db.notes.list = { [1] = { raw = HEAD .. table.concat(lines or {}, "\\n"), encounterID = 3001, difficulty = "Heroic", name = "Nek" } }
@@ -1347,7 +1416,7 @@ do
     click(v, b)
     assert(outlined(b) and not outlined(a), "the selection moved")
     local personal = laneIndex(v, "Personal notes")
-    assert(bandAt(v, 0, 40, text) and bandAt(v, 40, 100, text), "the reminder's bands, in its own colour, clamped at 0")
+    assert(bandAt(v, 0, 40, CRT.PALETTE.personalEdge) and bandAt(v, 40, 100, CRT.PALETTE.personalEdge), "the reminder's bands, in its own colour (the personal edge), clamped at 0")
     assert(not bandAt(v, 60, 180), "the first flag's bands are gone")
     assert(shown(v)[1].pt[5] == -(personal - 1) * 30 - 2, "on the Personal notes row")
     -- a click on empty track clears
