@@ -105,6 +105,7 @@ Profiles.SHARE = {
         reviewRefs = false, -- which ability timeline is in use: your own ones' keys mean nothing on another computer
         healerRows = false, -- the Healer CDs rows you picked per player stay on this computer
         healerSlots = false, -- the healer slots you planned per boss are boss data, not settings
+        healerOrder = false, healerSpellOrder = false, -- your Healer CDs order: view data, sent with a pushed note
         importWindow = true, importReplace = true, -- Import reminders' place and its Replace tick
     },
     team = { threshold = false, list = false, popup = true, keepApart = false }, -- your team names (and the Season Stats saved under them) stay yours

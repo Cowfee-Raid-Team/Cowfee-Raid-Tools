@@ -11,6 +11,7 @@ CRT.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetad
 -- each module declares its tables kept per boss with Bosses:DeclareStore or DeclareField (CRT_Data/Bosses/Registry.lua).
 --   timeline.bosses, rows, reviewRefs, orders, ignored, abilities, pullNumberBackup (Timeline/Data.lua)
 --   timeline.healerSlots (Healer CDs' healer slots per boss, Timeline/HealerSlots.lua)
+--   timeline.healerOrder (Healer CDs' healer order per boss, Timeline/HealerOrder.lua)
 --   alerts.reminders, anyBackup (Alerts/Reminders.lua), alerts.phases (Alerts/Phases.lua), alerts.special (Alerts/Special.lua),
 --   alerts.shieldPulls (Alerts/ShieldPulls.lua)
 --   pace.own, shared, use, disabled (Pace/Data.lua); markers.disabled (Markers/Display.lua)
@@ -25,6 +26,7 @@ CRT.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetad
 --   earlier texts), CRTLootDB (Loot History, its own saved variable), timeline.references (your own ability timelines)
 --   notes.personalShifts (your own Healer CDs times, by note id: they follow the notes and go with a deleted note)
 --   timeline.healerRows (the spell rows you showed or hid per player on Healer CDs, Timeline/HealerRows.lua)
+--   timeline.healerSpellOrder (the order of each healer's spell rows on Healer CDs, Timeline/HealerOrder.lua)
 --   longTerm: the area for new long-term data. Anything new that should outlast a season goes under it, never
 --   declared; nothing has moved into it, and the stores above stay where they are.
 
@@ -393,6 +395,12 @@ local defaults = {
         -- Healer CDs' healer slots per boss, every difficulty: [encounterID] = { { spec = SpecializationID, n = number,
         -- player = "Name-Realm" or nil } } (Timeline/HealerSlots.lua). Per season, declared for the purge.
         healerSlots = {},
+        -- Healer CDs' healer order per boss: [encounterID] = { healer key, ... } (Timeline/HealerOrder.lua). Per season,
+        -- declared for the purge. A pushed note from the raid leader or an assistant replaces it (HealerOrderShare.lua).
+        healerOrder = {},
+        -- Healer CDs' spell row order per healer, on every boss: [player key in lower case, or "spec:<SpecializationID>"
+        -- for an open slot] = { spellID, ... } (Timeline/HealerOrder.lua). Long term.
+        healerSpellOrder = {},
         -- Import reminders (Timeline/ImportWindow.lua): the window's place, and its Replace what I imported before tick
         importWindow = {},
         importReplace = true,

@@ -536,7 +536,8 @@ do
   check(nf and nf.pt[1] == "TOPLEFT" and nf.w == 20 and nf.pole.shown and nf.pt[5] == -(notesRow - 1) * 30, "a Notes row line keeps its flag")
   check(sf and sf.pt[1] == "TOPLEFT" and sf.w == 20 and sf.pole.shown and sf.icon.w == 18, "so does a line on an ability row")
   -- the hint line
-  check(v.unknownText:GetText() == "Click a row to add a cast" .. DOT .. "drag a cast to move it" .. DOT .. "drag across the track to zoom",
+  check(v.unknownText:GetText() == "Click a row to add a cast" .. DOT .. "drag a cast to move it" .. DOT .. "drag a name to reorder" .. DOT
+    .. "drag across the track to zoom",
     "the hint line: " .. tostring(v.unknownText:GetText()))
 
   -- the shadow: hovering an empty spot of a cooldown row

@@ -15,7 +15,8 @@ local ADDON, CRT = ...
 -- with byte 0 (not allowed in addon messages) and the escape byte 1 written as two bytes each.
 -- Version 0.12 and earlier sent plain text under CRTNote, "<id>|<part>|<total>|<text>", which is
 -- still received so older senders keep working. Only a raid leader or assistant can share, and by
--- default notes are only accepted from them.
+-- default notes are only accepted from them. A boss's note takes its Healer CDs order with it
+-- (Timeline/HealerOrderShare.lua, its own prefix).
 
 local Notes = CRT.Notes
 local Comm = {}
@@ -263,6 +264,15 @@ function Comm:Share(id)
     end
     Notes:Fire()
     sendParts()
+    -- the boss's Healer CDs order goes with its note, on its own prefix (Timeline/HealerOrderShare.lua); an error there
+    -- never stops the note
+    local OrderShare = CRT.HealerOrderShare
+    if OrderShare and type(record.encounterID) == "number" then
+        local ok, err = pcall(OrderShare.Push, OrderShare, record.encounterID, id)
+        if not ok and geterrorhandler then
+            geterrorhandler()(err)
+        end
+    end
 end
 
 -- Receiving ---------------------------------------------------------------------------------------

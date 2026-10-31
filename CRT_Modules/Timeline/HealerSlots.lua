@@ -402,6 +402,35 @@ function Slots.Add(ctx, spec)
     return s
 end
 
+-- Healer CDs' order (Timeline/HealerOrder.lua) -----------------------------------------------------------------------
+-- A slot's block keeps its place in the boss's saved order as its key changes: its player's key, else "slot:<spec>:<n>".
+
+local function orderKey(s)
+    return s.player and s.player:lower() or ("slot:" .. s.spec .. ":" .. s.n)
+end
+
+local function rekey(encounterID, old, new, keepOld)
+    local Order = CRT.TimelineHealerOrder
+    if Order and Order.Rekey then
+        Order.Rekey(encounterID, old, new, keepOld)
+    end
+end
+
+-- Whether key (lower case) is a healer on the roster, so a block of their own once they leave a slot.
+local function rosterHealer(key)
+    local HV = CRT.TimelineHealerView
+    local ok, players = false, nil
+    if HV and HV.Players then
+        ok, players = pcall(HV.Players)
+    end
+    for _, p in ipairs(ok and type(players) == "table" and players or {}) do
+        if p.role == "HEALER" and type(p.key) == "string" and p.key:lower() == key then
+            return true
+        end
+    end
+    return false
+end
+
 -- Assigns player name ("Name" or "Name-Realm") to slot s: its lines (by its word, or by the player it had) name them.
 function Slots.Assign(ctx, s, name)
     local Groups = CRT.Groups
@@ -411,6 +440,13 @@ function Slots.Assign(ctx, s, name)
     end
     if canEditRaid() then
         eachLine(ctx, s, withTag(Groups and Groups.Display and Groups.Display(key) or key))
+    end
+    -- the slot's block keeps its place on Healer CDs under the new player's key (the open slot's, or the old player's;
+    -- an old player who is a roster healer keeps theirs, the new one right after)
+    local Order = CRT.TimelineHealerOrder
+    if Order and Order.SlotAssigned then
+        local old = orderKey(s)
+        Order.SlotAssigned(ctx.encounterID, old, key, s.spec, s.player ~= nil and rosterHealer(old))
     end
     local saved = Slots.Ensure(ctx.encounterID, s) or {}
     saved.player, s.player = key, key
@@ -425,6 +461,9 @@ function Slots.Clear(ctx, s)
     if canEditRaid() then
         eachLine(ctx, s, withTag(Slots.Word(s, ctx.list)))
     end
+    -- the slot's key back at the player's place, or right after it when they stay a block of their own
+    local old = orderKey(s)
+    rekey(ctx.encounterID, old, "slot:" .. s.spec .. ":" .. s.n, rosterHealer(old))
     local saved = Slots.Ensure(ctx.encounterID, s) or {}
     saved.player, s.player = nil, nil
     return true
@@ -468,9 +507,12 @@ function Slots.ChangeSpec(ctx, s, spec, confirmed)
             return withTag(name or word)(t, i)
         end)
     end
+    local oldKey, hadPlayer = orderKey(s), s.player
     local saved = Slots.Ensure(ctx.encounterID, s) or {}
     saved.spec, saved.n, saved.player = spec, n, player
     s.spec, s.n, s.player = spec, n, player
+    -- the slot's new key keeps its place; a player taken off who is a roster healer keeps theirs too
+    rekey(ctx.encounterID, oldKey, orderKey(s), hadPlayer and not player and rosterHealer(oldKey))
     return true
 end
 
@@ -486,6 +528,9 @@ function Slots.Remove(ctx, s, confirmed)
         if count > 0 then
             eachLine(ctx, s, leave)
         end
+    end
+    if not s.player then
+        rekey(encounterID, orderKey(s), nil) -- so a new slot with its number doesn't take its old place
     end
     local saved = s.saved
     local all = store(encounterID, false)
