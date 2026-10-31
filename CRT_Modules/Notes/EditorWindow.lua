@@ -892,35 +892,33 @@ local function buildLeft(c)
     end)
 end
 
+-- A skinned check box with its label right of it and the label's (?): the box and the label.
+local function checkBox(c, label, helpTitle, help, onClick)
+    local box = CreateFrame("CheckButton", nil, c, "UICheckButtonTemplate")
+    box:SetSize(24, 24)
+    UI:SkinCheckButton(box)
+    box:SetScript("OnClick", onClick)
+    local text = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    text:SetPoint("LEFT", box, "RIGHT", 2, 0)
+    text:SetText(label)
+    UI.HelpRight(text, helpTitle, help)
+    return box, text
+end
+
 local function buildFooter(c)
-    local quick = CreateFrame("CheckButton", nil, c, "UICheckButtonTemplate")
-    quick:SetSize(24, 24)
-    quick:SetPoint("BOTTOMLEFT", -2, 0)
-    UI:SkinCheckButton(quick)
-    quick:SetScript("OnClick", function(self)
+    local quick, quickText = checkBox(c, TEXT.quickFill, TEXT.helpTitle, TEXT.help, function(self)
         if W.session then
             W.session:SetQuickFill(self:GetChecked())
             Editor.Refresh()
         end
     end)
-    local quickText = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    quickText:SetPoint("LEFT", quick, "RIGHT", 2, 0)
-    quickText:SetText(TEXT.quickFill)
-    UI.HelpRight(quickText, TEXT.helpTitle, TEXT.help)
+    quick:SetPoint("BOTTOMLEFT", -2, 0)
     W.quick = quick
     -- Send my roster with the note: at the foot of the palette's column, over Push note
-    local roster = CreateFrame("CheckButton", nil, c, "UICheckButtonTemplate")
-    roster:SetSize(24, 24)
-    roster:SetPoint("BOTTOMLEFT", c, "BOTTOMRIGHT", -L.paletteW - 2, L.footerH + 2)
-    UI:SkinCheckButton(roster)
-    roster:SetScript("OnClick", function(self)
+    W.roster = checkBox(c, TEXT.roster, TEXT.rosterHelpTitle, TEXT.rosterHelp, function(self)
         Notes:Set(nil, "pushRoster", self:GetChecked() and true or false)
     end)
-    local rosterText = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    rosterText:SetPoint("LEFT", roster, "RIGHT", 2, 0)
-    rosterText:SetText(TEXT.roster)
-    UI.HelpRight(rosterText, TEXT.rosterHelpTitle, TEXT.rosterHelp)
-    W.roster = roster
+    W.roster:SetPoint("BOTTOMLEFT", c, "BOTTOMRIGHT", -L.paletteW - 2, L.footerH + 2)
     W.close = UI.PanelButton(c, TEXT.close, 24, function()
         W.window:Hide()
     end)
