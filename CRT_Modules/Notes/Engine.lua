@@ -18,8 +18,10 @@ local claiming   -- true while Engine:Start starts the engine run for its note
 
 local TOKEN_SECONDS = 5 -- how long the words that match you (or the player previewed as) are kept
 
--- Melee damage specializations, used for the "melee" and "ranged" tags. Tanks and healers match
--- "tank" and "healer" instead. A spec not listed counts as ranged.
+-- Melee specializations, used for the "melee" and "ranged" tags: the melee damage specs, and the two melee
+-- healers. A spec not listed counts as ranged. The note alerts read it only for a DPS (a tank or healer matches
+-- "tank" or "healer" instead); the reminders' importer also places healers by it, and every tank as melee
+-- (Timeline/ImportReminders.lua).
 local MELEE_SPECS = {
     [70] = true, -- Retribution Paladin
     [71] = true, [72] = true, -- Arms, Fury Warrior
@@ -31,6 +33,14 @@ local MELEE_SPECS = {
     [255] = true, -- Survival Hunter
     [263] = true, -- Enhancement Shaman
 }
+-- The melee healers, Holy Paladin and Mistweaver Monk, by their spec words' SpecializationIDs (Notes/SpecWords.lua,
+-- which loads first), so each ID is written in one place.
+for _, word in ipairs({ "HolyPaladin", "Mistweaver" }) do
+    local e = CRT.NoteSpecs and CRT.NoteSpecs.Read and CRT.NoteSpecs.Read(word)
+    if e then
+        MELEE_SPECS[e.spec] = true
+    end
+end
 -- The one list: the reminders' importer reads it too (Timeline/ImportReminders.lua's melee and ranged tags).
 Engine.MELEE_SPECS = MELEE_SPECS
 

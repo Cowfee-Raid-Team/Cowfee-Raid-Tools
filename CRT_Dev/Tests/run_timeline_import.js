@@ -380,7 +380,7 @@ check("tags: a player's name, with or without realm, any case", function()
 end)
 
 check("tags: each kind matches and fails", function()
-  local me = { name = "Solex", realm = "Area52", classID = 11, classFile = "DRUID", specID = 105, role = "HEALER", group = 3 }
+  local me = { name = "Solex", realm = "Area52", classID = 11, classFile = "DRUID", specID = 105, role = "HEALER", position = "ranged", group = 3 }
   local function is(tag, want, wantKind, wantWhy)
     local ok, why, kind = I.ForPlayer(tag, me)
     assert(ok == want and kind == wantKind, tag .. ": " .. tostring(ok) .. " " .. tostring(kind) .. " " .. tostring(why))
@@ -398,8 +398,8 @@ check("tags: each kind matches and fails", function()
   is("105", true, "spec")
   is("Dots, Bob", false, nil, "for another tag (Dots, Bob)") is("x1", false, nil, "for another tag (x1)")
   is("Group3", true, "group") is("GROUP3", true, "group") is("Group1", false, "group", "for another group (1)") is("group9", false, nil)
-  -- a healer is neither melee nor ranged, as the note alerts read them
-  is("melee", false, "position", "for another position (Melee)") is("ranged", false, "position", "for another position (Ranged)")
+  -- a Restoration Druid is a ranged healer
+  is("melee", false, "position", "for another position (Melee)") is("ranged", true, "position")
   local arms = { name = "Solex", classID = 1, classFile = "WARRIOR", specID = 71, role = "DAMAGER", position = "melee", group = 1 }
   assert(I.ForPlayer("melee", arms) == true and I.ForPlayer("71", arms) == true and I.ForPlayer("1", arms) == true, "an Arms Warrior")
   local okR, whyR = I.ForPlayer("ranged", arms)
@@ -471,16 +471,16 @@ check("twin fangs: spell icon and name, speech and display on the reminder", fun
   assert(circle.text == "Spell383410" and circle.group == "mythic" and circle.import.text == "", "the spell's name: " .. tostring(circle.text))
   local items = R:Items(3421, 1, circle)
   assert(items[1].spellID == 383410 and items[1].icon == "tex383410", "the spell's icon")
-  -- TTS + countdown 5: the text, then 3, 2, 1 (the nearest the reminders count)
-  assert(circle.outputs.speech == true and circle.speech == "textcount" and circle.speakAt == nil, "text and count: " .. tostring(circle.speech))
+  -- TTS + countdown 5: the text, then 5, 4, 3, 2, 1
+  assert(circle.outputs.speech == true and circle.speech == "textcount" and circle.speakAt == nil and circle.countFrom == 5, "text and count: " .. tostring(circle.speech))
   assert(circle.import.countdown == 5 and circle.import.tagKind == "player", "the count kept")
-  local spoken = {}
-  for _, s in ipairs(items[1].speech) do spoken[#spoken + 1] = s.text .. "@" .. ("%g"):format(s.offset) end
-  assert(table.concat(spoken, " ") == "Spell383410@8 3@3 2@2 1@1", table.concat(spoken, " "))
+  local function said(list) local o = {} for _, s in ipairs(list) do o[#o + 1] = s.text .. "@" .. ("%g"):format(s.offset) end return table.concat(o, " ") end
+  assert(said(items[1].speech) == "Spell383410@8 5@5 4@4 3@3 2@2 1@1", said(items[1].speech))
   -- DisplayType Circle: the circle, with the new alert's defaults
   assert(circle.outputs.circle and circle.outputs.alert and circle.outputs.bar and not circle.outputs.text, "Circle")
-  -- TTS + TTSTimer 3 with Show from 8: spoken at the nearer of 8 and 0 seconds, so at the time
-  assert(timer.speech == "text" and timer.speakAt == "zero" and timer.import.ttsTimer == 3, "TTSTimer: " .. tostring(timer.speakAt))
+  -- TTS + TTSTimer 3: Before 0, 3 s (the default, so saved as nothing)
+  assert(timer.speech == "text" and timer.speakAt == "before" and R.SpeakBefore(timer) == 3 and timer.import.ttsTimer == 3, "TTSTimer: " .. tostring(timer.speakAt))
+  assert(said(R:Items(3421, 3, timer)[1].speech) == "Spell22812@3", "said 3 s before")
   assert(timer.outputs.text and timer.outputs.alert and timer.outputs.bar and not timer.outputs.circle, "Text")
   -- no TTS: silent; DisplayType Text; no spell, no text: the placeholder
   assert(druid.outputs.speech == false and druid.outputs.text and druid.text == I.TEXT.placeholder and druid.import.tagKind == "class", "the Druid line")
@@ -491,16 +491,20 @@ check("twin fangs: spell icon and name, speech and display on the reminder", fun
   fresh()
 end)
 
-check("speech rules: TTS, countdown and TTSTimer onto Read out", function()
-  local function sp(line, warn) local a, b, c = I.Speech(line, warn) return tostring(a) .. "/" .. tostring(b) .. "/" .. tostring(c) end
-  assert(sp({}, 8) == "false/false/nil", "no TTS: silent")
-  assert(sp({ tts = false, countdown = 5 }, 8) == "false/true/nil", "a count alone")
-  assert(sp({ tts = true }, 8) == "true/false/nil", "the text when it shows")
-  assert(sp({ tts = true, ttsTimer = 3 }, 8) == "true/false/zero", "3 s: nearer the time")
-  assert(sp({ tts = true, ttsTimer = 6 }, 8) == "true/false/nil", "6 s: nearer the show")
-  assert(sp({ tts = true, ttsTimer = 4 }, 8) == "true/false/nil", "half way: when it shows")
-  assert(sp({ tts = true, countdown = 0 }, 8) == "true/false/nil", "a count of 0 counts nothing")
-  assert(sp({ tts = "Testing" }, 8) == "true/false/nil" and I.Words({ tts = "Testing" }) == "Testing" and I.Words({ tts = true }) == nil, "TTS words")
+check("speech rules: TTS, countdown and TTSTimer onto Read out, exactly", function()
+  local function s(v) return type(v) == "number" and ("%g"):format(v) or tostring(v) end
+  local function sp(line) local a, b, c, d, e = I.Speech(line) return table.concat({ s(a), s(b), s(c), s(d), s(e) }, "/") end
+  assert(sp({}) == "false/false/nil/nil/nil", "no TTS: silent")
+  assert(sp({ tts = false, countdown = 5 }) == "false/true/nil/5/nil", "a count alone, from 5")
+  assert(sp({ tts = true }) == "true/false/nil/nil/nil", "the text when it shows")
+  assert(sp({ tts = true, ttsTimer = 3 }) == "true/false/before/nil/3", "3 s before")
+  assert(sp({ tts = true, ttsTimer = 2.3 }) == "true/false/before/nil/2.5", "on the nearest half second")
+  assert(sp({ tts = true, ttsTimer = 0 }) == "true/false/zero/nil/nil", "0: At 0")
+  assert(sp({ tts = true, ttsTimer = 30 }) == "true/false/before/nil/10", "past 10 s: 10")
+  assert(sp({ tts = false, ttsTimer = 3 }) == "false/false/nil/nil/nil", "no TTS: the timer says nothing")
+  assert(sp({ tts = true, countdown = 2 }) == "true/true/nil/3/nil" and sp({ tts = true, countdown = 15 }) == "true/true/nil/10/nil", "a count under 3 or over 10: the nearest")
+  assert(sp({ tts = true, countdown = 0 }) == "true/false/nil/nil/nil", "a count of 0 counts nothing")
+  assert(sp({ tts = "Testing" }) == "true/false/nil/nil/nil" and I.Words({ tts = "Testing" }) == "Testing" and I.Words({ tts = true }) == nil, "TTS words")
 end)
 
 check("tag sample: each tag kind, as a Druid and as an Arms Warrior", function()
@@ -522,10 +526,29 @@ check("tag sample: each tag kind, as a Druid and as an Arms Warrior", function()
   local kinds = {}
   for _, r in ipairs(plan.bosses[1].reminders) do kinds[#kinds + 1] = r.import.tagKind end
   assert(table.concat(kinds, ",") == "everyone,player,class,spec,position", table.concat(kinds, ","))
-  -- Protection: the tank line too
+  -- Protection: the tank line too, and every tank is melee
   specID, role = 73, "TANK"
   plan = I.Plan(I.Parse(TAGS), I.Me())
-  assert(plan.count == 5 and reasons(plan):find("for another spec (Arms)", 1, true) and reasons(plan):find("for another position (Melee)", 1, true), reasons(plan))
+  assert(plan.count == 6 and reasons(plan):find("for another spec (Arms)", 1, true) and not reasons(plan):find("position", 1, true), reasons(plan))
+  fresh()
+end)
+
+check("positions: every tank melee, Holy Paladin and Mistweaver melee healers, other healers ranged", function()
+  fresh()
+  local E = CRT.NoteEngine
+  local Specs = CRT.NoteSpecs
+  assert(E.MELEE_SPECS[Specs.Read("HolyPaladin").spec] and E.MELEE_SPECS[Specs.Read("Mistweaver").spec], "the two melee healers, from the spec words")
+  for _, w in ipairs({ "RestoDruid", "PresEvoker", "DiscPriest", "HolyPriest", "RestoShaman" }) do
+    assert(not E.MELEE_SPECS[Specs.Read(w).spec], w .. " is ranged")
+  end
+  local function pos(r, spec)
+    role, specID = r, spec
+    return I.Me().position
+  end
+  assert(pos("TANK", 73) == "melee" and pos("TANK", nil) == "melee", "tanks")
+  assert(pos("HEALER", Specs.Read("HolyPaladin").spec) == "melee" and pos("HEALER", Specs.Read("Mistweaver").spec) == "melee", "melee healers")
+  assert(pos("HEALER", 105) == "ranged", "a Resto Druid")
+  assert(pos("DAMAGER", 71) == "melee" and pos("DAMAGER", 102) == "ranged", "DPS as before")
   fresh()
 end)
 

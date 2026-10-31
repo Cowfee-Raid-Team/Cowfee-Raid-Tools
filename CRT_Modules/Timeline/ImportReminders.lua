@@ -28,8 +28,9 @@ local ADDON, CRT = ...
 --
 -- Saved data (additive): each imported reminder has import = { source = Import.SOURCE, tag, tagKind, ph, time, dur,
 -- text, countdown, ttsTimer, extra, bossExtra } (text only when the line's was empty; countdown and ttsTimer the
--- line's own numbers, kept since the reminders can't say them exactly; extra and bossExtra only when there are
--- unknown fields). Its spell is the reminder's own spellID.
+-- line's own numbers, as written before they are fitted to the reminder's ranges; extra and bossExtra only when
+-- there are unknown fields). Its spell is the reminder's own spellID; the count, Before 0 and TTS words are its
+-- countFrom, speakAt/speakBefore and speakText (Alerts/Reminders.lua).
 -- Replace deletes only reminders whose import.source is Import.SOURCE, for the bosses and difficulty groups pasted.
 -- It never touches a note, for a raid leader or a raider: only CRT.db.alerts.reminders.
 
@@ -361,11 +362,12 @@ local function subgroup()
     return nil
 end
 
--- Melee or ranged: a DPS spec in the note alerts' melee list (Notes/Engine.lua's MELEE_SPECS) is melee, any other
--- DPS ranged; a tank or healer is neither, as the note alerts read the tags.
+-- Melee or ranged, for everyone (Alex, 2026-10-31): every tank is melee; a healer or DPS is melee when its spec is in
+-- the shared melee list (Notes/Engine.lua's MELEE_SPECS: the melee damage specs, Holy Paladin and Mistweaver Monk),
+-- else ranged.
 local function positionOf(role, specID)
-    if role ~= "DAMAGER" then
-        return nil
+    if role == "TANK" then
+        return "melee"
     end
     local E = CRT.NoteEngine
     local melee = E and E.MELEE_SPECS
@@ -587,20 +589,30 @@ end
 --   no TTS (or TTS:false)  nothing is read out
 --   TTS:true               the text (or the spell's name) is read out when the alert shows, Show from before its time;
 --   TTS:<words>            those words instead (Import.Words)
---   countdown:N            a spoken count to the time. The reminders count only 3, 2, 1, so any N above 0 is that
---                          (the nearest they have; N is kept in import.countdown)
---   TTSTimer:N             read out N seconds before the time. The reminders read out either when the alert shows
---                          (warn seconds before) or at the time (Speak at: At 0), so the nearer of the two; half way,
---                          when it shows (N is kept in import.ttsTimer)
--- Returns speak, count and speakAt (nil or "zero").
-function Import.Speech(line, warn)
+--   countdown:N            a spoken count from N to the time (Count down from, countFrom). The reminders count from
+--                          3 to 10, so N under 3 counts from 3 and over 10 from 10 (N is kept in import.countdown)
+--   TTSTimer:N             read out N seconds before the time (Speak at: Before 0, speakBefore), on the half second
+--                          nearest N from 0.5 to 10; 0 is At 0 (N is kept in import.ttsTimer)
+-- Returns speak, count, speakAt (nil, "zero" or "before"), countFrom and speakBefore (nil when not used).
+local function nearest(n, range)
+    local v = math.floor((n - range.min) / range.step + 0.5) * range.step + range.min
+    return math.max(range.min, math.min(range.max, v))
+end
+
+function Import.Speech(line)
+    local R = CRT.AlertReminders
     local speak = line.tts == true or (type(line.tts) == "string" and line.tts ~= "")
     local count = type(line.countdown) == "number" and line.countdown > 0
-    local speakAt
-    if speak and type(line.ttsTimer) == "number" and type(warn) == "number" and line.ttsTimer < warn / 2 then
-        speakAt = "zero"
+    local countFrom = count and nearest(line.countdown, R.COUNT_FROM) or nil
+    local speakAt, speakBefore
+    if speak and type(line.ttsTimer) == "number" then
+        if line.ttsTimer == 0 then
+            speakAt = "zero"
+        else
+            speakAt, speakBefore = "before", nearest(line.ttsTimer, R.SPEAK_BEFORE)
+        end
     end
-    return speak, count, speakAt
+    return speak, count, speakAt, countFrom, speakBefore
 end
 
 -- The words a TTS:<words> line says in place of its text, or nil (TTS:true says the text).
@@ -662,7 +674,11 @@ local function reminderOf(boss, line, kind)
     draft.timeTouched = true
     draft.warn = Import.Warn(line.dur)
     draft.color = line.color and { line.color[1], line.color[2], line.color[3], line.color[4] } or nil
-    draft.speak, draft.count, draft.speakAt = Import.Speech(line, draft.warn)
+    local countFrom, speakBefore
+    draft.speak, draft.count, draft.speakAt, countFrom, speakBefore = Import.Speech(line)
+    draft.countFrom = countFrom or draft.countFrom
+    draft.speakBefore = speakBefore or draft.speakBefore
+    draft.speakText = Import.Words(line) or ""
     local show = Import.Display(line.display)
     if show then
         draft.show[show] = true
@@ -670,7 +686,6 @@ local function reminderOf(boss, line, kind)
     local r = Draft.BuildReminder({ encounterID = boss.encounterID }, draft)
     -- the phase rule is Import.Times, whatever the draft's time box reads
     r.times = Import.Times(line.ph, line.time)
-    r.speakText = Import.Words(line)
     r.import = { source = Import.SOURCE, tag = line.tag, tagKind = kind, ph = line.ph, time = line.time,
         dur = line.dur, text = line.text == "" and "" or nil, countdown = line.countdown, ttsTimer = line.ttsTimer,
         extra = line.extra, bossExtra = boss.extra }
