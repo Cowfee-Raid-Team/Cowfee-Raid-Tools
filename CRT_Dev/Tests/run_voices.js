@@ -9,7 +9,7 @@ const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
-local onDisk, engineSrc, voicesSrc, rulesSrc, alertsSrc, speechSrc, pageSrc = ...
+local onDisk, engineSrc, voicesSrc, rulesSrc, alertsSrc, speechSrc, pageSrc, lowHealthSrc = ...
 local passed, failed = 0, 0
 local function check(name, cond, detail)
   if cond then passed = passed + 1 print("ok " .. name)
@@ -21,7 +21,7 @@ function GetTime() return clock end
 function wipe(t) for k in pairs(t) do t[k] = nil end return t end
 local said, played, stopped = {}, {}, {}
 C_TTSSettings = { GetVoiceOptionID = function() return 7 end }
-C_VoiceChat = { SpeakText = function(id, text) said[#said + 1] = { text = text, at = clock } end,
+C_VoiceChat = { SpeakText = function(id, text, rate, vol) said[#said + 1] = { text = text, at = clock, rate = rate, vol = vol } end,
   StopSpeakingText = function() end }
 local handles = 0
 function PlaySoundFile(p, channel) handles = handles + 1 played[#played + 1] = { path = p, channel = channel, at = clock } return true, handles end
@@ -78,6 +78,18 @@ for _, v in ipairs(Sound.VOICES) do
   check(v.key .. ": every listed word has its file", #missing == 0, table.concat(missing, ","))
   check(v.key .. ": every file is a listed word", #extra == 0, table.concat(extra, ","))
 end
+for _, v in ipairs(Sound.VOICES) do
+  local files, wrong, tagged = onDisk[v.folder] or {}, {}, {}
+  for _, w in ipairs(v.words) do
+    local f = files[w .. ".mp3"]
+    if not (f and type(v.seconds) == "table" and v.seconds[w] and math.abs(v.seconds[w] - f.seconds) <= 0.02) then
+      wrong[#wrong + 1] = w .. "=" .. tostring(v.seconds and v.seconds[w]) .. "/" .. tostring(f and f.seconds)
+    end
+  end
+  for name, f in pairs(files) do if f.tag or f.meta then tagged[#tagged + 1] = name end end
+  check(v.key .. ": each clip's seconds match its mp3 frames", #wrong == 0, table.concat(wrong, ","))
+  check(v.key .. ": no clip has an ID3 tag or a GEOB or c2pa frame", #tagged == 0, table.concat(tagged, ","))
+end
 check("Xavier has 70 words, Lola 67", #X.words == 70 and #Lo.words == 67, #X.words .. " " .. #Lo.words)
 local lolaHas = {}
 for _, w in ipairs(Lo.words) do lolaHas[w] = true end
@@ -98,6 +110,8 @@ check("Lola's clips under Lola", list[at.Lola + 1].key == "crt:Lola-0" and at["G
 check("game sounds after the title", list[at["Game sounds"] + 1].key == "kit:RAID_WARNING")
 local labels = {}
 for _, c in ipairs(list) do if c.key then labels[c.key] = c.label end end
+check("5seconds321's label is in the data", type(Sound.VOICE_LABELS) == "table" and Sound.VOICE_LABELS["5seconds321"] ~= nil
+  and labels["crt:Xavier-5seconds321"] == Sound.VOICE_LABELS["5seconds321"])
 check("clip labels read as words", labels["crt:Xavier-Run-Out"] == "Run out" and labels["crt:Xavier-HealAbsorb"] == "Heal absorb" and labels["crt:Lola-Soak"] == "Soak",
   tostring(labels["crt:Xavier-Run-Out"]) .. " " .. tostring(labels["crt:Xavier-HealAbsorb"]))
 local filesOnly = Sound:Choices({ filesOnly = true })
@@ -109,10 +123,11 @@ check("files only: the voices without a Game sounds title", table.concat(t2, ","
 local function reset() said, played = {}, {} end
 local function lastFile() local p = played[#played] return p and p.path:match("([^\\\\]+\\\\[^\\\\]+)$") end
 reset()
-local ok, how = Sound:Speak("Soak")
+local ok, how, secs = Sound:Speak("Soak")
 check("Soak plays Xavier's clip, not text to speech", ok and how == "clip" and lastFile() == "Xavier\\\\Soak.mp3" and #said == 0, lastFile())
+check("Speak gives the clip's length", secs ~= nil and secs == X.seconds.Soak, tostring(secs))
 check("the clip plays on the sound channel", played[1] and played[1].channel == "Dialog")
-for _, t in ipairs({ "soak", "SOAK!", "  Soak.  ", "Run out", "run-out", "Run Out!", "heal absorb", "Drop pool?" }) do
+for _, t in ipairs({ "soak", "SOAK!", "  Soak.  ", "Run out", "run-out", "Run Out!", "heal absorb", "Drop pool?", "5 seconds, 3 2 1" }) do
   reset() Sound:Speak(t)
   check("'" .. t .. "' matches a clip", #played == 1 and #said == 0, lastFile())
 end
@@ -178,6 +193,29 @@ reset()
 Alerts:Start(1, "Mythic", "test")
 for i = 1, 40 do step(0.1) end
 check("a clip then a text: the text is read out after it", #played == 1 and said[1] and said[1].text == "Stack on Abu" and said[1].at - played[1].at < 1.5)
+-- a long clip, then a clip 1 s later: the second waits for the first to end
+items = {
+  { id = "h", ph = 1, time = 2, text = "Heal absorb", priority = 21, outputs = { speech = true }, speech = { { offset = 0, text = "Heal absorb" } } },
+  { id = "s", ph = 1, time = 3, text = "Soak", priority = 21, outputs = { speech = true }, speech = { { offset = 0, text = "Soak" } } },
+}
+reset()
+Alerts:Start(1, "Mythic", "test")
+for i = 1, 60 do step(0.1) end
+check("a clip line 1 s after a long clip starts once it ends", #played == 2 and played[2].at - played[1].at >= X.seconds.HealAbsorb - 1e-6,
+  #played == 2 and string.format("%.2f", played[2].at - played[1].at) or #played)
+-- a word clip longer than a second right before the count: the count's numbers keep their one second after it
+local tight = {}
+for i, s in ipairs(Rules.SpeechItems("Soak", 4, true, true)) do tight[i] = s end
+items = { { id = "e", ph = 1, time = 10, text = "Soak", priority = 21, outputs = { speech = true }, speech = tight } }
+reset()
+Alerts:Start(1, "Mythic", "test")
+start = clock
+for i = 1, 120 do step(0.1) end
+local gaps = {}
+for i = 2, #played do gaps[#gaps + 1] = string.format("%.1f", played[i].at - played[i - 1].at) end
+check("Soak (1.18 s) then 3 waits for Soak; 2 and 1 a second after the number before, late by no more than Soak ran over",
+  #played == 4 and played[2].at - played[1].at >= X.seconds.Soak - 1e-6 and played[3].at - played[2].at <= 1.0 + 1e-6 and played[4].at - played[3].at <= 1.0 + 1e-6
+    and played[4].at - start <= 9 + (X.seconds.Soak - 1) + 0.15, table.concat(gaps, " ") .. " last at " .. (played[4] and string.format("%.2f", played[4].at - start) or "-"))
 CRT.db.sound.voice = "tts"
 items = { { id = "d", ph = 1, time = 6, text = "Soak", priority = 21, outputs = { speech = true }, speech = spoken } }
 reset()
@@ -222,24 +260,72 @@ if v then
   reset()
   if v.test and v.test.OnClick then v.test.OnClick(v.test) end
   check("Test speaks with the chosen voice", #played == 1 and lastFile():find("^Lola\\\\"), lastFile())
+  CRT.db.sound.voice = "tts"
+  CRT.db.notes.alert.ttsRate, CRT.db.notes.alert.ttsVolume = 3, 60
+  reset()
+  if v.test and v.test.OnClick then v.test.OnClick(v.test) end
+  check("Test with the tts voice speaks at the Raid Notes rate and volume", said[1] and said[1].rate == 3 and said[1].vol == 60 and #played == 0)
+  CRT.db.sound.voice = "lola"
   check("Test is sized from its label", v.test and v.test.w and v.test.w >= #(v.test.text or "") * 7)
-  local helped = false
-  for _, h in ipairs(helps) do if h.target == (v.test or v) and type(h.text) == "string" and h.text:find("text to speech") then helped = true end end
-  check("a (?) beside it says what the voice does", helped)
+  local note
+  for _, h in ipairs(helps) do if h.target == (v.test or v) then note = h.text end end
+  local function read() local t = type(note) == "function" and note() or note return type(t) == "string" and t or "" end
+  check("a (?) beside it says what the voice does, the missing words and that clips take no volume",
+    read():find("text to speech", 1, true) and read():find("Lola has no Void, West or Yellow", 1, true) and read():find("volume", 1, true), read())
+  local was = Lo.lacks
+  Lo.lacks = { "Void" }
+  check("the (?) reads voice names and missing words from the voice table", read():find("West", 1, true) == nil
+    and read():find("Lola has no Void, so", 1, true) ~= nil and read():find("Xavier and Lola", 1, true) ~= nil, read())
+  Lo.lacks = was
+end
+
+-- The low-health Sound list: the game's pulse sits under the Game sounds heading
+CRT.LowHealthSound = nil
+hooksecurefunc = function() end
+local okLH, errLH = pcall(function() assert(load(lowHealthSrc, "@lowhealth"))("CowfeeRaidTools", CRT) end)
+check("LowHealthSound.lua loads", okLH and CRT.LowHealthSound ~= nil, errLH)
+if okLH and CRT.LowHealthSound then
+  local lh, gi, n = CRT.LowHealthSound.Choices(), nil, 0
+  for i, c in ipairs(lh) do
+    if c.title and c.label == "Game sounds" then gi = i end
+    if c.key == "pulse" then n = n + 1 end
+  end
+  check("Game pulse is first under Game sounds, once", gi and lh[gi + 1] and lh[gi + 1].key == "pulse" and n == 1, gi)
 end
 print(passed .. " passed, " .. failed .. " failed")
 if failed > 0 then error(failed .. " checks failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-// the files on disk, by folder: { Xavier = { ["Soak.mp3"] = true, ... } }
+// An mp3's length from its MPEG-1 Layer III frame headers (after any ID3v2 tag), in seconds.
+const BITRATE = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320], RATE = [44100, 48000, 32000];
+function id3Length(b) { return b.length >= 10 && b.slice(0, 3).toString() === 'ID3' ? 10 + ((b[6] << 21) | (b[7] << 14) | (b[8] << 7) | b[9]) + ((b[5] & 0x10) ? 10 : 0) : 0; }
+function seconds(b) {
+  let i = id3Length(b), t = 0;
+  while (i + 4 <= b.length) {
+    if (b[i] === 0xFF && (b[i + 1] & 0xE0) === 0xE0) {
+      const ver = (b[i + 1] >> 3) & 3, layer = (b[i + 1] >> 1) & 3, bi = b[i + 2] >> 4, si = (b[i + 2] >> 2) & 3, pad = (b[i + 2] >> 1) & 1;
+      if (ver === 3 && layer === 1 && bi > 0 && bi < 15 && si < 3) { t += 1152 / RATE[si]; i += Math.floor(144 * BITRATE[bi] * 1000 / RATE[si]) + pad; continue; }
+    }
+    i++;
+  }
+  return t;
+}
+// the files on disk, by folder: { Xavier = { ["Soak.mp3"] = { seconds, tag, meta }, ... } }
 lua.lua_newtable(L);
 for (const v of ['Xavier', 'Lola']) {
   lua.lua_newtable(L);
   const dir = path.join(d, 'CRT_Media', 'Media', 'Sounds', v);
-  for (const f of fs.existsSync(dir) ? fs.readdirSync(dir) : []) { lua.lua_pushboolean(L, 1); lua.lua_setfield(L, -2, to_luastring(f)); }
+  for (const f of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
+    const b = fs.readFileSync(path.join(dir, f));
+    lua.lua_newtable(L);
+    lua.lua_pushnumber(L, seconds(b)); lua.lua_setfield(L, -2, to_luastring('seconds'));
+    lua.lua_pushboolean(L, id3Length(b) > 0 ? 1 : 0); lua.lua_setfield(L, -2, to_luastring('tag'));
+    lua.lua_pushboolean(L, (b.indexOf('GEOB') >= 0 || b.indexOf('c2pa') >= 0) ? 1 : 0); lua.lua_setfield(L, -2, to_luastring('meta'));
+    lua.lua_setfield(L, -2, to_luastring(f));
+  }
   lua.lua_setfield(L, -2, to_luastring(v));
 }
-const files = ['CRT_Core/Sound/Engine.lua', 'CRT_Core/Sound/Voices.lua', 'CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua', 'CRT_Modules/QoL/Page.lua'];
+const files = ['CRT_Core/Sound/Engine.lua', 'CRT_Core/Sound/Voices.lua', 'CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua', 'CRT_Modules/QoL/Page.lua', 'CRT_Modules/QoL/LowHealthSound.lua'];
 for (const f of files) { const p = path.join(d, f); lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '')); }
 if (lua.lua_pcall(L, files.length + 1, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

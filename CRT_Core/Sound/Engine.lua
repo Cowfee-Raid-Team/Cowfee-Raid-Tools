@@ -280,16 +280,20 @@ local clipHandle -- the last voice clip Speak played, which StopSpeaking stops
 
 -- Reads text out. opts: rate (-10 to 10), volume (0 to 100), voice (a voice's key; the saved one when
 -- not given). When a clip of the voice says the whole text (Sound/Voices.lua, ClipFor), the clip plays on the
--- sound channel instead; a clip that didn't play falls back to text to speech. A secret text is passed on as it
--- is: the game's speech takes it. Returns true when the game took it (true, "clip" for a clip), false and why
--- when not.
+-- sound channel instead, at the channel's volume (the game takes no volume for a file, so opts.volume and
+-- rate are text to speech's only); a clip that didn't play falls back to text to speech. A secret text is
+-- passed on as it is: the game's speech takes it. Returns true when the game took it (true, "clip" and the
+-- clip's seconds for a clip), false and why when not.
 function Sound:Speak(text, opts)
-    local clip = self.ClipFor and self:ClipFor(text, opts and opts.voice)
+    local clip, seconds
+    if self.ClipFor then
+        clip, seconds = self:ClipFor(text, opts and opts.voice)
+    end
     if clip then
         local handle = self:Play(clip, { channel = opts and opts.channel })
         if handle then
             clipHandle = handle
-            return true, "clip"
+            return true, "clip", seconds
         end
     end
     if not (C_VoiceChat and C_VoiceChat.SpeakText) then

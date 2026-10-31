@@ -29,7 +29,9 @@ local TEXT = {
     lowHealthOnce = "Play once each time my health drops under",
     lowHealthOnceNote = "On: the sound plays once, in full, each time your health drops under the threshold. Off: it repeats until you heal, faster as your health drops. The game's pulse keeps looping either way.",
     voice = "Voice",
-    voiceNote = "The voice that reads alerts and note lines out. Xavier and Lola say their words with recorded clips: a whole line such as Soak, Spread or Run out, and the 3, 2, 1 of a count. Any other line is read by the game's text to speech.\n\nLola has no Void, West or Yellow, so those use text to speech.\n\nGame text to speech reads every line with the voice picked in the game's Text to Speech settings.\n\nClips play on your sound channel (General Settings). Every sound list also has the clips, under Xavier and Lola.",
+    voiceNote = "The voice that reads alerts and note lines out. %s say their words with recorded clips: a whole line such as Soak, Spread or Run out, and the numbers of a count. Any other line is read by the game's text to speech.",
+    voiceTts = "Game text to speech reads every line with the voice picked in the game's Text to Speech settings, at the Raid Notes speech rate and volume.",
+    voiceLists = "Every sound list also has the clips, under each voice's name.",
     voiceTest = "Test",
     voiceSample = "Spread",
     soundsTitle = "Your sound files",
@@ -355,13 +357,29 @@ local function buildVoice(pf, top)
     test:SetWidth(test:GetFontString():GetStringWidth() + 24)
     test:SetPoint("LEFT", row, "RIGHT", 8, 0)
     test:SetScript("OnClick", function()
-        local ok, why = Engine:Speak(TEXT.voiceSample, { voice = Engine:VoiceKey() })
+        -- the alert speech's own path, so text to speech uses the Raid Notes rate and volume
+        if CRT.AlertSpeech then
+            CRT.AlertSpeech:SpeakNow(TEXT.voiceSample)
+            return
+        end
+        local ok, why = Engine:Speak(TEXT.voiceSample)
         if not ok and why then
             CRT:Print(why)
         end
     end)
     row.test = test
-    UI.HelpRight(test, TEXT.voice, TEXT.voiceNote)
+    -- the voices' names and missing words come from the voice table (Sound/Voices.lua)
+    UI.HelpRight(test, TEXT.voice, function()
+        local parts = { string.format(TEXT.voiceNote, Engine:VoiceNames()) }
+        local lacks = Engine:VoiceLacks()
+        if lacks ~= "" then
+            parts[#parts + 1] = lacks
+        end
+        parts[#parts + 1] = TEXT.voiceTts
+        parts[#parts + 1] = Engine.VOICE_NO_VOLUME
+        parts[#parts + 1] = TEXT.voiceLists
+        return table.concat(parts, "\n\n")
+    end)
 end
 
 local function buildSounds(pf, top)

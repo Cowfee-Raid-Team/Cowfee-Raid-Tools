@@ -34,6 +34,7 @@ local TEXT = {
     readAt = "Read it at",
     readAtValue = "%ds left",
     volume = "Speech volume",
+    volumeHelp = "How loud the game's text to speech reads. A voice's clips (Quality of Life > Sounds) play at your sound channel's volume (General Settings) instead: the game takes no volume for them.",
     rate = "Speech rate",
     testSpeech = "Test speech",
     testPhrase = "Cowfee Raid Tools. Avenging Wrath in three.",
@@ -415,7 +416,7 @@ local function panelRows(panel, s)
         set = set("ttsSeconds"),
     })
     panel:Slider(TEXT.volume, {
-        min = 0, max = 100, enabledIf = speechOn,
+        min = 0, max = 100, enabledIf = speechOn, help = TEXT.volumeHelp,
         format = function(v) return (v or 0) .. "%" end,
         get = function() return s.ttsVolume or 100 end,
         set = set("ttsVolume"),

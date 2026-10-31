@@ -160,7 +160,17 @@ end
 -- make it long.
 UI.SOUND_PLAY_W, UI.SOUND_PLAY_GAP = 44, 6
 UI.SOUND_MENU_H = 400
-UI.SOUND_HELP = "The Xavier and Lola voice clips, game sounds, sounds shared by other addons, and your own files.\n\nYour own .ogg or .mp3 files go in the CowfeeRaidTools_Media addon's Sounds folder: Quality of Life > Sounds shows how, with a Test button for each file.\n\nPlay in the list plays the sound on your sound channel (General Settings)."
+UI.SOUND_HELP_VOICES = "The %s voice clips, under each voice's name, then the game sounds."
+
+-- The (?) text, with the voices' names from the voice table (Sound/Voices.lua).
+function UI.SoundHelp()
+    local Sound = CRT.Sound
+    if not (Sound and Sound.VoiceNames and Sound:VoiceNames() ~= "") then
+        return UI.SOUND_HELP
+    end
+    return string.format(UI.SOUND_HELP_VOICES, Sound:VoiceNames()) .. "\n\n" .. UI.SOUND_HELP
+end
+UI.SOUND_HELP = "Game sounds, sounds shared by other addons, and your own files.\n\nYour own .ogg or .mp3 files go in the CowfeeRaidTools_Media addon's Sounds folder: Quality of Life > Sounds shows how, with a Test button for each file.\n\nPlay in the list plays the sound on your sound channel (General Settings)."
 
 function UI.SoundDropdown(parent, text, opts)
     local o = {}
@@ -225,7 +235,7 @@ function UI.SoundDropdown(parent, text, opts)
     end
     if opts.help then
         -- after the closed dropdown, or after its Play button
-        row.help = UI.HelpRight(row.play or row, text ~= "" and text or "Sound", UI.SOUND_HELP, { parent = parent })
+        row.help = UI.HelpRight(row.play or row, text ~= "" and text or "Sound", UI.SoundHelp, { parent = parent })
     end
     return row
 end
