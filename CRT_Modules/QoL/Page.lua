@@ -2,7 +2,8 @@ local ADDON, CRT = ...
 
 -- The Quality of Life page: a home for small conveniences and their settings, in CRTDB.qol with
 -- defaults in Core.lua: the experimental low-health alert (QoL/LowHealth.lua), and on its own tab the
--- break timer's other-addon formats and bridge (QoL/BreakTimer.lua, Integrations/Breaks.lua). The Low health,
+-- break timer's other-addon formats and bridge (QoL/BreakTimer.lua, Integrations/Breaks.lua), and on the Sounds
+-- tab the voice that speaks (sound.voice, Sound/Voices.lua) above your own sound files. The Low health,
 -- Debuffs and Break timer tabs each have a preview button for their display (UI.PreviewButton); with no
 -- Settings tab, the page has no group button. The
 -- window scale moved to the Addon Settings page (UI/SettingsPage.lua) in 0.13.1.
@@ -27,6 +28,10 @@ local TEXT = {
     lowHealthChoiceNote = "The game's pulse loops and speeds up as your health drops; any other sound repeats, faster at each lower 10%. Your own sounds are on the Sounds tab. Volume only changes the game's sounds.",
     lowHealthOnce = "Play once each time my health drops under",
     lowHealthOnceNote = "On: the sound plays once, in full, each time your health drops under the threshold. Off: it repeats until you heal, faster as your health drops. The game's pulse keeps looping either way.",
+    voice = "Voice",
+    voiceNote = "The voice that reads alerts and note lines out. Xavier and Lola say their words with recorded clips: a whole line such as Soak, Spread or Run out, and the 3, 2, 1 of a count. Any other line is read by the game's text to speech.\n\nLola has no Void, West or Yellow, so those use text to speech.\n\nGame text to speech reads every line with the voice picked in the game's Text to Speech settings.\n\nClips play on your sound channel (General Settings). Every sound list also has the clips, under Xavier and Lola.",
+    voiceTest = "Test",
+    voiceSample = "Spread",
     soundsTitle = "Your sound files",
     soundsNote = "Your own .ogg or .mp3 files, for every sound list in the addon. Copy the CowfeeRaidTools_Media folder from CowfeeRaidTools\\CRT_Media\\Media Addon Template into Interface\\AddOns once, put your files in its Sounds folder and list their names in Sounds.lua; updates never touch that folder. The game can't list a folder, so a file is known by its name. Test plays it and says whether the game found it. A file added while the game runs may need a restart.",
     soundsAdd = "Add",
@@ -222,6 +227,7 @@ local function buildLowHealth(pf, top)
         end),
         labelWidth = SLIDER_LABEL_W,
         width = 200,
+        maxHeight = UI.SOUND_MENU_H,
         get = function()
             return settings().soundChoice or "pulse"
         end,
@@ -323,9 +329,45 @@ end
 -- Your sound files (Sound/Engine.lua) --------------------------------------------------------
 
 local SOUND_ROWS = 12
+local VOICE_H = 40 -- the Voice row above the files
+
+-- The voice that speaks (sound.voice, Sound/Voices.lua), with Test, which says a sample in the voice picked.
+local function buildVoice(pf, top)
+    local Engine = CRT.Sound
+    local row = UI.Dropdown(pf, TEXT.voice, {
+        options = function()
+            return Engine:VoiceChoices()
+        end,
+        labelWidth = 60,
+        width = 200,
+        get = function()
+            return Engine:VoiceKey()
+        end,
+        set = function(key)
+            CRT.db.sound.voice = key
+            refresh()
+        end,
+    })
+    row:SetPoint("TOPLEFT", 10, top)
+    controls[#controls + 1] = row
+
+    local test = smallButton(pf, TEXT.voiceTest)
+    test:SetWidth(test:GetFontString():GetStringWidth() + 24)
+    test:SetPoint("LEFT", row, "RIGHT", 8, 0)
+    test:SetScript("OnClick", function()
+        local ok, why = Engine:Speak(TEXT.voiceSample, { voice = Engine:VoiceKey() })
+        if not ok and why then
+            CRT:Print(why)
+        end
+    end)
+    row.test = test
+    UI.HelpRight(test, TEXT.voice, TEXT.voiceNote)
+end
 
 local function buildSounds(pf, top)
     local Engine = CRT.Sound
+    buildVoice(pf, top)
+    top = top - VOICE_H
     local heading = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     heading:SetPoint("TOPLEFT", 8, top)
     heading:SetText(TEXT.soundsTitle)
