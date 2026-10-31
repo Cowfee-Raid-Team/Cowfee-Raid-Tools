@@ -43,6 +43,7 @@ CRT_Core\WhatsNew\WhatsNew.lua
 CRT_Modules\Groups\Data.lua
 CRT_Modules\Groups\Apply.lua
 CRT_Modules\Groups\Invite.lua
+CRT_Modules\Groups\Share.lua
 CRT_Modules\Groups\Page.lua
 CRT_Modules\Consumables\Database.lua
 CRT_Modules\Consumables\Data.lua

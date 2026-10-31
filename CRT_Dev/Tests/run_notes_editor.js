@@ -1748,6 +1748,57 @@ do
   inRaid, leader = false, false
 end
 print("ok Push note: saves, then shares once through Share to raid's function; a refused save shares nothing; greyed with the reason")
+
+-- 15. Send my roster with the note: a tick box over Push note, on by default (CRTDB.notes.pushRoster). On, Push note
+-- sends the roster after the note (CRT.RosterShare:Push) and the status line says whether it went and why not; off,
+-- no roster goes. The note goes either way.
+do
+  local shares, pushes = {}, 0
+  local comm = { Share = CRT.NoteComm.Share, CanShare = CRT.NoteComm.CanShare }
+  CRT.NoteComm.CanShare = function() return true end
+  CRT.NoteComm.Share = function(_, nid) shares[#shares + 1] = nid end
+  local result = { true, "Roster 'Main' sent." }
+  CRT.RosterShare = { Push = function()
+    pushes = pushes + 1
+    assert(#shares == pushes, "the note goes before the roster")
+    return result[1], result[2]
+  end }
+  inRaid, leader = true, true
+  assert(CRT.db.notes.pushRoster == nil, "no saved choice yet")
+  local pid = Notes:Import("EncounterID:4802;Difficulty:Mythic;Name:Roster Boss\\nSoak: Abu")
+  assert(Editor.Open({ id = pid }), "opened")
+  local box = W.roster
+  assert(box and box:GetChecked(), "the tick box, on by default")
+  local push = button("Push note")
+  push.scripts.OnClick(push)
+  assert(#shares == 1 and pushes == 1, "on: the note, then the roster")
+  assert(W.status:GetText():find("Roster 'Main' sent.", 1, true), "the status says it went: " .. W.status:GetText())
+  -- no active layout: the note still goes, and the status says why the roster didn't
+  result = { false, "Roster not sent: no Raid Groups layout is active." }
+  push.scripts.OnClick(push)
+  assert(#shares == 2 and pushes == 2, "no layout: the note still goes")
+  assert(W.status:GetText():find("no Raid Groups layout is active", 1, true), "the status says why: " .. W.status:GetText())
+  -- an edit after it: Unsaved changes shows over it
+  drag(paletteChip("Rixxy"), rowOf(W.session, "label", 1))
+  assert(W.status:GetText():find("Unsaved", 1, true), "an edit shows unsaved: " .. W.status:GetText())
+  -- off: kept, and Push note sends the note only
+  box:SetChecked(false)
+  box.scripts.OnClick(box)
+  assert(CRT.db.notes.pushRoster == false, "off is saved")
+  push.scripts.OnClick(push)
+  assert(#shares == 3 and pushes == 2, "off: the note, no roster")
+  assert(not W.status:GetText():find("Roster", 1, true), "off: no roster line: " .. W.status:GetText())
+  Editor.Discard()
+  assert(Editor.Open({ id = pid }) and not W.roster:GetChecked(), "off stays off when opened again")
+  W.roster:SetChecked(true)
+  W.roster.scripts.OnClick(W.roster)
+  assert(CRT.db.notes.pushRoster == true, "on again")
+  Editor.Discard()
+  CRT.RosterShare = nil
+  CRT.NoteComm.Share, CRT.NoteComm.CanShare = comm.Share, comm.CanShare
+  inRaid, leader = false, false
+end
+print("ok Send my roster: on by default, Push note sends the roster after the note and says how it went; off sends none")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = process.argv.slice(2, 19);

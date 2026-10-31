@@ -348,17 +348,27 @@ local function received(text, short)
     end
 end
 
+-- Who sent an addon message: their name as the group shows it, and whether they are the group's leader or an
+-- assistant (so in your group); nil for your own messages. Raid Groups' roster share (Groups/Share.lua) asks it too.
+function Comm.Sender(sender)
+    local short = Ambiguate(sender, "none")
+    if short == UnitName("player") then
+        return nil
+    end
+    return short, isLeaderOrAssist(short)
+end
+
 local events = CreateFrame("Frame")
 events:RegisterEvent("CHAT_MSG_ADDON")
 events:SetScript("OnEvent", function(_, _, prefix, message, _, sender)
     if (prefix ~= PREFIX and prefix ~= OLD_PREFIX) or type(message) ~= "string" or type(sender) ~= "string" then
         return
     end
-    local short = Ambiguate(sender, "none")
-    if short == UnitName("player") then
+    local short, trusted = Comm.Sender(sender)
+    if not short then
         return
     end
-    if Notes:TrustedOnly() and not isLeaderOrAssist(short) then
+    if Notes:TrustedOnly() and not trusted then
         return
     end
     local hash, part, total, data = message:match("^(%x+)|(%d+)|(%d+)|(.*)$")

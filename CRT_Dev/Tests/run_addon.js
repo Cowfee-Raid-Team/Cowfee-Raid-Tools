@@ -622,7 +622,7 @@ const LISTEN = [
   'CRT_Modules/Groups/Apply.lua', 'CRT_Modules/Groups/Invite.lua', 'CRT_Modules/Late/Data.lua',
   'CRT_Modules/Tattlebot/Data.lua', 'CRT_Modules/Timeline/RehearsalWindow.lua', 'CRT_Modules/Timeline/JournalExport.lua',
   'CRT_Modules/Notes/Comm.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Interrupts/Data.lua',
-  'CRT_Modules/Interrupts/Anchor.lua', 'CRT_Modules/Interrupts/Comm.lua'];
+  'CRT_Modules/Interrupts/Anchor.lua', 'CRT_Modules/Interrupts/Comm.lua', 'CRT_Modules/Groups/Share.lua'];
 const scenarios = [
   { name: 'dev build', listen: LISTEN },
   { name: 'release build', release: true, listen: LISTEN },

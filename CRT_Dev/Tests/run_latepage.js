@@ -49,7 +49,7 @@ C_Timer = { After = function() end, NewTicker = function() end }
 RAID_CLASS_COLORS = {}
 local pages = {}
 local CRT = { db = { late = { days = {}, hour = 20, minute = 0, grace = 0, history = {}, nextId = 3, lastAuto = "" } },
-  UI = { SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title) local m = mock() rawset(m, "helpTitle", title) lateHelps[#lateHelps + 1] = m return m end, Dropdown = function(_, _, o) local m = mock() rawset(m, "Dropdown", mock()) rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end, Slider = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end,  RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end, SkinScrollBar = function() end, SetFrameTitle = function() end, StyleWindow = function() end,
+  UI = { SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title, text) local m = mock() rawset(m, "helpTitle", title) rawset(m, "helpText", text) lateHelps[#lateHelps + 1] = m return m end, Dropdown = function(_, _, o) local m = mock() rawset(m, "Dropdown", mock()) rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end, Slider = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end,  RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end, SkinScrollBar = function() end, SetFrameTitle = function() end, StyleWindow = function() end,
     PanelButtonWidth = function(w) return w + 28 end, ContextMenu = function(owner, fill) menus[#menus + 1] = { owner = owner, fill = fill } end },
   Invite = { CanInvite = function() return canInvite, inviteWhy end, Send = function(_, names, slots, from) sent[#sent + 1] = { names = names, slots = slots, from = from } return #names end,
     StateText = function(_, key) return states[key] end, Entry = function(_, key) return states[key] and { state = "invited" } end, Summary = function() return "SUMMARY" end, OnChange = function() end,
@@ -189,6 +189,17 @@ do
   check(showHelp.shown, "a night that wasn't a team raid saved: the Show filter")
   check(find(function(t) return t == "All 2 team raid nights, most often late first." end) ~= nil, "Team raids by default: the totals leave the other night out")
   table.remove(CRT.db.late.history)
+end
+-- the (?)s say a raider's tracker records only when it starts a night itself, and that a pushed roster becomes theirs
+do
+  local page, roster
+  for _, x in ipairs(lateHelps) do
+    if x.helpTitle == "The Late Tracker" then page = x elseif x.helpTitle == "Expected roster" then roster = x end
+  end
+  check(page and tostring(page.helpText):find("A raider's tracker records only when their own schedule or Start raid now runs.", 1, true),
+    "the page's (?) has the raider caveat")
+  check(roster and tostring(roster.helpText):find("pushes a note with their roster, it becomes your active layout", 1, true),
+    "the expected roster's (?) says a pushed roster becomes yours")
 end
 if fails > 0 then error(fails .. " late page checks failed") end
 `;

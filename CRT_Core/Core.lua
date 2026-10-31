@@ -59,7 +59,8 @@ local defaults = {
     macros = { owned = {} },
     groups = {
         -- active is the id of the layout the raid runs with (Groups:Active), which the Late Tracker
-        -- expects; selected is the layout being edited.
+        -- expects; selected is the layout being edited. A layout the leader or an assistant sent with a note
+        -- (Groups/Share.lua) has from = their Name-Realm, one per sender (Groups:StoreFrom).
         presets = {},
         nextId = 1,
         keepChanges = true,
@@ -167,6 +168,7 @@ local defaults = {
         personalShifts = {},
         autoAcceptCooldowns = false,
         shareTarget = "crt", -- Share's Send to: "crt", a note target's key (Integrations/), or "all"
+        pushRoster = true, -- the note editor's Push note also sends the active Raid Groups layout (Groups/Share.lua)
         -- keepEmpty keeps a window up, blank at its own transparency, while it has nothing to show, so a
         -- note being cleared or shared doesn't make it vanish (Notes/Window.lua).
         window = { -- the timers

@@ -25,6 +25,20 @@ local DAYS = {
     { wday = 1, label = "Sun" },
 }
 local HOW = { schedule = "from the schedule", button = "by Start raid now" }
+-- The page's and the expected roster's (?). A roster the leader sends with a note (Groups/Share.lua) becomes the
+-- active layout, so a raider's tracker expects the same people, but records only when it starts a night itself.
+local HELP_TEXT = {
+    pageTitle = "The Late Tracker",
+    page = "On the Settings tab, tick your raid days and start time and pick the Raid Groups layout of who should be "
+        .. "there. At the start time, anyone in it who isn't in your group is late until they join. Tonight shows the "
+        .. "night as it happens; History keeps every night, with an export for Discord.\n\n"
+        .. "A raider's tracker records only when their own schedule or Start raid now runs.",
+    rosterTitle = "Expected roster",
+    roster = "The active Raid Groups layout: who should be there, in their groups (Make active on Raid Groups). During "
+        .. "a raid night, tonight's list follows it when you change or switch layouts, with everyone's clock kept.\n\n"
+        .. "When the raid leader pushes a note with their roster, it becomes your active layout, so this expects the "
+        .. "same people as theirs.",
+}
 local ENDED = {
     disband = "the group disbanded",
     button = "End raid was pressed",
@@ -1259,7 +1273,7 @@ local function buildSettings(f)
     })
     layoutButton:SetPoint("TOPLEFT", 8, -62)
     controls[#controls + 1] = layoutButton
-    UI.HelpRight(layoutButton, "Expected roster", "The active Raid Groups layout: who should be there, in their groups (Make active on Raid Groups). During a raid night, tonight's list follows it when you change or switch layouts, with everyone's clock kept.")
+    UI.HelpRight(layoutButton, HELP_TEXT.rosterTitle, HELP_TEXT.roster)
 
     -- Only record team raids (Late:Settings().onlyTeam)
     local onlyTeam = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
@@ -1282,7 +1296,7 @@ local function build(pf)
 
     local title = label(pf, "Late Tracker", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
-    UI.HelpRight(title, "The Late Tracker", "On the Settings tab, tick your raid days and start time and pick the Raid Groups layout of who should be there. At the start time, anyone in it who isn't in your group is late until they join. Tonight shows the night as it happens; History keeps every night, with an export for Discord.")
+    UI.HelpRight(title, HELP_TEXT.pageTitle, HELP_TEXT.page)
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")

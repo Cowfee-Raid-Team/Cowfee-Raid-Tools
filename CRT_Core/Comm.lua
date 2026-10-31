@@ -10,7 +10,8 @@ local ADDON, CRT = ...
 --   CRT.Comm.IsSecret(v)            true only for a secret value (nil is not one)
 --   CRT.Comm:Send(prefix, messages, what)  queues the messages and sends them in order on the group channel.
 --     what names the thing in the chat lines ("the pace plan"), or is { what = "the pace plan", locked =
---     "Pace plans" } for a lockdown line of its own. Returns false when the messages were dropped.
+--     "Pace plans" } for a lockdown line of its own, and with dropped = function() end, told once when its messages are
+--     dropped (now or after a throttle wait). Returns false when the messages were dropped.
 -- A throttled message waits a second and goes again, the ones behind it waiting with it. During an encounter
 -- the game holds addon messages (AddOnMessageLockdown): the queue is dropped with one line, so share before the
 -- pull. A raised error or any other result drops the queue too, with its line.
@@ -88,16 +89,22 @@ end
 
 -- Drops the queue with one chat line for each module whose messages it held (line(what) writes it), in queue order.
 local function drop(line)
-    local seen, lines = {}, {}
+    local seen, lines, told = {}, {}, {}
     for _, m in ipairs(queue) do
         local key = name(m.what)
         if not seen[key] then
             seen[key] = true
             lines[#lines + 1] = line(m.what)
+            if type(m.what) == "table" and type(m.what.dropped) == "function" then
+                told[#told + 1] = m.what.dropped
+            end
         end
     end
     wipe(queue)
     waiting = false
+    for _, fn in ipairs(told) do
+        fn()
+    end
     local left = {}
     for _, text in ipairs(lines) do
         if not left[text] then -- "you left the group" once, whoever's messages they were
