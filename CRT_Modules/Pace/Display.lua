@@ -7,7 +7,8 @@ local ADDON, CRT = ...
 -- The bar gets UnitHealthPercent through the game's ScaleTo100 curve, which a status bar accepts as it
 -- is. AHEAD and BEHIND are faded in by two step curves built around the expected health: the game
 -- runs the hidden health through them and SetAlpha takes the result, so the game does the comparing.
--- The curves are rebuilt only when the expected health moves.
+-- The curves are rebuilt only when the expected health moves. Each bar is named for its boss unit, with
+-- fallbacks for when the game hides the name (setLabel, below).
 --
 -- During a Timeline rehearsal (the alerts engine running one) of a boss with a plan, the window shows
 -- too, on the rehearsal's clock and phases. No boss is there, so each bar sits on its tick: always on
@@ -29,8 +30,9 @@ local function db()
     return CRT.db.pace
 end
 
+-- Asks whether it is secret first, so a secret is never compared, even with nil.
 local function readable(v)
-    return v ~= nil and not (issecretvalue and issecretvalue(v))
+    return not (issecretvalue and issecretvalue(v)) and v ~= nil
 end
 
 -- A step curve on health 0 to 1: `below` under the expected health e, `above` from e up.
@@ -188,9 +190,72 @@ local function setRehearsalBar(b, i, expected)
     b.state:SetText(string.format("should be %.0f%%", expected))
 end
 
+-- Each bar's name. In combat the game hides a boss unit's name (UnitName gives a secret), so, best first:
+--   1. the name, when it reads;
+--   2. the hidden name, given to the label as it is (FontString:SetText takes a secret) and never compared;
+--   3. the name kept from when it last read (at the pull, a boss unit engaging, or an earlier update), per
+--      encounter for this session only, never saved;
+--   4. on a plan with one boss unit, the boss's name from the boss library;
+--   5. the unit token.
+local names = {} -- [encounterID][unit] = name
+
+-- The unit's name when it reads; else nil, and true with the secret itself when the game hid it.
+local function readName(unit)
+    local ok, name = pcall(UnitName, unit)
+    if not ok then
+        return nil
+    end
+    if issecretvalue and issecretvalue(name) then
+        return nil, true, name
+    end
+    if name == nil or name == "" or (UNKNOWNOBJECT and name == UNKNOWNOBJECT) then
+        return nil -- no unit, or the game's placeholder for one not loaded yet
+    end
+    return name
+end
+
+-- Keeps a unit's name for this pull's boss, when it reads. Returns the name, or nil.
+local function remember(unit, name)
+    local id = run and run.encounterID
+    name = name or readName(unit)
+    if id and name then
+        names[id] = names[id] or {}
+        names[id][unit] = name
+    end
+    return name
+end
+
+-- Every unit of the pull's plan: at the pull, and when a boss unit engages.
+local function rememberAll()
+    if run and not run.rehearsal then
+        for _, unit in ipairs(run.units) do
+            remember(unit)
+        end
+    end
+end
+
+local function setLabel(b, unit)
+    local name, isSecret, hidden = readName(unit)
+    if name then
+        remember(unit, name)
+        b.label:SetText(name)
+        return
+    end
+    if isSecret and pcall(b.label.SetText, b.label, hidden) then
+        return
+    end
+    local kept = run.encounterID and names[run.encounterID] and names[run.encounterID][unit]
+    if kept then
+        b.label:SetText(kept)
+    elseif #run.units == 1 and run.bossName then
+        b.label:SetText(run.bossName)
+    else
+        b.label:SetText(unit)
+    end
+end
+
 local function setBar(b, unit, expected)
-    local name = UnitName(unit)
-    b.label:SetText(readable(name) and name or unit)
+    setLabel(b, unit)
     -- The health: hidden in combat, given to the bar as it is.
     local scale = CurveConstants and CurveConstants.ScaleTo100
     local ok, hp = pcall(UnitHealthPercent, unit, true, scale)
@@ -246,6 +311,7 @@ local function onUpdate(_, dt)
             setBar(bar(i), unit, Pace.Expected(run.plan, unit, ph, seconds))
             bar(i):SetAlpha(1)
         else
+            setLabel(bar(i), unit)
             bar(i):SetAlpha(0.3)
         end
     end
@@ -264,10 +330,9 @@ function Pace:Start(encounterID, rehearsal)
         return
     end
     run = { encounterID = encounterID, plan = plan, units = units, pullAt = GetTime(), rehearsal = rehearsal and true or nil }
-    if rehearsal then
-        local def = CRT.Bosses and CRT.Bosses:Get(encounterID)
-        run.bossName = def and def.name or "Boss"
-    end
+    local def = encounterID and CRT.Bosses and CRT.Bosses:Get(encounterID)
+    run.bossName = def and def.name or (rehearsal and "Boss" or nil)
+    rememberAll()
     elapsed = TICK_EVERY -- the first update draws at once
     for _, b in ipairs(bars) do
         b.curveKey = nil
@@ -287,7 +352,7 @@ function Pace:Stop()
     end
 end
 
--- Previews: a sample bar, half way, with the tick at 60%.
+-- Previews: a sample bar, half way, with the tick at 60%, named for the boss the Pace page shows.
 UI:RegisterPreview("pace", function(on)
     previewOn = on and true or false
     build()
@@ -295,7 +360,9 @@ UI:RegisterPreview("pace", function(on)
     if previewOn then
         layout({ "boss1" })
         local b = bar(1)
-        b.label:SetText("Boss")
+        local id = Pace.PageBoss and Pace:PageBoss()
+        local def = id and CRT.Bosses and CRT.Bosses:Get(id)
+        b.label:SetText(def and def.name or "Boss")
         b.bar:SetValue(50)
         b.tick:ClearAllPoints()
         b.tick:SetPoint("CENTER", b.bar, "LEFT", BAR_W * 0.6, 0)
@@ -312,11 +379,14 @@ end)
 local events = CreateFrame("Frame")
 events:RegisterEvent("ENCOUNTER_START")
 events:RegisterEvent("ENCOUNTER_END")
+events:RegisterEvent("INSTANCE_ENCOUNTER_ENGAGE_UNIT") -- a boss unit appeared: keep its name while it reads
 events:SetScript("OnEvent", function(_, event, encounterID)
     if not CRT.db then
         return
     end
-    if event == "ENCOUNTER_START" then
+    if event == "INSTANCE_ENCOUNTER_ENGAGE_UNIT" then
+        rememberAll()
+    elseif event == "ENCOUNTER_START" then
         Pace:Start(readable(encounterID) and encounterID or nil)
     else
         Pace:Stop()
