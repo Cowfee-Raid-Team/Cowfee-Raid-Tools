@@ -470,12 +470,13 @@ local function nameTaken(name)
     return false
 end
 
-local function uniqueName(name)
+-- maxLen: 40 unless given (a received layout's name has its "(from <sender>)" on top)
+local function uniqueName(name, maxLen)
     name = strtrim(name or "")
     if name == "" then
         name = "Layout"
     end
-    name = name:sub(1, 40)
+    name = name:sub(1, maxLen or 40)
     if not nameTaken(name) then
         return name
     end
@@ -573,6 +574,41 @@ end
 function Groups:SetActive(id)
     gdb().active = id
     self:Fire()
+end
+
+-- A layout the leader or an assistant sent with a note (Groups/Share.lua): one per sender, found by its from (their
+-- Name-Realm, a field only these layouts have), its name and slots replaced by each new one, and made the active
+-- layout. It can be edited like any other until the next one replaces it. The player's own layouts are never
+-- touched. Returns its id.
+function Groups:StoreFrom(from, name, slots)
+    local g = gdb()
+    local lower = from:lower()
+    local preset
+    for _, p in ipairs(g.presets) do
+        if type(p.from) == "string" and p.from:lower() == lower then
+            preset = p
+            break
+        end
+    end
+    if preset then
+        preset.name = "" -- its old name is no clash
+    else
+        preset = { id = g.nextId, from = from, name = "" }
+        g.nextId = g.nextId + 1
+        g.presets[#g.presets + 1] = preset
+    end
+    preset.name = uniqueName(name, 80)
+    preset.slots = copySlots(slots)
+    if g.selected == preset.id then
+        g.working = copySlots(slots)
+        self.dirty = false
+    end
+    table.sort(g.presets, function(a, b)
+        return a.name:lower() < b.name:lower()
+    end)
+    g.active = preset.id
+    self:Fire()
+    return preset.id
 end
 
 -- Export / import ----------------------------------------------------------
