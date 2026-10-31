@@ -447,7 +447,8 @@ do
   v.hvAdd.buttons.add.OnClick(v.hvAdd.buttons.add)
   menus[#menus].items[2].fn()
   find(headerMenu(v, "healers:leafy-home").items, "Remove slot").fn()
-  check(asked and asked.text:find("^Remove Resto Druid 1%? Its 3 planned casts leave the raid note%.$"), "slot 1's three casts: " .. tostring(asked and asked.text))
+  check(asked and asked.text == "Remove Resto Druid 1? 3 planned casts leave the raid note: every cast of these cooldowns that names Leafy.",
+    "slot 1's three casts, every one naming Leafy: " .. tostring(asked and asked.text))
   asked.callback()
   asked = nil
   saved = CRT.db.timeline.healerSlots[3001]
@@ -525,7 +526,9 @@ do
   check(lane(v, "healers:slot:105:1").label == "Resto Druid" .. DOT .. "locked", "an open slot is locked for you")
   local np = #printed
   HV.DoubleClick(v, 100, v.lanes[laneIndex(v, "healers:slot:105:1:740")])
-  check(#printed == np + 1 and printed[#printed] == Slots.TEXT.notOwn and #N:RawLines(1) == 2, "a cast on it: nothing placed, and why")
+  check(#N:RawLines(1) == 2 and #R:List(3001) == 1 and printed[#printed]:find("for you", 1, true),
+    "a cast on an open slot: one of your reminders, the raid note as it was")
+  CRT.db.alerts.reminders = {}
   find(find(headerMenu(v, "healers:slot:105:1").items, "Assign player").items, "Leafy").fn()
   check(CRT.db.timeline.healerSlots[3001][1].player == "Leafy-Home" and N:Parsed(1).timers[1].tags[1] == "RestoDruid",
     "Assign changes your slot, not the raid note")
@@ -598,6 +601,86 @@ do
   CRT.Timeline:Set("iconSize", 22)
   setNote({})
   CRT.db.timeline.healerSlots = {}
+end
+
+-- Review round 1: only the shown note changes; a plain word keeps its meaning; a shared line keeps its others ------------
+do
+  -- a Mythic note and a Heroic note: Remove on the Mythic view leaves the Heroic note byte for byte
+  local HEROIC = "EncounterID:3001;Difficulty:Heroic;Name:Nek\\r\\ntime:20;ph:1;tag:RestoDruid;spellid:740;\\r\\n"
+  CRT.db.notes.list = {
+    [1] = { raw = "EncounterID:3001;Difficulty:Mythic;Name:Nek\\ntime:30;ph:1;tag:RestoDruid;spellid:740;", encounterID = 3001,
+      difficulty = "Mythic", name = "Nek" },
+    [2] = { raw = HEROIC, encounterID = 3001, difficulty = "Heroic", name = "Nek" },
+  }
+  CRT.db.notes.nextId = 3
+  CRT.db.timeline.healerSlots[3001] = { { spec = 105, n = 1 } }
+  local mv = View.Create(mock("Frame"))
+  mv:SetData({ reference = ref }, 3001, nil, "Nek", "mythic")
+  mv:SetMode("healers")
+  local ids = table.concat(mv:ShownNoteIds(), ",")
+  check(ids == "1", "the Mythic view shows the Mythic note only: " .. ids)
+  find(headerMenu(mv, "healers:slot:105:1").items, "Remove slot").fn()
+  check(asked and asked.text:find("Its 1 planned cast", 1, true), "it counts the Mythic note's cast only: " .. tostring(asked and asked.text))
+  asked.callback()
+  asked = nil
+  check(#N:Parsed(1).timers == 0 and N:Get(2).raw == HEROIC, "the Mythic line left; the Heroic note is byte for byte as it was")
+  -- Assign on the Mythic view leaves the Heroic note's word too
+  CRT.db.timeline.healerSlots[3001] = { { spec = 105, n = 1 } }
+  mv:Refresh()
+  find(find(headerMenu(mv, "healers:slot:105:1").items, "Assign player").items, "Type a name").fn()
+  typeName("Bramble")
+  check(N:Get(2).raw == HEROIC, "Assign on Mythic leaves the Heroic note as it was")
+
+  -- a plain word keeps its meaning when its spec gets a second slot: RestoDruid becomes RestoDruid1
+  setNote({ "time:20;ph:1;tag:RestoDruid;spellid:740;" })
+  CRT.db.timeline.healerSlots[3001] = { { spec = 105, n = 1 } }
+  setLayout({ "Halo-Home", "Me-Home", "Leafy-Home", "Bark-Home" })
+  liveRoster = { { "Halo", "PRIEST", "HEALER" }, { "Me", "PALADIN", "HEALER" }, { "Leafy", "DRUID", "HEALER" }, { "Bark", "DRUID", "HEALER" } }
+  CRT.db.specCache["leafy-home"], CRT.db.specCache["bark-home"] = 105, 105
+  now = now + 10
+  S.Reset()
+  v:Refresh()
+  local function first() return N:Parsed(1).timers[1] end
+  local e = S.Read("RestoDruid")
+  check(#S.Matching(e, nil, first().specInfo) == 2, "before: RestoDruid alerts both Resto Druids")
+  v.hvAdd.buttons.add.OnClick(v.hvAdd.buttons.add)
+  menus[#menus].items[2].fn()
+  check(first().tags[1] == "RestoDruid1", "a second slot: slot 1's line says RestoDruid1: " .. first().tags[1])
+  check(#S.Matching(e, 1, first().specInfo) == 0, "and alerts neither Resto Druid (two of them in the raid)")
+  check(#flagsOn(v, laneIndex(v, "healers:slot:105:1:740")) == 1, "still drawn on slot 1")
+  -- the same when Change spec brings a second slot of a spec
+  setNote({ "time:20;ph:1;tag:RestoDruid;spellid:740;" })
+  CRT.db.timeline.healerSlots[3001] = { { spec = 105, n = 1 }, { spec = 257, n = 1 } }
+  v:Refresh()
+  find(find(headerMenu(v, "healers:slot:257:1").items, "Change spec").items, "Resto Druid").fn()
+  check(first().tags[1] == "RestoDruid1" and CRT.db.timeline.healerSlots[3001][2].n == 2,
+    "Change spec into Resto Druid: the other's line says RestoDruid1, the changed slot is 2")
+
+  -- Remove: a line naming others too keeps them, without the slot's word
+  setNote({ "time:20;ph:1;tag:RestoDruid Bob;spellid:740;", "time:50;ph:1;tag:RestoDruid;spellid:33891;" })
+  CRT.db.timeline.healerSlots[3001] = { { spec = 105, n = 1 } }
+  v:Refresh()
+  find(headerMenu(v, "healers:slot:105:1").items, "Remove slot").fn()
+  check(asked and asked.text:find("Its 2 planned casts", 1, true), "two lines are the slot's")
+  asked.callback()
+  asked = nil
+  local t = N:Parsed(1).timers
+  check(#t == 1 and #t[1].tags == 1 and t[1].tags[1] == "Bob" and t[1].spellId == 740, "the shared line stays for Bob; the other leaves")
+
+  -- Change spec to another class takes the player off
+  setNote({ "time:20;ph:1;tag:Leafy;spellid:740;" })
+  CRT.db.timeline.healerSlots[3001] = { { spec = 105, n = 1, player = "Leafy-Home" } }
+  v:Refresh()
+  find(find(headerMenu(v, "healers:leafy-home").items, "Change spec").items, "Holy Priest").fn()
+  check(asked and asked.text == "Change Resto Druid to Holy Priest? 1 planned cast leaves the raid note: every cast of these cooldowns that names Leafy.",
+    "asked, naming Leafy's casts: " .. tostring(asked and asked.text))
+  asked.callback()
+  asked = nil
+  local saved = CRT.db.timeline.healerSlots[3001][1]
+  check(saved.spec == 257 and saved.player == nil and #N:Parsed(1).timers == 0, "a Holy Priest slot with no player; Leafy's Tranquility left")
+  setNote({})
+  CRT.db.timeline.healerSlots = {}
+  CRT.db.specCache["bark-home"] = nil
 end
 
 if fails > 0 then error(fails .. " healer slot checks failed") end

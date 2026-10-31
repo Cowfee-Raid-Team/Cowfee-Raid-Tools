@@ -366,7 +366,7 @@ local function nameWord(tag, classes)
         return false
     end
     local Specs = CRT.NoteSpecs
-    if Specs and Specs.Read(tag) then
+    if Specs and Specs.ReadTag(tag) then
         return false
     end
     local l = tag:lower()
@@ -1216,8 +1216,9 @@ end
 -- placed at once for its player (a raid note line) by someone who may change the raid note. Anyone else places
 -- it only on their own row, as one of their reminders (Only me); on another player's row nothing is placed and
 -- a chat line says why. On a healer slot's row the line is tagged as the slot's player (its name, else its spec word,
--- Timeline/HealerSlots.lua), and a slot from the note's words is kept for the boss. True when the click was this
--- view's (a cooldown, a player's or a panel row).
+-- Timeline/HealerSlots.lua), and a slot from the note's words is kept for the boss; anyone else's cast on an open
+-- slot (no player yet) is one of their reminders, as on their own row. True when the click was this view's (a
+-- cooldown, a player's or a panel row).
 function HV.DoubleClick(view, t, lane)
     if not lane then
         return false
@@ -1237,10 +1238,10 @@ function HV.DoubleClick(view, t, lane)
             Slots.Ensure(view:EncounterNumber(), slot)
         end
         view:PlaceCooldownAt(t, e, lane.player.tag or lane.player.name)
-    elseif lane.player.me then
-        view:PlaceCooldownAt(t, e) -- your own row: one of your reminders, as a dropped cooldown
+    elseif lane.player.me or (slot and not slot.player) then
+        view:PlaceCooldownAt(t, e) -- your own row or an open slot: one of your reminders, as a dropped cooldown
     else
-        CRT:Print(slot and Slots and Slots.TEXT.notOwn or TEXT.notLead)
+        CRT:Print(TEXT.notLead)
     end
     return true
 end

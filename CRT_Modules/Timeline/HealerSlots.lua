@@ -6,11 +6,16 @@ local ADDON, CRT = ...
 -- "Resto Druid 1 · Leafy" once a player is assigned) and one row per major cooldown of that spec (HealerView.Majors,
 -- that spec's only). A cast planned on a slot is a raid note line tagged with its player's name, or while it has none,
 -- with its spec word: "RestoDruid", numbered ("RestoDruid2") when the boss has more than one slot of that spec. The
--- numbers stay as given: removing slot 1 of 2 leaves slot 2. A right-click on a slot's name row: Assign player, Change
--- spec, Clear player, Remove slot, and its rows. Assigning rewrites the slot's lines from its word to the name, Clear
--- back; Change spec keeps the lines whose cooldown the new spec has and asks before the rest leave the note; Remove asks
--- before its lines leave the note. Only the raid leader or an assistant changes the raid note (Notes:CanEditRaid); for
--- anyone else the slots are their own and the note stays as it is.
+-- numbers stay as given: removing slot 1 of 2 leaves slot 2. When a spec gets its second slot, the first one's lines
+-- with the plain word are written with its number ("RestoDruid1"), so they never come to mean every Resto Druid. A
+-- right-click on a slot's name row: Assign player, Change spec, Clear player, Remove slot, and its rows. Assigning
+-- rewrites the slot's lines from its word to the name, Clear back (every line naming its player for its class's listed
+-- cooldowns, planned before the assignment too); Change spec keeps the lines whose cooldown the new spec has, asks
+-- before the rest leave the note, and takes the player off for a spec of another class; Remove asks before its lines
+-- leave the note (a line naming others too keeps them, without the slot). Each change is made only in the notes the
+-- view shows (View:ShownNoteIds), never another difficulty's. Only the raid leader or an assistant changes the raid
+-- note (Notes:CanEditRaid); for anyone else the slots are their own, the note stays as it is, and a cast on an open
+-- slot is one of their reminders.
 -- Saved on this computer per boss (every difficulty), declared for the dev season purge:
 --   CRTDB.timeline.healerSlots[encounterID] = { { spec = SpecializationID, n = number, player = "Name-Realm" or nil } }
 -- A spec word in the boss's note with no slot here (a note planned on another computer) shows as a slot too, and is
@@ -42,9 +47,11 @@ local TEXT = {
     changeButton = "Change",
     castOne = "Its 1 planned cast leaves the raid note.",
     castMany = "Its %d planned casts leave the raid note.",
+    -- an assigned slot's casts are every one naming its player for these cooldowns, planned before too
+    castOneFor = "1 planned cast leaves the raid note: every cast of these cooldowns that names %s.",
+    castManyFor = "%d planned casts leave the raid note: every cast of these cooldowns that names %s.",
     slotTip = "A healer slot for this boss.",
     slotTipMenu = "Right-click to assign a player, change the spec or remove the slot.",
-    notOwn = "Only the raid leader or an assistant can plan this slot's casts in the raid note.",
 }
 Slots.TEXT = TEXT
 
@@ -94,17 +101,6 @@ function Slots.List(encounterID)
         end
     end
     return out
-end
-
--- How many slots of spec the boss has saved here (Notes/SpecWords.lua counts them for who a word means).
-function Slots.CountOf(encounterID, spec)
-    local n = 0
-    for _, s in ipairs(Slots.List(encounterID)) do
-        if s.spec == spec then
-            n = n + 1
-        end
-    end
-    return n
 end
 
 -- In a view's list of slots (ForView's) ------------------------------------------------------------------
@@ -175,7 +171,7 @@ function Slots.ForView(encounterID, marks)
     for _, m in ipairs(S and marks or {}) do
         if m.kind == "note" and not personal(m.noteID) then
             for _, tag in ipairs(m.tags or {}) do
-                local e, n = S.Read(tag)
+                local e, n = S.ReadTag(tag)
                 if e and not Slots.ForWord(out, e.spec, n) then
                     out[#out + 1] = { spec = e.spec, n = n or nextFree(out, e.spec) }
                 end
@@ -190,7 +186,7 @@ function Slots.ForTag(list, tag)
     local S = Specs()
     local e, n
     if S then
-        e, n = S.Read(tag)
+        e, n = S.ReadTag(tag)
     end
     return e and Slots.ForWord(list, e.spec, n) or nil
 end
@@ -208,17 +204,6 @@ function Slots.Ensure(encounterID, s)
     list[#list + 1] = saved
     s.saved = saved
     return saved
-end
-
--- Adds a slot of spec with the next free number among the view's slots (list); returns it.
-function Slots.Add(encounterID, spec, list)
-    local all = store(encounterID, true)
-    if not (all and Specs() and Specs().ByID(spec)) then
-        return nil
-    end
-    local s = { spec = spec, n = nextFree(list or Slots.ForView(encounterID), spec) }
-    all[#all + 1] = s
-    return s
 end
 
 -- The player a slot names on Healer CDs: { key, name, tag (what a cast's line is tagged with), class, role, spec, me,
@@ -270,10 +255,24 @@ function Slots.TipLines()
 end
 
 -- The slot's lines ---------------------------------------------------------------------------------------
+-- Every change to the raid note is made in the notes the view shows (ctx.notes: the shared note each shown difficulty
+-- runs, as the view draws them, View:ShownNoteIds), never in another difficulty's note, an older copy or another
+-- guild's. ctx = { encounterID, notes = { note ids }, list = the view's slots (ForView) }: Slots.Context(view).
 
 local function canEditRaid()
     local Notes = CRT.Notes
     return Notes and Notes.CanEditRaid and Notes:CanEditRaid() and true or false
+end
+
+-- The context of a view's slot changes.
+function Slots.Context(view)
+    local ids = {}
+    for _, id in ipairs(view.ShownNoteIds and view:ShownNoteIds() or {}) do
+        if not personal(id) then
+            ids[#ids + 1] = id
+        end
+    end
+    return { encounterID = view:EncounterNumber(), notes = ids, list = view.hvSlots or {} }
 end
 
 local function sameName(tag, key)
@@ -283,11 +282,11 @@ local function sameName(tag, key)
 end
 
 -- Which tag of timer t makes it slot s's line (its index), or nil: a spec word that names s, or s's player's name on
--- a listed cooldown of s's class.
+-- a listed cooldown of s's class (every line naming them for those cooldowns, planned before they were assigned too).
 local function slotTag(s, list, t)
     local S = Specs()
     for i, tag in ipairs(t.tags or {}) do
-        local e, n = S.Read(tag)
+        local e, n = S.ReadTag(tag)
         if e then
             if e.spec == s.spec and Slots.ForWord(list, e.spec, n) == s then
                 return i
@@ -303,30 +302,18 @@ local function slotTag(s, list, t)
     return nil
 end
 
--- The boss's raid notes (never a personal note), by id.
-local function raidNotes(encounterID)
-    local out = {}
-    local Notes = CRT.Notes
-    for _, item in ipairs(Notes and Notes.List and Notes:List("shared") or {}) do
-        if item.record and item.record.encounterID == encounterID then
-            out[#out + 1] = item.id
-        end
-    end
-    return out
-end
-
--- Calls each(timer, tagIndex) for every line of slot s in the boss's raid notes, and writes back what it returns:
--- a new tag list, false to take the line out, nil to leave it. One change per note. Returns how many lines it
--- matched. write false: only counts them.
-local function eachLine(encounterID, s, list, each, write)
+-- Calls each(timer, tagIndex) for every line of slot s in ctx's notes, and writes back what it returns: a new tag
+-- list, false to take the line out, nil to leave it. One change per note. Returns how many lines it matched.
+-- write false: only counts them.
+local function eachLine(ctx, s, each, write)
     local Notes, Parser = CRT.Notes, CRT.NoteParser
     local matched = 0
-    for _, id in ipairs(raidNotes(encounterID)) do
+    for _, id in ipairs(ctx.notes or {}) do
         local record, parsed = Notes:Get(id), Notes:Parsed(id)
-        local pieces = Notes.SplitPieces(record.raw or "")
+        local pieces = record and Notes.SplitPieces(record.raw or "") or {}
         local drop, touched = {}, false
-        for _, t in ipairs(parsed and parsed.timers or {}) do
-            local i = slotTag(s, list, t)
+        for _, t in ipairs(record and parsed and parsed.timers or {}) do
+            local i = slotTag(s, ctx.list, t)
             local piece = i and pieces[t.line]
             if piece then
                 matched = matched + 1
@@ -354,9 +341,9 @@ local function eachLine(encounterID, s, list, each, write)
     return matched
 end
 
--- How many raid note lines are slot s's.
-function Slots.CastCount(encounterID, s, list)
-    return eachLine(encounterID, s, list, nil, false)
+-- How many lines in ctx's notes are slot s's.
+function Slots.CastCount(ctx, s)
+    return eachLine(ctx, s, nil, false)
 end
 
 local function withTag(word)
@@ -370,38 +357,83 @@ local function withTag(word)
     end
 end
 
+-- A line leaving with its slot: out of the note, or when its tag names others too (tag:RestoDruid Bob), only the
+-- slot's word leaves it.
+local function leave(t, i)
+    if #t.tags <= 1 then
+        return false
+    end
+    local tags = {}
+    for k, v in ipairs(t.tags) do
+        if k ~= i then
+            tags[#tags + 1] = v
+        end
+    end
+    return tags
+end
+
+-- When spec goes from one slot to two, the one it had has its lines' plain word ("RestoDruid", every Resto Druid)
+-- written with its number ("RestoDruid1"), so they keep meaning that slot. For someone who may change the raid note.
+local function numberTheOther(ctx, spec)
+    if not canEditRaid() or Slots.Count(ctx.list, spec) ~= 1 then
+        return
+    end
+    local S = Specs()
+    local other = Slots.ForWord(ctx.list, spec, nil)
+    local word = S.Word(spec, other.n)
+    eachLine(ctx, other, function(t, i)
+        local e, n = S.ReadTag(t.tags[i])
+        if e and n == nil then
+            return withTag(word)(t, i)
+        end
+        return nil
+    end)
+end
+
+-- Adds a slot of spec with the next free number among ctx's slots; returns it.
+function Slots.Add(ctx, spec)
+    local all = store(ctx.encounterID, true)
+    if not (all and Specs() and Specs().ByID(spec)) then
+        return nil
+    end
+    numberTheOther(ctx, spec)
+    local s = { spec = spec, n = nextFree(ctx.list, spec) }
+    all[#all + 1] = s
+    return s
+end
+
 -- Assigns player name ("Name" or "Name-Realm") to slot s: its lines (by its word, or by the player it had) name them.
-function Slots.Assign(encounterID, s, list, name)
+function Slots.Assign(ctx, s, name)
     local Groups = CRT.Groups
     local key = Groups and Groups.Normalize and Groups.Normalize(name) or name
     if type(key) ~= "string" or key == "" then
         return false
     end
     if canEditRaid() then
-        eachLine(encounterID, s, list, withTag(Groups and Groups.Display and Groups.Display(key) or key))
+        eachLine(ctx, s, withTag(Groups and Groups.Display and Groups.Display(key) or key))
     end
-    local saved = Slots.Ensure(encounterID, s) or {}
+    local saved = Slots.Ensure(ctx.encounterID, s) or {}
     saved.player, s.player = key, key
     return true
 end
 
--- Takes slot s's player off: their lines on it are written with its spec word again.
-function Slots.Clear(encounterID, s, list)
+-- Takes slot s's player off: every line naming them for its class's listed cooldowns is written with its spec word.
+function Slots.Clear(ctx, s)
     if not s.player then
         return false
     end
     if canEditRaid() then
-        eachLine(encounterID, s, list, withTag(Slots.Word(s, list)))
+        eachLine(ctx, s, withTag(Slots.Word(s, ctx.list)))
     end
-    local saved = Slots.Ensure(encounterID, s) or {}
+    local saved = Slots.Ensure(ctx.encounterID, s) or {}
     saved.player, s.player = nil, nil
     return true
 end
 
--- Gives slot s spec instead, with that spec's next free number. Its lines for a cooldown the new spec has stay (by the
--- new word while it has no player); the others leave the note. With any to leave and no confirmed, nothing changes and
--- "ask" comes back with how many. Returns true when changed.
-function Slots.ChangeSpec(encounterID, s, list, spec, confirmed)
+-- Gives slot s spec instead, with that spec's next free number; a spec of another class takes its player off. Its
+-- lines for a cooldown the new spec has stay (by the new word while it has no player); the others leave (leave). With
+-- any to leave and no confirmed, nothing changes and "ask" comes back with how many. Returns true when changed.
+function Slots.ChangeSpec(ctx, s, spec, confirmed)
     local S, HV = Specs(), CRT.TimelineHealerView
     local e = S.ByID(spec)
     if not e or spec == s.spec then
@@ -414,7 +446,7 @@ function Slots.ChangeSpec(encounterID, s, list, spec, confirmed)
     local lead = canEditRaid()
     if lead then
         local lost = 0
-        eachLine(encounterID, s, list, function(t)
+        eachLine(ctx, s, function(t)
             if not keep[t.spellId] then
                 lost = lost + 1
             end
@@ -423,33 +455,36 @@ function Slots.ChangeSpec(encounterID, s, list, spec, confirmed)
             return "ask", lost
         end
     end
-    local n = nextFree(list, spec, s)
+    local player = e.class == S.ByID(s.spec).class and s.player or nil
+    local n = nextFree(ctx.list, spec, s)
     if lead then
-        local word = S.Word(spec, (Slots.Count(list, spec) + 1 > 1) and n or nil)
-        eachLine(encounterID, s, list, function(t, i)
+        numberTheOther(ctx, spec)
+        local word = S.Word(spec, (Slots.Count(ctx.list, spec) + 1 > 1) and n or nil)
+        local name = player and CRT.Groups and CRT.Groups.Display and CRT.Groups.Display(player) or player
+        eachLine(ctx, s, function(t, i)
             if not keep[t.spellId] then
-                return false
+                return leave(t, i)
             end
-            return not s.player and withTag(word)(t, i) or nil
+            return withTag(name or word)(t, i)
         end)
     end
-    local saved = Slots.Ensure(encounterID, s) or {}
-    saved.spec, saved.n, s.spec, s.n = spec, n, spec, n
+    local saved = Slots.Ensure(ctx.encounterID, s) or {}
+    saved.spec, saved.n, saved.player = spec, n, player
+    s.spec, s.n, s.player = spec, n, player
     return true
 end
 
 -- Removes slot s. With lines in the raid note (for someone who may change it) and no confirmed, nothing changes and
--- "ask" comes back with how many; confirmed, its lines leave the note with it. Other slots keep their numbers.
-function Slots.Remove(encounterID, s, list, confirmed)
+-- "ask" comes back with how many; confirmed, its lines leave the note with it (leave). Other slots keep their numbers.
+function Slots.Remove(ctx, s, confirmed)
+    local encounterID = ctx.encounterID
     if canEditRaid() then
-        local count = Slots.CastCount(encounterID, s, list)
+        local count = Slots.CastCount(ctx, s)
         if count > 0 and not confirmed then
             return "ask", count
         end
         if count > 0 then
-            eachLine(encounterID, s, list, function()
-                return false
-            end)
+            eachLine(ctx, s, leave)
         end
     end
     local saved = s.saved
@@ -482,7 +517,11 @@ local function classColored(text, class)
     return "|c" .. hex .. text .. "|r"
 end
 
-local function casts(n)
+-- What leaves the raid note with n casts of slot s (named: its player's name, when it has one).
+local function casts(n, named)
+    if named then
+        return n == 1 and string.format(TEXT.castOneFor, named) or string.format(TEXT.castManyFor, n, named)
+    end
     return n == 1 and TEXT.castOne or string.format(TEXT.castMany, n)
 end
 
@@ -569,7 +608,7 @@ function Slots.AddMenu(view, owner)
         root:CreateTitle(TEXT.addTitle)
         for _, e in ipairs(Specs().List()) do
             root:CreateButton(classColored(e.label, e.class), function()
-                Slots.Add(encounterID, e.spec, view.hvSlots)
+                Slots.Add(Slots.Context(view), e.spec)
                 view:Refresh()
             end)
         end
@@ -618,11 +657,12 @@ local function playerButton(menu, p, pick)
     end
 end
 
--- Runs action (a Slots function's call), asking first when it says "ask"; the view drawn again after.
-local function act(view, call, question, button)
+-- Runs action (a Slots function's call), asking first when it says "ask" (question: its "%s" the casts that leave,
+-- named for the slot's player when it has one); the view drawn again after.
+local function act(view, call, question, button, named)
     local result, count = call(false)
     if result == "ask" then
-        ask(string.format(question, casts(count)), button, function()
+        ask(string.format(question, casts(count, named)), button, function()
             call(true)
             view:Refresh()
         end)
@@ -638,11 +678,13 @@ function Slots.HeaderMenu(view, owner, lane)
     if not (s and encounterID) then
         return false
     end
-    local list = view.hvSlots or { s }
+    local ctx = Slots.Context(view)
+    local list = ctx.list
     local S = Specs()
     local label = Slots.Label(s, list)
+    local named = s.player and s.who and s.who.p and s.who.p.name or nil
     local function assign(name)
-        Slots.Assign(encounterID, s, list, name)
+        Slots.Assign(ctx, s, name)
         view:Refresh()
     end
     return openMenu(owner, function(root)
@@ -674,15 +716,15 @@ function Slots.HeaderMenu(view, owner, lane)
         for _, other in ipairs(S.List()) do
             local b = change:CreateButton(classColored(other.label, other.class), function()
                 act(view, function(confirmed)
-                    return Slots.ChangeSpec(encounterID, s, list, other.spec, confirmed)
-                end, string.format(TEXT.changeAsk, label, other.label, "%s"), TEXT.changeButton)
+                    return Slots.ChangeSpec(ctx, s, other.spec, confirmed)
+                end, string.format(TEXT.changeAsk, label, other.label, "%s"), TEXT.changeButton, named)
             end)
             if other.spec == s.spec and b and b.SetEnabled then
                 b:SetEnabled(false)
             end
         end
         local clear = root:CreateButton(TEXT.clear, function()
-            Slots.Clear(encounterID, s, list)
+            Slots.Clear(ctx, s)
             view:Refresh()
         end)
         if not s.player and clear and clear.SetEnabled then
@@ -690,8 +732,8 @@ function Slots.HeaderMenu(view, owner, lane)
         end
         root:CreateButton(TEXT.remove, function()
             act(view, function(confirmed)
-                return Slots.Remove(encounterID, s, list, confirmed)
-            end, string.format(TEXT.removeAsk, label, "%s"), TEXT.removeButton)
+                return Slots.Remove(ctx, s, confirmed)
+            end, string.format(TEXT.removeAsk, label, "%s"), TEXT.removeButton, named)
         end)
         local Rows = CRT.TimelineHealerRows
         if Rows and Rows.Fill and lane.hvMenu and #lane.hvMenu.options > 0 then

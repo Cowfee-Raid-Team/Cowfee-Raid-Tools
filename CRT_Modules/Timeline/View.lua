@@ -49,12 +49,14 @@ CRT.TimelineView = View
 
 local LABEL_W = 166 -- the lane name column, with a mechanic's show tick at its left
 local NAME_X = 42 -- where a lane's name starts in its label, after the tick and the icon
-local DEFAULT_ICON = 22 -- the Icon size setting's default (Core.lua), for a settings table without it
+-- the Icon size setting's default, as Core.lua's defaults give it (CRT.defaults, loaded first), for a settings table
+-- without it
+local DEFAULT_ICON = CRT.defaults and CRT.defaults.timeline and CRT.defaults.timeline.iconSize
 local ROW_INSET = 4 -- a row's gap above and below a cast's icon: the default's rows are 30 high
 -- Every lane's height (Abilities, Deaths, Notes, Personal notes, Healer CDs' healers and slots alike): the icon size
 -- plus a gap above and below (View.RowHeight). It follows the Icon size setting; each draw reads it again
 -- (syncRowH), and View.ROW_H is the height last drawn, for Timeline/HealerView.lua and the files beside it.
-local ROW_H = DEFAULT_ICON + 2 * ROW_INSET
+local ROW_H = (DEFAULT_ICON or 0) + 2 * ROW_INSET -- set again from the setting before every draw
 View.ROW_H = ROW_H
 local AXIS_H = 20
 local PHASE_ROW_H = 12 -- each row of phase labels above the time labels
@@ -1679,6 +1681,41 @@ function Methods:Marks(lanes, length)
     return out
 end
 
+-- The notes the view draws for boss encounterID (its own when nil), in Notes:List's order ({ id, record }): for each
+-- difficulty the view shows, the shared note in use (one of the guilds' notes), and your personal notes, which always
+-- run beside it. Healer CDs' healer slots change only these (Timeline/HealerSlots.lua).
+function Methods:ShownNotes(encounterID)
+    encounterID = encounterID or self:EncounterNumber()
+    local Notes = CRT.Notes
+    local out = {}
+    if not (Notes and Notes.List and encounterID) then
+        return out
+    end
+    local list = Notes:List()
+    local runs = {}
+    for _, n in ipairs(list) do
+        local r = n.record
+        if r.encounterID == encounterID then
+            runs[n.id] = r.personal or Notes:FindForEncounter(encounterID, r.difficulty) == n.id
+        end
+    end
+    for _, n in ipairs(list) do
+        if n.record.encounterID == encounterID and runs[n.id] and self:ShowsDifficulty(n.record.difficulty) then
+            out[#out + 1] = n
+        end
+    end
+    return out
+end
+
+-- The ids of ShownNotes.
+function Methods:ShownNoteIds()
+    local out = {}
+    for _, n in ipairs(self:ShownNotes()) do
+        out[#out + 1] = n.id
+    end
+    return out
+end
+
 function Methods:NoteAndReminderMarks(lanes, length)
     local out = {}
     local Reminders = CRT.AlertReminders
@@ -1716,29 +1753,17 @@ function Methods:NoteAndReminderMarks(lanes, length)
         m.row = m.kind == "note" and rowFor(lanes, spellID, text) or nil
         out[#out + 1] = m
     end
-    -- the notes that run: for each difficulty, the shared note in use (one of the guilds' notes), and
-    -- your personal notes, which always run beside it
     local Notes = CRT.Notes
-    local runs = {}
     if Notes and Notes.List then
-        for _, n in ipairs(Notes:List()) do
-            local r = n.record
-            if r.encounterID == encounterID then
-                runs[n.id] = r.personal or Notes:FindForEncounter(encounterID, r.difficulty) == n.id
-            end
-        end
-    end
-    if Notes and Notes.List then
-        for _, n in ipairs(Notes:List()) do
-            if n.record.encounterID == encounterID and runs[n.id] and self:ShowsDifficulty(n.record.difficulty) then
-                local note = Notes:Parsed(n.id)
-                local rawLines = Notes:RawLines(n.id) -- the lines as drawn, so a move can tell one has changed
-                for _, timer in ipairs(note and note.timers or {}) do
-                    local raw = rawLines[timer.line]
-                    add({ ph = timer.ph, time = timer.time, tags = timer.tags, noteID = n.id, line = timer.line,
-                        difficulty = n.record.difficulty, kind = "note", expected = raw, encounterID = encounterID },
-                        timer.spellId, timer.text, timer.iconID)
-                end
+        -- the notes that run (ShownNotes): the shared note in use per difficulty shown, and your personal notes
+        for _, n in ipairs(self:ShownNotes(encounterID)) do
+            local note = Notes:Parsed(n.id)
+            local rawLines = Notes:RawLines(n.id) -- the lines as drawn, so a move can tell one has changed
+            for _, timer in ipairs(note and note.timers or {}) do
+                local raw = rawLines[timer.line]
+                add({ ph = timer.ph, time = timer.time, tags = timer.tags, noteID = n.id, line = timer.line,
+                    difficulty = n.record.difficulty, kind = "note", expected = raw, encounterID = encounterID },
+                    timer.spellId, timer.text, timer.iconID)
             end
         end
     end
