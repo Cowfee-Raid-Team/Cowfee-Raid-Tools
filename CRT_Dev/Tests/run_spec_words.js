@@ -43,6 +43,7 @@ local CRT = {
   Groups = { Normalize = normalize, CachedSpec = function(n) return cache[normalize(n):lower()] end,
     PlayerSpecID = function() return mySpec end },
   AlertRoster = { Players = function() return roster end },
+  -- a stand-in that would count slots planned here: only the note counts, so it is never asked
   TimelineHealerSlots = { CountOf = function(enc, spec) return (slotCounts[enc] or {})[spec] or 0 end },
   Notes = {}, AlertRules = {},
   UI = { OnTheme = function() end, HeadingText = function(s) return s end },
@@ -119,11 +120,25 @@ do
   check(E:IsMine(item({ "RestoDruid2" }, { [105] = 1 })), "the note naming one slot: yours")
   check(not E:IsMine(item({ "RestoDruid2" }, { [105] = 2 })), "the note naming two slots (1 and 2): nobody")
   slotCounts[3001] = { [105] = 2 }
-  check(not E:IsMine(item({ "RestoDruid2" }, { [105] = 1 })), "two slots planned here: nobody")
-  check(E:IsMine(item({ "RestoDruid2" }, { [105] = 1 }, 3002)), "another boss's slots don't count")
-  slotCounts[3001] = { [105] = 1 }
-  check(E:IsMine(item({ "RestoDruid2" }, { [105] = 1 })), "one slot planned here: yours")
+  check(E:IsMine(item({ "RestoDruid2" }, { [105] = 1 })), "slots planned on this computer don't count: the note alone decides")
   slotCounts = {}
+  -- a tag that is a group member's name is only that name, never a spec word
+  roster[#roster + 1] = { key = "Mistweaver-Home", name = "Mistweaver", class = "PRIEST" }
+  cache["mistweaver-home"] = 270
+  S.Reset()
+  check(S.ReadTag("Mistweaver") == nil and S.ReadTag("mistweaver-home") == nil and S.Read("Mistweaver") ~= nil,
+    "a player named Mistweaver: their name, not the spec word")
+  mySpec = 270
+  E:ResetTokens()
+  check(not E:IsMine(item({ "Mistweaver" })), "so a Mistweaver Monk doesn't get Mistweaver's lines")
+  previewAs = "Mistweaver"
+  check(E:IsMine(item({ "Mistweaver" })), "Mistweaver keeps their own")
+  previewAs = nil
+  mySpec = 105
+  table.remove(roster)
+  cache["mistweaver-home"] = nil
+  E:ResetTokens()
+  S.Players(105) -- read again now, as the next checks expect the players kept from here
   -- your spec changing is read again after the words are reset
   mySpec = 102
   check(E:IsMine(item({ "RestoDruid2" }, {})), "kept a few seconds")

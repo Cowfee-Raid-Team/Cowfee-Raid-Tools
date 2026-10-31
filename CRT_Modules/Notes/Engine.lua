@@ -186,7 +186,7 @@ local function specIsMine(e, n, info, as)
         else
             spec = specIdAndRole()
         end
-        return spec ~= nil and readable(spec) and spec == e.spec
+        return readable(spec) and spec ~= nil and spec == e.spec
     end
     local list = Specs.Matching(e, n, info)
     if #list ~= 1 then
@@ -218,7 +218,7 @@ function Engine:IsMine(item)
     end
     local subgroup
     local classAtWord = CRT.NoteParser.ClassAt
-    local readSpec = CRT.NoteSpecs and CRT.NoteSpecs.Read
+    local readSpec = CRT.NoteSpecs and CRT.NoteSpecs.ReadTag
     local i = 1
     while i <= #tags do
         local word = tags[i]:lower():gsub("%-.*$", "")

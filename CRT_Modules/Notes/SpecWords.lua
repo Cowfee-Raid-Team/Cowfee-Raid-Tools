@@ -5,8 +5,10 @@ local ADDON, CRT = ...
 -- healer slots (Timeline/HealerSlots.lua, Timeline/HealerView.lua):
 --   Specs.List()                  every spec word's entry, in menu order: { word, spec, class, label }
 --   Specs.ByID(spec)              the entry of a SpecializationID, or nil
---   Specs.Read(word)              the entry a tag word names and its slot number, or nil: "RestoDruid",
+--   Specs.Read(word)              the entry a word names and its slot number, or nil: "RestoDruid",
 --                                 "restodruid" and "RESTODRUID2" (slot 2) in any case; a number of 0 is no slot
+--   Specs.ReadTag(tag)            Read for a note line's tag: nil when the tag is a group member's name, so a
+--                                 player named Mistweaver keeps their own lines
 --   Specs.Word(spec, n)           the word written for it: "RestoDruid", or "RestoDruid2" for slot 2
 --   Specs.Label(spec, n)          the words shown for it: "Resto Druid", "Resto Druid 2"
 --   Specs.Players(spec)           the roster's players known to play it: you by the game, anyone else by the
@@ -15,10 +17,9 @@ local ADDON, CRT = ...
 --   Specs.Mark(note)              gives a parsed note's timers with a spec word the note's slot counts (Parse.lua)
 -- Who a word means: a word with no number means every player of that spec, as a class word does. A numbered word
 -- ("RestoDruid2") is a healer slot no player was assigned to yet (an assigned slot writes its player's name), so it
--- means a player only when that is not in doubt: the one player of that spec in the raid, while the boss has only one
--- slot of that spec. The boss's slots are the more of the ones planned on this computer (CRTDB.timeline.healerSlots,
--- Timeline/HealerSlots.lua) and the slot numbers the note itself names, so a raider who never planned the boss reads
--- the same answer from the note. More specs are more rows of SPECS, never more code. SpecializationIDs are from
+-- means a player only when that is not in doubt: the one player of that spec in the raid, while the note names only one
+-- slot number of that spec. Only the note counts, so every raider reads it the same way, whoever planned it.
+-- More specs are more rows of SPECS, never more code. SpecializationIDs are from
 -- warcraft.wiki.gg/wiki/SpecializationID, as the season's GameIDs.lua cites them.
 
 local Specs = {}
@@ -86,7 +87,7 @@ end
 
 -- The players ------------------------------------------------------------------------------------------
 
-local kept, keptAt = nil, nil
+local kept, keptAt = nil, nil -- { [spec] = players, names = { [name or key, lower case] = true } }
 
 -- Forgets the players kept, so the next question reads the roster and the specs again.
 function Specs.Reset()
@@ -120,8 +121,13 @@ local function readPlayers()
     end
     local ok, list = pcall(Roster.Players, Roster)
     local me = selfKey()
+    out.names = {}
     for _, p in ipairs(ok and type(list) == "table" and list or {}) do
         local isMe = me ~= nil and p.key:lower() == me
+        out.names[p.key:lower()] = true
+        if usable(p.name) then
+            out.names[p.name:lower()] = true
+        end
         local spec
         if isMe and Groups.PlayerSpecID then
             spec = Groups.PlayerSpecID()
@@ -137,20 +143,31 @@ local function readPlayers()
     return out
 end
 
-function Specs.Players(spec)
+local function players()
     if not (kept and keptAt and now() - keptAt < KEEP_SECONDS) then
         kept, keptAt = readPlayers(), now()
     end
-    return kept[spec] or {}
+    return kept
 end
 
--- How many slots of spec the boss has: the more of those planned here and the numbers the note names. info is
--- the note's (Specs.Mark), or nil.
+function Specs.Players(spec)
+    return players()[spec] or {}
+end
+
+function Specs.ReadTag(tag)
+    if not usable(tag) then
+        return nil
+    end
+    local names = players().names
+    if names and names[tag:lower()] then
+        return nil
+    end
+    return Specs.Read(tag)
+end
+
+-- How many slot numbers of spec the note names. info is the note's (Specs.Mark), or nil.
 local function slotCount(spec, info)
-    local fromNote = info and info.counts and info.counts[spec] or 0
-    local Slots = CRT.TimelineHealerSlots
-    local planned = info and info.encounterID and Slots and Slots.CountOf and Slots.CountOf(info.encounterID, spec) or 0
-    return math.max(fromNote, planned)
+    return info and info.counts and info.counts[spec] or 0
 end
 
 -- The players spec word e (slot n, or nil for no number) means: every player of its spec, or for a numbered word
@@ -171,7 +188,7 @@ end
 -- text, the class file and the player ({ key, name, class, me }) or nil; nil for any other word. info: the note's
 -- slot counts; who (optional): Matching's stand-in.
 function Specs.Display(word, info, who)
-    local e, n = Specs.Read(word)
+    local e, n = Specs.ReadTag(word)
     if not e then
         return nil
     end
