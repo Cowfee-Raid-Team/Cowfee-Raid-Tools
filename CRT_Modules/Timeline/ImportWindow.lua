@@ -27,7 +27,7 @@ local TEXT = {
     replace = "Replace what I imported before for these bosses",
     replaceHelp = "On: the reminders you imported before for each boss and difficulty in the box are deleted first, then these are added. Your other reminders stay.\n\nOff: these are added to what you have. A reminder you already have (the same time and text) is not added twice.",
     tickAll = "Tick every line, for everyone",
-    tickAllHelp = "On: every line that can be read is ticked, for you or for someone else. A line for someone else alerts you too.\n\nOff: only your own lines are ticked again.",
+    tickAllHelp = "On: every line that can be read is ticked, for you or for someone else. A line for someone else alerts you too.\n\nOff: only your own lines are ticked again.\n\nA group box ticks or unticks all its lines. Click a line or a group anywhere to tick it.",
     import = "Import %d",
     close = "Close",
     forYou = "%d for you",
@@ -59,8 +59,9 @@ W.L = L
 
 local win
 -- plan: what the box reads as; lines: each boss's lines as listed (Import.Lines), by boss; open: the bosses opened, by
--- index; rows: every row of the list, top down; all: Tick every line, for everyone
-local state = { plan = nil, lines = {}, open = {}, rows = {}, all = false }
+-- index; rows: every row of the list, top down; all: Tick every line, for everyone; result: a finished import's
+-- status line { text, colour }, kept until the next tick or paste
+local state = { plan = nil, lines = {}, open = {}, rows = {}, all = false, result = nil }
 
 local function settings()
     return CRT.Timeline:Settings()
@@ -76,6 +77,31 @@ end
 
 local function setStatus(text, color)
     win.status:SetText(color and UI.ColorText(text, color) or text)
+end
+
+-- The status line from where things stand: a finished import's result (until the next tick or paste), else what is
+-- missing (no paste, no boss, no line, nothing ticked), else nothing.
+local function paintStatus()
+    if state.result then
+        setStatus(state.result[1], state.result[2])
+        return
+    end
+    local plan = state.plan
+    local any = false
+    for _, p in ipairs(plan and plan.bosses or {}) do
+        any = any or #p.lines > 0
+    end
+    if not plan then
+        setStatus(TEXT.paste)
+    elseif #plan.bosses == 0 then
+        setStatus(TEXT.noBoss, "bad")
+    elseif not any then
+        setStatus(TEXT.nothing, "warn")
+    elseif plan.count == 0 then
+        setStatus(TEXT.noneTicked, "warn")
+    else
+        setStatus("")
+    end
 end
 
 -- The rows ----------------------------------------------------------------------------------------------------
@@ -170,17 +196,42 @@ local function tickClicked(check)
     elseif m.type == "group" then
         CRT.TimelineImport.TickGroup(state.plan, m.group, on)
     end
+    state.result = nil
     paint()
 end
 
--- A click on a boss row opens or closes it.
+-- A click on a boss row opens or closes it; on a line or group row, anywhere on it, ticks or unticks it.
 local function rowClicked(row)
     local m = row.model
     if m and m.type == "boss" then
         state.open[m.index] = not state.open[m.index]
         buildRows()
         paint()
+    elseif m and (m.type == "line" or m.type == "group") then
+        row.check:SetChecked(not row.check:GetChecked())
+        tickClicked(row.check)
     end
+end
+
+-- A line's tooltip: its full text, time, who it is for (yours) or why it isn't yours, and the line as pasted; a line
+-- that couldn't be read: why, and the line.
+local function rowEnter(row)
+    local m = row.model
+    if not (m and (m.type == "line" or m.type == "unread") and GameTooltip and UI.TooltipOwner) then
+        return
+    end
+    local l = m.line
+    local r, g, b = UI.Color("muted")
+    UI.TooltipOwner(GameTooltip, row, "ANCHOR_RIGHT")
+    if m.type == "line" then
+        GameTooltip:SetText(tostring(l.reminder.text or ""), 1, 1, 1, 1, true)
+        GameTooltip:AddLine(CRT.TimelineImport.ShowTime(l.ph, l.time), r, g, b)
+        GameTooltip:AddLine(l.mine and (l.who or "") or (l.reason or ""), 1, 1, 1, true)
+    else
+        GameTooltip:SetText(tostring(l.reason or ""), 1, 1, 1, 1, true)
+    end
+    GameTooltip:AddLine(tostring(l.line or ""), r, g, b, true)
+    GameTooltip:Show()
 end
 
 local function makeRow(list, k)
@@ -208,6 +259,10 @@ local function makeRow(list, k)
     row.name:SetJustifyH("LEFT")
     row.name:SetWordWrap(false)
     row:SetScript("OnClick", rowClicked)
+    row:SetScript("OnEnter", rowEnter)
+    row:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
     list.rows[k] = row
     return row
 end
@@ -229,7 +284,11 @@ local function drawRow(row, m)
     else
         row.name:SetPoint("LEFT", m.type == "boss" and 20 or x, 0)
     end
-    row.name:SetPoint("RIGHT", row, "RIGHT", -(L.whoW + 8), 0)
+    if m.type == "boss" then
+        row.name:SetPoint("RIGHT", row.pillMine, "LEFT", -L.pillPad, 0) -- a long name stops at the pills
+    else
+        row.name:SetPoint("RIGHT", row, "RIGHT", -(L.whoW + 8), 0) -- clear of who it is for
+    end
     if m.type == "boss" then
         row.arrow:SetText(state.open[m.index] and TEXT.open or TEXT.closed)
         row.name:SetText(bossName(m.p))
@@ -242,6 +301,7 @@ local function drawRow(row, m)
         row.name:SetText(CRT.TimelineImport.ShowTime(l.ph, l.time) .. "  " .. tostring(l.reminder.text or ""))
         row.who:SetText(l.mine and (l.who or "") or UI.ColorText(l.who or "", "muted"))
     elseif m.type == "group" then
+        -- ticked only when all its lines are: with some ticked it draws unticked, and a click ticks them all
         row.check:SetChecked(CRT.TimelineImport.GroupTicked(m.group) == true)
         row.name:SetText(UI.ColorText(m.group.label, "warn"))
     elseif m.type == "unreadHead" then
@@ -283,14 +343,15 @@ paint = function()
     end
     list.child:SetHeight(math.max(1, #state.rows * L.rowH))
     paintButton()
+    paintStatus()
 end
 
--- Reads the box again: a new plan, its lines listed, a single boss opened, Tick every line kept. status (optional) is
--- the line to keep showing, such as what was just imported.
-local function readBox(status, color)
+-- Reads the box again: a new plan, its lines listed, a single boss opened, Tick every line kept, the status line from
+-- the new plan (paintStatus).
+local function readBox()
     local text = win.paste.edit:GetText() or ""
     local Import = CRT.TimelineImport
-    state.lines, state.open = {}, {}
+    state.lines, state.open, state.result = {}, {}, nil
     if text:match("^%s*$") then
         state.plan = nil
     else
@@ -309,23 +370,6 @@ local function readBox(status, color)
         win.list.scroll:SetVerticalScroll(0)
     end
     paint()
-    local any = false
-    for _, p in ipairs(state.plan and state.plan.bosses or {}) do
-        any = any or #p.lines > 0
-    end
-    if status then
-        setStatus(status, color)
-    elseif not state.plan then
-        setStatus(TEXT.paste)
-    elseif #state.plan.bosses == 0 then
-        setStatus(TEXT.noBoss, "bad")
-    elseif not any then
-        setStatus(TEXT.nothing, "warn")
-    elseif state.plan.count == 0 then
-        setStatus(TEXT.noneTicked, "warn")
-    else
-        setStatus("")
-    end
 end
 
 -- The line under the list after an import: what was imported and replaced, then the lines left unticked.
@@ -360,12 +404,13 @@ local function doImport()
     end
     local res, err = CRT.TimelineImport.Apply(state.plan, { replace = replaceOn() })
     if not res then
-        setStatus(err, "bad")
-        return
+        state.result = { err, "bad" }
+    else
+        -- the Timeline draws your reminders again on the alerts' change event, which Apply fires once
+        state.result = { resultLine(res) }
     end
-    local line, color = resultLine(res)
-    -- the Timeline draws your reminders again on the alerts' change event, which Apply fires once
-    setStatus(line, color)
+    -- shown until the next tick or paste
+    paintStatus()
 end
 
 -- Building ------------------------------------------------------------------------------------------------
@@ -419,6 +464,7 @@ local function buildTicks(c)
         if state.plan then
             CRT.TimelineImport.TickAll(state.plan, state.all)
         end
+        state.result = nil
         paint()
     end)
     win.replace = makeTick(c, top + L.checkSize + L.gap, TEXT.replace, TEXT.replaceHelp, function(self)

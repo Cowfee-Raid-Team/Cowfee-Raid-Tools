@@ -1035,6 +1035,64 @@ check("window: rows are painted from the model as the list scrolls, from a fixed
   classID = 11
 end)
 
+check("window: the status line follows the ticks; a finished import's line stays until the next tick", function()
+  fresh()
+  local win = Win.Open()
+  paste(win, "EncounterID:3492;Difficulty:Heroic;Name:Ula'tek\\nph:1;time:5;tag:Bob;text:For Bob;\\nph:1;time:6;tag:Bob;text:Again;\\n")
+  assert(strip(win.status.text) == Win.TEXT.noneTicked and not win.importBtn.enabled, "0 for you: " .. strip(win.status.text))
+  local bob = rowOf(win, function(m) return m.type == "line" and m.line.reminder.text == "For Bob" end)
+  bob.check.checked = true
+  bob.check.OnClick(bob.check)
+  assert(strip(win.status.text) == "" and win.importBtn.enabled, "a line ticked: no message: " .. strip(win.status.text))
+  bob.check.checked = false
+  bob.check.OnClick(bob.check)
+  assert(strip(win.status.text) == Win.TEXT.noneTicked, "unticked again: " .. strip(win.status.text))
+  win.all.checked = true
+  win.all.OnClick(win.all)
+  assert(strip(win.status.text) == "" and win.importBtn.text == "Import 2", "Tick every line: " .. strip(win.status.text))
+  click(win.importBtn)
+  assert(strip(win.status.text) == "Imported 2.", "the result: " .. strip(win.status.text))
+  win.all.checked = false
+  win.all.OnClick(win.all)
+  assert(strip(win.status.text) == Win.TEXT.noneTicked, "the next tick replaces it: " .. strip(win.status.text))
+  win.all.checked = false
+  win.all.OnClick(win.all)
+  fresh()
+end)
+
+check("window: rows: a click anywhere ticks a line or group, a tooltip with the full line, names clear of the pills", function()
+  fresh() asMage()
+  local win = Win.Open()
+  paste(win, TAGS .. "junk here\\n")
+  -- a boss's name stops at its pills
+  local boss = inView(win, function(m) return m.type == "boss" end)
+  local right
+  for _, pt in ipairs(boss.name.pts) do if pt[1] == "RIGHT" then right = pt end end
+  assert(right and right[2] == boss.pillMine and right[3] == "LEFT", "the name ends at the for-you pill")
+  -- a click on the row, not the box
+  local solex = rowOf(win, function(m) return m.type == "line" and m.line.who == "Solex" end)
+  click(solex)
+  assert(solex.model.line.ticked and win.importBtn.text == "Import 3", "the row ticks its line: " .. win.importBtn.text)
+  click(solex)
+  assert(not solex.model.line.ticked and win.importBtn.text == "Import 2", "and unticks it")
+  local spec = rowOf(win, function(m) return m.type == "group" and m.group.kind == "spec" end)
+  click(spec)
+  assert(win.importBtn.text == "Import 5", "the group row ticks its lines: " .. win.importBtn.text)
+  -- a line's tooltip: its text, time, who it is for and why, and the line as pasted
+  solex = rowOf(win, function(m) return m.type == "line" and m.line.who == "Solex" end)
+  solex.OnEnter(solex)
+  local all = table.concat(tip.lines, "|")
+  assert(tip.shown and tip.title == "test" and all:find("0:33.7", 1, true) and all:find("for another player (Solex)", 1, true) and all:find("tag:Solex", 1, true), "line tip: " .. tostring(tip.title) .. " | " .. all)
+  local bad = rowOf(win, function(m) return m.type == "unread" end)
+  bad.OnEnter(bad)
+  assert(tip.title == I.TEXT.notReminder and table.concat(tip.lines, "|"):find("junk here", 1, true), "unreadable tip: " .. tostring(tip.title))
+  bad.OnLeave(bad)
+  assert(not tip.shown, "gone on leave")
+  -- the (?) of Tick every line says a group box ticks all its lines
+  assert(Win.TEXT.tickAllHelp:find("group box", 1, true), "the group box in the (?)")
+  fresh()
+end)
+
 check("window: the shared code box and scroll box", function()
   local win = Win.Window()
   assert(win.paste.edit and win.paste.scroll and win.paste.innerW == Win.L.width - 16 - 2 * UI.SCROLL_BOX_PAD - 4 - 14, "the paste box is UI.CodeBox")
