@@ -311,7 +311,7 @@ T:Refresh()
 assert(shownTexts() == "Near (NOW)", shownTexts())
 clock = 102.66
 T:Refresh()
-assert(shownTexts() == "Near (2.3)", "tenths under 10: " .. shownTexts())
+assert(shownTexts() == "Near (2.4)", "tenths under 10, rounded up: " .. shownTexts())
 local w = T:Visible()[1]
 assert(w.text.textColor[1] == 1 and w.text.textColor[2] == 0, "line color")
 -- Use custom colours off: your own line colour is ignored (no type here, and no Colors.lua loaded: white)
@@ -324,16 +324,19 @@ assert(shownTexts() == "Near (5.0)", shownTexts())
 assert(T:Visible()[1].w == #"Near (5.0)" * 6 + 8, "as wide as its words: " .. T:Visible()[1].w)
 clock = 104.96
 T:Refresh()
-assert(shownTexts() == "Near (NOW)", "never 0.0: " .. shownTexts())
+assert(shownTexts() == "Near (0.1)", "not 0 before 0, never 0.0: " .. shownTexts())
 clock = 104.92
 T:Refresh()
-assert(shownTexts() == "Near (NOW)", "0.08 left reads NOW: " .. shownTexts())
+assert(shownTexts() == "Near (0.1)", "0.08 left still counts: " .. shownTexts())
+clock = 105
+T:Refresh()
+assert(shownTexts() == "Near (NOW)", "NOW exactly at 0, the moment the sound plays: " .. shownTexts())
 clock = 100
 pull({ item{ id = "a", time = 15, text = "Far", warn = 20 } })
 start()
 clock = 100.2
 T:Refresh()
-assert(shownTexts() == "Far (14)", "whole seconds from 10: " .. shownTexts())
+assert(shownTexts() == "Far (15)", "whole seconds from 10, rounded up: " .. shownTexts())
 assert(T:Visible()[1].text.textColor[1] == 1 and T:Visible()[1].text.textColor[3] == 1, "white without a color")
 clock = 115
 T:Refresh()

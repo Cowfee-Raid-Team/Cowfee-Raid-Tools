@@ -190,6 +190,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         -- dev nsrt, dev mrt and dev all: the note targets (Dev/NoteTargets.lua)
     elseif CRT.LootDev and CRT.LootDev:Command(msg, raw) then
         -- dev loot: fake records, stats, the RCLootCouncil match report (Dev/Loot.lua)
+    elseif CRT.SoundTimingProbe and CRT.SoundTimingProbe:Command(msg) then
+        -- dev soundtiming (off, show): when each sound cue, countdown 0 and spoken line lands (Dev/SoundTiming.lua)
     elseif CRT.SoundDev and CRT.SoundDev:Command(msg, raw) then
         -- dev sound: play any sound reference, list them (Dev/Sound.lua)
     elseif CRT.GearProbe and CRT.GearProbe:Command(msg, raw) then

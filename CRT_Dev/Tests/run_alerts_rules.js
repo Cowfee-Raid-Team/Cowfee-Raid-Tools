@@ -126,6 +126,32 @@ q = { { at = 1, priority = 21 }, { at = 1.2, priority = 11 } }
 R.Behind(q, 2)
 assert(#q == 2, "not behind")
 print("ok speech: behind drops lowest priority")
+
+-- The countdown every display shows: the time left rounded up, so it reads 0 (nil: the display's NOW or 0.0)
+-- the moment the time passes 0, never before, the moment the sound plays and the bar ends.
+assert(R.ZERO_EPSILON == 0.005, "one tolerance for the displays and the cues: " .. tostring(R.ZERO_EPSILON))
+assert(R.Countdown(0) == nil and R.Countdown(-1) == nil and R.Countdown(0.0005) == nil and R.Countdown(0.004) == nil, "zero at 0, within the tolerance")
+assert(R.Countdown(0.006) == "0.1", "past the tolerance it still counts")
+assert(R.Countdown(0.05) == "0.1", "0.05 left is not 0 yet: " .. tostring(R.Countdown(0.05)))
+assert(R.Countdown(0.0999) == "0.1" and R.Countdown(0.1) == "0.1" and R.Countdown(0.15) == "0.2", "tenths rounded up")
+assert(R.Countdown(0.3) == "0.3" and R.Countdown(3.9) == "3.9", "an exact tenth reads itself: " .. R.Countdown(0.3))
+assert(R.Countdown(9.95) == "10" and R.Countdown(9.9) == "9.9", "whole seconds once the tenths would read 10")
+assert(R.Countdown(12.2) == "13" and R.Countdown(12) == "12", "whole seconds from 10, rounded up")
+assert(R.Countdown(0.05, 0) == "1" and R.Countdown(1, 0) == "1" and R.Countdown(1.2, 0) == "2", "whole seconds, rounded up")
+assert(R.Countdown(0, 0) == nil and R.Countdown(-0.2, 0) == nil, "whole seconds: zero at 0")
+assert(R.Countdown(nil) == nil and R.Countdown("x") == nil, "no number: zero")
+-- tenths under a threshold (the timeline area's Tenths under): rounded up, whole seconds from it, never the threshold itself
+assert(R.Countdown(2.9, 3) == "2.9" and R.Countdown(2.96, 3) == "3" and R.Countdown(3.5, 3) == "4", "tenths under 3: " .. R.Countdown(2.96, 3))
+assert(R.Countdown(0.05, 3) == "0.1" and R.Countdown(0.003, 3) == nil and R.Countdown(5, 0) == "5", "under 3 to 0; 0 is whole seconds")
+-- a probe may watch when each display first shows zero
+local seen = {}
+R.zeroShown = function(display, line, remaining) seen[#seen + 1] = display .. ":" .. line.id end
+R.Countdown(0.2, nil, "texts", { id = "a" })
+R.Countdown(0, nil, "texts", { id = "a" })
+R.Countdown(0, 0)
+R.zeroShown = nil
+assert(#seen == 1 and seen[1] == "texts:a", "zero shown reported once, with its display: " .. table.concat(seen, ","))
+print("ok countdown: rounded up, zero exactly at 0")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 let src; try { src = fs.readFileSync(process.argv[2], 'utf8'); } catch (e) { console.error('cannot read ' + process.argv[2]); process.exit(1); }

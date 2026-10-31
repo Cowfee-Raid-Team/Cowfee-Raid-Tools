@@ -293,7 +293,7 @@ test("rehearsal run follows its clock", function()
   advance(3) -- 2x: six fight seconds in three
   assert(near(A:Elapsed(), 38, 1e-6), "2x elapsed " .. tostring(A:Elapsed()))
   local bars = Bars:Visible()
-  assert(#bars == 1 and bars[1].text == "Soak" and bars[1].time == format("%d", math.floor(50 - fight)) and near(fight, 38, 1e-6),
+  assert(#bars == 1 and bars[1].text == "Soak" and bars[1].time == format("%d", math.ceil(50 - fight - 0.001)) and near(fight, 38, 1e-6),
     "bar counts on the clock: " .. tostring(bars[1] and bars[1].time))
   -- the base stays where Start put it
   assert(near(A:TimeAt(0), base))
@@ -484,7 +484,7 @@ test("rehearsal bars freeze on pause", function()
   playing, speed = true, 2
   advance(1)
   b = Bars:Visible()[1]
-  assert(near(fight, 17, 1e-6) and b.time == format("%d", math.floor(30 - fight)), "two fight seconds in one at 2x: " .. b.time)
+  assert(near(fight, 17, 1e-6) and b.time == format("%d", math.ceil(30 - fight - 0.001)), "two fight seconds in one at 2x (rounded up): " .. b.time)
 end)
 
 test("rehearsal personal note window counts on the clock", function()
@@ -599,6 +599,38 @@ test("a rehearsal run sends nothing", function()
   advance(0.5)
   assert(#sent == 0, "sent: " .. table.concat(sent, ","))
   assert(#played >= 1, "a sound still plays here")
+end)
+
+test("a cue's timer redraws the icons: NOW shows as the sound plays", function()
+  -- real timers here, in frames of 10 ms; the areas' 0.1 s ticker last drew the icon with time left
+  local timers, after = {}, C_Timer.After
+  C_Timer.After = function(d, fn) timers[#timers + 1] = { due = clock + d, fn = fn } end
+  local ok, err = pcall(function()
+    blockItems = { item{ id = "cue", time = 1.03, hold = 1, text = "Ding", sound = "RAID_WARNING", outputs = { icon = true } } }
+    A:Start(EID, "Mythic", "rehearsal", opts())
+    local seenAtPlay
+    for _ = 1, 200 do
+      clock = clock + 0.01 fight = fight + 0.01
+      for i = #timers, 1, -1 do
+        if timers[i].due <= clock + 1e-9 then
+          local t = table.remove(timers, i)
+          local before = #played
+          t.fn()
+          if #played > before then
+            local w = Icons:Visible()[1]
+            seenAtPlay = w and w.seconds.text
+          end
+        end
+      end
+      frame(0.01)
+      if seenAtPlay then break end
+    end
+    assert(#played == 1, "played: " .. #played)
+    assert(seenAtPlay == "NOW", "the icon reads NOW as the sound plays: " .. tostring(seenAtPlay))
+  end)
+  C_Timer.After = after
+  A:Stop()
+  assert(ok, err)
 end)
 
 test("rehearsal fires no pull hooks", function()

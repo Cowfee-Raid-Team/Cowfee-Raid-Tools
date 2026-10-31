@@ -199,7 +199,10 @@ I:Refresh()
 assert(w.seconds.text == "3", "rounded up: " .. w.seconds.text)
 clock = 104.95
 I:Refresh()
-assert(w.seconds.text == "NOW", "NOW under 0.1")
+assert(w.seconds.text == "1", "0.05 left still counts: " .. w.seconds.text)
+clock = 105
+I:Refresh()
+assert(w.seconds.text == "NOW", "NOW exactly at 0")
 clock = 100
 I:Refresh()
 assert(#errors == 0, tostring(errors[1]))

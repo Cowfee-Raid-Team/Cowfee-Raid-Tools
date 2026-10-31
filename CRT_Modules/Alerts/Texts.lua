@@ -19,7 +19,6 @@ local TEXT = {
 }
 
 local PAD = 8          -- around the letters, so the glow sits just outside them
-local NOW_BELOW = 0.1  -- under this many seconds left reads NOW: tenths are cut, so it would read "0.0"
 local MIN_SIZE, MAX_SIZE, DEFAULT_SIZE = 12, 72, 36
 local DEFAULT_POSITION = { point = "CENTER", relativePoint = "CENTER", x = 3, y = 323 } -- Alex's layout, under the break timer
 local WHITE = { 1, 1, 1 }
@@ -27,15 +26,10 @@ local SAMPLE_TYPES = { "spread", "generic", "soak" } -- the Previews' alerts: Sp
 local ALIGNS = { LEFT = true, CENTER = true, RIGHT = true }
 
 
--- Tenths under 10 (cut, not rounded, so 9.96 never reads 10.0), whole seconds from 10, and NOW once
--- under a tenth is left, through 0 and while the line lingers.
-local function seconds(remaining)
-    if remaining < NOW_BELOW then
-        return TEXT.now
-    elseif remaining < 10 then
-        return format("%.1f", math.floor(remaining * 10 + 1e-6) / 10)
-    end
-    return tostring(math.floor(remaining))
+-- The shared countdown (Rules.Countdown: rounded up, tenths under 10), and NOW from 0, the moment the sound
+-- plays, while the line lingers.
+local function seconds(remaining, line)
+    return CRT.AlertRules.Countdown(remaining, nil, "texts", line) or TEXT.now
 end
 
 local function fontSize(s)
@@ -80,7 +74,7 @@ local function draw(w, line, now, s)
         w.text:SetPoint(p[1], w, p[1], p[2], 0)
         w.text:SetJustifyH(edge)
     end
-    local text, time = Areas.ShownText(line), seconds(line.at - now)
+    local text, time = Areas.ShownText(line), seconds(line.at - now, line)
     w.text:SetText(text ~= "" and (text .. " (" .. time .. ")") or time)
     w:SetSize(math.ceil(textWidth(w.text)) + PAD, size + PAD)
     local c = Areas.DrawColor(line) or WHITE -- its ability type's colour, unless its own may win

@@ -12,12 +12,24 @@ local ADDON, CRT = ...
 -- are never said. What was queued at 1x stays while the speed stays 1x. Sound cues play at any speed.
 -- Both go through the sound engine (Sound/Engine.lua): a cue is any sound reference, and a line is said
 -- with CRT.Sound:Speak at the Raid Notes rate and volume.
+-- A cue plays at its exact moment, not at the next tick: once it is within CUE_AHEAD of zero, the tick schedules
+-- it with C_Timer.After for the real seconds left (engine seconds over the rehearsal's speed). When the timer
+-- comes, the cue plays if it is still in this run's lines and due (within Rules.ZERO_EPSILON, the tolerance the
+-- displays draw 0 in); a stop, a new run or the line going away leaves it unplayed. A timer that came early (a
+-- rehearsal seek or a slower speed) is scheduled again once for the time left while the clock plays; a paused
+-- one waits for a later tick, and a speed change makes the next tick schedule it again. A cue no timer played is
+-- still played by the tick that finds it due. Each plays once (its key in `spoken`), never waits for speech, and
+-- the displays that registered with OnZero redraw as it plays, at most once a frame, so their 0 is the same
+-- moment (Rules.Countdown). OnTiming hooks (a dev probe) hear each cue and each line said.
+-- C_Timer.After (warcraft.wiki.gg): the callback runs in the first frame its time has passed.
 
 local Rules = CRT.AlertRules
 local Alerts = CRT.Alerts
 
 local TICK = 0.1
 local SOUND_LATE = 1  -- a sound whose time passed more than this many seconds ago is not played
+local CUE_AHEAD = 2 * TICK -- a cue this many real seconds from zero is scheduled: the next tick may come a slow frame after TICK
+local CUE_EARLY = Rules.ZERO_EPSILON -- a cue this close before its time plays: the tolerance the displays draw 0 in
 
 local NOTICE = {
     speech = "Raid Notes: your note lines are now read out even with the note callout off. Untick 'Read them out' on Raid Notes > Alert Settings to stop it.",
@@ -25,7 +37,10 @@ local NOTICE = {
 
 local Speech = {
     queue = {},     -- items waiting, oldest first
-    spoken = {},    -- keys Rules.SpeechDue has already handled
+    spoken = {},    -- keys Rules.SpeechDue has already handled, and "<id>#sound" for each cue played or passed
+    pending = {},   -- [cue key] = the token of the timer scheduled for it
+    zero = {},      -- functions called the moment a cue plays (OnZero)
+    timing = {},    -- functions (kind, info) told of each cue and each line said (OnTiming)
     playing = false,
     playingUntil = 0,
     runId = nil,
@@ -68,6 +83,7 @@ end
 function Speech:Reset()
     wipe(self.queue)
     wipe(self.spoken)
+    wipe(self.pending) -- a timer still coming finds its token gone and plays nothing
     self.playing = false
     self.playingUntil = 0
 end
@@ -89,9 +105,157 @@ end
 
 local arrivals = 0
 
+-- Hooks: fn() the moment a cue plays (the displays redraw); fn(kind, info) for each cue ("cue": key, at, now,
+-- how = "timer" or "tick", played, speed) and each line said ("speech": text, at, now, real).
+function Speech:OnZero(fn)
+    self.zero[#self.zero + 1] = fn
+end
+
+function Speech:OnTiming(fn)
+    self.timing[#self.timing + 1] = fn
+end
+
+local function tell(self, kind, info)
+    for _, fn in ipairs(self.timing) do
+        pcall(fn, kind, info)
+    end
+end
+
+local function cueKey(member)
+    return tostring(member.id) .. "#sound"
+end
+
+-- A member's cue, with its time, when it has one that may play: a raid note line's only with speech on.
+local function cueOf(line, member)
+    if not member.sound or (member.block == "note" and not settings().tts) then
+        return nil
+    end
+    return member.at or line.at
+end
+
+local zeroFrame -- GetTime() of the frame the displays last redrew for a cue: at most once a frame
+
+-- The displays redraw (OnZero), once a frame however many cues play in it: every cue playing in this frame is due
+-- by its clock, so one redraw draws all their 0s.
+local function redraw(self)
+    local frame = GetTime()
+    if zeroFrame == frame then
+        return
+    end
+    zeroFrame = frame
+    for _, fn in ipairs(self.zero) do
+        local ok, err = pcall(fn)
+        if not ok and geterrorhandler then
+            geterrorhandler()(err)
+        end
+    end
+end
+
+-- Plays a cue now, once, and the displays redraw; past SOUND_LATE it is only marked, and nothing redraws.
+local function playCue(self, member, at, now, how)
+    self.spoken[cueKey(member)] = true
+    self.pending[cueKey(member)] = nil
+    local late = now - at > SOUND_LATE
+    if not late then
+        CRT.Sound:Play(member.sound) -- any reference; an old bare name is a game sound
+        redraw(self)
+    end
+    if #self.timing > 0 then
+        tell(self, "cue", { key = cueKey(member), at = at, now = now, how = how, played = not late,
+            speed = Alerts.RehearsalSpeed and Alerts:RehearsalSpeed() or 1 })
+    end
+end
+
+-- The engine's time (the rehearsal's clock in one), or GetTime() without it.
+local function engineNow()
+    return Alerts and Alerts.Now and Alerts:Now() or GetTime()
+end
+
+local function speedNow()
+    return Alerts.RehearsalSpeed and Alerts:RehearsalSpeed() or 1
+end
+
+-- Whether the clock moves: always outside a rehearsal, not while one is paused.
+local function clockPlays()
+    if not (Alerts.IsRehearsal and Alerts:IsRehearsal() and Alerts.RehearsalTick) then
+        return true
+    end
+    return not Alerts:RehearsalTick()
+end
+
+local tokens = 0
+local fireCue
+
+-- Schedules a cue's timer for `wait` real seconds; again marks the one second try (see fireCue).
+local function arm(self, key, wait, speed, again)
+    tokens = tokens + 1
+    local token, runId = tokens, self.runId
+    self.pending[key] = { token = token, speed = speed, again = again }
+    C_Timer.After(wait, function()
+        fireCue(key, token, runId)
+    end)
+end
+
+-- A scheduled cue's timer: it plays if it is still this run's, still in the lines and due (within the shared
+-- tolerance, Rules.ZERO_EPSILON). One that came earlier than that (a rehearsal seek or a slower speed) is
+-- scheduled again once for the time left while the clock plays; otherwise a later tick schedules it again.
+function fireCue(key, token, runId)
+    local self = Speech
+    local p = self.pending[key]
+    if not p or p.token ~= token then
+        return -- reset, played or scheduled again since
+    end
+    self.pending[key] = nil
+    if not Alerts.running or Alerts.runId ~= runId or self.runId ~= runId or self.spoken[key] then
+        return
+    end
+    local now = engineNow()
+    for _, line in ipairs(Alerts:Lines(now)) do
+        for _, member in ipairs(line.members or { line }) do
+            if cueKey(member) == key then
+                local at = cueOf(line, member)
+                if at and at - now <= CUE_EARLY then
+                    playCue(self, member, at, now, "timer")
+                elseif at and not p.again and clockPlays() then
+                    local speed = speedNow()
+                    arm(self, key, (at - now) / speed, speed, true)
+                end
+                return
+            end
+        end
+    end
+end
+
+-- Sound cues: each member plays its own, once, keyed like speech so a changing line never replays one. A cue
+-- due now (within the shared tolerance) plays; one within CUE_AHEAD real seconds of its time is scheduled for it,
+-- and scheduled again when the rehearsal's speed changed since.
+local function cues(self, lines, now)
+    local timers = C_Timer and C_Timer.After
+    local speed
+    for _, line in ipairs(lines) do
+        for _, member in ipairs(line.members or { line }) do
+            local at = cueOf(line, member)
+            local key = at and cueKey(member)
+            if key and not self.spoken[key] then
+                if at - now <= CUE_EARLY then
+                    playCue(self, member, at, now, "tick")
+                elseif timers then
+                    -- real seconds: the ticks come every TICK real seconds at any speed
+                    speed = speed or speedNow()
+                    local p = self.pending[key]
+                    local wait = (at - now) / speed
+                    if (not p or p.speed ~= speed) and wait <= CUE_AHEAD then
+                        arm(self, key, wait, speed, false)
+                    end
+                end
+            end
+        end
+    end
+end
+
 function Speech:Tick(now)
     if not Alerts.running then
-        if #self.queue > 0 or next(self.spoken) then
+        if #self.queue > 0 or next(self.spoken) or next(self.pending) then
             self:Reset()
         end
         self.runId = nil
@@ -102,23 +266,7 @@ function Speech:Tick(now)
         self.runId = Alerts.runId
     end
     local lines = Alerts:Lines(now)
-
-    -- Sound cues: each member plays its own, once, keyed like speech so a changing line never replays one.
-    for _, line in ipairs(lines) do
-        for _, member in ipairs(line.members or { line }) do
-            local at = member.at or line.at
-            local allowed = member.block ~= "note" or settings().tts
-            if member.sound and at <= now and allowed then
-                local key = tostring(member.id) .. "#sound"
-                if not self.spoken[key] then
-                    self.spoken[key] = true
-                    if now - at <= SOUND_LATE then
-                        CRT.Sound:Play(member.sound) -- any reference; an old bare name is a game sound
-                    end
-                end
-            end
-        end
-    end
+    cues(self, lines, now)
 
     -- A rehearsal off 1x says nothing; the lines coming due are marked so they are never said late.
     local speed = Alerts.RehearsalSpeed and Alerts:RehearsalSpeed() or 1
@@ -163,12 +311,10 @@ function Speech:Tick(now)
         self.playing = true
         self.playingUntil = real + Rules.SPEECH_TIMEOUT
         self:SpeakNow(item.text or "")
+        if #self.timing > 0 then
+            tell(self, "speech", { text = item.text, at = item.at, now = now, real = real })
+        end
     end
-end
-
--- The engine's time (the rehearsal's clock in one), or GetTime() without it.
-local function engineNow()
-    return Alerts and Alerts.Now and Alerts:Now() or GetTime()
 end
 
 local elapsed = 0

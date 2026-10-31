@@ -133,6 +133,35 @@ function Rules.Bars(lines, now, ahead, cap)
     return out, #list - #out
 end
 
+-- The countdown every display shows, one rule for all: the time left rounded up, so it reads 0 the moment the time
+-- passes 0, never before. That is when the sound cue plays (Alerts/Speech.lua schedules it for that moment) and a
+-- bar's fill runs out. Tenths under `tenthsUnder` seconds (default 10; 0 for whole seconds only), whole seconds
+-- from there and once the tenths would read the threshold itself. Nil once the time is up: each display shows its
+-- own NOW or 0.0. ZERO_EPSILON is the one tolerance for the frame clock's rounding: within it of 0 a display
+-- draws 0 and a scheduled cue plays (Alerts/Speech.lua). A probe may set Rules.zeroShown(display, line,
+-- remaining, at), told whenever a display named by `display` draws a line's zero; `at` is the moment it counted
+-- to when that isn't line.at (a bar counting to an impact).
+Rules.ZERO_EPSILON = 0.005
+local TENTHS_UNDER = 10
+
+function Rules.Countdown(remaining, tenthsUnder, display, line, at)
+    if type(remaining) ~= "number" or remaining <= Rules.ZERO_EPSILON then
+        if display and line and Rules.zeroShown then
+            pcall(Rules.zeroShown, display, line, remaining, at)
+        end
+        return nil
+    end
+    local left = remaining - Rules.ZERO_EPSILON
+    local under = type(tenthsUnder) == "number" and tenthsUnder or TENTHS_UNDER
+    if under > 0 then
+        local tenths = math.ceil(left * 10) / 10
+        if tenths < under then
+            return string.format("%.1f", tenths)
+        end
+    end
+    return tostring(math.ceil(left))
+end
+
 -- Lines for the text, icon, circle and timeline areas: those with `output` on, from `warn` seconds before they are
 -- due until `hold` seconds after, soonest first, at most `cap`. Second value: how many were left out.
 function Rules.Area(lines, now, output, cap)
