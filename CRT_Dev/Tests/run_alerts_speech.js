@@ -26,8 +26,22 @@ end
 local function fire(ev, ...)
   for _, f in ipairs(frames) do if f.events[ev] and f.scripts.OnEvent then f.scripts.OnEvent(f, ev, ...) end end
 end
+-- C_Timer.After: a timer runs in the first frame whose time has reached it (timing is limited to the frame rate)
+local timers, asked = {}, {}
+C_Timer = { After = function(d, fn) asked[#asked + 1] = { d = d, at = clock } timers[#timers + 1] = { due = clock + d, fn = fn } end }
+local function runTimers()
+  local due = {}
+  for i = #timers, 1, -1 do
+    if timers[i].due <= clock + 1e-9 then due[#due + 1] = table.remove(timers, i) end
+  end
+  for i = #due, 1, -1 do due[i].fn() end
+end
+-- every game sound played, with the time it played
+local played = {}
+function PlaySound(id, channel) played[#played + 1] = { id = id, at = clock } return true end
 local function step(dt)
   clock = clock + dt
+  runTimers()
   for _, f in ipairs(frames) do if f.scripts.OnUpdate then f.scripts.OnUpdate(f, dt) end end
 end
 local printed = {}
@@ -162,6 +176,107 @@ CRT.db.notes.alert.enabled = true CRT.db.notes.alert.tts = true
 print("ok speech: one-time notice")
 assert(#errors == 0, table.concat(errors, "; "))
 print("ok speech: tts off, SpeakNow, reset")
+
+-- Sound cues on time: a cue is scheduled for its exact moment once it is within a tick of it, not left to the
+-- next 0.1 s tick. Frames here are 10 ms, so "on time" is within one frame.
+local FRAME = 0.01
+A:RegisterBlock("t", { label = "t", group = false, Entries = function() return items end })
+A:RegisterBlock("note", { label = "n", group = false, Entries = function() return {} end })
+local function cueItem(id, time, ph)
+  return { id = id, ph = ph or 1, time = time, text = id, sound = "RAID_WARNING", outputs = { alert = true } }
+end
+local function run(seconds) for _ = 1, math.floor(seconds / FRAME + 0.5) do step(FRAME) end end
+local function clearCues() wipe(played) wipe(asked) wipe(timers) said = {} end
+local function untilScheduled() local stop = clock + 5 while #timers == 0 and clock < stop do step(FRAME) end end
+local function near(a, b) return math.abs(a - b) <= FRAME + 1e-6 end
+
+clearCues()
+start({ cueItem("c1", 1.03) })
+local t0 = clock
+run(3)
+assert(#played == 1, "plays once: " .. #played)
+assert(near(played[1].at, t0 + 1.03), "on time, not at the next tick: " .. (played[1].at - t0))
+assert(#asked >= 1 and math.abs(asked[1].at + asked[1].d - (t0 + 1.03)) < 1e-6, "scheduled for its exact offset")
+finished() run(1)
+assert(#played == 1, "a finished speech event never replays it")
+print("ok cues: scheduled for the exact offset, played once")
+
+-- stopped, reset, or the line gone before its moment: never played
+clearCues()
+start({ cueItem("c1", 1.03) })
+untilScheduled()
+A:Stop()
+run(2)
+assert(#played == 0, "stopped: not played")
+clearCues()
+start({ cueItem("c1", 1.03) })
+untilScheduled()
+run(0.02)
+start({ cueItem("c1", 1.03) }) -- a new run with the same alert
+local t1 = clock
+run(3)
+assert(#played == 1 and near(played[1].at, t1 + 1.03), "reset: only the new run's cue, at its own time: "
+  .. #played .. " " .. tostring(played[1] and (played[1].at - t1)))
+clearCues()
+start({ cueItem("c3", 1.03, 1), { id = "p2", ph = 2, time = 5, text = "later", outputs = { alert = true } } })
+untilScheduled()
+A:StartPhase(2, "next") -- phase 2 starts before the cue: its phase 1 line is cut
+run(2)
+assert(#played == 0, "a line that went away: not played")
+print("ok cues: cancelled on stop, reset and a line going away")
+
+-- rehearsal at 2x and 4x: the cue is at engine time, so it waits (at - now) / speed real seconds
+for _, speed in ipairs({ 2, 4 }) do
+  clearCues()
+  items = { cueItem("r" .. speed, 1.03 * speed) }
+  local base0 = clock
+  A:Start(1, "Mythic", "rehearsal", { clock = function() return (clock - base0) * speed end,
+    speed = function() return speed end })
+  run(3)
+  assert(#played == 1, speed .. "x plays once: " .. #played)
+  assert(near(played[1].at, base0 + 1.03), speed .. "x on time: " .. (played[1].at - base0))
+  A:Stop()
+  run(0.2)
+end
+print("ok cues: rehearsal at 2x and 4x")
+
+-- SOUND_LATE kept: a cue that passed more than a second ago never plays; one just passed still does
+clearCues()
+items = { cueItem("late", 1), cueItem("recent", 2.5) }
+A:Start(1, "Mythic", "test", { firstAt = clock - 3 })
+run(1)
+assert(#played == 1, "only the recent one: " .. #played)
+print("ok cues: SOUND_LATE kept")
+
+-- the displays redraw the moment the cue plays, so their 0 and the sound are the same moment
+clearCues()
+local zeroAt = {}
+S:OnZero(function() zeroAt[#zeroAt + 1] = clock end)
+start({ cueItem("z", 1.03) })
+t0 = clock
+run(2)
+assert(#played == 1 and #zeroAt >= 1 and zeroAt[1] == played[1].at, "the displays redraw as it plays")
+print("ok cues: displays redraw at the sound")
+
+-- a cue never waits behind speech: a line still being said (no finished event) doesn't hold it
+clearCues()
+start({ speechItem("s", 1, "a long line being said", 21), cueItem("c5", 1.53) })
+t0 = clock
+run(3)
+assert(texts() == "a long line being said", "the line is said: " .. texts())
+assert(#played == 1 and near(played[1].at, t0 + 1.53), "the cue plays on time while it is said: "
+  .. tostring(played[1] and (played[1].at - t0)))
+-- and a cue coming due with no C_Timer (or a timer that never comes) still plays at the next tick
+clearCues()
+local after = C_Timer.After
+C_Timer.After = function() end
+start({ cueItem("c6", 1.03) })
+t0 = clock
+run(2)
+C_Timer.After = after
+assert(#played == 1 and played[1].at - t0 >= 1.03 and played[1].at - t0 < 1.03 + 0.1 + 2 * FRAME, "the tick still plays it")
+print("ok cues: never behind speech, and the tick plays one no timer did")
+assert(#errors == 0, table.concat(errors, "; "))
 
 -- a file: sound is looked for in the companion addon only (the old CRT_Media\\Sounds is gone)
 local found = CRT.Sound:Resolve("file:horn.ogg")
