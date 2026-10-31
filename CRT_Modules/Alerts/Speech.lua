@@ -14,7 +14,9 @@ local ADDON, CRT = ...
 -- with CRT.Sound:Speak at the Raid Notes rate and volume. A line the chosen voice has a clip for plays the clip
 -- (Sound/Voices.lua); no finished event comes for a clip, so the next line waits the clip's own length. A count's
 -- numbers keep their one second: when the next line is the next number down (10 then 9, 3 then 2), it may start
--- COUNT_HOLD seconds after the number before, clip or speech, even while that one still plays.
+-- COUNT_HOLD seconds after the number before, clip or speech, even while that one still plays; a due number may
+-- also start in a clip's last CLIP_TAIL seconds, so a word clip a little over a second never delays the count. While
+-- a clip plays, the game's speech-finished event frees nothing: it is for an earlier spoken line, or not ours.
 -- A cue plays at its exact moment, not at the next tick: once it is within CUE_AHEAD of zero, the tick schedules
 -- it with C_Timer.After for the real seconds left (engine seconds over the rehearsal's speed). When the timer
 -- comes, the cue plays if it is still in this run's lines and due (within Rules.ZERO_EPSILON, the tolerance the
@@ -35,6 +37,7 @@ local CUE_AHEAD = 2 * TICK -- a cue this many real seconds from zero is schedule
 local CUE_EARLY = Rules.ZERO_EPSILON -- a cue this close before its time plays: the tolerance the displays draw 0 in
 local COUNT_HOLD = 0.95 -- seconds a count's number holds the next number: under the count's one second
 local CLIP_HOLD = 1 -- seconds a clip of unknown length holds the queue
+local CLIP_TAIL = 0.25 -- a due count number may start this many seconds before the clip playing ends
 
 local NOTICE = {
     speech = "Raid Notes: your note lines are now read out even with the note callout off. Untick 'Read them out' on Raid Notes > Alert Settings to stop it.",
@@ -50,6 +53,7 @@ local Speech = {
     playingUntil = 0,
     playingSince = 0, -- when the line being said started
     number = nil,     -- that line's number, when it is a count's
+    clip = false,     -- whether that line is a voice clip, which no finished event ends
     runId = nil,
     speed = 1,      -- the rehearsal speed at the last tick (1 outside a rehearsal)
 }
@@ -96,6 +100,7 @@ function Speech:Reset()
     self.playing = false
     self.playingUntil = 0
     self.number = nil
+    self.clip = false
 end
 
 -- Stops what is being said now and drops the queue.
@@ -328,6 +333,10 @@ function Speech:Tick(now)
         and real >= self.playingSince + COUNT_HOLD then
         self.playing = false -- the count's next number keeps its second
     end
+    if self.playing and self.clip and self.queue[1] and numberOf(self.queue[1].text)
+        and real >= self.playingUntil - CLIP_TAIL then
+        self.playing = false -- a due number starts in the clip's last moment
+    end
     if not self.playing and self.queue[1] then
         local item = table.remove(self.queue, 1)
         self.playing = true
@@ -335,7 +344,8 @@ function Speech:Tick(now)
         self.playingUntil = real + Rules.SPEECH_TIMEOUT
         self.number = numberOf(item.text)
         local _, how, seconds = self:SpeakNow(item.text or "")
-        if how == "clip" then
+        self.clip = how == "clip"
+        if self.clip then
             self.playingUntil = real + (seconds or CLIP_HOLD)
         end
         if #self.timing > 0 then
@@ -365,7 +375,10 @@ driver:SetScript("OnEvent", function(_, event)
         Speech:SpeechNotice()
         return
     end
-    Speech.playing = false
+    -- a clip has no finished event: this one is for an earlier spoken line, or not ours
+    if not Speech.clip then
+        Speech.playing = false
+    end
     if Alerts.running then
         Speech:Tick(engineNow())
     end

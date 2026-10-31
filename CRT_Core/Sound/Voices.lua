@@ -81,6 +81,7 @@ local TEXT = {
     lacks = "%s has no %s, so those use text to speech.",
     lacksOne = "%s has no %s, so that uses text to speech.",
     listAnd = "%s and %s",
+    listOr = "%s or %s",
     noVolume = "Clips play on your sound channel (General Settings) at that channel's volume: the game takes no volume for them.",
 }
 
@@ -184,7 +185,7 @@ function Sound:VoiceLacks()
         local lacks = voice.lacks or {}
         if #lacks > 0 then
             local words = #lacks < 2 and lacks[1]
-                or (table.concat(lacks, ", ", 1, #lacks - 1) .. " or " .. lacks[#lacks])
+                or string.format(TEXT.listOr, table.concat(lacks, ", ", 1, #lacks - 1), lacks[#lacks])
             lines[#lines + 1] = string.format(#lacks < 2 and TEXT.lacksOne or TEXT.lacks, voice.folder, words)
         end
     end

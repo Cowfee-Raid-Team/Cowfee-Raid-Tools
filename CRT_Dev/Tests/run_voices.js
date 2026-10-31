@@ -213,9 +213,8 @@ start = clock
 for i = 1, 120 do step(0.1) end
 local gaps = {}
 for i = 2, #played do gaps[#gaps + 1] = string.format("%.1f", played[i].at - played[i - 1].at) end
-check("Soak (1.18 s) then 3 waits for Soak; 2 and 1 a second after the number before, late by no more than Soak ran over",
-  #played == 4 and played[2].at - played[1].at >= X.seconds.Soak - 1e-6 and played[3].at - played[2].at <= 1.0 + 1e-6 and played[4].at - played[3].at <= 1.0 + 1e-6
-    and played[4].at - start <= 9 + (X.seconds.Soak - 1) + 0.15, table.concat(gaps, " ") .. " last at " .. (played[4] and string.format("%.2f", played[4].at - start) or "-"))
+check("Soak (1.18 s) then 3: 3 starts in Soak's last quarter second, and 3, 2, 1 are each on their second",
+  #played == 4 and played[2].at - played[1].at >= X.seconds.Soak - 0.25 - 1e-6 and near(2, 7) and near(3, 8) and near(4, 9), table.concat(gaps, " ") .. " last at " .. (played[4] and string.format("%.2f", played[4].at - start) or "-"))
 CRT.db.sound.voice = "tts"
 items = { { id = "d", ph = 1, time = 6, text = "Soak", priority = 21, outputs = { speech = true }, speech = spoken } }
 reset()
@@ -255,10 +254,31 @@ check("a count from 10: 10 has no clip and is read out", ten ~= nil and math.abs
 check("then 9 is still on its second, with the 9 clip, and so on down to 1",
   onSecond(c10, 9) and onSecond(c10, 8) and onSecond(c10, 5) and onSecond(c10, 1) and find(c10, "5seconds321") == nil, show(c10))
 local cb = runCount("Soak", 8, { countFrom = 5, before = 3 })
-check("Speak at Before 0 inside a count: Soak at 3 s, then 2 once Soak ends, and 1 a second after 2",
+check("Speak at Before 3 inside a count from 5: Soak at 3 s, then 2 and 1 each on their second",
   find(cb, "Soak") and math.abs(find(cb, "Soak").at - 17) <= 0.15 and find(cb, "3") == nil
-    and find(cb, "1") and find(cb, "1").at - 19 <= (X.seconds.Soak - 1) + 0.15 and find(cb, "1").at - find(cb, "2").at <= 1.0 + 1e-6
-    and find(cb, "2") and find(cb, "2").at - find(cb, "Soak").at >= X.seconds.Soak - 1e-6, show(cb))
+    and onSecond(cb, 2) and onSecond(cb, 1) and find(cb, "2").at - find(cb, "Soak").at >= X.seconds.Soak - 0.25 - 1e-6, show(cb))
+-- a late finished event (for the read-out 10) while the 9 clip plays frees nothing: Spread, due mid-clip, waits for the clip
+do
+  local list = {}
+  for i, s in ipairs(Rules.SpeechItems("Soak", 12, true, true, false, { countFrom = 10 })) do list[i] = s end
+  items = {
+    { id = "f10", ph = 1, time = 20, text = "Soak", priority = 21, outputs = { speech = true }, speech = list },
+    { id = "fs", ph = 1, time = 11.2, text = "Spread", priority = 21, outputs = { speech = true }, speech = { { offset = 0, text = "Spread" } } },
+  }
+  reset()
+  Alerts:Start(1, "Mythic", "test")
+  local t0 = clock
+  for i = 1, 113 do step(0.1) end -- 9 started at 11; Spread is queued
+  fire("VOICE_CHAT_TTS_PLAYBACK_FINISHED")
+  for i = 1, 30 do step(0.1) end
+  local nine, spread
+  for _, p in ipairs(played) do
+    if p.path:find("9%.mp3$") and not nine then nine = p.at - t0 end
+    if p.path:find("Spread%.mp3$") then spread = p.at - t0 end
+  end
+  check("a finished event while a clip plays doesn't free the speaker", nine and spread and spread - nine >= 0.95,
+    tostring(nine) .. " " .. tostring(spread))
+end
 Alerts:Stop()
 
 -- Quality of Life > Sounds: the Voice dropdown, Test and (?) ---------------------------------------------
