@@ -428,6 +428,51 @@ check("import: a line named like a spell-less ability row keeps its own time", f
   Ref:Delete(key)
 end)
 
+check("import: the editor keeps an imported reminder's own time box; no name fallback onto the row", function()
+  fresh()
+  local Ref, D = CRT.TimelineReference, CRT.AlertDraft
+  local key = assert(Ref:Add("Boss: Ula'tek\\nDifficulty: Heroic\\nEncounter: 3492\\nSoak: 6:40, 7:50"), "the ability timeline")
+  local text = "EncounterID:3492;Difficulty:Heroic;Name:Ula'tek\\nph:1;time:407.5;tag:everyone;dur:20;text:Soak;\\n"
+  I.Apply(I.Plan(I.Parse(text), 11), { replace = false })
+  local e = R:List(3492)[1]
+  local ctx = { encounterID = 3492, id = e.id, reminder = e.r }
+  local draft = D.New()
+  D.FromReminder(draft, e.r)
+  draft.boss, draft.text = "Ula'tek", "Soak"
+  assert(not D.FollowsCasts(ctx, draft), "the editor shows Relative to and Time, not the row's casts")
+  assert(D.TimesProbe(draft, ctx).import ~= nil, "the probe carries import")
+  local hand = D.New()
+  hand.text, hand.boss = "Soak", "Ula'tek"
+  D.SetGroup(hand, "nh")
+  assert(D.FollowsCasts({ encounterID = 3492 }, hand), "a hand-made Soak still follows the row")
+  -- an imported reminder with no typed times never takes the row's casts by its name
+  local bare = { text = "Soak", group = "nh", import = { source = I.SOURCE } }
+  local list, source = R:Times(3492, bare, nil, "nh")
+  assert(#list == 0 and source == "none", "no fallback: " .. tostring(source))
+  Ref:Delete(key)
+end)
+
+check("Alerts:Batch: nested fires once; an error releases the hold, fires and is raised again", function()
+  local A = CRT.Alerts
+  local fired, counting = 0, true
+  A:OnChange(function() if counting then fired = fired + 1 end end)
+  A:Batch(function()
+    A:Fire()
+    A:Batch(function() A:Fire() A:Fire() end)
+    assert(fired == 0, "held inside the outer batch")
+  end)
+  assert(fired == 1, "once at the end: " .. fired)
+  fired = 0
+  local ok, err = pcall(A.Batch, A, function() A:Fire() error("boom", 0) end)
+  assert(not ok and err == "boom", "raised again: " .. tostring(err))
+  assert(fired == 1 and (A.batching or 0) == 0, "released and fired: " .. fired)
+  A:Fire()
+  assert(fired == 2, "Fire works after")
+  A:Batch(function() end)
+  assert(fired == 2, "a batch with no change fires nothing")
+  counting = false
+end)
+
 check("parse: a phase must be a whole number", function()
   local p = I.Parse("EncounterID:3492;Difficulty:Heroic;Name:Ula'tek\\nph:1.5;time:5;tag:everyone;text:x;\\n")
   assert(#p.bosses[1].reminders == 0 and p.bosses[1].skipped[1].reason:find("bad phase", 1, true), "1.5 skipped")

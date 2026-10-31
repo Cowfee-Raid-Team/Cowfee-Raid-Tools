@@ -634,6 +634,10 @@ function Reminders:Times(encounterID, r, ref, group)
         end
         return list, "typed"
     end
+    -- no typed times: the row its name or spell matches, never for one that keeps its own (KeepsTypedTimes)
+    if Reminders.KeepsTypedTimes(r) then
+        return {}, "none"
+    end
     ref = ref or referenceFor(encounterID, r, group)
     row = ref and rowFor(ref, encounterID, r)
     if row then
@@ -826,10 +830,11 @@ local function joined(a, b)
 end
 
 -- One reminder's move (r is the table changed in place). Returns the unmatched times' text, or nil;
--- false when it holds no typed times, keeps them always (KeepsTypedTimes), or isn't on a boss ability with a row to follow. again (Save) moves
--- typed times saved onto an ability since, such as a new alert from a double-click on a cast. group is
--- the caller's difficulty group, so the row is the one the caller shows; with none, a reminder on any
--- difficulty is matched against both groups' rows (the closest cast wins, Normal/Heroic's on a tie).
+-- false when it holds no typed times, keeps them always (KeepsTypedTimes), or isn't on a boss ability
+-- with a row to follow. again (Save) moves typed times saved onto an ability since, such as a new alert
+-- from a double-click on a cast. group is the caller's difficulty group, so the row is the one the caller
+-- shows; with none, a reminder on any difficulty is matched against both groups' rows (the closest cast
+-- wins, Normal/Heroic's on a tie).
 function Reminders.MigrateOne(encounterID, r, again, group)
     if type(r) ~= "table" or Reminders.KeepsTypedTimes(r) or (r.timesMigrated and not again)
         or type(r.times) ~= "string" or trim(r.times) == "" then

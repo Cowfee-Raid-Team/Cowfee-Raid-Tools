@@ -247,7 +247,7 @@ end
 
 -- The draft as reminder text fields, for Reminders:Times.
 local function timesProbe()
-    return Draft.TimesProbe(draft)
+    return Draft.TimesProbe(draft, ctx)
 end
 
 -- The time the box shows for times kept from Stage 1: the first of the lowest phase.
