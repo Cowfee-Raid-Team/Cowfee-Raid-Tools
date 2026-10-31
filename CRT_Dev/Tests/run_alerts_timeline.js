@@ -43,6 +43,7 @@ local function mock(kind)
     if k == "GetScript" then return function(self, name) return rawget(self, name) end end
     if k == "GetChildren" then return function() return end end
     if k == "GetObjectType" then return function(self) return rawget(self, "kind") end end
+    if k == "GetHighlightTexture" then return function(self) local h = rawget(self, "hl") or mock("Texture") rawset(self, "hl", h) return h end end
     return function() end end })
 end
 function CreateFrame(kind) if kind == "Button" then buttons = buttons + 1 end return mock(kind) end
@@ -241,6 +242,45 @@ do
 end
 print("ok slash reminders opens tab")
 print("ok slash note next starts P2 of a reminders-only pull")
+
+-- Your reminders on the Personal notes row (#1229): a bar over the seconds the alert shows before its time (Show from),
+-- and the reminder's own colour where the alerts draw it (Use custom colours on); off, the personal blue
+do
+  CRT.PALETTE.personal, CRT.PALETTE.personalEdge = { 0.3, 0.5, 0.9 }, { 0.5, 0.7, 1 }
+  CRT.db.alerts.reminders = {}
+  local R = CRT.AlertReminders
+  local red = R:Save(3001, nil, { text = "Soak", times = "P1 0:40", warn = 20, color = { 1, 0.07, 0.15, 1 }, group = "nh" })
+  local plain = R:Save(3001, nil, { text = "Plain flag", times = "P1 0:50", warn = 5, group = "nh" })
+  -- only read out: no alert and no bar, so no bar on the row
+  local spoken = R:Save(3001, nil, { text = "Spoken", times = "P1 0:25", warn = 8, group = "nh", outputs = { alert = false, bar = false, speech = true } })
+  local function draw(custom)
+    CRT.db.alerts.customColors = custom
+    local v = View.Create(mock("Frame"))
+    v:SetData({ reference = ref }, 3001, nil, "Nek", "nh")
+    v:Refresh()
+    local flags = {}
+    for _, f in ipairs(v.flags) do if f.shown and f.mark and f.mark.mine then flags[f.mark.id] = f end end
+    return v, flags
+  end
+  local v, flags = draw(true)
+  local fr, fp = flags[red], flags[plain]
+  assert(fr and fp and flags[spoken], "every reminder has a flag")
+  local c = fr.head.color
+  assert(c and math.abs(c[1] - 1) < 1e-6 and math.abs(c[2] - 0.07) < 1e-6, "Soak's flag in its own red")
+  assert(fp.head.color[3] == 0.9, "a reminder with no colour stays in the personal blue")
+  assert(fr.rim.color[1] == 0.5, "the personal edge is kept")
+  local bars = {}
+  for _, b in ipairs(v.lengthBars or {}) do if b.shown then bars[#bars + 1] = b end end
+  assert(#bars == 2, "a bar for each reminder: " .. #bars)
+  local per = View.TimeToX(10, v.extra.length, v.trackW) - View.TimeToX(0, v.extra.length, v.trackW)
+  assert(math.abs(bars[1].w - 2 * per) < 0.01 and math.abs(bars[2].w - 0.5 * per) < 0.01, "as long as Show from: " .. bars[1].w .. ", " .. bars[2].w)
+  assert(math.abs(bars[1].color[1] - 1) < 1e-6 and bars[1].color[4] < 1, "Soak's bar in its red, faint")
+  v, flags = draw(false)
+  assert(flags[red].head.color[3] == 0.9, "Use custom colours off: the personal blue, as its alert")
+  CRT.db.alerts.customColors = nil
+  CRT.db.alerts.reminders = {}
+end
+print("ok your reminders show their colour and how long they show on the Personal notes row")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const p of process.argv.slice(2, 11)) {

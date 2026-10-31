@@ -53,7 +53,6 @@ local L = {
     nameX = 26, tagW = 104, tagGap = 6,
     statusH = 30, buttonH = 22, buttonGap = 6,
     pasteH = 64, fromH = 18,
-    boxPad = 6,
 }
 W.L = L
 
@@ -65,48 +64,7 @@ local function contentW(width)
     return width - 2 * (UI.WINDOW_DEFAULTS and UI.WINDOW_DEFAULTS.inset or 8)
 end
 
--- A 1 px bordered box on the window's background, as the catalog's read-only scrolling text box.
-local function borderedBox(parent)
-    local box = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    box:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    UI.Tint(box, "SetBackdropColor", "background", 0.6)
-    UI.Tint(box, "SetBackdropBorderColor", "border")
-    return box
-end
-
-local function scrollIn(box, name)
-    local scroll = CreateFrame("ScrollFrame", name, box, "UIPanelScrollFrameTemplate")
-    UI:SkinScrollBar(scroll.ScrollBar)
-    scroll:SetPoint("TOPLEFT", L.boxPad, -L.boxPad)
-    scroll:SetPoint("BOTTOMRIGHT", -(4 + UI.ScrollGutter()), L.boxPad)
-    return scroll
-end
-
--- A code box: a bordered box with a multi-line edit box that scrolls. onUserText(edit) runs when the player
--- types or pastes.
-local function codeBox(parent, name, width, onUserText)
-    local box = borderedBox(parent)
-    local scroll = scrollIn(box, name)
-    local edit = CreateFrame("EditBox", nil, scroll)
-    edit:SetMultiLine(true)
-    edit:SetAutoFocus(false)
-    edit:SetFontObject(_G.CRTFontEditSmall or CRTFontEdit)
-    edit:SetWidth(width - 2 * L.boxPad - 4 - UI.ScrollGutter())
-    edit:SetScript("OnEscapePressed", edit.ClearFocus)
-    edit:SetScript("OnTextChanged", function(self, user)
-        if user then
-            onUserText(self)
-        end
-    end)
-    scroll:SetScrollChild(edit)
-    -- a click anywhere in the box puts the cursor in it
-    box:EnableMouse(true)
-    box:SetScript("OnMouseDown", function()
-        edit:SetFocus()
-    end)
-    box.edit = edit
-    return box
-end
+-- The code boxes and the list's box are UI.CodeBox and UI.ScrollBox (CRT_Core/UI/CodeBox.lua).
 
 -- The list --------------------------------------------------------------------------------------------
 -- A bordered box that scrolls, of rows made as they are needed: a heading (a boss's name, when the list has
@@ -210,10 +168,10 @@ local function fillList(list, entries)
 end
 
 local function makeList(parent, name, width, onTick)
-    local box = borderedBox(parent)
-    local scroll = scrollIn(box, name)
+    local box = UI.ScrollBox(parent, name, width)
+    local scroll = box.scroll
     local child = CreateFrame("Frame", nil, scroll)
-    child:SetSize(width - 2 * L.boxPad - 4 - UI.ScrollGutter(), 1)
+    child:SetSize(box.innerW, 1)
     scroll:SetScrollChild(child)
     box.scroll, box.child, box.rows, box.entries, box.onTick = scroll, child, {}, {}, onTick
     return box
@@ -329,7 +287,7 @@ local function buildExport()
     win.status:SetJustifyV("TOP")
     win.status:SetWordWrap(true)
     -- the code is read-only: typing in the box puts the code back
-    win.code = codeBox(c, "CowfeeRaidToolsAlertShareExportCode", width, function(edit)
+    win.code = UI.CodeBox(c, "CowfeeRaidToolsAlertShareExportCode", width, function(edit)
         edit:SetText(ex.text or "")
         edit:HighlightText()
     end)
@@ -443,7 +401,7 @@ local function buildImport()
     im.win = win
     local c = win.content
     local width = contentW(L.importW)
-    win.paste = codeBox(c, "CowfeeRaidToolsAlertShareImportCode", width, function()
+    win.paste = UI.CodeBox(c, "CowfeeRaidToolsAlertShareImportCode", width, function()
         readBox()
     end)
     win.paste:SetPoint("TOPLEFT", 0, 0)

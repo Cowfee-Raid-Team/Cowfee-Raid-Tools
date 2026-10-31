@@ -404,10 +404,12 @@ end
 
 -- Checks ----------------------------------------------------------------------------------------------
 
--- The draft as reminder text fields, for Reminders:Times.
-function Draft.TimesProbe(draft)
+-- The draft as reminder text fields, for Reminders:Times. ctx (optional) is where it came from: a saved reminder's
+-- import goes with it, so an imported one keeps its own times (Reminders.KeepsTypedTimes) whatever its text names.
+function Draft.TimesProbe(draft, ctx)
+    local saved = ctx and ctx.reminder
     return { times = draft.keptTimes, spellID = draft.spellID, text = draft.text, boss = draft.boss,
-        difficulty = draft.difficulty, group = Draft.Group(draft) }
+        difficulty = draft.difficulty, group = Draft.Group(draft), import = saved and saved.import or nil }
 end
 
 -- Whether the draft still uses a saved reminder's own times: one being kept, or one moving to the raid
@@ -668,13 +670,13 @@ function Draft.FollowsCasts(ctx, draft)
     if not (ctx and draft) or ctx.savedMode or draft.saveAs ~= "mine" or not Reminders.FollowsCasts then
         return false
     end
-    return Reminders.FollowsCasts(ctx.encounterID, Draft.TimesProbe(draft), nil, Draft.PreviewGroup(draft))
+    return Reminders.FollowsCasts(ctx.encounterID, Draft.TimesProbe(draft, ctx), nil, Draft.PreviewGroup(draft))
 end
 
 -- The times of a reminder moving to the raid note (Draft.KeepsTimes), or nil.
 function Draft.KeptTimeList(ctx, draft)
     if Draft.KeepsTimes(ctx, draft) then
-        local list = Reminders:Times(ctx.encounterID, Draft.TimesProbe(draft), nil, Draft.PreviewGroup(draft))
+        local list = Reminders:Times(ctx.encounterID, Draft.TimesProbe(draft, ctx), nil, Draft.PreviewGroup(draft))
         if #list > 0 then
             return list
         end
