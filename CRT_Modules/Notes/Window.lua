@@ -86,6 +86,13 @@ local function fmtTime(seconds)
     return format("%d:%02d", math.floor(seconds / 60), math.floor(seconds % 60))
 end
 
+-- The whole second a timer shows for the time left: rounded up, as every alert countdown is (Alerts/Rules.lua
+-- Countdown), so 0 comes the moment the time passes 0, with the sound; 0 from then on.
+local function shownSecond(remaining)
+    local left = CRT.AlertRules.Countdown(remaining, 0)
+    return left and tonumber(left) or 0
+end
+
 -- Headings and your own lines, in the theme's heading colour (the game's gold in Default: Blizzard).
 local function gold(text)
     return CRT.UI.HeadingText(text)
@@ -408,8 +415,8 @@ local function timersTick(note, onlyMe)
         if remaining == nil then
             waiting[item.ph] = true
         elseif not e.cut and e.shown and not (hidePassed and remaining < -(item.dur or 0)) then
-            -- the shown time is the whole second, 0 once passed (fmtTime)
-            local second = remaining > 0 and math.floor(remaining) or 0
+            -- the shown time is the whole second (shownSecond), 0 once passed (fmtTime)
+            local second = shownSecond(remaining)
             if e.sec ~= second then
                 e.sec, e.t = second, timeText(e.mine, second)
             end
@@ -700,7 +707,7 @@ local function runTick(m)
                         lines[n] = p.head
                         headed = true
                     end
-                    local second = r.remaining > 0 and math.floor(r.remaining) or 0
+                    local second = shownSecond(r.remaining)
                     local isNext = r == nextRow
                     if r.sec ~= second or r.isNext ~= isNext then
                         r.sec, r.isNext = second, isNext

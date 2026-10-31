@@ -292,6 +292,13 @@ test("window: counts down in a run", function()
   -- the clock moves: the window redraws each refresh while the run goes (no content change)
   clock = pullAt + 11
   assert(at(show(), "> 0:19|r"), "live countdown:\\n" .. body.text)
+  -- the shared countdown (Rules.Countdown): rounded up, so 0:00 comes the moment the time passes 0, with the sound
+  clock = pullAt + 11.5
+  assert(at(show(), "> 0:19|r"), "18.5 s left reads 0:19, rounded up:\\n" .. body.text)
+  clock = pullAt + 29.5
+  assert(at(show(), "> 0:01|r"), "half a second left is not 0 yet:\\n" .. body.text)
+  clock = pullAt + 30
+  assert(at(show(), "0:00|r"), "0:00 at 0:\\n" .. body.text)
   -- once passed, hidden like the timers window's Hide lines once passed
   clock = pullAt + 40
   text = show()

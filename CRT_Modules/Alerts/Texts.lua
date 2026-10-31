@@ -29,7 +29,7 @@ local ALIGNS = { LEFT = true, CENTER = true, RIGHT = true }
 -- The shared countdown (Rules.Countdown: rounded up, tenths under 10), and NOW from 0, the moment the sound
 -- plays, while the line lingers.
 local function seconds(remaining, line)
-    return CRT.AlertRules.Countdown(remaining, false, "texts", line) or TEXT.now
+    return CRT.AlertRules.Countdown(remaining, nil, "texts", line) or TEXT.now
 end
 
 local function fontSize(s)

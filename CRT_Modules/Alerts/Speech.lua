@@ -14,12 +14,13 @@ local ADDON, CRT = ...
 -- with CRT.Sound:Speak at the Raid Notes rate and volume.
 -- A cue plays at its exact moment, not at the next tick: once it is within CUE_AHEAD of zero, the tick schedules
 -- it with C_Timer.After for the real seconds left (engine seconds over the rehearsal's speed). When the timer
--- comes, the cue plays if it is still in this run's lines and due (within CUE_EARLY); a stop, a new run or the
--- line going away leaves it unplayed, and one that isn't due yet (a paused or jumped rehearsal) is scheduled
--- again by a later tick. A cue no timer played is still played by the tick that finds it due. Each plays once
--- (its key in `spoken`), never waits for speech, and the displays that registered with OnZero redraw as it
--- plays, so their 0 is the same moment (Rules.Countdown). OnTiming hooks (a dev probe) hear each cue and
--- each line said.
+-- comes, the cue plays if it is still in this run's lines and due (within Rules.ZERO_EPSILON, the tolerance the
+-- displays draw 0 in); a stop, a new run or the line going away leaves it unplayed. A timer that came early (a
+-- rehearsal seek or a slower speed) is scheduled again once for the time left while the clock plays; a paused
+-- one waits for a later tick, and a speed change makes the next tick schedule it again. A cue no timer played is
+-- still played by the tick that finds it due. Each plays once (its key in `spoken`), never waits for speech, and
+-- the displays that registered with OnZero redraw as it plays, at most once a frame, so their 0 is the same
+-- moment (Rules.Countdown). OnTiming hooks (a dev probe) hear each cue and each line said.
 -- C_Timer.After (warcraft.wiki.gg): the callback runs in the first frame its time has passed.
 
 local Rules = CRT.AlertRules
@@ -28,7 +29,7 @@ local Alerts = CRT.Alerts
 local TICK = 0.1
 local SOUND_LATE = 1  -- a sound whose time passed more than this many seconds ago is not played
 local CUE_AHEAD = 2 * TICK -- a cue this many real seconds from zero is scheduled: the next tick may come a slow frame after TICK
-local CUE_EARLY = 0.005    -- a timer this close before the cue's time plays it (the frame clock's rounding)
+local CUE_EARLY = Rules.ZERO_EPSILON -- a cue this close before its time plays: the tolerance the displays draw 0 in
 
 local NOTICE = {
     speech = "Raid Notes: your note lines are now read out even with the note callout off. Untick 'Read them out' on Raid Notes > Alert Settings to stop it.",
@@ -132,19 +133,32 @@ local function cueOf(line, member)
     return member.at or line.at
 end
 
--- Plays a cue now, once; past SOUND_LATE it is only marked. Then the displays redraw.
+local zeroFrame -- GetTime() of the frame the displays last redrew for a cue: at most once a frame
+
+-- The displays redraw (OnZero), once a frame however many cues play in it: every cue playing in this frame is due
+-- by its clock, so one redraw draws all their 0s.
+local function redraw(self)
+    local frame = GetTime()
+    if zeroFrame == frame then
+        return
+    end
+    zeroFrame = frame
+    for _, fn in ipairs(self.zero) do
+        local ok, err = pcall(fn)
+        if not ok and geterrorhandler then
+            geterrorhandler()(err)
+        end
+    end
+end
+
+-- Plays a cue now, once, and the displays redraw; past SOUND_LATE it is only marked, and nothing redraws.
 local function playCue(self, member, at, now, how)
     self.spoken[cueKey(member)] = true
     self.pending[cueKey(member)] = nil
     local late = now - at > SOUND_LATE
     if not late then
         CRT.Sound:Play(member.sound) -- any reference; an old bare name is a game sound
-    end
-    for _, fn in ipairs(self.zero) do
-        local ok, err = pcall(fn)
-        if not ok and geterrorhandler then
-            geterrorhandler()(err)
-        end
+        redraw(self)
     end
     if #self.timing > 0 then
         tell(self, "cue", { key = cueKey(member), at = at, now = now, how = how, played = not late,
@@ -157,11 +171,39 @@ local function engineNow()
     return Alerts and Alerts.Now and Alerts:Now() or GetTime()
 end
 
--- A scheduled cue's timer: it plays if it is still this run's, still in the lines and due.
-local function fireCue(key, token, runId)
+local function speedNow()
+    return Alerts.RehearsalSpeed and Alerts:RehearsalSpeed() or 1
+end
+
+-- Whether the clock moves: always outside a rehearsal, not while one is paused.
+local function clockPlays()
+    if not (Alerts.IsRehearsal and Alerts:IsRehearsal() and Alerts.RehearsalTick) then
+        return true
+    end
+    return not Alerts:RehearsalTick()
+end
+
+local tokens = 0
+local fireCue
+
+-- Schedules a cue's timer for `wait` real seconds; again marks the one second try (see fireCue).
+local function arm(self, key, wait, speed, again)
+    tokens = tokens + 1
+    local token, runId = tokens, self.runId
+    self.pending[key] = { token = token, speed = speed, again = again }
+    C_Timer.After(wait, function()
+        fireCue(key, token, runId)
+    end)
+end
+
+-- A scheduled cue's timer: it plays if it is still this run's, still in the lines and due (within the shared
+-- tolerance, Rules.ZERO_EPSILON). One that came earlier than that (a rehearsal seek or a slower speed) is
+-- scheduled again once for the time left while the clock plays; otherwise a later tick schedules it again.
+function fireCue(key, token, runId)
     local self = Speech
-    if self.pending[key] ~= token then
-        return -- reset or played since
+    local p = self.pending[key]
+    if not p or p.token ~= token then
+        return -- reset, played or scheduled again since
     end
     self.pending[key] = nil
     if not Alerts.running or Alerts.runId ~= runId or self.runId ~= runId or self.spoken[key] then
@@ -174,38 +216,36 @@ local function fireCue(key, token, runId)
                 local at = cueOf(line, member)
                 if at and at - now <= CUE_EARLY then
                     playCue(self, member, at, now, "timer")
+                elseif at and not p.again and clockPlays() then
+                    local speed = speedNow()
+                    arm(self, key, (at - now) / speed, speed, true)
                 end
-                return -- not due yet: a later tick schedules it again
+                return
             end
         end
     end
 end
 
-local tokens = 0
-
 -- Sound cues: each member plays its own, once, keyed like speech so a changing line never replays one. A cue
--- due now plays; one within CUE_AHEAD of its time is scheduled for it.
+-- due now (within the shared tolerance) plays; one within CUE_AHEAD real seconds of its time is scheduled for it,
+-- and scheduled again when the rehearsal's speed changed since.
 local function cues(self, lines, now)
-    local after = C_Timer and C_Timer.After
+    local timers = C_Timer and C_Timer.After
     local speed
     for _, line in ipairs(lines) do
         for _, member in ipairs(line.members or { line }) do
             local at = cueOf(line, member)
             local key = at and cueKey(member)
             if key and not self.spoken[key] then
-                if at <= now then
+                if at - now <= CUE_EARLY then
                     playCue(self, member, at, now, "tick")
-                elseif after and not self.pending[key] then
+                elseif timers then
                     -- real seconds: the ticks come every TICK real seconds at any speed
-                    speed = speed or (Alerts.RehearsalSpeed and Alerts:RehearsalSpeed() or 1)
+                    speed = speed or speedNow()
+                    local p = self.pending[key]
                     local wait = (at - now) / speed
-                    if wait <= CUE_AHEAD then
-                        tokens = tokens + 1
-                        local token, runId = tokens, self.runId
-                        self.pending[key] = token
-                        after(wait, function()
-                            fireCue(key, token, runId)
-                        end)
+                    if (not p or p.speed ~= speed) and wait <= CUE_AHEAD then
+                        arm(self, key, wait, speed, false)
                     end
                 end
             end

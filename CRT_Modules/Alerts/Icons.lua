@@ -57,7 +57,7 @@ end
 
 -- Whole seconds, rounded up (the shared Rules.Countdown), and NOW from 0, the moment the sound plays.
 local function seconds(remaining, line)
-    return CRT.AlertRules.Countdown(remaining, true, "icons", line) or TEXT.now
+    return CRT.AlertRules.Countdown(remaining, 0, "icons", line) or TEXT.now
 end
 
 -- The words' full width. GetStringWidth is bounded by the region's size, GetUnboundedStringWidth is not.

@@ -601,6 +601,38 @@ test("a rehearsal run sends nothing", function()
   assert(#played >= 1, "a sound still plays here")
 end)
 
+test("a cue's timer redraws the icons: NOW shows as the sound plays", function()
+  -- real timers here, in frames of 10 ms; the areas' 0.1 s ticker last drew the icon with time left
+  local timers, after = {}, C_Timer.After
+  C_Timer.After = function(d, fn) timers[#timers + 1] = { due = clock + d, fn = fn } end
+  local ok, err = pcall(function()
+    blockItems = { item{ id = "cue", time = 1.03, hold = 1, text = "Ding", sound = "RAID_WARNING", outputs = { icon = true } } }
+    A:Start(EID, "Mythic", "rehearsal", opts())
+    local seenAtPlay
+    for _ = 1, 200 do
+      clock = clock + 0.01 fight = fight + 0.01
+      for i = #timers, 1, -1 do
+        if timers[i].due <= clock + 1e-9 then
+          local t = table.remove(timers, i)
+          local before = #played
+          t.fn()
+          if #played > before then
+            local w = Icons:Visible()[1]
+            seenAtPlay = w and w.seconds.text
+          end
+        end
+      end
+      frame(0.01)
+      if seenAtPlay then break end
+    end
+    assert(#played == 1, "played: " .. #played)
+    assert(seenAtPlay == "NOW", "the icon reads NOW as the sound plays: " .. tostring(seenAtPlay))
+  end)
+  C_Timer.After = after
+  A:Stop()
+  assert(ok, err)
+end)
+
 test("rehearsal fires no pull hooks", function()
   local pulled = 0
   A.onPull[#A.onPull + 1] = function() pulled = pulled + 1 end

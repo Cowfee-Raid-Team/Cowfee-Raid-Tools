@@ -119,18 +119,23 @@ function Probe.OnTiming(kind, info)
     end
 end
 
--- A display drawing a line's 0 (Rules.Countdown); the first time per display and line in a run.
-function Probe.ZeroShown(display, l, remaining)
-    if not on() or not Alerts.running or type(remaining) ~= "number" or type(l) ~= "table" or type(l.at) ~= "number" then
+-- A display drawing a line's 0 (Rules.Countdown); the first time per display, line and moment in a run. `at` is
+-- the moment it counted to when that isn't the line's (a bar counting to each impact).
+function Probe.ZeroShown(display, l, remaining, at)
+    if not on() or not Alerts.running or type(remaining) ~= "number" or type(l) ~= "table" then
+        return
+    end
+    at = type(at) == "number" and at or l.at
+    if type(at) ~= "number" then
         return
     end
     head()
-    local key = tostring(display) .. "|" .. tostring(l.id)
+    local key = tostring(display) .. "|" .. tostring(l.id) .. "|" .. tostring(at)
     if shown[key] then
         return
     end
     shown[key] = true
-    line(l.at, string.format("%s shows 0 for %s, %s after 0", tostring(display), tostring(l.id), Probe.Gap(-remaining, speed())))
+    line(at, string.format("%s shows 0 for %s, %s after 0", tostring(display), tostring(l.id), Probe.Gap(-remaining, speed())))
 end
 
 if Speech and Speech.OnTiming then

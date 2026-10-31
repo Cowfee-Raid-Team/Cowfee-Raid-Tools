@@ -202,7 +202,7 @@ end
 -- The shared countdown (Alerts/Rules.lua Countdown: rounded up, tenths under 10), and NOW from 0, the moment
 -- the sound plays.
 local function countdownText(remaining, line)
-    local left = CRT.AlertRules.Countdown(remaining, false, "callout", line)
+    local left = CRT.AlertRules.Countdown(remaining, nil, "callout", line)
     return left and (left .. "s") or "NOW"
 end
 

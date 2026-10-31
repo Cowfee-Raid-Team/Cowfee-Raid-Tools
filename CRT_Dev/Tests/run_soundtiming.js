@@ -68,6 +68,8 @@ local line = A:Lines(A:Now())[1]
 R.Countdown(line.at - A:Now(), false, "texts", line)
 run(0.01)
 R.Countdown(line.at - A:Now(), false, "texts", line)
+-- a bar counting to an impact half a second before the line's own time: logged against the impact
+R.Countdown(-0.002, nil, "bars", line, line.at - 0.5)
 run(1)
 P:Command("dev soundtiming show")
 assert(shownText, "log shown")
@@ -78,6 +80,7 @@ assert(all:find("cue c#sound played %+0 ms after 0 %(timer, 1x%)"), "the cue, on
 local zeros = 0
 for _, l in ipairs(lines) do if l:find("texts shows 0 for c") then zeros = zeros + 1 end end
 assert(zeros == 1 and all:find("texts shows 0 for c, %+0 ms after 0"), "the display's first 0, once: " .. all)
+assert(all:find("0%.530 bars shows 0 for c, %+2 ms after 0"), "a bar's impact, at the impact's time: " .. all)
 assert(all:find('said "Soak": started %+%d+ ms after its time'), "the spoken line: " .. all)
 assert(all:find("%[%s*%d+%.%d%]%s+1%.030 cue"), "real ms and fight seconds: " .. all)
 print("ok soundtiming: cue, display zero and speech logged")

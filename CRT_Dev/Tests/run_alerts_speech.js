@@ -27,8 +27,13 @@ local function fire(ev, ...)
   for _, f in ipairs(frames) do if f.events[ev] and f.scripts.OnEvent then f.scripts.OnEvent(f, ev, ...) end end
 end
 -- C_Timer.After: a timer runs in the first frame whose time has reached it (timing is limited to the frame rate)
-local timers, asked = {}, {}
-C_Timer = { After = function(d, fn) asked[#asked + 1] = { d = d, at = clock } timers[#timers + 1] = { due = clock + d, fn = fn } end }
+-- early[1], when set, makes the next timer come that many seconds before its time (once)
+local timers, asked, early = {}, {}, {}
+C_Timer = { After = function(d, fn)
+  asked[#asked + 1] = { d = d, at = clock }
+  local soon = table.remove(early, 1) or 0
+  timers[#timers + 1] = { due = clock + d - soon, fn = fn }
+end }
 local function runTimers()
   local due = {}
   for i = #timers, 1, -1 do
@@ -240,23 +245,134 @@ for _, speed in ipairs({ 2, 4 }) do
 end
 print("ok cues: rehearsal at 2x and 4x")
 
--- SOUND_LATE kept: a cue that passed more than a second ago never plays; one just passed still does
-clearCues()
+-- The displays redraw (OnZero) the moment a cue plays, once a frame; each redraw records whether a display would
+-- draw 0 for every line whose cue has played (Rules.Countdown, as the displays use it).
+local zeroAt, zeroDrawsNow = {}, {}
+S:OnZero(function()
+  zeroAt[#zeroAt + 1] = clock
+  local now, all = A:Now(), true
+  for _, l in ipairs(A:Lines(now)) do
+    if S.spoken[tostring(l.id) .. "#sound"] and R.Countdown(l.at - now) ~= nil then all = false end
+  end
+  zeroDrawsNow[#zeroDrawsNow + 1] = all
+end)
+local function clearZero() wipe(zeroAt) wipe(zeroDrawsNow) end
+
+-- SOUND_LATE kept: a cue that passed more than a second ago never plays; one just passed still does. A cue only
+-- marked (too late) redraws nothing.
+clearCues() clearZero()
 items = { cueItem("late", 1), cueItem("recent", 2.5) }
 A:Start(1, "Mythic", "test", { firstAt = clock - 3 })
 run(1)
 assert(#played == 1, "only the recent one: " .. #played)
+assert(#zeroAt == 1, "one redraw, for the one that played: " .. #zeroAt)
+clearCues() clearZero()
+items = { cueItem("late", 1) }
+A:Start(1, "Mythic", "test", { firstAt = clock - 3 })
+run(1)
+assert(#played == 0 and #zeroAt == 0, "a cue too late to play redraws nothing")
 print("ok cues: SOUND_LATE kept")
 
 -- the displays redraw the moment the cue plays, so their 0 and the sound are the same moment
-clearCues()
-local zeroAt = {}
-S:OnZero(function() zeroAt[#zeroAt + 1] = clock end)
+clearCues() clearZero()
 start({ cueItem("z", 1.03) })
 t0 = clock
 run(2)
-assert(#played == 1 and #zeroAt >= 1 and zeroAt[1] == played[1].at, "the displays redraw as it plays")
-print("ok cues: displays redraw at the sound")
+assert(#played == 1 and #zeroAt == 1 and zeroAt[1] == played[1].at, "the displays redraw as it plays")
+assert(zeroDrawsNow[1], "and they draw 0 then")
+-- two cues in the same frame: both play, one redraw
+clearCues() clearZero()
+start({ cueItem("y1", 1.03), cueItem("y2", 1.03) })
+run(2)
+assert(#played == 2 and #zeroAt == 1, "two cues in one frame, one redraw: " .. #played .. " " .. #zeroAt)
+print("ok cues: displays redraw at the sound, once a frame")
+
+-- a timer 3 ms early (inside the shared tolerance) plays, and the displays draw 0 with it
+clearCues() clearZero()
+early[1] = 0.003
+start({ cueItem("e3", 1.033) })
+t0 = clock
+run(2)
+assert(#played == 1 and near(played[1].at, t0 + 1.03), "3 ms early plays: " .. tostring(played[1] and played[1].at - t0))
+assert(zeroDrawsNow[1] == true, "and 0 is drawn as it plays, not 0.1")
+-- a timer 50 ms early is scheduled again once for the time left, and plays on time (not at the next tick)
+clearCues() clearZero()
+early[1] = 0.05
+start({ cueItem("e50", 1.03) })
+t0 = clock
+run(2)
+assert(#played == 1 and near(played[1].at, t0 + 1.03), "50 ms early: again for the time left, on time: "
+  .. tostring(played[1] and played[1].at - t0))
+assert(#asked == 2, "scheduled twice: " .. #asked)
+print("ok cues: an early timer within the tolerance plays, one earlier is scheduled again")
+
+-- a member's cue: keyed and timed by the member, not by the line it merged into (whose id is the first member's)
+local groupItems = {}
+A:RegisterBlock("t", { label = "t", group = false, Entries = function() return {} end })
+A:RegisterBlock("g", { label = "g", group = true, Entries = function() return groupItems end })
+clearCues()
+groupItems = { { id = "lead", ph = 1, time = 1, text = "Lead", outputs = { alert = true } }, cueItem("member", 1.03) }
+start({})
+t0 = clock
+local merged = A:Lines(A:Now())
+assert(#merged == 1 and merged[1].id == "lead" and #merged[1].members == 2, "one merged line, led by another id")
+run(2)
+assert(#played == 1 and near(played[1].at, t0 + 1.03), "the member's cue, once, at its own time: " .. #played
+  .. " " .. tostring(played[1] and played[1].at - t0))
+groupItems = {}
+A:RegisterBlock("t", { label = "t", group = false, Entries = function() return items end })
+print("ok cues: a merged line's member cue, at the member's time")
+
+-- a rehearsal clock that can pause, seek and change speed while a cue is scheduled
+local rf, rs, rp = 0, 1, true
+local function rrun(seconds, until_)
+  for _ = 1, math.floor(seconds / FRAME + 0.5) do
+    if rp then rf = rf + FRAME * rs end
+    step(FRAME)
+    if until_ and until_() then return end
+  end
+end
+local gaps = {}
+S:OnTiming(function(kind, info) if kind == "cue" then gaps[#gaps + 1] = info.now - info.at end end)
+local function rehearse(time)
+  clearCues() wipe(gaps)
+  rf, rs, rp = 0, 1, true
+  items = { cueItem("rh", time) }
+  A:Start(1, "Mythic", "rehearsal", { clock = function() return rf end, speed = function() return rs end })
+end
+local function scheduled() return #timers > 0 end
+-- paused while it is scheduled: nothing plays until the clock moves on, then once, on time
+rehearse(1.03)
+rrun(2, scheduled)
+rp = false
+rrun(1)
+assert(#played == 0, "paused: not played")
+rp = true
+rrun(1)
+assert(#played == 1 and math.abs(gaps[1]) <= FRAME + 1e-6, "resumed: once, on time: " .. tostring(gaps[1]))
+-- seek back while it is scheduled: not played at the old moment; once, on time, when the clock gets there again
+rehearse(1.03)
+rrun(2, scheduled)
+rf = 0.2
+rrun(0.5)
+assert(#played == 0, "seeked back: not played")
+rrun(1)
+assert(#played == 1 and math.abs(gaps[1]) <= FRAME + 1e-6, "played once when reached again: " .. tostring(gaps[1]))
+-- 2x to 1x after it was scheduled: its timer comes early, is scheduled again and plays on time
+rehearse(2.06)
+rs = 2
+rrun(2, scheduled)
+rs = 1
+rrun(1)
+assert(#played == 1 and math.abs(gaps[1]) <= FRAME + 1e-6, "slowed down: on time: " .. tostring(gaps[1]))
+-- 1x to 4x after it was scheduled: once, never early, at most a tick (in fight seconds) late
+rehearse(1.03)
+rrun(2, scheduled)
+rs = 4
+rrun(1)
+assert(#played == 1 and gaps[1] >= -R.ZERO_EPSILON and gaps[1] <= (0.1 + 2 * FRAME) * 4, "sped up: " .. tostring(gaps[1]))
+A:Stop() run(0.2)
+print("ok cues: rehearsal pause, seek and speed change while scheduled")
 
 -- a cue never waits behind speech: a line still being said (no finished event) doesn't hold it
 clearCues()

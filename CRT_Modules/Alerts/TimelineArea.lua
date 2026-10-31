@@ -353,16 +353,6 @@ local function draw(w, line, now, s)
     w.badgeCount = n
 end
 
--- The countdown on the icon: whole seconds, rounded up, or tenths under the tenths setting, rounded down so it
--- never reads the threshold itself (2.96 under 3 is 2.9, not 3.0).
-local function countdown(remaining, s)
-    local tenths = clamp(s.tenths, "tenths")
-    if tenths > 0 and remaining < tenths then
-        return format("%.1f", math.floor(remaining * 10) / 10)
-    end
-    return tostring(math.ceil(remaining))
-end
-
 local function setCount(w, text)
     if w.countText ~= text then
         w.countText = text
@@ -409,8 +399,12 @@ local function place(area, w, now, s, direction)
     else
         w.ring:Hide()
     end
-    if remaining > 0 then
-        setCount(w, s.showCountdown ~= false and countdown(remaining, s) or "")
+    -- The countdown on the icon: the shared one (Rules.Countdown), rounded up, with tenths under the Tenths under
+    -- setting (whole seconds when it is off), never the threshold itself. Nil from 0, the moment the sound plays:
+    -- the NOW effect then.
+    local left = CRT.AlertRules.Countdown(remaining, clamp(s.tenths, "tenths"), "timeline", line)
+    if left then
+        setCount(w, s.showCountdown ~= false and left or "")
         w.pop:Hide()
     else
         setCount(w, "")
