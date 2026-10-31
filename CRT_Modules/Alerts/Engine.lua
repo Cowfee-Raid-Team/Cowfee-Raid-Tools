@@ -92,9 +92,28 @@ function Alerts:OnChange(fn)
 end
 
 function Alerts:Fire()
+    if (self.batching or 0) > 0 then
+        self.batchFired = true -- inside Batch: once, at its end
+        return
+    end
     for _, fn in ipairs(self.listeners) do
         -- A listener (a window) failing must never stop the engine or the other listeners.
         safe(fn)
+    end
+end
+
+-- Runs fn with the change event held: however many changes it makes, Fire runs once at the end (when any did), so a
+-- many-reminder write (Timeline/ImportReminders.lua) redraws once. An error in fn still ends the batch, then is raised.
+function Alerts:Batch(fn)
+    self.batching = (self.batching or 0) + 1
+    local ok, err = pcall(fn)
+    self.batching = self.batching - 1
+    if self.batching == 0 and self.batchFired then
+        self.batchFired = nil
+        self:Fire()
+    end
+    if not ok then
+        error(err, 0)
     end
 end
 

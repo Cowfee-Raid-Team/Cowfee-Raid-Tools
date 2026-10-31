@@ -563,13 +563,20 @@ end
 
 Reminders.RowFor = rowFor
 
+-- Whether a reminder always keeps its typed times and never moves onto an ability row's casts: one imported from
+-- another addon's export (import, Timeline/ImportReminders.lua), which keeps the time it was pasted with.
+function Reminders.KeepsTypedTimes(r)
+    return type(r) == "table" and type(r.import) == "table"
+end
+
 -- The reference, row and difficulty group a reminder on a boss ability follows, or nil. A reminder is on
 -- a boss ability when its spell has a row on the ability timeline, or when it has no spell and its text
 -- names a row that has no spell of its own either (a spell-less ability row, matched by name). Its times
 -- are then always that row's casts (FromReference), never typed ones, so the Timeline, the Rehearsal, the
--- Mech Alerts list and the alerts agree. Your own reminders keep typed times.
+-- Mech Alerts list and the alerts agree. Your own reminders keep typed times, and so does an imported one
+-- (KeepsTypedTimes), whatever its text names.
 local function castSource(encounterID, r, ref, group)
-    if type(r) ~= "table" then
+    if type(r) ~= "table" or Reminders.KeepsTypedTimes(r) then
         return nil
     end
     local spell = type(r.spellID) == "number" and r.spellID > 0
@@ -626,6 +633,10 @@ function Reminders:Times(encounterID, r, ref, group)
             return {}, "typed", err
         end
         return list, "typed"
+    end
+    -- no typed times: the row its name or spell matches, never for one that keeps its own (KeepsTypedTimes)
+    if Reminders.KeepsTypedTimes(r) then
+        return {}, "none"
     end
     ref = ref or referenceFor(encounterID, r, group)
     row = ref and rowFor(ref, encounterID, r)
@@ -819,12 +830,13 @@ local function joined(a, b)
 end
 
 -- One reminder's move (r is the table changed in place). Returns the unmatched times' text, or nil;
--- false when it holds no typed times, or isn't on a boss ability with a row to follow. again (Save) moves
--- typed times saved onto an ability since, such as a new alert from a double-click on a cast. group is
--- the caller's difficulty group, so the row is the one the caller shows; with none, a reminder on any
--- difficulty is matched against both groups' rows (the closest cast wins, Normal/Heroic's on a tie).
+-- false when it holds no typed times, keeps them always (KeepsTypedTimes), or isn't on a boss ability
+-- with a row to follow. again (Save) moves typed times saved onto an ability since, such as a new alert
+-- from a double-click on a cast. group is the caller's difficulty group, so the row is the one the caller
+-- shows; with none, a reminder on any difficulty is matched against both groups' rows (the closest cast
+-- wins, Normal/Heroic's on a tie).
 function Reminders.MigrateOne(encounterID, r, again, group)
-    if type(r) ~= "table" or (r.timesMigrated and not again)
+    if type(r) ~= "table" or Reminders.KeepsTypedTimes(r) or (r.timesMigrated and not again)
         or type(r.times) ~= "string" or trim(r.times) == "" then
         return false
     end
