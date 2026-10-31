@@ -145,7 +145,9 @@ CRT.Notes = { FindForEncounter = function(_, enc) return noteFor[enc] end, OnCha
   Get = function(_, id) return { name = "Note " .. id } end }
 CRT.NoteComm = { CanShare = function() if canShare then return true end return false, "Only the raid leader or an assistant can share notes." end,
   Share = function(_, id) shared[#shared + 1] = id end }
-CRT.TimelineView = { Create = function() return view end, Format = function(t) return string.format("%d:%02d", math.floor(t / 60), t % 60) end }
+CRT.TimelineView = { Create = function() return view end, Format = function(t) return string.format("%d:%02d", math.floor(t / 60), t % 60) end,
+  -- View.PersonalNoteSize's rule (run_alerts_marks.js tests the real one): the setting once set, else Icon size
+  PersonalNoteSize = function() local s = CRT.db.timeline return (s.personalNoteSize or 0) > 0 and s.personalNoteSize or s.iconSize end }
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
 local T = CRT.Timeline
 local function pull(id, len, kill) return { id = id, length = len, kill = kill, casts = {}, deaths = {} } end
@@ -412,6 +414,32 @@ do
   assert(recHelp.pt[4] == 8 and recHelp.pt[5] > -200, "Recording moved up into the left column: " .. tostring(recHelp.pt[5]))
 end
 print("ok Settings has no Rows block")
+
+-- #1226: Personal note size, right under Icon size, with its range and step; it writes personalNoteSize and redraws
+do
+  local icon, own = find(sliders, "Icon size"), find(sliders, "Personal note size")
+  assert(own, "a Personal note size slider on Settings")
+  assert(own.pt[4] == icon.pt[4] and own.pt[5] == icon.pt[5] - 32, "right under Icon size, in View: " .. tostring(own.pt[5]) .. " vs " .. tostring(icon.pt[5]))
+  assert(own.opts.min == icon.opts.min and own.opts.max == icon.opts.max and own.opts.step == icon.opts.step, "the same range and step as Icon size")
+  local hide
+  for _, c in ipairs(checks) do if c.Label and c.Label.text == "Hide rows with no casts in this pull" then hide = c end end
+  assert(hide.pt[5] < own.pt[5], "Hide rows with no casts moved under it")
+  local help = helps["Personal note size"]
+  assert(help and helpTargets["Personal note size"] == own and help:find("only your own notes' flags", 1, true), "a (?) says it changes only your own notes' flags: " .. tostring(help))
+  -- unset it shows Icon size, and follows it
+  CRT.db.timeline.personalNoteSize = 0
+  T:Set("iconSize", 24)
+  assert(own.opts.get() == 24, "unset: it shows Icon size")
+  local before = view.refreshes
+  own.opts.set(26)
+  assert(T:Settings().personalNoteSize == 26 and own.opts.get() == 26, "the slider writes personalNoteSize")
+  assert(view.refreshes > before, "and the view redraws at once")
+  T:Set("iconSize", 20)
+  assert(own.opts.get() == 26, "once set, Icon size leaves it alone")
+  T:Set("iconSize", 22)
+  T:Set("personalNoteSize", 0)
+end
+print("ok Personal note size slider")
 print("ok fit button")
 
 -- new lines of the Journal abilities list are skinned (their tick)
