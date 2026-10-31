@@ -179,17 +179,31 @@ function Rules.Area(lines, now, output, cap)
 end
 
 -- The spoken parts of one alert as { { offset, text } }, offset in seconds before it is due: `speak` says
--- the text at `warn` seconds (at least 4 when counting), or at 0 when `atZero` (Speak at: At 0), `count`
--- says 3, 2, 1 at those seconds.
-function Rules.SpeechItems(text, warn, speak, count, atZero)
+-- the text at `warn` seconds (when counting, at least a second before the count's first number), at 0 when
+-- `atZero` (Speak at: At 0), or at opts.before seconds (Speak at: Before 0); `count` says the numbers from
+-- opts.countFrom (3 without) down to 1, each at its own second. With the text said at Before 0 inside the count,
+-- the numbers up to the text's second are left out (only those a full second after it are said), so the text never
+-- lands on a number and the numbers after it stay on time. opts is optional.
+function Rules.SpeechItems(text, warn, speak, count, atZero, opts)
     local out = {}
+    local from = opts and type(opts.countFrom) == "number" and opts.countFrom or 3
+    local before = opts and type(opts.before) == "number" and opts.before or nil
     if speak then
-        local offset = count and math.max(warn, 4) or warn
-        out[1] = { offset = atZero and 0 or offset, text = text }
+        local offset = count and math.max(warn, from + 1) or warn
+        if before then
+            offset = before
+        elseif atZero then
+            offset = 0
+        end
+        out[1] = { offset = offset, text = text }
     end
     if count then
-        for n = 3, 1, -1 do
-            out[#out + 1] = { offset = n, text = tostring(n) }
+        -- the text at Before 0: only the numbers a full second after it
+        local top = (speak and before) and math.min(from, before - 1) or from
+        for n = from, 1, -1 do
+            if n <= top then
+                out[#out + 1] = { offset = n, text = tostring(n) }
+            end
         end
     end
     return out

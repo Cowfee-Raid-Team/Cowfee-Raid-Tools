@@ -18,8 +18,8 @@ local claiming   -- true while Engine:Start starts the engine run for its note
 
 local TOKEN_SECONDS = 5 -- how long the words that match you (or the player previewed as) are kept
 
--- Melee damage specializations, used for the "melee" and "ranged" tags. Tanks and healers match
--- "tank" and "healer" instead. A spec not listed counts as ranged.
+-- Melee specializations, used for the "melee" and "ranged" tags (Engine.Position): the melee damage specs, and the
+-- two melee healers. A spec not listed counts as ranged.
 local MELEE_SPECS = {
     [70] = true, -- Retribution Paladin
     [71] = true, [72] = true, -- Arms, Fury Warrior
@@ -31,6 +31,25 @@ local MELEE_SPECS = {
     [255] = true, -- Survival Hunter
     [263] = true, -- Enhancement Shaman
 }
+-- The melee healers, Holy Paladin and Mistweaver Monk, by their spec words' SpecializationIDs (Notes/SpecWords.lua,
+-- which loads first), so each ID is written in one place.
+for _, word in ipairs({ "HolyPaladin", "Mistweaver" }) do
+    local e = CRT.NoteSpecs and CRT.NoteSpecs.Read and CRT.NoteSpecs.Read(word)
+    if e then
+        MELEE_SPECS[e.spec] = true
+    end
+end
+Engine.MELEE_SPECS = MELEE_SPECS
+
+-- Melee or ranged, for everyone (Alex, 2026-10-31): every tank is melee; a healer or a DPS (or a role not known) is
+-- melee when its spec is in MELEE_SPECS, else ranged. The one rule for the note alerts' "melee" and "ranged" tags
+-- and the reminders' importer (Timeline/ImportReminders.lua).
+function Engine.Position(role, specID)
+    if role == "TANK" then
+        return "melee"
+    end
+    return (specID and MELEE_SPECS[specID]) and "melee" or "ranged"
+end
 
 local function specIdAndRole()
     local info = C_SpecializationInfo
@@ -57,7 +76,7 @@ local function addRoleWords(t, key)
     end
 end
 
--- The words that match you: your name, your role, and melee or ranged.
+-- The words that match you: your name, your role, and melee or ranged (Engine.Position, every role).
 local myTokens, tokensAt
 local function tokens()
     if myTokens and tokensAt and GetTime() - tokensAt < TOKEN_SECONDS then
@@ -80,8 +99,8 @@ local function tokens()
         addRoleWords(t, "healer")
     else
         addRoleWords(t, "dps")
-        addRoleWords(t, (specId and MELEE_SPECS[specId]) and "melee" or "ranged")
     end
+    addRoleWords(t, Engine.Position(role, specId))
     myTokens, tokensAt = t, GetTime()
     return t
 end

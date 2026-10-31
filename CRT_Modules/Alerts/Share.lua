@@ -236,7 +236,15 @@ local REMINDER_FIELDS = {
         end
         return out
     end,
-    speakAt = oneOf({ zero = true }),
+    speakAt = oneOf({ zero = true, before = true }),
+    -- Count down from (3 to 10, whole), Before 0's seconds (0.5 to 10) and Say instead (Alerts/Reminders.lua)
+    countFrom = function(v)
+        if finite(v) and v % 1 == 0 and v >= 3 and v <= 10 then
+            return v
+        end
+    end,
+    speakBefore = seconds(0.5, 10),
+    speakText = textField(MAX_TEXT),
     -- the impact ticks as the Impact ticks box reads them: seconds into the bar, 0 or more, in order
     ticks = function(v, count)
         if type(v) ~= "table" then

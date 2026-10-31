@@ -175,7 +175,7 @@ local function readBox(status, color)
     if text:match("^%s*$") then
         state.plan = nil
     else
-        state.plan = Import.Plan(Import.Parse(text), Import.PlayerClassID())
+        state.plan = Import.Plan(Import.Parse(text), Import.Me())
     end
     fillList()
     paintButton()
