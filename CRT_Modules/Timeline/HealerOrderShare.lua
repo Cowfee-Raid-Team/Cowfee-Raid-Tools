@@ -4,17 +4,18 @@ local ADDON, CRT = ...
 -- every Share and Push note path), their healer order for that boss and the spell order of the healers on it go too
 -- (Timeline/HealerOrder.lua), so raiders see the healers as the lead laid them out (Alex, 2026-10-31).
 -- Sending (Share:Push(encounterID)): nothing when the lead has no saved order for the boss or its healers, so a lead
--- who never reorders changes nobody's view. Not sent again when it is the one last sent to that channel this session.
+-- who never reorders changes nobody's view. Sent on every push (late joiners get it), only not twice within a few
+-- seconds; players who left aren't sent. In combat, a boss fight, or too long, one chat line says it wasn't sent.
 -- Never in combat or a boss fight (Notes.Busy), only by the leader or an assistant, through CRT.Comm:Send on the group
 -- channel.
 -- Receiving (Share.Receive): never while you lead the group (the leader keeps their own order, as with the roster);
 -- else only from the leader or an assistant, never your own (CRT.NoteComm.Sender). It replaces your order for that
--- boss and those healers' spell orders; anything else of yours stays. Parts that don't all arrive within TIMEOUT
+-- boss (unless none came) and those healers' spell orders; anything else of yours stays. Parts that don't all arrive within TIMEOUT
 -- seconds, don't add up to their hash, or don't read are dropped.
 --
 -- Message under the prefix CRTHealOrd1: "<hash>|<part>|<total>|<data>", as the roster's (Groups/Share.lua). The text:
 --   line 1  the encounter ID
---   line 2  the healer keys in order, tab-separated (may be empty: the lead's healers in the default order)
+--   line 2  the healer keys in order, tab-separated (may be empty: the lead has only spell orders; yours stays)
 --   then    one line per healer with a spell order: its key, a tab, the spell IDs in order with commas
 -- Game calls (warcraft.wiki.gg, read 2026-10-31): C_ChatInfo.RegisterAddonMessagePrefix(prefix), at most 16
 -- characters; CHAT_MSG_ADDON (prefix, text, channel, sender, ...), taken only on RAID, PARTY or INSTANCE_CHAT;
@@ -37,6 +38,8 @@ Share.PREFIX = PREFIX
 
 local TEXT = {
     received = "Healer CDs: %s's healer order for %s is now yours.",
+    busy = "Healer order not sent: not in combat or a boss fight.",
+    tooLong = "Healer order not sent: it is too long to send.",
     thisBoss = "this boss",
 }
 Share.TEXT = TEXT
@@ -45,7 +48,8 @@ if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
     C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
 end
 
-local lastSent = {} -- channel .. ":" .. encounterID -> hash of the order last sent there this session
+local GUARD = 3 -- seconds the same order isn't sent again on the same channel (a double click)
+local lastSent = {} -- channel .. ":" .. encounterID -> { hash, at } of the order sent there last
 local WHAT = { what = "the healer order", locked = "Healer orders", dropped = function()
     wipe(lastSent)
 end }
@@ -60,9 +64,44 @@ local function goodKey(k)
     return type(k) == "string" and k ~= "" and #k <= MAX_KEY_LEN and not k:find("[\t\r\n|]")
 end
 
--- The keys of the healers on a boss whose spell order may go: the boss's saved order's, the roster's healers' (by
--- HealerView.Players) and the boss's slots' (Timeline/HealerSlots.lua). Each once.
-function Share.BossKeys(encounterID)
+-- The roster's players (HealerView.Players), or none.
+local function rosterPlayers()
+    local HV = CRT.TimelineHealerView
+    local ok, players = false, nil
+    if HV and HV.Players then
+        ok, players = pcall(HV.Players)
+    end
+    return ok and type(players) == "table" and players or {}
+end
+
+-- The boss's saved order without the players who left: a key goes when it is a roster player's (any role: the raid
+-- note can give anyone a block), an assigned slot's player, or a slot's own ("slot:...", a key of this boss only).
+function Share.ShownHealers(encounterID, players)
+    local O = Order()
+    local here = {}
+    for _, p in ipairs(players or rosterPlayers()) do
+        if type(p.key) == "string" then
+            here[p.key:lower()] = true
+        end
+    end
+    local Slots = CRT.TimelineHealerSlots
+    for _, s in ipairs(Slots and Slots.List(encounterID) or {}) do
+        if type(s.player) == "string" then
+            here[s.player:lower()] = true
+        end
+    end
+    local out = {}
+    for _, k in ipairs(O and O.Healers(encounterID) or {}) do
+        if goodKey(k) and (here[k] or k:find("^slot:")) and #out < MAX_KEYS then
+            out[#out + 1] = k
+        end
+    end
+    return out
+end
+
+-- The keys of the healers on a boss whose spell order may go: those in its order (healers, ShownHealers'), the roster's
+-- healers' and the boss's slots' (Timeline/HealerSlots.lua; an open one's by its spec). Each once.
+function Share.BossKeys(encounterID, healers, players)
     local out, seen = {}, {}
     local function add(k)
         if goodKey(k) and not seen[k] then
@@ -70,16 +109,12 @@ function Share.BossKeys(encounterID)
             out[#out + 1] = k
         end
     end
-    local O = Order()
-    for _, k in ipairs(O and O.Healers(encounterID) or {}) do
-        add(k)
+    for _, k in ipairs(healers or {}) do
+        if not k:find("^slot:") then
+            add(k)
+        end
     end
-    local HV = CRT.TimelineHealerView
-    local ok, players = false, nil
-    if HV and HV.Players then
-        ok, players = pcall(HV.Players)
-    end
-    for _, p in ipairs(ok and type(players) == "table" and players or {}) do
+    for _, p in ipairs(players or rosterPlayers()) do
         if p.role == "HEALER" and type(p.key) == "string" then
             add(p.key:lower())
         end
@@ -97,14 +132,10 @@ function Share.Text(encounterID)
     if not (O and type(encounterID) == "number") then
         return nil
     end
-    local healers = {}
-    for _, k in ipairs(O.Healers(encounterID) or {}) do
-        if goodKey(k) and #healers < MAX_KEYS then
-            healers[#healers + 1] = k
-        end
-    end
+    local players = rosterPlayers()
+    local healers = Share.ShownHealers(encounterID, players)
     local lines = { tostring(encounterID), table.concat(healers, "\t") }
-    for _, k in ipairs(Share.BossKeys(encounterID)) do
+    for _, k in ipairs(Share.BossKeys(encounterID, healers, players)) do
         local ids = {}
         for _, id in ipairs(O.Spells(k) or {}) do
             if type(id) == "number" and id > 0 and id == math.floor(id) and #ids < MAX_SPELLS then
@@ -188,9 +219,12 @@ local function busy()
     return InCombatLockdown and InCombatLockdown() or false
 end
 
--- Sends the boss's order to the group, as a note of it is shared. Returns whether it went.
+-- Sends the boss's order to the group, as a note of it is shared: every push, so a raider who joined late or reordered
+-- since gets it again (the receiver takes a repeat quietly). Only the same order on the same channel within GUARD
+-- seconds (a double click) is not sent twice. In combat or a boss fight, or too long for MAX_PARTS, one chat line says
+-- why. Returns whether it went.
 function Share:Push(encounterID)
-    if busy() or type(encounterID) ~= "number" then
+    if type(encounterID) ~= "number" then
         return false
     end
     local channel = Shared.Channel()
@@ -201,15 +235,21 @@ function Share:Push(encounterID)
     if not text then
         return false
     end
+    if busy() then
+        CRT:Print(TEXT.busy)
+        return false
+    end
     local messages, hash = Share.Pack(text)
     if #messages > MAX_PARTS then
+        CRT:Print(TEXT.tooLong)
         return false
     end
     local key = channel .. ":" .. encounterID
-    if lastSent[key] == hash then
+    local last = lastSent[key]
+    if last and last.hash == hash and GetTime() - last.at < GUARD then
         return false
     end
-    lastSent[key] = hash -- first: a drop while it waits on the throttle (WHAT.dropped) clears it again
+    lastSent[key] = { hash = hash, at = GetTime() } -- a drop while it waits on the throttle (WHAT.dropped) clears it
     if not Shared:Send(PREFIX, messages, WHAT) then
         lastSent[key] = nil
         return false
@@ -237,14 +277,18 @@ local function same(a, b)
     return true
 end
 
--- Takes a received order: the boss's healer order and those healers' spell orders replaced. True when anything changed.
+-- Takes a received order: the boss's healer order replaced (none sent: yours stays, the lead had only spell orders)
+-- and those healers' spell orders. True when anything changed.
 function Share.Apply(encounterID, healers, spells)
     local O = Order()
     if not O then
         return false
     end
-    local changed = not same(O.Healers(encounterID), healers)
-    O.SetHealers(encounterID, #healers > 0 and healers or nil)
+    local changed = false
+    if #healers > 0 then
+        changed = not same(O.Healers(encounterID), healers)
+        O.SetHealers(encounterID, healers)
+    end
     for k, ids in pairs(spells) do
         changed = changed or not same(O.Spells(k), ids)
         O.SetSpells(k, ids)

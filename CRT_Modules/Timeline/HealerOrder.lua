@@ -14,7 +14,8 @@ local ADDON, CRT = ...
 -- A healer key is the player's key in lower case ("name-realm"), or an open slot's "slot:<spec>:<n>"; a spell order's
 -- key is the player's, or "spec:<SpecializationID>" for an open slot. A healer or spell not in a saved order comes
 -- after the ordered ones, in the order Healer CDs gives them (so a new healer lands at the bottom); the keys of players
--- who left are kept.
+-- who left are kept after the shown ones, up to MAX_KEYS. An open slot that gets a player keeps its place under the
+-- player's key, and the player starts from the slot's spell order (Order.SlotAssigned).
 -- Game calls (warcraft.wiki.gg, read 2026-10-31): IsMouseButtonDown(button), Frame:EnableKeyboard,
 -- Frame:SetPropagateKeyboardInput (not in combat; a drag never starts in combat), OnKeyDown(self, key),
 -- ScriptRegion:IsMouseOver, InCombatLockdown.
@@ -25,7 +26,11 @@ CRT.TimelineHealerOrder = Order
 local DRAG_PX = 4 -- pixels the cursor moves before a press is a drag
 local DIM_ALPHA = 0.4 -- a held block's labels
 local LINE_H = 2 -- the drop line
-local GRIP_W, GRIP_GAP = 8, 3 -- the grip a draggable label shows on hover: three short lines
+-- the grip a draggable label shows on hover: two short upright lines at its left edge, left of the name (which starts
+-- 4 pixels in), so it never covers the end of a long name
+local GRIP_H, GRIP_X = 10, { 0, 2 }
+Order.MAX_KEYS = 60 -- the most healers a boss's saved order holds (and a message sends)
+Order.MAX_SPELLS = 40 -- the most spells a healer's saved order holds
 
 if CRT.Bosses and CRT.Bosses.DeclareField then
     CRT.Bosses:DeclareField("healer order", "timeline", "healerOrder")
@@ -138,22 +143,56 @@ function Order.Apply(encounterID, people)
     return Order.Sort(people, Order.Healers(encounterID), healerKey)
 end
 
--- The shown order with the saved keys not shown now after it (players who left keep their place at the end).
-local function merged(shown, saved)
+-- The shown order with the saved keys not shown now after it (players who left keep their place at the end), at most
+-- max keys in all.
+local function merged(shown, saved, max)
     local out, seen = {}, {}
     for _, k in ipairs(shown) do
-        if not seen[k] then
+        if not seen[k] and #out < max then
             seen[k] = true
             out[#out + 1] = k
         end
     end
     for _, k in ipairs(type(saved) == "table" and saved or {}) do
-        if not seen[k] then
+        if not seen[k] and #out < max then
             seen[k] = true
             out[#out + 1] = k
         end
     end
     return out
+end
+
+-- An open slot of spec on the boss got a player (key, any case; Timeline/HealerSlots.lua's Assign): the block keeps its
+-- place, so slotKey ("slot:<spec>:<n>") becomes the player's key in the boss's order (once: a place they had already
+-- goes), and a player with no spell order of their own starts from the slot's ("spec:<spec>").
+function Order.SlotAssigned(encounterID, slotKey, key, spec)
+    if type(key) ~= "string" or key == "" then
+        return
+    end
+    key = key:lower()
+    local list, had = Order.Healers(encounterID), false
+    for _, k in ipairs(list or {}) do
+        had = had or k == slotKey
+    end
+    if had then
+        local out = {}
+        for _, k in ipairs(list) do
+            if k == slotKey then
+                out[#out + 1] = key
+            elseif k ~= key then
+                out[#out + 1] = k
+            end
+        end
+        Order.SetHealers(encounterID, out)
+    end
+    local from = Order.Spells("spec:" .. tostring(spec))
+    if from and not Order.Spells(key) then
+        local copy = {}
+        for i, id in ipairs(from) do
+            copy[i] = id
+        end
+        Order.SetSpells(key, copy)
+    end
 end
 
 -- The view's healer blocks, top to bottom: { order (the lanes' hvOrder: key, spellKey), first, last, spells = { row,
@@ -238,6 +277,7 @@ local function dragFrame(view)
     f:SetAllPoints(view.body)
     f.line = f:CreateTexture(nil, "OVERLAY")
     f.line:SetHeight(LINE_H)
+    CRT.UI.Tint(f.line, "SetColorTexture", "accent", 1) -- follows a theme switch
     f:SetScript("OnUpdate", function()
         Order.Update(view)
     end)
@@ -335,8 +375,6 @@ function Order.Move(view, y)
     d.gap = gapAt(list, y)
     local f = dragFrame(view)
     local at = d.gap <= #list and list[d.gap].top or list[#list].bottom
-    local c = CRT.PALETTE and CRT.PALETTE.accent or { 1, 0.5, 0.1 }
-    f.line:SetColorTexture(c[1], c[2], c[3], 1)
     f.line:ClearAllPoints()
     f.line:SetPoint("TOPLEFT", view.body, "TOPLEFT", 0, -at + LINE_H / 2)
     f.line:SetPoint("TOPRIGHT", view.body, "TOPRIGHT", 0, -at + LINE_H / 2)
@@ -384,7 +422,7 @@ function Order.Release(view)
             keys[i] = b.order.key
         end
         local encounterID = view:EncounterNumber()
-        Order.SetHealers(encounterID, merged(moved(keys, from, d.gap), Order.Healers(encounterID)))
+        Order.SetHealers(encounterID, merged(moved(keys, from, d.gap), Order.Healers(encounterID), Order.MAX_KEYS))
     else
         local b = d.blocks[d.block]
         local ids = {}
@@ -392,7 +430,7 @@ function Order.Release(view)
             ids[i] = view.lanes[row].spellID
         end
         local key = b.order.spellKey
-        Order.SetSpells(key, merged(moved(ids, from, d.gap), Order.Spells(key)))
+        Order.SetSpells(key, merged(moved(ids, from, d.gap), Order.Spells(key), Order.MAX_SPELLS))
     end
     view:Refresh()
     return true
@@ -403,13 +441,14 @@ function Order.Cancel(view)
     finish(view)
 end
 
--- Each frame while a press is held: combat cancels it, a mouse button let go elsewhere lets go, else the cursor moves.
+-- Each frame while a press is held: combat or leaving Healer CDs cancels it, a mouse button let go elsewhere lets go,
+-- else the cursor moves.
 function Order.Update(view)
     if not view.hvDrag then
         finish(view)
         return
     end
-    if InCombatLockdown and InCombatLockdown() then
+    if view.mode ~= "healers" or (InCombatLockdown and InCombatLockdown()) then
         Order.Cancel(view)
         return
     end
@@ -429,12 +468,11 @@ local function grip(l)
         return had
     end
     local g = {}
-    local c = CRT.PALETTE and CRT.PALETTE.label or { 0.8, 0.8, 0.8 }
-    for i = 1, 3 do
+    for i, x in ipairs(GRIP_X) do
         local tex = l:CreateTexture(nil, "OVERLAY")
-        tex:SetColorTexture(c[1], c[2], c[3], 0.8)
-        tex:SetSize(GRIP_W, 1)
-        tex:SetPoint("RIGHT", l, "RIGHT", -3, (i - 2) * GRIP_GAP)
+        CRT.UI.Tint(tex, "SetColorTexture", "label", 0.8) -- follows a theme switch
+        tex:SetSize(1, GRIP_H)
+        tex:SetPoint("LEFT", l, "LEFT", x, 0)
         tex:Hide()
         g[i] = tex
     end

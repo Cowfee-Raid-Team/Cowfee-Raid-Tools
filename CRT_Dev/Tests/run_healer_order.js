@@ -445,6 +445,68 @@ do
   check(v.hvDrag == nil and order(v):find("^slot:105:1,") ~= nil, "the button let go elsewhere still drops it: " .. order(v))
 end
 
+-- A drag held while the rows are built again, or the view leaves Healer CDs; the keyboard after a drag -------------
+do
+  local f = v.hvDragFrame
+  f.EnableKeyboard = function(self, on) rawset(self, "kb", on and true or false) end
+  local was = order(v)
+  local h = nameRow(v, "halo-home")
+  O.Press(v, v.lanes[h], mid(v, h))
+  check(f.kb == true, "a press takes Esc from the keyboard")
+  O.Move(v, 0)
+  v:Refresh()
+  local dimmed = false
+  for _, l in ipairs(v.labels) do if l.alpha == 0.4 then dimmed = true end end
+  check(v.hvDrag == nil and not dimmed and order(v) == was, "the rows built again: the held drag is dropped, nothing dimmed")
+  check(f.kb == false and not f.shown, "and the keyboard is the game's again")
+  O.Press(v, v.lanes[h], mid(v, h))
+  O.Move(v, 0)
+  v.mode = nil
+  O.Update(v)
+  v.mode = "healers"
+  check(v.hvDrag == nil and order(v) == was and f.kb == false, "the view leaves Healer CDs: the drag is dropped")
+end
+
+-- A long list of players who left is cut, so a saved order never passes the limit -----------------------------------
+do
+  local long = {}
+  for i = 1, 80 do long[i] = "gone" .. i .. "-home" end
+  CRT.db.timeline.healerOrder[3001] = long
+  v:Refresh()
+  local h = nameRow(v, "me-home")
+  O.Press(v, v.lanes[h], mid(v, h))
+  O.Move(v, 0)
+  O.Release(v)
+  local list = CRT.db.timeline.healerOrder[3001]
+  check(#list == O.MAX_KEYS and list[1] == "me-home" and list[4] == "gone1-home", "the shown order first, then players who left up to " .. O.MAX_KEYS .. ": " .. #list)
+end
+
+-- An open slot gets a player: the block keeps its place, and the player starts from the spec's spell order ----------
+do
+  local keepSlots, keepOrder, keepSpells = CRT.db.timeline.healerSlots, CRT.db.timeline.healerOrder, CRT.db.timeline.healerSpellOrder
+  CRT.db.timeline.healerSlots = { [3001] = { { spec = 105, n = 1 } } }
+  CRT.db.timeline.healerOrder = { [3001] = { "me-home", "slot:105:1", "halo-home" } }
+  CRT.db.timeline.healerSpellOrder = { ["spec:105"] = { 740, 33891 } }
+  v:Refresh()
+  local Slots = CRT.TimelineHealerSlots
+  Slots.Assign(Slots.Context(v), v.hvSlots[1], "Leafy")
+  v:Refresh()
+  check(saved(3001) == "me-home,leafy-home,halo-home", "the slot's place goes to Leafy: " .. saved(3001))
+  check(ids(CRT.db.timeline.healerSpellOrder["leafy-home"]) == "740,33891", "Leafy starts from the Resto Druid slot's spell order")
+  check(order(v) == "me-home,leafy-home,halo-home", "drawn in that order: " .. order(v))
+  -- a player who has a spell order and a place already: their own spell order stays, the slot's place is theirs
+  CRT.db.timeline.healerSlots = { [3001] = { { spec = 105, n = 1 } } }
+  CRT.db.timeline.healerOrder = { [3001] = { "halo-home", "me-home", "slot:105:1" } }
+  CRT.db.timeline.healerSpellOrder = { ["spec:105"] = { 740 }, ["halo-home"] = { 5 } }
+  v:Refresh()
+  Slots.Assign(Slots.Context(v), v.hvSlots[1], "Halo")
+  check(saved(3001) == "me-home,halo-home" and ids(CRT.db.timeline.healerSpellOrder["halo-home"]) == "5",
+    "once in the order, at the slot's place, with their own spells: " .. saved(3001))
+  CRT.db.timeline.healerSlots, CRT.db.timeline.healerOrder, CRT.db.timeline.healerSpellOrder = keepSlots, keepOrder, keepSpells
+  CRT.db.timeline.healerOrder[3001] = { "slot:105:1", "halo-home", "me-home" }
+  v:Refresh()
+end
+
 -- Saved data ----------------------------------------------------------------------------------------------------------
 do
   local core, profiles = src[#FILES - 1], src[#FILES]
@@ -484,21 +546,56 @@ do
   check(#got >= 1, "sharing the boss's note sends its healer order: " .. #got .. " message(s)")
   for _, m in ipairs(got) do check(#m < 255, "a message under 255 bytes") end
   CRT.NoteComm:Share(1)
-  check(#ours() == #got, "shared again unchanged: not sent again")
-  check(not Share:Push(3001), "Push: unchanged, not sent")
-  local h = nameRow(v, "halo-home")
-  O.Press(v, v.lanes[h], mid(v, h))
-  O.Move(v, 0)
-  O.Release(v)
-  check(Share:Push(3001) and #ours() > #got, "after a change it goes again")
+  check(#ours() == #got, "a second push straight after (a double click): not sent twice")
+  now = now + 10
+  check(Share:Push(3001) and #ours() == 2 * #got, "a push later goes again, unchanged: late joiners get it")
+  -- players who left are never sent
+  local keep = CRT.db.timeline.healerOrder[3001]
+  CRT.db.timeline.healerOrder[3001] = { "gone-home", "me-home", "halo-home" }
+  local _, healers = Share.Read(Share.Text(3001))
+  check(ids(healers) == "me-home,halo-home", "keys not on the boss aren't sent: " .. ids(healers))
+  CRT.db.timeline.healerOrder[3001] = keep
+  -- the only-spells case: the healer line is empty
+  CRT.db.timeline.healerOrder[3001] = nil
+  local _, none, sp2 = Share.Read(Share.Text(3001))
+  check(none and #none == 0 and sp2["halo-home"] ~= nil, "no boss order, only spell orders: an empty healer line")
+  CRT.db.timeline.healerOrder[3001] = keep
   local n = #ours()
   group.leader = false
-  CRT.db.timeline.healerOrder[3001] = { "me-home" }
   check(not Share:Push(3001) and #ours() == n, "a raider sends nothing")
   group.leader = true
+  now = now + 10
   inCombat = true
+  local said = #printed
   check(not Share:Push(3001) and #ours() == n, "nothing in combat")
+  check(#printed == said + 1 and printed[#printed] == Share.TEXT.busy, "and one chat line says why: " .. tostring(printed[#printed]))
   inCombat = false
+  local realText = Share.Text
+  Share.Text = function() return "3001\\n" .. string.rep("x", 2500) end
+  said = #printed
+  check(not Share:Push(3001) and #ours() == n and printed[#printed] == Share.TEXT.tooLong and #printed == said + 1,
+    "too long for 10 parts: not sent, one chat line: " .. tostring(printed[#printed]))
+  Share.Text = realText
+  -- the game drops a waiting order (throttled, then the group is gone): the next push goes at once
+  local realSend = C_ChatInfo.SendAddonMessage
+  local throttled = false
+  C_ChatInfo.SendAddonMessage = function(p, t, ch) if p == "CRTHealOrd1" and not throttled then throttled = true return 3 end return realSend(p, t, ch) end
+  check(Share:Push(3001), "throttled: it waits")
+  group.raid, group.party = false, false
+  flush()
+  group.raid, group.party = true, true
+  C_ChatInfo.SendAddonMessage = realSend
+  check(#ours() == n, "dropped: nothing went")
+  check(Share:Push(3001) and #ours() > n, "the next push straight after sends it")
+  -- a note push never breaks on the order
+  local realPush = Share.Push
+  Share.Push = function() error("boom") end
+  now = now + 10
+  local realHandler, reported = geterrorhandler, nil
+  geterrorhandler = function() return function(e) reported = e end end
+  local ok = pcall(CRT.NoteComm.Share, CRT.NoteComm, 1)
+  Share.Push, geterrorhandler = realPush, realHandler
+  check(ok and tostring(reported):find("boom", 1, true) ~= nil, "an error in the order's push never breaks the note's; it is reported")
 end
 
 -- Received -------------------------------------------------------------------------------------------------------------
@@ -532,6 +629,26 @@ do
   group.leader = false
   deliver(Share.Pack("3001\\nhalo-home"), "Lead-Home")
   check(saved(3001) == "halo-home", "a raider takes an assistant's")
+  -- an empty healer line: the lead has only spell orders, so your order for the boss stays
+  deliver(Share.Pack("3001\\n\\nhalo-home\\t9,10"), "Lead-Home")
+  check(saved(3001) == "halo-home" and ids(CRT.db.timeline.healerSpellOrder["halo-home"]) == "9,10",
+    "no healers sent: your boss order stays, the spell order is taken")
+  -- a long order in several parts, out of order; and parts that come too late
+  local lines = { "3001", "me-home\\thalo-home" }
+  for k = 1, 8 do local list = {} for s = 1, 30 do list[s] = tostring(100000 + k * 100 + s) end lines[#lines + 1] = "key" .. k .. "-home\\t" .. table.concat(list, ",") end
+  local parts = Share.Pack(table.concat(lines, "\\n"))
+  check(#parts > 3, "a long order goes in several parts: " .. #parts)
+  for k = #parts, 1, -1 do Share.Receive("CRTHealOrd1", parts[k], "RAID", "Lead-Home") end
+  check(saved(3001) == "me-home,halo-home" and CRT.db.timeline.healerSpellOrder["key8-home"] and #CRT.db.timeline.healerSpellOrder["key8-home"] == 30,
+    "out of order: put together and taken")
+  lines[2] = "halo-home\\tme-home"
+  parts = Share.Pack(table.concat(lines, "\\n"))
+  Share.Receive("CRTHealOrd1", parts[1], "RAID", "Lead-Home")
+  now = now + 60
+  for k = 2, #parts do Share.Receive("CRTHealOrd1", parts[k], "RAID", "Lead-Home") end
+  check(saved(3001) == "me-home,halo-home", "the first part timed out: nothing taken")
+  deliver(parts, "Lead-Home")
+  check(saved(3001) == "halo-home,me-home", "sent whole again: taken")
   -- malformed: dropped, never an error
   local bad = { "garbage", "", "zz|1|1|x", "abc|0|1|x", "abc|2|1|x", "abc|1|99|x", "SECRET" }
   for _, text in ipairs({ "notanumber\\nx", "3001", "3001\\na\\ta", "3001\\nx\\nhalo-home\\t1,,2", "3001\\nx\\nhalo-home\\tabc",
@@ -547,7 +664,7 @@ do
   end
   check(pcall(Share.Receive, "CRTHealOrd1", nil, "RAID", "Lead-Home") and pcall(Share.Receive, "CRTHealOrd1", lead[1], "RAID", nil),
     "malformed: no error for no message or no sender")
-  check(saved(3001) == "halo-home" and ids(CRT.db.timeline.healerSpellOrder["halo-home"]) == "5,6", "malformed: nothing taken")
+  check(saved(3001) == "halo-home,me-home" and ids(CRT.db.timeline.healerSpellOrder["halo-home"]) == "9,10", "malformed: nothing taken")
 end
 
 if fails > 0 then error(fails .. " healer order checks failed") end

@@ -412,6 +412,11 @@ function Slots.Assign(ctx, s, name)
     if canEditRaid() then
         eachLine(ctx, s, withTag(Groups and Groups.Display and Groups.Display(key) or key))
     end
+    -- an open slot's block keeps its place on Healer CDs, under the player's key now (Timeline/HealerOrder.lua)
+    local Order = CRT.TimelineHealerOrder
+    if Order and not s.player then
+        Order.SlotAssigned(ctx.encounterID, "slot:" .. s.spec .. ":" .. s.n, key, s.spec)
+    end
     local saved = Slots.Ensure(ctx.encounterID, s) or {}
     saved.player, s.player = key, key
     return true

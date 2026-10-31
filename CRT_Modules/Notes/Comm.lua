@@ -264,9 +264,14 @@ function Comm:Share(id)
     end
     Notes:Fire()
     sendParts()
-    -- the boss's Healer CDs order goes with its note, on its own prefix (Timeline/HealerOrderShare.lua)
-    if CRT.HealerOrderShare and type(record.encounterID) == "number" then
-        CRT.HealerOrderShare:Push(record.encounterID)
+    -- the boss's Healer CDs order goes with its note, on its own prefix (Timeline/HealerOrderShare.lua); an error there
+    -- never stops the note
+    local OrderShare = CRT.HealerOrderShare
+    if OrderShare and type(record.encounterID) == "number" then
+        local ok, err = pcall(OrderShare.Push, OrderShare, record.encounterID)
+        if not ok and geterrorhandler then
+            geterrorhandler()(err)
+        end
     end
 end
 
