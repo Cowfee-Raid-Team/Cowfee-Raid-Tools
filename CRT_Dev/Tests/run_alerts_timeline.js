@@ -251,6 +251,8 @@ do
   local R = CRT.AlertReminders
   local red = R:Save(3001, nil, { text = "Soak", times = "P1 0:40", warn = 20, color = { 1, 0.07, 0.15, 1 }, group = "nh" })
   local plain = R:Save(3001, nil, { text = "Plain flag", times = "P1 0:50", warn = 5, group = "nh" })
+  -- only read out: no alert and no bar, so no bar on the row
+  local spoken = R:Save(3001, nil, { text = "Spoken", times = "P1 0:25", warn = 8, group = "nh", outputs = { alert = false, bar = false, speech = true } })
   local function draw(custom)
     CRT.db.alerts.customColors = custom
     local v = View.Create(mock("Frame"))
@@ -262,7 +264,7 @@ do
   end
   local v, flags = draw(true)
   local fr, fp = flags[red], flags[plain]
-  assert(fr and fp, "both reminders have a flag")
+  assert(fr and fp and flags[spoken], "every reminder has a flag")
   local c = fr.head.color
   assert(c and math.abs(c[1] - 1) < 1e-6 and math.abs(c[2] - 0.07) < 1e-6, "Soak's flag in its own red")
   assert(fp.head.color[3] == 0.9, "a reminder with no colour stays in the personal blue")

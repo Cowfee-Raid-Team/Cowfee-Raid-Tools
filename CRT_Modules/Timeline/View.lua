@@ -281,7 +281,7 @@ function View.OwnFlagColor(m)
 end
 
 -- How long your own reminder's alert shows before its time (its Show from, warn), for the bar drawn before its flag on
--- the Personal notes row; nil for none.
+-- the Personal notes row; nil for none, and for a reminder with neither its Alert nor its Bar on (NoteAndReminderMarks).
 function View.ShowFor(m)
     local s = m and m.mine and m.showFor
     if type(s) ~= "number" or s ~= s or s <= 0 then
@@ -1883,9 +1883,12 @@ function Methods:NoteAndReminderMarks(lanes, length)
         -- nor one of another difficulty group than the view's, nor one saved as Raid note (its note lines are drawn)
         if e.r.enabled ~= false and not (Reminders.InNote and Reminders.InNote(e.r)) and self:ShowsReminder(e.r) then
             for index, at in ipairs((self:ReminderTimes(encounterID, e.r))) do
-                -- its colour and how long its alert shows before its time (Show from), for the Personal notes row
+                -- its colour, and how long its alert or bar shows before its time (Show from; none when neither
+                -- is on), for the Personal notes row
+                local o = type(e.r.outputs) == "table" and e.r.outputs or {}
                 add({ ph = at.ph, time = at.t, mine = true, encounterID = encounterID, id = e.id, index = index,
-                    kind = "mine", color = e.r.color, showFor = e.r.warn }, e.r.spellID, e.r.text, e.r.iconID)
+                    kind = "mine", color = e.r.color, showFor = (o.alert or o.bar) and e.r.warn or nil },
+                    e.r.spellID, e.r.text, e.r.iconID)
             end
         end
     end
