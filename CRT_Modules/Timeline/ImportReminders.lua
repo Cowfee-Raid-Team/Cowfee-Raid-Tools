@@ -366,16 +366,15 @@ local function subgroup()
     return nil
 end
 
--- Melee or ranged, for everyone (Alex, 2026-10-31): every tank is melee; a healer or DPS is melee when its spec is in
--- the shared melee list (Notes/Engine.lua's MELEE_SPECS: the melee damage specs, Holy Paladin and Mistweaver Monk),
--- else ranged.
+-- Melee or ranged: the note alerts' rule (Notes/Engine.lua's Engine.Position: every tank melee, a healer or DPS by
+-- the shared melee spec list), so a "melee" line means the same in a note and in an import. Nil without it.
 local function positionOf(role, specID)
-    if role == "TANK" then
-        return "melee"
-    end
     local E = CRT.NoteEngine
-    local melee = E and E.MELEE_SPECS
-    return (specID and melee and melee[specID]) and "melee" or "ranged"
+    if not (E and E.Position) then
+        return nil
+    end
+    local ok, pos = pcall(E.Position, role, specID)
+    return ok and pos or nil
 end
 
 -- You, read once per import, each value guarded (an error or a secret leaves it out): { name, realm, classID,

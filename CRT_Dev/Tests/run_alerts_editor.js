@@ -2109,6 +2109,10 @@ do
   -- the new controls sit on the Sound and speech tab, under what they belong to
   for _, m in ipairs({ w.sayInstead, w.countFrom, w.speakBefore }) do assert(m.parent == t.frames.sound, "on the Sound and speech tab") end
   assert(w.also.count.label.text == "Count down from", "the count's words: " .. tostring(w.also.count.label.text))
+  -- every edit box of the editor is the theme's (UI:SkinEditBox), Say instead too
+  for _, e in ipairs({ w.textEdit, w.timeEdit, w.idEdit, w.sayInstead }) do
+    assert(rawget(e, "crtSkin") ~= nil, "skinned: " .. tostring(e.pts[1] and e.pts[1][2]))
+  end
   local sayHelp
   for _, h in ipairs(helps) do if h.helpTitle == "Say instead" then sayHelp = h end end
   assert(sayHelp and sayHelp.helpText ~= "", "Say instead has a (?)")

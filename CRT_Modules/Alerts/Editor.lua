@@ -1149,9 +1149,11 @@ local function makeLabel(parent, label, x, y)
     return fs
 end
 
--- onChange(text, userInput): userInput is false when the editor itself set the text.
+-- onChange(text, userInput): userInput is false when the editor itself set the text. Every box is the theme's
+-- (UI:SkinEditBox: flat in Modern).
 local function makeEdit(parent, x, y, width, onChange)
     local edit = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+    UI:SkinEditBox(edit)
     edit:SetAutoFocus(false)
     edit:SetFontObject(CRTFontEdit)
     edit:SetSize(width, 20)

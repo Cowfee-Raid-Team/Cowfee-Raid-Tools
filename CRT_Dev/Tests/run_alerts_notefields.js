@@ -29,9 +29,11 @@ function wipe(t) for k in pairs(t) do t[k] = nil end return t end
 format = string.format
 function date() return "2026-10-16 12:00" end
 function UnitName(u) if u == "player" then return "Cheoeqar" end return nil end
-function UnitGroupRolesAssigned() return "DAMAGER" end
+-- you: an Arcane Mage (62), DPS, unless a check changes myRole and mySpec
+local myRole, mySpec, mySpecRole = "DAMAGER", 62, "DAMAGER"
+function UnitGroupRolesAssigned() return myRole end
 C_SpecializationInfo = { GetSpecialization = function() return 1 end,
-  GetSpecializationInfo = function() return 62, "Arcane", "", 0, "DAMAGER" end }
+  GetSpecializationInfo = function() return mySpec, "Spec", "", 0, mySpecRole end }
 function IsInRaid() return false end
 function GetNumGroupMembers() return 1 end
 function UnitIsUnit() return false end
@@ -333,6 +335,23 @@ check("note lines: line numbers kept", function()
   for _, t in ipairs(n.timers) do got[#got + 1] = tostring(t.text or t.spellId) .. "@" .. tostring(t.line) end
   local s = table.concat(got, ",")
   assert(s == "First@8,Early@6,1022@3,Late@5", "line numbers: " .. s)
+end)
+
+check("tags: melee and ranged for everyone by spec (one rule with the importer)", function()
+  local function mine(word) clock = clock + 10 return E:IsMine({ tags = { word } }) end
+  assert(E.Position("TANK", nil) == "melee" and E.Position("TANK", 250) == "melee", "every tank is melee")
+  assert(E.Position("DAMAGER", 71) == "melee" and E.Position("DAMAGER", 62) == "ranged" and E.Position(nil, 62) == "ranged", "DPS by the melee list")
+  assert(E.Position("HEALER", 105) == "ranged", "a healer not in the list is ranged")
+  assert(mine("ranged") and not mine("melee"), "an Arcane Mage: ranged")
+  myRole, mySpec, mySpecRole = "TANK", 73, "TANK"
+  assert(mine("tank") and mine("melee") and not mine("ranged"), "a tank matches melee")
+  myRole, mySpec, mySpecRole = "HEALER", 105, "HEALER"
+  assert(mine("healer") and mine("ranged") and not mine("melee"), "a Resto Druid matches ranged")
+  -- the melee healers come from the spec words (Notes/SpecWords.lua), which this harness doesn't load: any listed spec
+  myRole, mySpec, mySpecRole = "HEALER", 70, "HEALER"
+  assert(mine("healer") and mine("melee"), "a healer on a listed spec matches melee")
+  myRole, mySpec, mySpecRole = "DAMAGER", 62, "DAMAGER"
+  clock = clock + 10
 end)
 
 check("tags: class matches timed lines only", function()

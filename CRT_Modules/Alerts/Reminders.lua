@@ -1184,6 +1184,15 @@ function Reminders:Items(encounterID, id, r, group, ref)
     local fill = r.fill == "up" and "up" or nil
     local countTo = r.countTo == "impact" and "impact" or nil
     local warn = type(r.warn) == "number" and r.warn or 5
+    -- what it says, and when it shows: at least as early as the first spoken part (a count from past Show from, or
+    -- Before 0 past it, Alex 2026-10-31), so nothing is said before the alert is up. The saved Show from stays
+    local speech = speechList(r, text)
+    local shows = warn
+    if o.speech then
+        for _, s in ipairs(speech) do
+            shows = math.max(shows, s.offset or 0)
+        end
+    end
     -- a shield bar (Alerts/Absorb.lua): each cast's window opens at Show from, and its ticks don't apply
     local absorb = Reminders.AbsorbOf(r.absorb)
     for n, t in ipairs(times) do
@@ -1205,7 +1214,7 @@ function Reminders:Items(encounterID, id, r, group, ref)
             icon = icon,
             text = text,
             priority = Rules.Priority(3, r.priority),
-            warn = r.warn or 5,
+            warn = shows,
             hold = math.max(0.5, type(r.linger) == "number" and r.linger or 0),
             color = r.color,
             sound = r.sound,
@@ -1214,7 +1223,7 @@ function Reminders:Items(encounterID, id, r, group, ref)
                 speech = o.speech and true or false, text = o.text and true or false,
                 icon = o.icon and true or false, circle = o.circle and true or false,
                 timeline = o.timeline and true or false },
-            speech = speechList(r, text),
+            speech = speechList(r, text), -- a copy for each item
         }
     end
     return out

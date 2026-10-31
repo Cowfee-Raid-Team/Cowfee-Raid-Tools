@@ -418,6 +418,24 @@ do
   print("ok speech: count from N and Before 0 are exact")
 end
 
+-- the alert shows at least as early as the first thing it says (a long count or Before 0 past Show from)
+do
+  fresh()
+  R:Save(3001, nil, { boss = "b", text = "Long count", times = "10", warn = 5, speech = "count", countFrom = 8, outputs = { alert = true, speech = true } })
+  R:Save(3001, nil, { boss = "b", text = "Early", times = "10", warn = 5, speech = "text", speakAt = "before", speakBefore = 7.5, outputs = { alert = true, speech = true } })
+  R:Save(3001, nil, { boss = "b", text = "Text count", times = "10", warn = 5, speech = "textcount", countFrom = 6, outputs = { alert = true, speech = true } })
+  R:Save(3001, nil, { boss = "b", text = "Silent", times = "10", warn = 5, speech = "count", countFrom = 8, outputs = { alert = true, speech = false } })
+  R:Save(3001, nil, { boss = "b", text = "Short", times = "10", warn = 5, speech = "textcount", outputs = { alert = true, speech = true } })
+  local it = block(MYTHIC)
+  assert(it[1].warn == 8, "a count from 8 shows 8 s before: " .. tostring(it[1].warn))
+  assert(it[2].warn == 7.5, "Before 0 at 7.5 s shows 7.5 s before: " .. tostring(it[2].warn))
+  assert(it[3].warn == 7, "the text a second before a count from 6: " .. tostring(it[3].warn))
+  assert(it[4].warn == 5, "says nothing: its own Show from")
+  assert(it[5].warn == 5, "everything said inside Show from: unchanged")
+  assert(R:Get(3001, 1).warn == 5, "the saved Show from is untouched")
+  print("ok show: the alert shows by its first spoken part")
+end
+
 -- One source of truth: a reminder that follows an ability timeline gets the same cast times the
 -- Timeline's row (and the Rehearsal, built from those lanes) shows, and its alert counts down to the
 -- same moment as the Rehearsal's cast bar.
