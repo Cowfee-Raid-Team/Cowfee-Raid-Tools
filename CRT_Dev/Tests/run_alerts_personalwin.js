@@ -523,7 +523,8 @@ test("assignment lines: your class marks the line, a sentence never does", funct
     "Orb Soak 3: Mage Warlock Death Knight Warrior", "Orb Soak 4: Hunter", "Note: the hunter kites",
     "Note: the Hunter kites", "Soak: priest, monk",
     "Soak 1: {star} Abu PRIEST", "Kicks: Abu > MAGE > rogue", "Kicks: 1 mage 2 ROGUE", "Soak: Abu (left), priest",
-    "Soak: |cffff0000Abu|r / priest -> {rt1}" }
+    "Soak: |cffff0000Abu|r / priest -> {rt1}", "Soak Ghost at {cross}: Monk", "{rt3} Soak {Triangle} end {SQUARE}: rogue",
+    "Soak {spell:1234}: Monk", "|cffff0000Red|r: Monk" }
   local function marked(file)
     UnitClass = function(u) if u == "player" then return "x", file end end
     clock = clock + 10
@@ -537,10 +538,10 @@ test("assignment lines: your class marks the line, a sentence never does", funct
   assert(marked("DEMONHUNTER") == "1", "a Demon Hunter: " .. marked("DEMONHUNTER"))
   assert(marked("HUNTER") == "4", "a Hunter, not on Demon Hunter nor the sentence: " .. marked("HUNTER"))
   assert(marked("DEATHKNIGHT") == "3", "a Death Knight: " .. marked("DEATHKNIGHT"))
-  assert(marked("MONK") == "1,2,7", "a Monk, the lower-case list too: " .. marked("MONK"))
+  assert(marked("MONK") == "1,2,7,13", "a Monk, the lower-case list too, a marker in the label, never other markup: " .. marked("MONK"))
   assert(marked("PRIEST") == "1,7,8,11,12", "a Priest, with icons, brackets and colour codes: " .. marked("PRIEST"))
   assert(marked("MAGE") == "3,9,10", "a Mage, with arrows and numbers: " .. marked("MAGE"))
-  assert(marked("ROGUE") == "2,9,10", "a Rogue: " .. marked("ROGUE"))
+  assert(marked("ROGUE") == "2,9,10,14", "a Rogue, markers at the start, middle and end of the label: " .. marked("ROGUE"))
   UnitClass = nil
   clock = clock + 10
 end)
