@@ -106,12 +106,14 @@ end
 do
   local function flat(list) local t = {} for _, s in ipairs(list) do t[#t + 1] = s.offset .. ":" .. s.text end return table.concat(t, ",") end
   assert(flat(Rules.SpeechItems("Go", 5, true, false)) == "5:Go")
-  -- with Count down on, the numbers first, then the text at 0 (Alex, 2026-11-01), On show and At 0 alike
-  assert(flat(Rules.SpeechItems("Go", 2, true, true)) == "3:3,2:2,1:1,0:Go", flat(Rules.SpeechItems("Go", 2, true, true)))
-  assert(flat(Rules.SpeechItems("Go", 7, true, true)) == "3:3,2:2,1:1,0:Go")
-  assert(flat(Rules.SpeechItems("Go", 7, true, true, true)) == "3:3,2:2,1:1,0:Go", "At 0 with a count")
-  assert(Rules.SpeechItems("Go", 7, true, true)[4].afterCount == true and Rules.SpeechItems("Go", 7, true, false)[1].afterCount == nil, "the text after a count is marked")
-  assert(flat(Rules.SpeechItems("Go", 5, false, true)) == "3:3,2:2,1:1")
+  -- with Count down on, the count as one quick phrase ending at 0, then the text at 0 (Alex, 2026-11-01), On show and At 0 alike
+  local phrase = Rules.CountSeconds(3) .. ":3, 2, 1"
+  assert(flat(Rules.SpeechItems("Go", 2, true, true)) == phrase .. ",0:Go", flat(Rules.SpeechItems("Go", 2, true, true)))
+  assert(flat(Rules.SpeechItems("Go", 7, true, true)) == phrase .. ",0:Go")
+  assert(flat(Rules.SpeechItems("Go", 7, true, true, true)) == phrase .. ",0:Go", "At 0 with a count")
+  assert(Rules.SpeechItems("Go", 7, true, true)[2].afterCount == true and Rules.SpeechItems("Go", 7, true, false)[1].afterCount == nil, "the text after a count is marked")
+  assert(Rules.SpeechItems("Go", 7, true, true)[1].countFrom == 3 and Rules.SpeechItems("Go", 7, true, true)[1].thenText == "Go", "the phrase item")
+  assert(flat(Rules.SpeechItems("Go", 5, false, true)) == phrase)
   assert(flat(Rules.SpeechItems("Go", 5, false, false)) == "")
   for _, mode in ipairs({ "text", "textcount", "count" }) do
     local r = { text = "Go", spellID = 0, times = "P1 0:30", warn = 6, speech = mode, outputs = { speech = true } }

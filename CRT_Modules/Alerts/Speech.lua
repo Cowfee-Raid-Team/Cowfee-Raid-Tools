@@ -44,6 +44,9 @@ local COUNT_HOLD = 0.95 -- seconds a count's number holds the next number: under
 local CLIP_HOLD = 1 -- seconds a clip of unknown length holds the queue
 local CLIP_TAIL = 0.25 -- a due count number may start this many seconds before the clip playing ends
 local WAKE_LATE = 0.001 -- a wake timer comes this much after its moment, so the moment has surely passed
+-- The game's text to speech gives no word timing, so a count read out as one line ("3, 2, 1, Soak") starts this many
+-- seconds a number before 0, an estimate at speech rate 0 (Raid Notes), shorter at a faster rate: "1" lands near 0.
+local TTS_COUNT_LEAD = 0.35
 
 local NOTICE = {
     speech = "Raid Notes: your note lines are now read out even with the note callout off. Untick 'Read them out' on Raid Notes > Alert Settings to stop it.",
@@ -64,6 +67,7 @@ local Speech = {
     speed = 1,      -- the rehearsal speed at the last tick (1 outside a rehearsal)
 }
 CRT.AlertSpeech = Speech
+Speech.TTS_COUNT_LEAD = TTS_COUNT_LEAD
 
 -- Note lines used to be read out only with the note callout on (ruling B2 changed that). A save with
 -- the alert off and the speech on is told once, on login; the flag keeps it to once per profile.
@@ -87,6 +91,16 @@ local function settings()
     return notes and notes.alert or {}
 end
 
+-- How long a count takes to say (Rules.CountSeconds): the voice's number clips back to back, or for the game's text
+-- to speech an estimate, TTS_COUNT_LEAD a number, scaled by the Raid Notes rate (each 10 steps about twice as fast).
+Rules.countSeconds = function(from)
+    local plan = CRT.Sound and CRT.Sound.CountPlan and CRT.Sound:CountPlan(from)
+    if plan then
+        return plan.seconds
+    end
+    return from * TTS_COUNT_LEAD * 2 ^ (-(settings().ttsRate or 0) / 10)
+end
+
 -- Speaks now, outside the queue (the Test speech button uses this), at the Raid Notes rate and volume.
 -- Returns what Sound:Speak did: true, or true, "clip" and its seconds when a voice clip said it.
 function Speech:SpeakNow(text)
@@ -108,11 +122,17 @@ function Speech:Reset()
     self.number = nil
     self.clip = false
     self.wakeAt = nil -- a wake timer still coming finds the run gone and does nothing
+    self.phrase = (self.phrase or 0) + 1 -- and a count's clips still to come play nothing
 end
 
 -- Stops what is being said now and drops the queue.
 function Speech:Hush()
     CRT.Sound:StopSpeaking()
+    self.phrase = (self.phrase or 0) + 1
+    if self.phraseHandle then
+        CRT.Sound:Stop(self.phraseHandle)
+        self.phraseHandle = nil
+    end
     wipe(self.queue)
     self.playing = false
     self.playingUntil = 0
@@ -215,6 +235,46 @@ end
 
 local tokens = 0
 local fireCue
+
+-- A count's number clips back to back (Sound:CountPlan): the first now, each next one as the one before ends, on
+-- C_Timer.After. A stop, a new run or Hush (self.phrase moves on) leaves the rest unplayed.
+local function playPhrase(self, plan)
+    self.phrase = (self.phrase or 0) + 1
+    local token, runId = self.phrase, self.runId
+    self.phraseHandle = CRT.Sound:Play(plan.clips[1].ref)
+    local at = 0
+    for i = 2, #plan.clips do
+        at = at + plan.clips[i - 1].seconds
+        local ref = plan.clips[i].ref
+        if C_Timer and C_Timer.After then
+            C_Timer.After(at, function()
+                if Speech.phrase == token and Speech.runId == runId and Alerts.running then
+                    Speech.phraseHandle = CRT.Sound:Play(ref)
+                end
+            end)
+        end
+    end
+end
+
+-- Says a count's phrase: the voice's number clips, or with no clips for it (text to speech, or a number the voice
+-- lacks) one line read out, with the text after it in the same line (its own item is marked said). Returns how and
+-- the seconds it lasts, as SpeakNow does.
+local function speakCount(self, item)
+    local plan = CRT.Sound.CountPlan and CRT.Sound:CountPlan(item.countFrom)
+    if plan then
+        playPhrase(self, plan)
+        return "clip", plan.seconds
+    end
+    local text = item.text or ""
+    if item.thenText then
+        text = text .. ", " .. item.thenText
+        if item.thenKey then
+            self.spoken[item.thenKey] = true
+        end
+    end
+    local _, how, seconds = self:SpeakNow(text)
+    return how, seconds
+end
 
 -- The real moment a line due at `at` (engine time) with `text` can start: its own time, and while something plays,
 -- the moment Tick frees the speaker for it (the clip's end, CLIP_TAIL before it for a count's number, or COUNT_HOLD
@@ -403,7 +463,12 @@ function Speech:Tick(now)
         self.playingSince = real
         self.playingUntil = real + Rules.SPEECH_TIMEOUT
         self.number = numberOf(item.text)
-        local _, how, seconds = self:SpeakNow(item.text or "")
+        local how, seconds
+        if item.countFrom then
+            how, seconds = speakCount(self, item)
+        else
+            _, how, seconds = self:SpeakNow(item.text or "")
+        end
         self.clip = how == "clip"
         if self.clip then
             self.playingUntil = real + (seconds or CLIP_HOLD)
