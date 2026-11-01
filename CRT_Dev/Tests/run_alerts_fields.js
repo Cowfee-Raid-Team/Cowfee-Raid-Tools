@@ -249,6 +249,14 @@ do
   A:Start(1, "Mythic", "test")
   step(1.2)
   assert(#played == 1 and played[1] == 8959, "only the reminder sound with speech off: " .. #played)
+  -- a note line with its own sound (a show: line's sound:, ownSound) plays with Read them out off; a plain one doesn't
+  local own = it("n3", 1, "READY_CHECK")
+  own.ownSound = true
+  items = { note = { own, it("n4", 1, "READY_CHECK") }, t = {} }
+  played = {}
+  A:Start(1, "Mythic", "test")
+  step(1.2)
+  assert(#played == 1 and played[1] == 8960, "a note line's own sound plays with Read them out off: " .. #played)
   alert.tts = true
   items = { note = { it("n2", 1, "READY_CHECK") }, t = {} }
   played = {}

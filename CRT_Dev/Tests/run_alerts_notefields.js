@@ -463,12 +463,60 @@ check("speak at: old lines without ttsat speak on show", function()
   same(plain.speech, { { offset = Notes:Alert().ttsSeconds or 3, text = "Spell1022" } }, "a line without show: as today")
 end)
 
+-- A note line's own speech or sound setting (Notes/Engine.lua ownSpeech, ownSound): it speaks, and its cue plays, with
+-- Read them out off (Alerts/Speech.lua readOutOnly; Alex, 2026-11-01)
+check("note lines: their own speech and sound settings are marked", function()
+  local n = P.Parse(table.concat({
+    "time:30;ph:1;tag:Cheoeqar;text:Said;show:text;tts:1;",
+    "time:40;ph:1;tag:Cheoeqar;text:Counted;show:text;count:1;",
+    "time:50;ph:1;tag:Cheoeqar;text:Looked;show:text;",
+    "time:60;ph:1;tag:Cheoeqar;text:Plain;",
+    "time:70;ph:1;tag:Cheoeqar;text:Rung;show:text;sound:RAID_WARNING;",
+    "time:80;ph:1;tag:Cheoeqar;text:PlainRung;sound:RAID_WARNING;",
+  }, "\\n"))
+  local it = {}
+  for i = 1, 6 do it[i] = E.ItemFor(n.timers[i], i, true) end
+  assert(it[1].ownSpeech == true and it[2].ownSpeech == true, "show: with tts: or count: has its own speech")
+  assert(it[3].ownSpeech == nil and it[4].ownSpeech == nil and it[5].ownSpeech == nil and it[6].ownSpeech == nil, "show: with neither, and a plain line, has none")
+  assert(it[5].ownSound == true and it[1].ownSound == nil and it[6].ownSound == nil, "show: with sound: has its own sound; a plain line never")
+end)
+
+check("Read them out off: a note line with show: and count: counts, and its sound cue plays", function()
+  local said, kits = {}, {}
+  local wasSpeak, wasPlay = C_VoiceChat, PlaySound
+  C_VoiceChat = { SpeakText = function(_, text) said[#said + 1] = { text = text, at = clock } end }
+  PlaySound = function(id) kits[#kits + 1] = { id = id, at = clock } return true end
+  local n = P.Parse("time:20;ph:1;tag:Cheoeqar;text:Soak;show:text;count:1;sound:RAID_WARNING;warn:6;")
+  local item = E.ItemFor(n.timers[1], 1, true)
+  local plainN = P.Parse("time:21;ph:1;tag:Cheoeqar;text:Quiet;")
+  local plain = E.ItemFor(plainN.timers[1], 2, true)
+  plain.id = "note:quiet"
+  plain.outputs.speech = true
+  A:RegisterBlock("note", { label = "Raid note", group = false, Entries = function() return { item, plain } end })
+  CRT.db.notes.alert.tts = false
+  A:Start(1, "Mythic", "test")
+  local t0 = clock
+  for i = 1, 300 do
+    clock = clock + 0.1
+    for _, f in ipairs(frames) do if f.scripts.OnUpdate then f.scripts.OnUpdate(f, 0.1) end end
+    if i % 3 == 0 then for _, f in ipairs(frames) do if f.events.VOICE_CHAT_TTS_PLAYBACK_FINISHED and f.scripts.OnEvent then f.scripts.OnEvent(f, "VOICE_CHAT_TTS_PLAYBACK_FINISHED") end end end
+  end
+  A:Stop()
+  CRT.db.notes.alert.tts = true
+  C_VoiceChat, PlaySound = wasSpeak, wasPlay
+  local texts = {}
+  for _, s in ipairs(said) do texts[#texts + 1] = s.text .. "@" .. string.format("%.1f", s.at - t0) end
+  assert(table.concat(texts, " "):find("3@17%.[01] 2@18%.[01] 1@19%.[01]"), "counted on its seconds (on the ticks here: this harness has no timers): " .. table.concat(texts, " "))
+  assert(not table.concat(texts, " "):find("Quiet", 1, true), "the plain line is quiet: " .. table.concat(texts, " "))
+  assert(#kits == 1 and kits[1].id == 8959 and math.abs(kits[1].at - t0 - 20) <= 0.11, "its sound cue at 0: " .. #kits)
+end)
+
 for _, e in ipairs(errors) do print("error " .. e) end
 assert(#errors == 0, "errors: " .. #errors)
 if checks.failed then error(checks.failed .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const names = ['CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/Engine.lua'];
+const names = ['CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/Engine.lua', 'CRT_Core/Sound/Engine.lua'];
 const files = process.argv.slice(2);
 if (files.length !== names.length) { console.error('usage: node run_alerts_notefields.js ' + names.join(' ')); process.exit(2); }
 files.forEach((p, i) => { lua.lua_pushstring(L, to_luastring(names[i])); lua.lua_pushstring(L, to_luastring(fs.readFileSync(p, 'utf8'))); });

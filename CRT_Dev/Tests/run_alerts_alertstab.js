@@ -639,7 +639,9 @@ check("callout: Read them out is notes.alert.tts, the left column's switch, and 
   tts:SetChecked(false) click(tts)
   assert(alertSettings.tts == false, "unticked saves notes.alert.tts")
   assert(left.checked == false, "the left column's box follows")
-  for _, label in ipairs(speechRows) do assert(calloutRow(label).enabled == false, label .. " greyed") end
+  -- Read it at is for the note lines only, so it greys; volume, rate and Test speech apply to every alert that speaks
+  assert(calloutRow("Read it at").enabled == false, "Read it at greyed")
+  for _, label in ipairs({ "Speech volume", "Speech rate", "Test speech" }) do assert(calloutRow(label).enabled ~= false, label .. " still usable") end
   assert(calloutRow("Size").enabled ~= false, "the look rows stay usable")
   -- the left column's box turns it back on, and the panel follows
   left:SetChecked(true) click(left)

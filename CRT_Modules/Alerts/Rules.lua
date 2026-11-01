@@ -181,8 +181,8 @@ end
 -- The spoken parts of one alert as { { offset, text } }, offset in seconds before it is due, in the order they are
 -- said: `speak` says the text at `warn` seconds (On show), at 0 when `atZero` (Speak at: At 0), or at opts.before
 -- seconds (Speak at: Before 0); `count` says the numbers from opts.countFrom (3 without) down to 1, each at its own
--- second. With Count down on, the text comes after the count: due at 0 and marked afterCount, so the speech queue
--- says it the moment "1" ends (On show and At 0 alike, Alex 2026-11-01). Before 0 keeps its early text: inside the
+-- second. With Count down on, the text comes after the count, due at 0 (On show and At 0 alike, Alex 2026-11-01); the
+-- speech queue says it the moment "1" ends. It is marked afterCount, which only readers such as the tests use. Before 0 keeps its early text: inside the
 -- count, the numbers up to the text's second are left out (only those a full second after it are said), so the text
 -- never lands on a number and the numbers after it stay on time. opts is optional.
 function Rules.SpeechItems(text, warn, speak, count, atZero, opts)
@@ -240,12 +240,13 @@ function Rules.SpeechDue(lines, now, spoken)
 end
 
 -- The earliest speech item after now that was not spoken yet, as its time and text, or nil. The speech queue wakes
--- for it between its ticks, so every line is said at its own time, not at the next tick.
-function Rules.NextSpeech(lines, now, spoken)
+-- for it between its ticks, so every line is said at its own time, not at the next tick. skip(member), when given,
+-- leaves out the members it is true for (the speech queue's: a line Read them out keeps quiet).
+function Rules.NextSpeech(lines, now, spoken, skip)
     local best, text
     for _, line in ipairs(lines) do
         for _, member in ipairs(line.members or { line }) do
-            if member.outputs and member.outputs.speech then
+            if member.outputs and member.outputs.speech and not (skip and skip(member)) then
                 for i, s in ipairs(member.speech or {}) do
                     if s.at > now and not spoken[tostring(member.id) .. "#" .. i] and (not best or s.at < best) then
                         best, text = s.at, s.text

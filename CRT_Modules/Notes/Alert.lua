@@ -415,22 +415,24 @@ local function panelRows(panel, s)
         get = function() return s.ttsSeconds or 3 end,
         set = set("ttsSeconds"),
     })
+    -- volume, rate and Test speech apply to every alert that speaks, so they stay usable with Read them out off;
+    -- Read it at (ttsSeconds) times only the plain note lines, which the switch quiets, so it greys with it
     panel:Slider(TEXT.volume, {
-        min = 0, max = 100, enabledIf = speechOn, help = TEXT.volumeHelp,
+        min = 0, max = 100, help = TEXT.volumeHelp,
         format = function(v) return (v or 0) .. "%" end,
         get = function() return s.ttsVolume or 100 end,
         set = set("ttsVolume"),
     })
     -- the game's speech rate, -10 (slow) to 10 (fast)
     panel:Slider(TEXT.rate, {
-        min = -10, max = 10, enabledIf = speechOn,
+        min = -10, max = 10,
         format = function(v) return (v or 0) > 0 and ("+" .. v) or tostring(v or 0) end,
         get = function() return s.ttsRate or 0 end,
         set = set("ttsRate"),
     })
     panel:Button(TEXT.testSpeech, function()
         Alert:Speak(TEXT.testPhrase)
-    end, speechOn)
+    end)
 end
 
 -- What the Configuration panel shows for the callout, shaped like an alert area (Areas.Panel): its rows,

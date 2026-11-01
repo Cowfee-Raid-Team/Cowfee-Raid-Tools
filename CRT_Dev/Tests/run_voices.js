@@ -260,8 +260,8 @@ start = clock
 for i = 1, 120 do step(0.1) end
 local gaps = {}
 for i = 2, #played do gaps[#gaps + 1] = string.format("%.1f", played[i].at - played[i - 1].at) end
-check("Soak (over a second) then 3: 3 starts in Soak's last quarter second, and 3, 2, 1 are each on their second",
-  #played == 4 and played[2].at - played[1].at >= X.seconds.Soak - 0.25 - 1e-6 and near(2, 7) and near(3, 8) and near(4, 9), table.concat(gaps, " ") .. " last at " .. (played[4] and string.format("%.2f", played[4].at - start) or "-"))
+check("Soak (about a second) then 3: 3 starts as Soak's clip ends, and 3, 2, 1 are each on their second",
+  #played == 4 and played[2].at - played[1].at >= X.seconds.Soak - 1e-6 and near(2, 7) and near(3, 8) and near(4, 9), table.concat(gaps, " ") .. " last at " .. (played[4] and string.format("%.2f", played[4].at - start) or "-"))
 CRT.db.sound.voice = "tts"
 items = { { id = "d", ph = 1, time = 6, text = "Soak", priority = 21, outputs = { speech = true }, speech = spoken } }
 reset()
@@ -306,7 +306,7 @@ check("then 9 is still on its second, with the 9 clip, and so on down to 1",
 local cb = runCount("Soak", 8, { countFrom = 5, before = 3 })
 check("Speak at Before 3 inside a count from 5: Soak at 3 s, then 2 and 1 each on their second",
   find(cb, "Soak") and math.abs(find(cb, "Soak").at - 17) <= 0.15 and find(cb, "3") == nil
-    and onSecond(cb, 2) and onSecond(cb, 1) and find(cb, "2").at - find(cb, "Soak").at >= X.seconds.Soak - 0.25 - 1e-6, show(cb))
+    and onSecond(cb, 2) and onSecond(cb, 1) and find(cb, "2").at - find(cb, "Soak").at >= X.seconds.Soak - 1e-6, show(cb))
 -- a late finished event (for the read-out 10) while the 9 clip plays frees nothing: Spread, due mid-clip, waits for the clip
 do
   local list = {}
@@ -537,6 +537,15 @@ do
   check("Read them out off: the alert counts 3, 2, 1 and says the text", onItsSecond(out, 3) and onItsSecond(out, 2) and onItsSecond(out, 1) and find2(out, "Soak") ~= nil, names2(out))
   check("Read them out off: a raid note's plain line is silent", find2(out, "Spread") == nil, names2(out))
   check("Read them out off: a note line with its own speech setting speaks", find2(out, "Stack") ~= nil, names2(out))
+end
+-- the next line the queue wakes for skips a line Read them out keeps quiet, so it never holds the wake for one after it
+do
+  local quiet = { id = "q", block = "note", at = 10, outputs = { speech = true }, speech = { { at = 9.97, text = "Quiet" } } }
+  local loud = { id = "l", block = "t", at = 10, outputs = { speech = true }, speech = { { at = 10, text = "3" } } }
+  local at, text = Rules.NextSpeech({ quiet, loud }, 9.9, {}, function(m) return m.block == "note" end)
+  check("NextSpeech skips a silenced line", at == 10 and text == "3", tostring(at) .. " " .. tostring(text))
+  local at2 = Rules.NextSpeech({ quiet, loud }, 9.9, {})
+  check("NextSpeech without a skip is as before", at2 == 9.97, tostring(at2))
 end
 CRT.db.notes.alert.tts = true
 do

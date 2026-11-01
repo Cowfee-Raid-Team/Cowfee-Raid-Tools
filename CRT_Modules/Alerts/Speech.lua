@@ -19,8 +19,9 @@ local ADDON, CRT = ...
 -- A spoken line never holds a number (the number starts on its second); a clip holds it at most for the clip's own
 -- length, and a number that can't start within NUMBER_LATE of its second is dropped rather than said late, so the
 -- rhythm stays clean. The number clips are under a second (1.4x), so they never run into each other. With Count down
--- on, the text comes after "1" (Rules.SpeechItems marks it afterCount, due at 0): it starts the moment "1" ends and
--- not before 0; after a spoken "1" the game's finished event runs it.
+-- on, the text comes after "1", due at 0: a "1" clip holds it until the clip ends, and after a spoken "1" the game's
+-- finished event runs it, so it starts the moment "1" ends and not before 0. (Rules.SpeechItems marks it afterCount;
+-- the queue doesn't read the mark, which is for readers such as the tests and dev probes.)
 -- Every line starts at its exact moment, not at the next tick: when the next line's start (its own time, and the
 -- moment the speaker frees for it: a clip's end, a count's next number) is within CUE_AHEAD, a timer (wake) runs
 -- the tick then.
@@ -96,6 +97,11 @@ local function readOutOnly(block, own)
     return block == "note" and not own and not settings().tts
 end
 
+-- A line's member that Read them out keeps quiet, for the wake's look ahead (Rules.NextSpeech).
+local function quietMember(member)
+    return readOutOnly(member.block, member.ownSpeech)
+end
+
 -- Speaks now, outside the queue (the Test speech button uses this), at the Raid Notes rate and volume.
 -- Returns what Sound:Speak did: true, or true, "clip" and its seconds when a voice clip said it.
 function Speech:SpeakNow(text)
@@ -163,9 +169,10 @@ local function cueKey(member)
     return tostring(member.id) .. "#sound"
 end
 
--- A member's cue, with its time, when it has one that may play: a raid note's plain line's only with Read them out on.
+-- A member's cue, with its time, when it has one that may play: a raid note's plain line's only with Read them out on
+-- (a note line with its own speech or sound setting is not plain).
 local function cueOf(line, member)
-    if not member.sound or readOutOnly(member.block, member.ownSpeech) then
+    if not member.sound or readOutOnly(member.block, member.ownSpeech or member.ownSound) then
         return nil
     end
     return member.at or line.at
@@ -248,7 +255,7 @@ local function wake(self, lines, now, real)
     if head then
         due = startsAt(self, head.at, head.text, now, real)
     elseif clockPlays() then
-        local at, text = Rules.NextSpeech(lines, now, self.spoken)
+        local at, text = Rules.NextSpeech(lines, now, self.spoken, quietMember)
         if at then
             due = startsAt(self, at, text, now, real)
         end
