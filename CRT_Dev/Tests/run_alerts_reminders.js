@@ -283,8 +283,9 @@ do
   local items = block(MYTHIC)
   assert(#items == 3 and items[1].id == "mine:1:1" and items[3].id == "mine:1:3" and items[3].ph == 2 and items[3].time == 10)
   local it = items[1]
-  assert(#it.speech == 4 and it.speech[1].text == "Boom" and it.speech[1].offset == 6 and it.speech[2].text == "3"
-    and it.speech[2].offset == 3 and it.speech[4].text == "1" and it.speech[4].offset == 1, "textcount")
+  -- the count, then the text at 0 (Alex, 2026-11-01)
+  assert(#it.speech == 4 and it.speech[1].text == "3" and it.speech[1].offset == 3 and it.speech[3].text == "1"
+    and it.speech[3].offset == 1 and it.speech[4].text == "Boom" and it.speech[4].offset == 0 and it.speech[4].afterCount, "textcount")
   assert(it.hold == 0.5 and it.priority == 33 and it.warn == 6 and it.outputs.speech == true and it.text == "Boom")
   R:Save(3001, id, { boss = "b", text = "Boom", times = "10", speech = "count", outputs = { alert = true, bar = true, speech = true } })
   assert(#block(MYTHIC)[1].speech == 3 and block(MYTHIC)[1].speech[1].text == "3", "count")
@@ -322,7 +323,9 @@ do
   R:Save(3001, nil, { boss = "b", spellID = 777, text = "My label", times = "10", speech = "textcount" })
   local it = block(MYTHIC)
   assert(it[4].speech[1].text == "Real Name" and it[4].speech[1].text == it[4].text, "speech with no label")
-  assert(it[5].speech[1].text == "My label" and it[5].speech[1].text == it[5].text, "speech says item text")
+  -- textcount: the count, then the text, last
+  local last = it[5].speech[#it[5].speech]
+  assert(last.text == "My label" and last.text == it[5].text and last.afterCount, "speech says item text")
   print("ok speech: says the item text")
 end
 
@@ -351,7 +354,7 @@ do
   assert(#it[1].speech == 1 and it[1].speech[1].offset == 5, "on show: at the warning, 5 s before")
   assert(#it[2].speech == 1 and it[2].speech[1].offset == 0 and it[2].speech[1].text == "Zero", "at 0: at the cast")
   local c = it[3].speech
-  assert(#c == 4 and c[1].offset == 0 and c[2].text == "3" and c[2].offset == 3 and c[4].offset == 1, "count down unchanged")
+  assert(#c == 4 and c[1].text == "3" and c[1].offset == 3 and c[3].offset == 1 and c[4].text == "Count" and c[4].offset == 0, "At 0 with a count: the count, then the text at 0")
   -- the queue: the text comes due at the cast, not at the warning
   local function line(item)
     local l = { id = item.id, at = 10, outputs = item.outputs, speech = {} }
@@ -385,19 +388,22 @@ do
   R:Save(3001, nil, { boss = "b", text = "Old", times = "10", warn = 8, speech = "textcount", outputs = { speech = true } })
   local it = block(MYTHIC)
   local function said(list) local o = {} for _, s in ipairs(list) do o[#o + 1] = s.text .. "@" .. ("%g"):format(s.offset) end return table.concat(o, " ") end
-  assert(said(it[1].speech) == "Five@8 5@5 4@4 3@3 2@2 1@1", said(it[1].speech))
+  assert(said(it[1].speech) == "5@5 4@4 3@3 2@2 1@1 Five@0", said(it[1].speech))
   assert(said(it[2].speech) == "Early@2.5", said(it[2].speech))
   assert(said(it[3].speech) == "Both@6 4@4 3@3 2@2 1@1", said(it[3].speech))
-  assert(said(it[4].speech) == "Old@8 3@3 2@2 1@1", "no countFrom: 3 2 1 as before: " .. said(it[4].speech))
-  -- a count from 9 with a short Show from: the text still comes a second before the first number
-  assert(said(Rules.SpeechItems("x", 5, true, true, false, { countFrom = 9 })) == "x@10 9@9 8@8 7@7 6@6 5@5 4@4 3@3 2@2 1@1", "text before the count")
+  assert(said(it[4].speech) == "3@3 2@2 1@1 Old@0", "no countFrom: 3 2 1, then the text: " .. said(it[4].speech))
+  -- a count from 9: the numbers, then the text at 0
+  assert(said(Rules.SpeechItems("x", 5, true, true, false, { countFrom = 9 })) == "9@9 8@8 7@7 6@6 5@5 4@4 3@3 2@2 1@1 x@0", "text after the count")
+  assert(said(Rules.SpeechItems("x", 5, true, true, true, { countFrom = 5 })) == "5@5 4@4 3@3 2@2 1@1 x@0", "At 0 with a count: the same")
+  assert(said(Rules.SpeechItems("x", 5, true, false, false, { countFrom = 5 })) == "x@5", "no count: the text on show, as before")
+  assert(said(Rules.SpeechItems("x", 5, false, true, false, { countFrom = 4 })) == "4@4 3@3 2@2 1@1", "count without the text: no text")
   assert(said(Rules.SpeechItems("x", 5, true, false, false, { before = 1.5 })) == "x@1.5", "before alone")
   -- Before 0 inside the count: the numbers up to the text's second are left out, the later ones stay on time
   assert(said(Rules.SpeechItems("x", 8, true, true, false, { countFrom = 5, before = 3 })) == "x@3 2@2 1@1", "before 3, from 5")
   assert(said(Rules.SpeechItems("x", 8, true, true, false, { countFrom = 5, before = 2.5 })) == "x@2.5 1@1", "before 2.5, from 5")
   assert(said(Rules.SpeechItems("x", 8, true, true, false, { countFrom = 3, before = 0.5 })) == "x@0.5", "before 0.5: no number after it")
   assert(said(Rules.SpeechItems("x", 8, true, true, false, { countFrom = 4, before = 5 })) == "x@5 4@4 3@3 2@2 1@1", "the text a second before the count: all kept")
-  assert(said(Rules.SpeechItems("x", 5, true, true)) == "x@5 3@3 2@2 1@1", "no opts: unchanged")
+  assert(said(Rules.SpeechItems("x", 5, true, true)) == "3@3 2@2 1@1 x@0", "no opts: the count, then the text")
   -- the queue: Early comes due 2.5 s before the cast, not at the warning nor at 0
   local function line(item)
     local l = { id = item.id, at = 10, outputs = item.outputs, speech = {} }
@@ -414,7 +420,13 @@ do
   local five = { line(it[1]) }
   local got = {}
   for t = 2, 10, 0.5 do for _, d in ipairs(Rules.SpeechDue(five, t, spoken)) do got[#got + 1] = d.text .. "@" .. ("%g"):format(d.at) end end
-  assert(table.concat(got, " ") == "Five@2 5@5 4@6 3@7 2@8 1@9", table.concat(got, " "))
+  assert(table.concat(got, " ") == "5@5 4@6 3@7 2@8 1@9 Five@10", table.concat(got, " "))
+  -- Say instead is what follows the count; the alert shows by the count's first number
+  R:Save(3001, nil, { boss = "b", text = "Shown", speakText = "Said", times = "20", warn = 2, speech = "textcount", countFrom = 6, outputs = { speech = true, alert = true } })
+  local said6
+  for _, x in ipairs(block(MYTHIC)) do if x.text == "Shown" then said6 = x end end
+  assert(said6 and said(said6.speech) == "6@6 5@5 4@4 3@3 2@2 1@1 Said@0", said6 and said(said6.speech))
+  assert(said6.warn >= 6, "shows by the first number: " .. tostring(said6.warn))
   print("ok speech: count from N and Before 0 are exact")
 end
 
@@ -429,7 +441,7 @@ do
   local it = block(MYTHIC)
   assert(it[1].warn == 8, "a count from 8 shows 8 s before: " .. tostring(it[1].warn))
   assert(it[2].warn == 7.5, "Before 0 at 7.5 s shows 7.5 s before: " .. tostring(it[2].warn))
-  assert(it[3].warn == 7, "the text a second before a count from 6: " .. tostring(it[3].warn))
+  assert(it[3].warn == 6, "a count from 6, the text after it: shows by the 6, 6 s before: " .. tostring(it[3].warn))
   assert(it[4].warn == 5, "says nothing: its own Show from")
   assert(it[5].warn == 5, "everything said inside Show from: unchanged")
   assert(R:Get(3001, 1).warn == 5, "the saved Show from is untouched")

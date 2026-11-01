@@ -94,10 +94,12 @@ local TEXT = {
     sayInsteadHelp = "Words to say in place of the alert's text. Leave it empty to say the text.\n\n"
         .. "Only your own alerts have it: a raid note line always says its text.",
     count = "Count down from",
+    countDownHelp = "Says the numbers down to 1, one a second, up to the alert's time.\n\nWith Speak the text on, the text comes right after \"1\", at 0. With Speak at: Before 0, it is said early instead.",
     glow = "Glow at 0",
     sound = "Sound",
     none = "None",
     speakAt = "Speak at",
+    speakAtHelp = "When the text is said: as the alert shows (On show), at its time (At 0), or a set time before it (Before 0).\n\nWith Count down on, On show and At 0 both say the text after the count, the moment \"1\" ends.",
     onShow = "On show",
     atZero = "At 0",
     beforeZero = "Before 0",
@@ -1471,6 +1473,12 @@ local function speakAtRow(p, row)
     }), SPEAK_AT_X, C)
 end
 
+-- The (?) right of Speak at and of Count down from's slider: the text comes after the count.
+local function speechHelps(f)
+    UI.HelpRight(f.speakAt, TEXT.speakAt, TEXT.speakAtHelp)
+    UI.HelpRight(f.countFrom, TEXT.count, TEXT.countDownHelp)
+end
+
 -- The speech settings beside Speak at and the Also boxes: Seconds before (indented under Speak at, for Before 0),
 -- Say instead (indented under Speak the text, its (?) beside it) and Count down from's slider (beside its box).
 -- Each is greyed on a note line and while what it belongs to is off. Its own function: build is near Lua 5.1's
@@ -1553,6 +1561,7 @@ local function soundRows(f, p, row)
         glow = makeCheck(p, TEXT.glow, FIELD_X, alsoY - 92, setter(function(on) draft.glow = on end)),
     }
     speechRows(f, p, row, alsoY)
+    speechHelps(f)
 end
 
 -- The Looks tab, top: Show as in two rows. Its own function: build is near Lua 5.1's 60 upvalue limit.

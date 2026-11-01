@@ -2116,6 +2116,15 @@ do
   local sayHelp
   for _, h in ipairs(helps) do if h.helpTitle == "Say instead" then sayHelp = h end end
   assert(sayHelp and sayHelp.helpText ~= "", "Say instead has a (?)")
+  -- Speak at's and Count down from's (?) say the text comes after the count (Alex, 2026-11-01)
+  local atHelp, countHelp
+  for _, h in ipairs(helps) do
+    if h.helpTitle == "Speak at" then atHelp = h end
+    if h.helpTitle == "Count down from" then countHelp = h end
+  end
+  assert(atHelp and tostring(atHelp.helpText):find("after the count", 1, true) and rawget(atHelp, "crtHelpTarget") == w.speakAt, "Speak at has a (?) right of it on the count")
+  assert(countHelp and tostring(countHelp.helpText):find("after", 1, true) and tostring(countHelp.helpText):find("Before 0", 1, true)
+    and rawget(countHelp, "crtHelpTarget") == w.countFrom, "Count down from has a (?) right of its slider")
   local function top(m) local pt = m.pts[#m.pts] return pt[#pt] end
   assert(top(w.also.speak) == -150 and top(w.sayInstead) < -150 and top(w.also.count) < top(w.sayInstead) and top(w.also.glow) < top(w.also.count), "Speak, Say instead, Count, Glow, downwards")
   local px = w.sayInstead.pts[#w.sayInstead.pts][2]

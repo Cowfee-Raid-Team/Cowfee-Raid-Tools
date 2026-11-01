@@ -25,7 +25,6 @@ C_VoiceChat = { SpeakText = function(id, text, rate, vol) said[#said + 1] = { te
   StopSpeakingText = function() end }
 local handles = 0
 function PlaySoundFile(p, channel) handles = handles + 1 played[#played + 1] = { path = p, channel = channel, at = clock } return true, handles end
-function PlaySound() return true end
 function StopSound(h) stopped[#stopped + 1] = h end
 -- a mock frame: any method is a no-op unless set here; SetScript keeps the handler under its name
 local function mock()
@@ -54,8 +53,24 @@ function CreateFrame(kind, name, parent)
   return f
 end
 local function fire(ev) for _, f in ipairs(frames) do if f.events[ev] and f.OnEvent then f.OnEvent(f, ev) end end end
-C_Timer = { After = function() end }
-local function step(dt) clock = clock + dt for _, f in ipairs(frames) do if f.OnUpdate then f.OnUpdate(f, dt) end end end
+-- C_Timer.After: runs in the first step whose time has reached it, at that time (the clock moves to it first)
+local timers = {}
+C_Timer = { After = function(d, fn) timers[#timers + 1] = { due = clock + d, fn = fn } end }
+local function step(dt)
+  local stop = clock + dt
+  while true do
+    local first
+    for i, t in ipairs(timers) do if t.due <= stop + 1e-9 and (not first or t.due < timers[first].due) then first = i end end
+    if not first then break end
+    local t = table.remove(timers, first)
+    clock = math.max(clock, t.due)
+    t.fn()
+  end
+  clock = stop
+  for _, f in ipairs(frames) do if f.OnUpdate then f.OnUpdate(f, dt) end end
+end
+local kits = {}
+function PlaySound(id) kits[#kits + 1] = { id = id, at = clock } return true end
 
 local CRT = { db = { sound = { custom = {}, voice = "xavier" }, ui = { soundChannel = "Dialog" },
   notes = { alert = { tts = true, ttsRate = 0, ttsVolume = 100 } }, alerts = {}, qol = { lowHealth = {}, breakTimer = {} } },
@@ -181,9 +196,9 @@ local start = clock
 for i = 1, 120 do step(0.1) end
 local seq = {}
 for _, p in ipairs(played) do seq[#seq + 1] = p.path:match("([^\\\\]+)%.mp3$") .. "@" .. string.format("%.1f", p.at - start) end
-check("the count plays Soak, 3, 2, 1 as clips", #played == 4 and #said == 0 and seq[1]:find("^Soak") and seq[2]:find("^3@") and seq[3]:find("^2@") and seq[4]:find("^1@"), table.concat(seq, " "))
+check("the count plays 3, 2, 1, then Soak, as clips", #played == 4 and #said == 0 and seq[1]:find("^3@") and seq[2]:find("^2@") and seq[3]:find("^1@") and seq[4]:find("^Soak@"), table.concat(seq, " "))
 local function near(i, t) local p = played[i] return p and math.abs((p.at - start) - t) <= 0.15 end
-check("each number on its second, not held by the speech timeout", near(1, 5) and near(2, 7) and near(3, 8) and near(4, 9), table.concat(seq, " "))
+check("each number on its second, not held by the speech timeout", near(1, 7) and near(2, 8) and near(3, 9), table.concat(seq, " "))
 -- a clip, then a text with no clip, then a clip: the speaker is free after the clip
 items = {
   { id = "a", ph = 1, time = 2, text = "Spread", priority = 21, outputs = { speech = true }, speech = { { offset = 0, text = "Spread" } } },
@@ -203,9 +218,9 @@ Alerts:Start(1, "Mythic", "test")
 for i = 1, 60 do step(0.1) end
 check("a clip line 1 s after a long clip starts once it ends", #played == 2 and played[2].at - played[1].at >= X.seconds.HealAbsorb - 1e-6,
   #played == 2 and string.format("%.2f", played[2].at - played[1].at) or #played)
--- a word clip longer than a second right before the count: the count's numbers keep their one second after it
+-- a word clip longer than a second right before the count (Speak at: Before 0, at 4 s): the numbers keep their second
 local tight = {}
-for i, s in ipairs(Rules.SpeechItems("Soak", 4, true, true)) do tight[i] = s end
+for i, s in ipairs(Rules.SpeechItems("Soak", 4, true, true, false, { before = 4 })) do tight[i] = s end
 items = { { id = "e", ph = 1, time = 10, text = "Soak", priority = 21, outputs = { speech = true }, speech = tight } }
 reset()
 Alerts:Start(1, "Mythic", "test")
@@ -280,6 +295,47 @@ do
     tostring(nine) .. " " .. tostring(spread))
 end
 Alerts:Stop()
+
+-- With Count down on: the numbers, then the text, straight after "1" (Alex, 2026-11-01) -----------------------
+local function countThenText(voice, atZero, sound)
+  CRT.db.sound.voice = voice
+  local list = {}
+  for i, s in ipairs(Rules.SpeechItems("Soak", 8, true, true, atZero, { countFrom = 5 })) do list[i] = s end
+  items = { { id = "ct" .. voice .. tostring(atZero), ph = 1, time = 20, text = "Soak", priority = 21, sound = sound,
+    outputs = { speech = true }, speech = list } }
+  reset()
+  kits = {}
+  Alerts:Start(1, "Mythic", "test")
+  local t0 = clock
+  for i = 1, 250 do step(0.1) end
+  Alerts:Stop()
+  local out = {}
+  for _, p in ipairs(played) do out[#out + 1] = { what = p.path:match("([^\\\\]+)%.mp3$"), at = p.at - t0 } end
+  for _, s in ipairs(said) do out[#out + 1] = { what = "tts:" .. tostring(s.text), at = s.at - t0 } end
+  table.sort(out, function(a, b) return a.at < b.at end)
+  return out, t0
+end
+local function names(out) local t = {} for _, o in ipairs(out) do t[#t + 1] = o.what .. "@" .. string.format("%.2f", o.at) end return table.concat(t, " ") end
+local function of(out, what) for _, o in ipairs(out) do if o.what == what then return o end end end
+for _, case in ipairs({ { "xavier", false }, { "xavier", true }, { "lola", false } }) do
+  local voice, atZero = case[1], case[2]
+  local out = countThenText(voice, atZero)
+  local order = {}
+  for _, o in ipairs(out) do order[#order + 1] = o.what end
+  local one, soak = of(out, "1"), of(out, "Soak")
+  local secs = byKey[voice].seconds["1"]
+  local want = one and math.max(20, one.at + secs)
+  check(voice .. (atZero and ", At 0" or ", On show") .. ": 5, 4, 3, 2, 1, then Soak", table.concat(order, ",") == "5,4,3,2,1,Soak", names(out))
+  check(voice .. (atZero and ", At 0" or ", On show") .. ": Soak starts as the 1 clip ends, at 0 at the earliest, without waiting a tick",
+    soak and want and soak.at >= want - 1e-6 and soak.at <= want + 0.01, names(out))
+end
+do
+  local out, t0 = countThenText("xavier", false, "kit:RAID_WARNING")
+  local cue = kits[1]
+  check("the Sound cue still plays at 0, with the text after the count", cue and math.abs(cue.at - t0 - 20) <= 0.01 and of(out, "Soak") ~= nil,
+    cue and string.format("%.3f", cue.at - t0))
+end
+CRT.db.sound.voice = "xavier"
 
 -- Quality of Life > Sounds: the Voice dropdown, Test and (?) ---------------------------------------------
 local dropdowns, helps, build = {}, {}, nil

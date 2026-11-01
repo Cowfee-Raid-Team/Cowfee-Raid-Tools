@@ -92,9 +92,11 @@ local TEXT = {
     countHelp = "What the bar's number counts down to: the end of the cast, or the next hit.",
     speak = "Speak the text",
     count = "Count down",
+    countDownHelp = "Says the numbers down to 1, one a second, up to the alert's time.\n\nWith Speak the text on, the text comes right after \"1\", at 0. With Speak at: Before 0, it is said early instead.",
     countFrom = "Count down from %d", -- a count that starts past 3 (set in the alert editor)
     glow = "Glow at 0",
     speakAt = "Speak at",
+    speakAtHelp = "When the text is said: as the alert shows (On show), at its time (At 0), or a set time before it (Before 0).\n\nWith Count down on, On show and At 0 both say the text after the count, the moment \"1\" ends.",
     onShow = "On show",
     atZero = "At 0",
     beforeZero = "Before 0",
@@ -1628,6 +1630,9 @@ local function buildSoundTab(p, row)
         set = change(function(v) Draft.SetSpeakAt(cur.draft, v) end),
     }))
     panel.speakAt:SetPoint("TOPLEFT", L.INSET + L.CHECK_STEP, L.SPEAK_Y) -- in line with Speak the text
+    -- with Count down on, the text comes after the count: both (?) say so
+    UI.HelpRight(panel.speakAt, TEXT.speakAt, TEXT.speakAtHelp)
+    UI.HelpRight(panel.also.count.label, TEXT.count, TEXT.countDownHelp)
 end
 
 -- Save as and For: Only me, or Raid note (Notes/MechNote.lua) for everyone, a role or picked players. Raid note turns

@@ -178,24 +178,19 @@ function Rules.Area(lines, now, output, cap)
     return out, #list - #out
 end
 
--- The spoken parts of one alert as { { offset, text } }, offset in seconds before it is due: `speak` says
--- the text at `warn` seconds (when counting, at least a second before the count's first number), at 0 when
--- `atZero` (Speak at: At 0), or at opts.before seconds (Speak at: Before 0); `count` says the numbers from
--- opts.countFrom (3 without) down to 1, each at its own second. With the text said at Before 0 inside the count,
--- the numbers up to the text's second are left out (only those a full second after it are said), so the text never
--- lands on a number and the numbers after it stay on time. opts is optional.
+-- The spoken parts of one alert as { { offset, text } }, offset in seconds before it is due, in the order they are
+-- said: `speak` says the text at `warn` seconds (On show), at 0 when `atZero` (Speak at: At 0), or at opts.before
+-- seconds (Speak at: Before 0); `count` says the numbers from opts.countFrom (3 without) down to 1, each at its own
+-- second. With Count down on, the text comes after the count: due at 0 and marked afterCount, so the speech queue
+-- says it the moment "1" ends (On show and At 0 alike, Alex 2026-11-01). Before 0 keeps its early text: inside the
+-- count, the numbers up to the text's second are left out (only those a full second after it are said), so the text
+-- never lands on a number and the numbers after it stay on time. opts is optional.
 function Rules.SpeechItems(text, warn, speak, count, atZero, opts)
     local out = {}
     local from = opts and type(opts.countFrom) == "number" and opts.countFrom or 3
     local before = opts and type(opts.before) == "number" and opts.before or nil
-    if speak then
-        local offset = count and math.max(warn, from + 1) or warn
-        if before then
-            offset = before
-        elseif atZero then
-            offset = 0
-        end
-        out[1] = { offset = offset, text = text }
+    if speak and (before or not count) then
+        out[1] = { offset = before or (atZero and 0) or warn, text = text }
     end
     if count then
         -- the text at Before 0: only the numbers a full second after it
@@ -204,6 +199,9 @@ function Rules.SpeechItems(text, warn, speak, count, atZero, opts)
             if n <= top then
                 out[#out + 1] = { offset = n, text = tostring(n) }
             end
+        end
+        if speak and not before then
+            out[#out + 1] = { offset = 0, text = text, afterCount = true }
         end
     end
     return out
@@ -225,7 +223,7 @@ function Rules.SpeechDue(lines, now, spoken)
                         -- Late is measured against the entry, as the note always did: a line whose speech
                         -- time passed before the pull is still read out while the line itself is ahead.
                         if now - (member.at or s.at) <= LATE then
-                            items[#items + 1] = { key = key, at = s.at, text = s.text,
+                            items[#items + 1] = { key = key, at = s.at, text = s.text, afterCount = s.afterCount,
                                 priority = member.priority or line.priority, block = member.block or line.block, seq = #items + 1 }
                         end
                     end
@@ -239,6 +237,25 @@ function Rules.SpeechDue(lines, now, spoken)
     end)
     for _, it in ipairs(items) do it.seq = nil end
     return items
+end
+
+-- The earliest time after now that a text following a count (afterCount) comes due and was not spoken yet, or nil.
+-- The speech queue wakes for it between its ticks, so the text follows "1" without waiting for the next tick.
+function Rules.NextAfterCount(lines, now, spoken)
+    local best
+    for _, line in ipairs(lines) do
+        for _, member in ipairs(line.members or { line }) do
+            if member.outputs and member.outputs.speech then
+                for i, s in ipairs(member.speech or {}) do
+                    if s.afterCount and s.at > now and not spoken[tostring(member.id) .. "#" .. i]
+                        and (not best or s.at < best) then
+                        best = s.at
+                    end
+                end
+            end
+        end
+    end
+    return best
 end
 
 -- Drops the lowest-priority item (earliest of equals) while the head of the queue is too far behind.
