@@ -57,7 +57,8 @@ local function frame(kind, template)
         function d:CreateCheckbox(...) local c = element("checkbox", ...) c.parent = self self.children[#self.children + 1] = c self.order[#self.order + 1] = c return c end
         function d:CreateTitle(label) self.order[#self.order + 1] = { kind = "title", label = label } if self.isRoot then f.titles = f.titles or {} f.titles[#f.titles + 1] = label end end
         function d:SetScrollMode(h) self.scroll = h end
-        function d:AddMenuAcquiredCallback(fn) self.acquired = fn end
+        -- as the game's: only the root takes a menu-acquired callback, which runs for the root and each submenu
+        if d.isRoot then function d:AddMenuAcquiredCallback(fn) self.acquired = fn end end
         return d
       end
       -- like the game's element description: SetEnabled(false) greys the item and a click on it does nothing
@@ -82,6 +83,16 @@ local function frame(kind, template)
       self.root = root
       self.gen(self, root)
       self.radios = radios
+      -- the menus the game acquires as the list and its submenus open: the root's callback hears each one
+      self.menus = {}
+      local function acquire(desc)
+        local menu = { level = desc }
+        function menu:SetFrameStrata(s) self.strata = s end
+        self.menus[desc] = menu
+        if root.acquired then root.acquired(menu) end
+        for _, c in ipairs(desc.children or {}) do if #c.children > 0 then acquire(c) end end
+      end
+      acquire(root)
       self.shown = nil
       local picked = {}
       for _, r in ipairs(radios) do
@@ -208,8 +219,12 @@ print("ok controls: a sound dropdown's Play button plays the chosen sound")
 -- top of every window (UI.MenuOnTop) and scrolls past maxHeight.
 local function check(name, cond, detail) assert(cond, name .. (detail and (": " .. tostring(detail)) or "")) print("ok " .. name) end
 do
+  -- as UI/Window.lua's: a callback on the root that puts each menu acquired on TOOLTIP
   local onTop = {}
-  UI.MenuOnTop = function(desc) onTop[#onTop + 1] = desc end
+  UI.MenuOnTop = function(desc)
+    onTop[#onTop + 1] = desc
+    if desc and desc.AddMenuAcquiredCallback then desc:AddMenuAcquiredCallback(function(menu) menu:SetFrameStrata("TOOLTIP") end) end
+  end
   local pick = "kit:B"
   local sd = UI.Dropdown({}, "Sound", { maxHeight = 300, options = function() return {
       { key = "none", label = "None" },
@@ -236,9 +251,10 @@ do
   short.setSel(short.data)
   check("a click on a group picks nothing", pick == "crt:Short-CowBell")
   check("a submenu scrolls past maxHeight", short.scroll == 300 and game.scroll == 300)
-  local seen = {}
-  for _, d in ipairs(onTop) do seen[d] = true end
-  check("every level is on top of the windows: the root and each submenu", seen[D.root] and seen[short] and seen[game])
+  check("UI.MenuOnTop is set on the root only", #onTop >= 1 and onTop[#onTop] == D.root and short.AddMenuAcquiredCallback == nil)
+  local strata = {}
+  for _, desc in ipairs({ D.root, short, game }) do strata[#strata + 1] = tostring(D.menus[desc] and D.menus[desc].strata) end
+  check("every level is on top of the windows: the root's callback runs for each submenu as it opens", table.concat(strata, ",") == "TOOLTIP,TOOLTIP,TOOLTIP", table.concat(strata, ","))
 end
 
 -- A sound dropdown with submenus: Play on each sound inside them

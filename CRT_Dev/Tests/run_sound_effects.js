@@ -90,8 +90,9 @@ local okUI, errUI = pcall(function() assert(load(controlsSrc, "@Controls.lua"))(
 check("Controls.lua loads", okUI, errUI)
 check("the effect categories, from the table", Sound:EffectNames() == "Short, Impacts, Instruments and Devices", Sound:EffectNames())
 local help = okUI and CRT.UI.SoundHelp() or ""
-check("the (?) says the voices, then the effects by category, then the game sounds",
-  help:find("The Male01 and Female01 voice clips, under each voice's name, then the sound effects by category (Short, Impacts, Instruments and Devices), then the game sounds.", 1, true) ~= nil, help)
+check("the (?) says the list's groups: Voices, Sound effects and More",
+  help:find("Voices (Male01 and Female01), Sound effects (Short, Impacts, Instruments and Devices) and More (game sounds, sounds shared by other addons, and your own files). Hover a group to see its sounds.", 1, true) == 1
+    and help:find("Your own .ogg or .mp3 files", 1, true) ~= nil and select(2, help:gsub("sounds shared by other addons", "")) == 1, help)
 hooksecurefunc = function() end
 local okLH, errLH = pcall(function() assert(load(lowHealthSrc, "@lowhealth"))("CowfeeRaidTools", CRT) end)
 check("LowHealthSound.lua loads", okLH and CRT.LowHealthSound ~= nil, errLH)

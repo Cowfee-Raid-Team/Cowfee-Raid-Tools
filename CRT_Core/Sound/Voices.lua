@@ -190,8 +190,8 @@ local function listed(items)
     return string.format(TEXT.listAnd, table.concat(items, ", ", 1, #items - 1), items[#items])
 end
 
--- For the (?) texts, read from the table each time: the voices' names ("Xavier and Lola"), a line per voice
--- that lacks words ("Lola has no Void, West or Yellow, ..."; none does now), and that clips take no volume.
+-- For the (?) texts, read from the table each time: the voices' names as shown ("Male01 and Female01"), a line per
+-- voice that lacks words ("Female01 has no Void, West or Yellow, ..."; none does now), and that clips take no volume.
 function Sound:VoiceNames()
     local names = {}
     for _, voice in ipairs(Sound.VOICES) do
