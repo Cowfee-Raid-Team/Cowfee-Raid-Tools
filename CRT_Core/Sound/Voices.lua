@@ -46,8 +46,8 @@ Sound.VOICES = {
     {
         key = "xavier", label = "Xavier (male)", folder = "Xavier",
         seconds = {
-            ["0"] = 0.97, ["1"] = 0.99, ["2"] = 0.91, ["3"] = 0.99, ["4"] = 0.97, ["5"] = 1.07, ["6"] = 1.07,
-            ["7"] = 1.07, ["8"] = 0.81, ["9"] = 1.04, ["5seconds321"] = 4.75, Adds = 1.07, Beam = 0.91, Blue = 0.86,
+            ["0"] = 0.73, ["1"] = 0.76, ["2"] = 0.71, ["3"] = 0.76, ["4"] = 0.73, ["5"] = 0.81, ["6"] = 0.81,
+            ["7"] = 0.81, ["8"] = 0.63, ["9"] = 0.78, ["5seconds321"] = 4.75, Adds = 1.07, Beam = 0.91, Blue = 0.86,
             Bomb = 1.07, Boss = 1.07, Bouncer = 1.15, Break = 0.99, Charge = 1.23, Cleaner = 1.04, Clear = 0.89,
             Collect = 0.99, Debuff = 1.18, Dispel = 1.23, Done = 0.99, DropPool = 1.33, East = 0.91,
             Entertainer = 1.38, Feather = 1.04, Fire = 1.07, Fixate = 1.23, Frost = 0.97, Fung = 0.99, Gate = 0.91,
@@ -62,8 +62,8 @@ Sound.VOICES = {
     {
         key = "lola", label = "Lola (female)", folder = "Lola",
         seconds = {
-            ["0"] = 0.76, ["1"] = 0.63, ["2"] = 0.68, ["3"] = 0.97, ["4"] = 0.73, ["5"] = 0.81, ["6"] = 0.73,
-            ["7"] = 0.76, ["8"] = 0.65, ["9"] = 0.71, ["5seconds321"] = 4.08, Adds = 0.71, Beam = 0.71, Blue = 0.71,
+            ["0"] = 0.57, ["1"] = 0.50, ["2"] = 0.55, ["3"] = 0.73, ["4"] = 0.57, ["5"] = 0.63, ["6"] = 0.57,
+            ["7"] = 0.57, ["8"] = 0.52, ["9"] = 0.55, ["5seconds321"] = 4.08, Adds = 0.71, Beam = 0.71, Blue = 0.71,
             Bomb = 0.71, Boss = 0.73, Bouncer = 0.86, Break = 0.73, Charge = 0.89, Cleaner = 0.78, Clear = 0.71,
             Collect = 0.76, Debuff = 0.91, Dispel = 0.86, Done = 0.73, DropPool = 1.10, East = 0.73,
             Entertainer = 1.15, Feather = 0.78, Fire = 0.81, Fixate = 0.97, Frost = 0.81, Fung = 0.78, Gate = 0.73,
