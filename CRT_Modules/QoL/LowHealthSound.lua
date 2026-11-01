@@ -21,8 +21,8 @@ local ADDON, CRT = ...
 -- your channel instead, so your health is never read by the addon. The game's pulse kits loop by
 -- themselves; the other sounds repeat, faster at each lower 10% tier, until the pulse stops.
 --
--- Where the sounds come from (Sound.Choices): the game's pulse, then every sound the addon's sound
--- engine offers (Sound/Engine.lua: game sounds, shared ones, your own files), by reference. Game sounds
+-- Where the sounds come from (Sound.Choices): every sound the addon's sound engine offers (Sound/Engine.lua),
+-- with the game's pulse first in the Game sounds submenu, by reference. Game sounds
 -- play with C_Sound.PlaySoundWithOptions, which takes your volume; files play with PlaySoundFile(path,
 -- channel), which has no volume of its own, so they follow the channel's volume. Your own files are
 -- listed on Quality of Life > Sounds; the page's own list (customSounds) was moved there.
@@ -56,22 +56,24 @@ local PREVIEW_SECONDS = 3
 -- was never told to stop. At 1% the game plays and ends it as usual.
 local MUTED_VOLUME = 1
 
--- Every sound to choose from: the sound engine's list, with the game's pulse first under its Game sounds
--- heading (first of all when the list has no headings). Read each time the menu opens, so sounds shared by
--- other addons appear.
+-- Every sound to choose from: the sound engine's list, with the game's pulse first in the Game sounds submenu
+-- (first of all when the list has none). Read each time the menu opens, so sounds shared by other addons appear.
 function Sound.Choices()
     local pulse = { key = "pulse", label = "Game pulse (speeds up)" }
-    local list, out, placed = CRT.Sound:Choices(), {}, false
-    for _, c in ipairs(list) do
-        if not placed and not c.title then
-            -- the first sound of the game's own: right after its heading, or the very first entry
-            local prev = out[#out]
-            if not prev or (prev.title and c.key and c.key:find("^kit:")) then
-                out[#out + 1] = pulse
-                placed = true
+    local out = {}
+    local placed = false
+    for _, c in ipairs(CRT.Sound:Choices()) do
+        if c.id == "game" and c.children then
+            -- the game's sounds' submenu: the pulse first in it (a copy, so the engine's list is never changed)
+            local children = { pulse }
+            for _, child in ipairs(c.children) do
+                children[#children + 1] = child
             end
+            out[#out + 1] = { id = c.id, label = c.label, children = children }
+            placed = true
+        else
+            out[#out + 1] = c
         end
-        out[#out + 1] = c
     end
     if not placed then
         table.insert(out, 1, pulse)

@@ -58,16 +58,18 @@ end
 -- In the sound lists ---------------------------------------------------------------------------------
 check("each sound is in Sound.BUNDLED, after the voices", #Sound.BUNDLED == voiceCount + 59 and Sound.BUNDLED[voiceCount + 1].name == "Short-BellStrike", #Sound.BUNDLED - voiceCount)
 local list = Sound:Choices({ none = "None" })
-local order, at = {}, {}
-for i, c in ipairs(list) do if c.title then order[#order + 1] = c.label at[c.label] = i end end
-check("headings: the voices, Short, Impacts, Instruments, Devices, then Game sounds", table.concat(order, ",") == "Xavier,Lola,Short,Impacts,Instruments,Devices,Game sounds", table.concat(order, ","))
-check("Short's sounds under Short", list[at.Short + 1].key == "crt:Short-BellStrike" and at.Impacts - at.Short - 1 == 26, list[at.Short + 1].key)
-check("Devices' sounds under Devices, then Game sounds", list[at.Devices + 1].key == "crt:Devices-AirHorn" and at["Game sounds"] - at.Devices - 1 == 11)
-local t2 = {}
-for _, c in ipairs(Sound:Choices({ filesOnly = true })) do if c.title then t2[#t2 + 1] = c.label end end
-check("files only (aura sounds): the same headings, no Game sounds", table.concat(t2, ",") == "Xavier,Lola,Short,Impacts,Instruments,Devices", table.concat(t2, ","))
+local function layout(l) local t = {} for _, c in ipairs(l) do t[#t + 1] = c.title and ("#" .. c.label) or c.children and (c.label .. ">") or c.label end return table.concat(t, ",") end
+check("the top level as mocked: None, Voices, Sound effects, More", layout(list) == "None,#Voices,Male01>,Female01>,#Sound effects,Short>,Impacts>,Instruments>,Devices>,#More,Game sounds>", layout(list))
+local function groupOf(l, label) for _, c in ipairs(l) do if c.children and c.label == label then return c end end end
+local sizes = {}
+for _, g in ipairs({ "Short", "Impacts", "Instruments", "Devices" }) do sizes[#sizes + 1] = #groupOf(list, g).children end
+check("each category's sounds in its submenu", table.concat(sizes, ",") == "26,10,12,11" and groupOf(list, "Short").children[1].key == "crt:Short-BellStrike"
+  and groupOf(list, "Devices").children[1].key == "crt:Devices-AirHorn", table.concat(sizes, ","))
+check("the top level's order and headings are data", type(Sound.MENU) == "table" and #Sound.MENU == 3)
+check("files only (aura sounds): no Game sounds", layout(Sound:Choices({ filesOnly = true })) == "#Voices,Male01>,Female01>,#Sound effects,Short>,Impacts>,Instruments>,Devices>",
+  layout(Sound:Choices({ filesOnly = true })))
 local labels = {}
-for _, c in ipairs(list) do if c.key then labels[c.key] = c.label end end
+for _, c in ipairs(Sound.Flat(list)) do labels[c.key] = c.label end
 check("labels", labels["crt:Devices-AirHorn"] == "Air horn" and labels["crt:Short-CowBell"] == "Cowbell" and labels["crt:Devices-TrashcanLid"] == "Trash can lid"
   and labels["crt:Impacts-PopClick"] == "Pop click" and labels["crt:Instruments-Warhorn"] == "War horn",
   tostring(labels["crt:Devices-AirHorn"]) .. " " .. tostring(labels["crt:Short-CowBell"]) .. " " .. tostring(labels["crt:Instruments-Warhorn"]))
@@ -88,19 +90,19 @@ local okUI, errUI = pcall(function() assert(load(controlsSrc, "@Controls.lua"))(
 check("Controls.lua loads", okUI, errUI)
 check("the effect categories, from the table", Sound:EffectNames() == "Short, Impacts, Instruments and Devices", Sound:EffectNames())
 local help = okUI and CRT.UI.SoundHelp() or ""
-check("the (?) says the voices, then the effects by category, then the game sounds",
-  help:find("The Xavier and Lola voice clips, under each voice's name, then the sound effects by category (Short, Impacts, Instruments and Devices), then the game sounds.", 1, true) ~= nil, help)
+check("the (?) says the list's groups: Voices, Sound effects and More",
+  help:find("Voices (Male01 and Female01), Sound effects (Short, Impacts, Instruments and Devices) and More (game sounds, sounds shared by other addons, and your own files). Hover a group to see its sounds.", 1, true) == 1
+    and help:find("Your own .ogg or .mp3 files", 1, true) ~= nil and select(2, help:gsub("sounds shared by other addons", "")) == 1, help)
 hooksecurefunc = function() end
 local okLH, errLH = pcall(function() assert(load(lowHealthSrc, "@lowhealth"))("CowfeeRaidTools", CRT) end)
 check("LowHealthSound.lua loads", okLH and CRT.LowHealthSound ~= nil, errLH)
 if okLH and CRT.LowHealthSound then
-  local lh, gi, n = CRT.LowHealthSound.Choices(), nil, 0
-  for i, c in ipairs(lh) do
-    if c.title and c.label == "Game sounds" then gi = i end
-    if c.key == "pulse" then n = n + 1 end
-  end
-  check("low health: Game pulse first under Game sounds, not under Devices", gi and lh[gi + 1] and lh[gi + 1].key == "pulse" and n == 1
-    and lh[gi - 1].key == "crt:Devices-TrashcanLid", gi)
+  local lh = CRT.LowHealthSound.Choices()
+  local game = groupOf(lh, "Game sounds")
+  local n = 0
+  for _, c in ipairs(Sound.Flat(lh)) do if c.key == "pulse" then n = n + 1 end end
+  check("low health: Game pulse first in Game sounds, once", game and game.children[1].key == "pulse" and game.children[2].key == "kit:RAID_WARNING" and n == 1,
+    game and game.children[1].key)
 end
 
 -- Sounds, not speech ------------------------------------------------------------------------------------
