@@ -332,7 +332,8 @@ lua.lua_setglobal(L, to_luastring('OLD_PARSE'));
   const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   try {
     const tagged = git(['show', 'v1.2.0:CRT_Modules/Notes/Parse.lua']);
-    if (tagged !== olds[1].src) { console.log('FAIL old_Parse_v1.2.0.lua is not git show v1.2.0:CRT_Modules/Notes/Parse.lua'); process.exit(1); }
+    const lf = (s) => s.split('\r\n').join('\n'); // a checkout may give the fixture CRLF line ends
+    if (lf(tagged) !== lf(olds[1].src)) { console.log('FAIL old_Parse_v1.2.0.lua is not git show v1.2.0:CRT_Modules/Notes/Parse.lua'); process.exit(1); }
     for (const tag of git(['tag', '--list', 'v*']).split(/\r?\n/).filter((t) => /^v(\d+)\./.test(t) && Number(t.match(/^v(\d+)/)[1]) >= 1)) {
       try { olds.push({ name: tag + ':Parse.lua', src: git(['show', tag + ':CRT_Modules/Notes/Parse.lua']) }); } catch (e) { /* no such file at that tag */ }
     }
