@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.1 (2026-11-01)
+
+- **Count down:** one number each second, exactly on its second, then the text at 0: "5 ... 4 ... 3 ... 2 ... 1 ... Soak". It now speaks even with Read them out off; that switch only quiets raid note lines that have no speech setting of their own.
+- **The same alert settings everywhere:** the alert editor, Mech Alerts and raid notes share one set of settings. Mech Alerts gains Say instead, Count down from and Speak at: Before 0, and raid note lines carry them to the raid.
+- **59 sound effects** in four groups: Short, Impacts, Instruments and Devices. Restart the game after updating so it finds the new files.
+- **Shorter sound lists:** every sound list opens on None, Voices, Sound effects and More, and each group opens its own list with Play buttons.
+- **Voices:** now named Male01 and Female01 (your picks are kept). The clips are trimmed, the numbers are quicker, and Female01 also says Void, West and Yellow.
+- **Speech timing:** spoken calls start on the exact moment they're due.
+- **Low health:** the sound setting now points you to the game's own low-health pulse (Combat Audio Alerts), since addons can't play a sound on it in this patch.
+
 ## 1.3.0 (2026-10-31)
 
 - **Voice packs:** spoken alerts and countdowns now use a voice, Xavier (male, the default) or Lola (female), for raid calls such as Soak, Spread and Adds, and for numbers. Anything else is read by the game's text to speech. Pick one under Quality of Life > Sounds; every sound list has the clips too. Restart the game after updating so it finds the new sound files.
