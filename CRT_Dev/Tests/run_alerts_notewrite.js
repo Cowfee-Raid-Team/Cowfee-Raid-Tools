@@ -334,7 +334,15 @@ lua.lua_setglobal(L, to_luastring('OLD_PARSE'));
     const tagged = git(['show', 'v1.2.0:CRT_Modules/Notes/Parse.lua']);
     const lf = (s) => s.split('\r\n').join('\n'); // a checkout may give the fixture CRLF line ends
     if (lf(tagged) !== lf(olds[1].src)) { console.log('FAIL old_Parse_v1.2.0.lua is not git show v1.2.0:CRT_Modules/Notes/Parse.lua'); process.exit(1); }
-    for (const tag of git(['tag', '--list', 'v*']).split(/\r?\n/).filter((t) => /^v(\d+)\./.test(t) && Number(t.match(/^v(\d+)/)[1]) >= 1)) {
+    // Only tags released before the fields: v1.3.1 is the first that reads them, so it and later tags aren't "older CRT".
+    const FIELDS_SINCE = [1, 3, 1];
+    const older = (t) => {
+      const m = t.match(/^v(\d+)\.(\d+)\.(\d+)$/);
+      if (!m || Number(m[1]) < 1) return false;
+      for (let i = 0; i < 3; i++) { if (Number(m[i + 1]) !== FIELDS_SINCE[i]) return Number(m[i + 1]) < FIELDS_SINCE[i]; }
+      return false;
+    };
+    for (const tag of git(['tag', '--list', 'v*']).split(/\r?\n/).filter(older)) {
       try { olds.push({ name: tag + ':Parse.lua', src: git(['show', tag + ':CRT_Modules/Notes/Parse.lua']) }); } catch (e) { /* no such file at that tag */ }
     }
   } catch (e) { console.log('skipped: no git, so only the two fixture parsers (not every tag from v1.0.0)'); }
