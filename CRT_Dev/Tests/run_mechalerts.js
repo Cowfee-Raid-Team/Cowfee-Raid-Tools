@@ -974,6 +974,15 @@ check("mech: every (?) is right of what it explains", function()
   local aura
   for _, h in ipairs(helps) do if rawget(h, "helpTarget") == p.auraSound.label then aura = h end end
   assert(aura, "the aura sound check's (?) is right of its label's text")
+  -- Speak at's and Count down's (?) say the text comes after the count (Alex, 2026-11-01)
+  local atHelp, countHelp
+  for _, h in ipairs(helps) do
+    if rawget(h, "helpTarget") == p.speakAt then atHelp = h end
+    if rawget(h, "helpTarget") == p.also.count.label then countHelp = h end
+  end
+  assert(atHelp and tostring(atHelp.helpText):find("after the count", 1, true), "Speak at: its (?) says the text comes after the count")
+  assert(tostring(atHelp.helpText):find("alert editor", 1, true), "Speak at: its (?) says Before 0's seconds are set in the alert editor")
+  assert(countHelp and tostring(countHelp.helpText):find("Before 0", 1, true), "Count down: its (?) says when the text comes")
 end)
 
 check("mech: your own reminder button", function()

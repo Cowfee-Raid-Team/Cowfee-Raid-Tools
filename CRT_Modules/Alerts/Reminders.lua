@@ -27,7 +27,7 @@ local ADDON, CRT = ...
 -- None of them is saved at its default.
 -- barTo is an older field (Bar ends, "cast"): it stays saved where it was set, and nothing reads it.
 -- where `times` is typed text ("P1 0:02, 1:17; P2 +0:18") or nil for the reference, `speech` is
--- "text", "textcount" (the text, then 3, 2, 1, or from countFrom) or "count", `speakAt` is nil (the text is read
+-- "text", "textcount" (3, 2, 1, or from countFrom, then the text at 0; with Before 0 the text first) or "count", `speakAt` is nil (the text is read
 -- out when the alert shows), "zero" (at its time) or "before" (speakBefore seconds before its time). `group` is the difficulty group it is for, "nh" (Normal/Heroic)
 -- or "mythic" (Reminders.GroupOf). Older reminders have instead `difficulty`, a Difficulty line's text
 -- ("Heroic"), read as its group, or neither: any difficulty, until the pass splits them into one per group

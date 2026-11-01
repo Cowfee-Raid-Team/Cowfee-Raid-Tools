@@ -17,6 +17,9 @@ local ADDON, CRT = ...
 -- COUNT_HOLD seconds after the number before, clip or speech, even while that one still plays; a due number may
 -- also start in a clip's last CLIP_TAIL seconds, so a word clip a little over a second never delays the count. While
 -- a clip plays, the game's speech-finished event frees nothing: it is for an earlier spoken line, or not ours.
+-- With Count down on, the text comes after "1" (Rules.SpeechItems marks it afterCount, due at 0): it starts the
+-- moment "1" ends and not before 0. When that moment falls before the next tick, a timer (wake) runs the tick then:
+-- the end of the "1" clip, or the text's own time; after a spoken "1" the game's finished event runs it.
 -- A cue plays at its exact moment, not at the next tick: once it is within CUE_AHEAD of zero, the tick schedules
 -- it with C_Timer.After for the real seconds left (engine seconds over the rehearsal's speed). When the timer
 -- comes, the cue plays if it is still in this run's lines and due (within Rules.ZERO_EPSILON, the tolerance the
@@ -38,6 +41,7 @@ local CUE_EARLY = Rules.ZERO_EPSILON -- a cue this close before its time plays: 
 local COUNT_HOLD = 0.95 -- seconds a count's number holds the next number: under the count's one second
 local CLIP_HOLD = 1 -- seconds a clip of unknown length holds the queue
 local CLIP_TAIL = 0.25 -- a due count number may start this many seconds before the clip playing ends
+local WAKE_LATE = 0.001 -- a wake timer comes this much after its moment, so the moment has surely passed
 
 local NOTICE = {
     speech = "Raid Notes: your note lines are now read out even with the note callout off. Untick 'Read them out' on Raid Notes > Alert Settings to stop it.",
@@ -101,6 +105,7 @@ function Speech:Reset()
     self.playingUntil = 0
     self.number = nil
     self.clip = false
+    self.wakeAt = nil -- a wake timer still coming finds the run gone and does nothing
 end
 
 -- Stops what is being said now and drops the queue.
@@ -208,6 +213,43 @@ end
 
 local tokens = 0
 local fireCue
+
+-- The text after a count starts the moment "1" ends, not at the next tick: when that moment (the end of the "1" clip
+-- playing, and the text's own time) is under a tick away, a timer runs the tick at it. A spoken "1" ends with the
+-- game's finished event, which runs the tick itself. One timer per moment; a new run drops it. While a rehearsal is
+-- paused the text's time never comes, so only the end of a clip playing is waited for.
+local function wake(self, lines, now, real)
+    local head = self.queue[1]
+    local left = (self.playing and self.clip) and math.max(0, self.playingUntil - real) or nil
+    local wait
+    if head then
+        if head.afterCount and left then
+            wait = left
+        end
+    elseif (not self.playing or left) and clockPlays() then
+        local at = Rules.NextAfterCount(lines, now, self.spoken)
+        if at then
+            wait = math.max(at - now, left or 0)
+        end
+    end
+    if not (wait and wait < TICK and C_Timer and C_Timer.After) then
+        return
+    end
+    local due = real + wait
+    if self.wakeAt and math.abs(self.wakeAt - due) < WAKE_LATE then
+        return
+    end
+    self.wakeAt = due
+    local runId = self.runId
+    C_Timer.After(wait + WAKE_LATE, function()
+        if Speech.wakeAt == due then
+            Speech.wakeAt = nil
+        end
+        if Alerts.running and Alerts.runId == runId and Speech.runId == runId then
+            Speech:Tick(engineNow())
+        end
+    end)
+end
 
 -- Schedules a cue's timer for `wait` real seconds; again marks the one second try (see fireCue).
 local function arm(self, key, wait, speed, again)
@@ -352,6 +394,7 @@ function Speech:Tick(now)
             tell(self, "speech", { text = item.text, at = item.at, now = now, real = real, clip = how == "clip" })
         end
     end
+    wake(self, lines, now, real)
 end
 
 local elapsed = 0
