@@ -11,12 +11,14 @@ local ADDON, CRT = ...
 -- Built from it: the Sound and speech tab whole (BuildSound, DrawSound), and When's Show from and Linger (BuildTiming)
 -- and Looks' Show as boxes (BuildShowAs). The rest of When and Looks (the times, Text, Icon, Color, the bar's rows) and
 -- the Shield bar tab (Alerts/ShieldSection.lua, already one section for both) are each screen's own.
+-- Loads after Alerts/SubTabs.lua (the tabs' names). Both screens read the shared words from Fields.TEXT.
 -- CRT_Dev/AlertSettings.md is the table as a document, and the crt-alert-settings skill says how to add a setting;
 -- run_alert_settings.js checks every key here is in that document.
 -- A host is what a screen gives the builders: draft() (the draft on show, or nil), set(fn) (a control's setter: fn
 -- edits the draft, then the host saves or redraws), typed(key, text, userInput) (a box was typed in), editDone()
 -- (optional: Enter or leaving a box), register(row) (a dropdown or slider redrawn with the host's rows), editable()
--- (optional: false on a read-only note line), noteLine() (optional: the draft is a raid note line), x and y (the tab's
+-- (optional: false on a read-only note line), kind() (optional: where the draft is kept, "reminder", "template" or
+-- "note"; a setting that can't live there is greyed, by its entry's lives; default "reminder"), x and y (the tab's
 -- top left), menuH (optional: the Sound menu's height) and onRelease (optional: sliders save when let go).
 
 local UI = CRT.UI
@@ -62,7 +64,6 @@ local TEXT = {
     ticks = "Impact ticks",
     barFill = "Bar fill",
     countTo = "Count down to",
-    shield = "Shield bar",
 }
 Fields.TEXT = TEXT
 
@@ -74,8 +75,11 @@ local function editable(h)
     return not (h and h.editable) or h.editable() and true or false
 end
 
-local function noteLine(h)
-    return h and h.noteLine and h.noteLine() and true or false
+-- Whether a setting can be kept where the host's draft is (its entry's lives, by the host's kind()).
+local function livesHere(key, h)
+    local kind = h and h.kind and h.kind() or "reminder"
+    local f = Fields.BY_KEY[key]
+    return f ~= nil and f.lives ~= nil and f.lives[kind] == true
 end
 
 local function speaks(d)
@@ -86,10 +90,11 @@ local function counts(d)
     return d ~= nil and d.count and true or false
 end
 
--- Also when it lands on me needs the alert's spell, a sound and the game's aura sounds (Sound/Auras.lua); never a note line.
+-- Also when it lands on me needs the alert's spell, a sound and the game's aura sounds (Sound/Auras.lua), and somewhere
+-- that keeps it: your own reminder, never a template or a note line (its entry's lives).
 local function auraOK(d, h)
     local Auras = CRT.SoundAuras
-    return d ~= nil and not noteLine(h) and d.spellID ~= nil and CRT.Sound ~= nil and CRT.Sound.Normalize(d.sound) ~= nil
+    return d ~= nil and livesHere("auraSound", h) and d.spellID ~= nil and CRT.Sound ~= nil and CRT.Sound.Normalize(d.sound) ~= nil
         and Auras ~= nil and Auras:Available() and true or false
 end
 
@@ -153,7 +158,7 @@ Fields.LIST = {
     { key = "glow", tab = "sound", kind = "check", label = TEXT.glow, default = false, saved = "glow", note = "glow:1",
         lives = ALL, enabledIf = function(_, h) return editable(h) end, meaning = "The alert glows at 0." },
     -- Shield bar
-    { key = "shield", tab = "shield", kind = "section", label = TEXT.shield, default = "off", saved = "absorb",
+    { key = "shield", tab = "shield", kind = "section", label = CRT.AlertSubTabs.TEXT.shield, default = "off", saved = "absorb",
         note = "shield:boss2,15,any", lives = ALL, meaning = "The bar shows a boss's absorb shield (Alerts/Absorb.lua)." },
 }
 
@@ -328,10 +333,16 @@ function Fields.DrawSound(c, h)
     c.speakBefore:SetShown(Fields.BY_KEY.speakBefore.shownIf(d, h))
 end
 
--- The Say instead box from the draft (on open, or another row picked).
-function Fields.FillSound(c, d)
+-- The tab's boxes (Say instead) from the draft, on open or another row picked. put(edit, text) (optional) is the
+-- host's own way to fill a box, such as one that leaves a box being typed in alone; default SetText.
+function Fields.FillSound(c, d, put)
     if c and c.sayInstead then
-        c.sayInstead:SetText(d and d.speakText or "")
+        local text = d and d.speakText or ""
+        if put then
+            put(c.sayInstead, text)
+        else
+            c.sayInstead:SetText(text)
+        end
     end
 end
 
@@ -385,7 +396,7 @@ function Fields.Table()
                 lives[#lives + 1] = l[2]
             end
         end
-        local tab = CRT.AlertSubTabs and CRT.AlertSubTabs.TEXT[f.tab] or f.tab
+        local tab = CRT.AlertSubTabs.TEXT[f.tab] or f.tab
         out[#out + 1] = string.format("| `%s` | %s | %s | %s | %s | %s | %s |", f.key, tab, f.meaning or "", range,
             tostring(f.default), table.concat(lives, ", "), f.note and ("`" .. f.note .. "`") or "none")
     end

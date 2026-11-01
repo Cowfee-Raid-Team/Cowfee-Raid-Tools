@@ -2222,6 +2222,28 @@ do
   print("ok editor: a raid note line carries Say instead, Count down from and Before 0")
 end
 
+-- Also when it lands on me lives on your reminder only (Alerts/Fields.lua lives): greyed on a template and a note line
+do
+  reset()
+  local wasAuras = CRT.SoundAuras
+  CRT.SoundAuras = { Available = function() return true end }
+  E:Open(ENC, nil, { spellID = 777, boss = "Test Boss" })
+  local w = win()
+  pick("Sound", "kit:RAID_WARNING")
+  assert(w.auraSound.enabled ~= false, "on for your reminder with a spell and a sound")
+  -- a template (Alerts/Saved.lua keeps no auraSound), with the same spell and sound
+  E:EditSaved(nil)
+  typeInto(w.idEdit, "777")
+  pick("Sound", "kit:RAID_WARNING")
+  assert(w.auraSound.enabled == false, "greyed on a template")
+  E:Open(ENC, nil, { spellID = 777, boss = "Test Boss", saveAs = "note" })
+  pick("Sound", "kit:RAID_WARNING")
+  assert(w.auraSound.enabled == false, "greyed on a raid note line")
+  CRT.SoundAuras = wasAuras
+  E:Close()
+  print("ok editor: Also when it lands on me only where it is kept")
+end
+
 -- a reminder imported for someone else (#1235): the editor says who it was for, under the header
 do
   reset()

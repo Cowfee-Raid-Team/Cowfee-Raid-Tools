@@ -480,6 +480,9 @@ check("speech fields: Count down from, Before 0 and Say instead on a note line",
   -- out of range: read as a reminder reads it (Reminders.CountFrom, SpeakBefore)
   local c = E.ItemFor(n.timers[3], 3, true)
   assert(c.speech[1].offset == 10 and c.speech[1].text == "Odd", "Before 0 at most 10 s: " .. tostring(c.speech[1].offset))
+  -- a shield bar's window opens at the line's own Show from, not at the earlier show of its speech
+  local s = E.ItemFor(P.Parse("time:60;ph:1;tag:Cheoeqar;text:Break;show:bar;tts:1;ttsbefore:8;warn:3;shield:boss2,15;").timers[1], 4, true)
+  assert(s.warn == 8 and s.absorb and s.absorb.lead == 3, "shows at 8 s, its shield window from 3 s: " .. tostring(s.absorb and s.absorb.lead))
 end)
 
 for _, e in ipairs(errors) do print("error " .. e) end

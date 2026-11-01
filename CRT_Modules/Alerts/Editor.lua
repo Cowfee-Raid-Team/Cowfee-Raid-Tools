@@ -66,18 +66,19 @@ local TEXT = {
     timeHelp = "Minutes:seconds or plain seconds, from the pull or from the start of the phase in "
         .. "Relative to: 1:30 or 90.\n\nA reminder with several times keeps them all until you change "
         .. "Relative to or Time.",
-    icon = "Icon",
+    -- the shared settings' words are Alerts/Fields.lua's (it loads first): one copy for both screens
+    icon = CRT.AlertFields.TEXT.icon,
     iconSpell = "Spell",
     iconID = "Icon ID",
-    iconHelpTitle = "Icon",
+    iconHelpTitle = CRT.AlertFields.TEXT.icon,
     iconHelp = "Spell: type the spell's ID. The alert shows its icon and, with no text, its name.\n\n"
         .. "Icon ID: type an icon's file ID to show that icon instead.\n\n"
         .. "Or type a spell name (3 letters or more) to search this boss's abilities and your own "
         .. "spells (a close spelling works too), then click one or press Enter for the top match.",
-    text = "Text",
-    color = "Color",
+    text = CRT.AlertFields.TEXT.text,
+    color = CRT.AlertFields.TEXT.color,
     colorDefault = "Default",
-    showAs = "Show as",
+    showAs = CRT.AlertFields.TEXT.showAs,
     fromPrefix = "From ",
     timesPrefix = "Times: ",
     castsPrefix = "Casts: ",
@@ -1438,7 +1439,13 @@ local function soundRows(f, p, row)
         end,
         register = function(r) f.rows[#f.rows + 1] = r end,
         editable = editable,
-        noteLine = function() return draft ~= nil and draft.saveAs == "note" end,
+        -- where the draft is kept: a template (a saved alert), a raid note line, or your reminder (Alerts/Fields.lua lives)
+        kind = function()
+            if ctx and ctx.savedMode then
+                return "template"
+            end
+            return (draft ~= nil and draft.saveAs == "note") and "note" or "reminder"
+        end,
     }
     local c = CRT.AlertFields.BuildSound(p, h)
     f.speech, f.speechHost = c, h
@@ -1880,7 +1887,7 @@ local function show()
         end
     end
     frame.textEdit:SetText(draft.text or "")
-    frame.sayInstead:SetText(draft.speakText or "")
+    CRT.AlertFields.FillSound(frame.speech, draft) -- Say instead
     frame.timeEdit:SetText(draft.timeText)
     local id = draft.iconType == "id" and draft.iconID or draft.spellID
     frame.idEdit:SetText(id and tostring(id) or "")

@@ -471,6 +471,9 @@ function Engine.ItemFor(t, index, mine)
                 item.warn = math.max(item.warn, sp.offset or 0)
             end
         end
+        if item.absorb then
+            item.absorb.lead = lineWarn -- its shield window opens at the line's Show from (Alerts/Absorb.lua), as a reminder's
+        end
         -- ticks:, fill: and countto: (a Mech Alert's bar, Notes/MechNote.lua): the bar from Show from to the line's
         -- time with its impact ticks on it, as a reminder's (Alerts/Reminders.lua BarTicks); a shield bar has none
         local Reminders = CRT.AlertReminders

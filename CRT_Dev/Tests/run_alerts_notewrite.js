@@ -337,7 +337,7 @@ lua.lua_setglobal(L, to_luastring('OLD_PARSE'));
     for (const tag of git(['tag', '--list', 'v*']).split(/\r?\n/).filter((t) => /^v(\d+)\./.test(t) && Number(t.match(/^v(\d+)/)[1]) >= 1)) {
       try { olds.push({ name: tag + ':Parse.lua', src: git(['show', tag + ':CRT_Modules/Notes/Parse.lua']) }); } catch (e) { /* no such file at that tag */ }
     }
-  } catch (e) { /* no git here: the fixtures only */ }
+  } catch (e) { console.log('skipped: no git, so only the two fixture parsers (not every tag from v1.0.0)'); }
   lua.lua_createtable(L, olds.length, 0);
   olds.forEach((o, i) => {
     lua.lua_createtable(L, 0, 2);

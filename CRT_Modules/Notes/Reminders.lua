@@ -17,6 +17,8 @@ local UI = CRT.UI
 
 -- Every word on this tab, in one place so the wording is easy to change. Keep the keys, change the
 -- text in quotes, save, and /reload.
+-- (The shared settings' words, Show as, Text, Icon, Color and the bar's rows among them, are Alerts/Fields.lua's TEXT,
+-- read when the tab is built: this file loads first.)
 local TEXT = {
     title = "Mech Alerts",
     help = "Alerts are saved per difficulty: Normal/Heroic has one set and Mythic its own. Pick one beside the boss. On the left: the abilities on the ability timeline Times from names, as the Timeline shows it (mechanics you ignored there are left out), then your own reminders. Tick an ability to get a reminder for it, with its times from that timeline; untick it to turn it off. A ticked one that isn't on that timeline stays, marked. A dot means the timeline has times for it. Click a row to edit its alert on the right; changes save at once, for the difficulty on show only. Your own reminder adds one not tied to an ability.",
@@ -67,25 +69,18 @@ local TEXT = {
     badTimes = "The times don't read: %s",
     showOnTimeline = "Show on the Timeline",
     notOnTimeline = "That mechanic isn't on the Timeline for this boss yet.",
-    showAs = "Show as",
     showAsHelp = "Where the alert shows: the note callout, the alert areas (Critical alerts text, Icon, Bar, Circle, Alert timeline), and whether it is read out. Alert Settings sets how each one looks.",
     -- under Show as, for the bar: greyed while Bar is off
-    ticks = "Impact ticks",
     ticksUnit = "s into the bar",
     ticksHelp = "Seconds after the bar appears when each hit lands. The bar runs from Duration to the cast; a tick past its end isn't shown.\n\nEach number is a thin line on the bar, such as 2, 4, and the fill reaches it as its hit lands. The seconds count to the cast, or to each hit (Count down to). Leave it empty for no ticks.\n\nThese are for Only me alerts. A raid note line can't carry them.",
-    barFill = "Bar fill",
     fillUp = "Bar fills up",
     fillDown = "Bar empties",
-    countTo = "Count down to",
     countCast = "The cast",
     countImpact = "Each impact",
     countHelp = "What the bar's number counts down to: the end of the cast, or the next hit.",
-    text = "Text",
-    icon = "Icon",
     iconSpell = "Spell",
     iconID = "Icon ID",
     iconHelp = "Spell: the spell's ID; the alert shows its icon and, with no text, its name. Icon ID: an icon's file ID instead. Or type a spell name (3 letters or more) to search this boss's abilities and your spells; a close spelling works too.",
-    color = "Color",
     colorDefault = "Default",
     test = "Test",
     template = "Save as template",
@@ -899,7 +894,7 @@ local function loadPanel(item, enc, name)
     setBox(panel.idEdit, idText(cur.draft), not same)
     setBox(panel.timesEdit, cur.draft.keptTimes, not same)
     setBox(panel.ticksEdit, cur.draft.ticksText, not same)
-    setBox(panel.sayInstead, cur.draft.speakText, not same)
+    CRT.AlertFields.FillSound(panel.speech, cur.draft, function(edit, text) setBox(edit, text, not same) end)
 end
 
 -- The selected row's index in the list: the one holding a reminder just saved, the boss's last one,
@@ -1504,7 +1499,7 @@ local function buildBarRows(p, row)
     panel.ticksLabel:SetWidth(L.TICKS_LABEL)
     panel.ticksLabel:SetJustifyH("LEFT")
     panel.ticksLabel:SetWordWrap(false)
-    panel.ticksLabel:SetText(TEXT.ticks)
+    panel.ticksLabel:SetText(CRT.AlertFields.TEXT.ticks)
     panel.ticksEdit = makeEdit(p, x + L.TICKS_LABEL + L.DROP_GAP, L.COL_Y - L.TICKS_DY, L.TICKS_W, function(text)
         if not cur.draft then
             return
@@ -1518,11 +1513,11 @@ local function buildBarRows(p, row)
     panel.ticksUnit = p:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     panel.ticksUnit:SetPoint("LEFT", panel.ticksEdit, "RIGHT", L.UNIT_GAP, 0)
     panel.ticksUnit:SetText(TEXT.ticksUnit)
-    panel.ticksHelp = UI.HelpRight(panel.ticksUnit, TEXT.ticks, TEXT.ticksHelp)
+    panel.ticksHelp = UI.HelpRight(panel.ticksUnit, CRT.AlertFields.TEXT.ticks, TEXT.ticksHelp)
     local function barOn()
         return cur.draft ~= nil and cur.draft.show.bar and true or false
     end
-    panel.barFill = row(UI.Dropdown(p, TEXT.barFill, {
+    panel.barFill = row(UI.Dropdown(p, CRT.AlertFields.TEXT.barFill, {
         labelWidth = L.TICKS_LABEL, width = L.BAR_DROP_W,
         enabledIf = barOn,
         options = Draft.FillOptions(TEXT.fillUp, TEXT.fillDown),
@@ -1531,7 +1526,7 @@ local function buildBarRows(p, row)
     }))
     panel.barFill:SetPoint("TOPLEFT", x, L.COL_Y - L.FILL_DY)
     -- Count down to: the bar's number counts to the cast (the default) or to each impact; greyed without ticks
-    panel.countTo = row(UI.Dropdown(p, TEXT.countTo, {
+    panel.countTo = row(UI.Dropdown(p, CRT.AlertFields.TEXT.countTo, {
         labelWidth = L.TICKS_LABEL, width = L.BAR_DROP_W,
         enabledIf = function() return barOn() and Draft.Ticks(cur.draft) ~= nil end,
         options = Draft.CountOptions(TEXT.countCast, TEXT.countImpact),
@@ -1539,7 +1534,7 @@ local function buildBarRows(p, row)
         set = change(function(v) cur.draft.countTo = v == "impact" and "impact" or nil end),
     }))
     panel.countTo:SetPoint("TOPLEFT", x, L.COL_Y - L.COUNT_DY)
-    panel.countHelp = UI.HelpRight(panel.countTo, TEXT.countTo, TEXT.countHelp)
+    panel.countHelp = UI.HelpRight(panel.countTo, CRT.AlertFields.TEXT.countTo, TEXT.countHelp)
 end
 
 -- The Shield bar tab: the Shield bar section (Alerts/ShieldSection.lua), as the alert editor's, on the draft's shield: a
@@ -1866,21 +1861,21 @@ local function buildPanel(f)
 
     -- Looks, left column: Show as and the bar's rows
     p = tf.looks
-    heading(p, TEXT.showAs, L.INSET, L.COL_Y, TEXT.showAsHelp)
+    heading(p, CRT.AlertFields.TEXT.showAs, L.INSET, L.COL_Y, TEXT.showAsHelp)
     -- two rows (Draft.SHOW_ROWS), placed by placeShowAs
     panel.checks = CRT.AlertFields.BuildShowAs(p, { set = change, draft = function() return cur.draft end }, L.INSET - 4, L.COL_Y)
     placeShowAs()
     buildBarRows(p, row)
 
     -- Looks, right column: Text, Icon, Color
-    label(p, TEXT.text, L.COL2_X, L.COL_Y - 26)
+    label(p, CRT.AlertFields.TEXT.text, L.COL2_X, L.COL_Y - 26)
     panel.textEdit = makeEdit(p, L.COL2_X + L.LABEL_W + 4, L.COL_Y - 22, L.COL_W - L.LABEL_W - 8, function(text)
         if cur.draft and text ~= cur.draft.text then
             cur.draft.text = text
             typing()
         end
     end)
-    panel.iconType = row(UI.Dropdown(p, TEXT.icon, {
+    panel.iconType = row(UI.Dropdown(p, CRT.AlertFields.TEXT.icon, {
         labelWidth = L.LABEL_W, width = L.ICON_DROP_W,
         options = { { key = "spell", label = TEXT.iconSpell }, { key = "id", label = TEXT.iconID } },
         get = function() return cur.draft and cur.draft.iconType or "spell" end,
@@ -1905,7 +1900,7 @@ local function buildPanel(f)
     panel.idEdit:SetScript("OnEditFocusGained", function()
         lookupFrom = cur.draft and Draft.validID(cur.draft.spellID)
     end)
-    UI.HelpRight(panel.idEdit, TEXT.icon, TEXT.iconHelp)
+    UI.HelpRight(panel.idEdit, CRT.AlertFields.TEXT.icon, TEXT.iconHelp)
     panel.lookupCtl = CRT.AlertSpellLookup.Attach(panel.idEdit, {
         encounterID = function() return cur.enc end,
         boss = function() return cur.draft and cur.draft.boss end,
@@ -1939,7 +1934,7 @@ local function buildPanel(f)
         end,
     })
     panel.lookup = panel.lookupCtl.list
-    panel.colorLabel = label(p, TEXT.color, L.COL2_X, L.COL_Y - 86)
+    panel.colorLabel = label(p, CRT.AlertFields.TEXT.color, L.COL2_X, L.COL_Y - 86)
     panel.colorSwatch = CreateFrame("Button", nil, p)
     panel.colorSwatch:SetSize(20, 20)
     panel.colorSwatch:SetPoint("TOPLEFT", L.COL2_X + L.LABEL_W + 4, L.COL_Y - 82)

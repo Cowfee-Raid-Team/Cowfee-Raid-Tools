@@ -9,7 +9,7 @@ const root = process.argv[2];
 const mode = process.argv[3] || 'check';
 if (!root) { console.error('usage: node run_alert_settings.js <addon folder> [table]'); process.exit(2); }
 const files = ['CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Reminders.lua',
-  'CRT_Modules/Alerts/Draft.lua', 'CRT_Modules/Alerts/Fields.lua', 'CRT_Modules/Alerts/SubTabs.lua'];
+  'CRT_Modules/Alerts/Draft.lua', 'CRT_Modules/Alerts/SubTabs.lua', 'CRT_Modules/Alerts/Fields.lua'];
 const doc = fs.readFileSync(path.join(root, 'CRT_Dev', 'AlertSettings.md'), 'utf8');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
