@@ -25,6 +25,7 @@ CRT_Core\Perf.lua
 CRT_Core\Macros.lua
 CRT_Core\Sound\Engine.lua
 CRT_Core\Sound\Voices.lua
+CRT_Core\Sound\Effects.lua
 CRT_Core\Sound\Auras.lua
 CRT_Core\UI\Panel.lua
 CRT_Core\UI\Tooltip.lua
