@@ -7,7 +7,7 @@
 --   }
 --
 -- Then restart the game (a /reload may not find a file added while the game was running; see the
--- README). Each file then shows in every sound list in Cowfee Raid Tools, marked (yours), and in other
+-- README). Each file then shows in every sound list in Cowfee Raid Tools, under More > Yours, and in other
 -- addons' lists as "CRT: <name>" when one of them uses LibSharedMedia.
 
 CowfeeRaidTools_Media_Sounds = {

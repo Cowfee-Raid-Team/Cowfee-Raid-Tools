@@ -2,7 +2,7 @@ local ADDON, CRT = ...
 
 -- The sound effects shipped with the addon, in CRT_Media/Media/Sounds/<folder>/<name>.mp3. This file is their one
 -- list: every effect is a crt: sound (Sound.BUNDLED, crt:<folder>-<name>, such as crt:Devices-AirHorn), listed in every
--- sound dropdown under its category's heading, after the voices (Sound/Voices.lua loads first) and before Game sounds.
+-- sound dropdown in its category's submenu under Sound effects, after the voices (Sound/Voices.lua loads first).
 -- They are sounds, never speech: the voices' words come only from Sound.VOICES, so no text is ever said with one.
 -- Two names are in two categories (StovePipe in Short and Devices, SynthHigh in Short and Instruments): different
 -- files, told apart by their folder.
@@ -83,6 +83,6 @@ for _, cat in ipairs(Sound.EFFECTS) do
         local entry = { name = f[1], label = f[2] }
         cat.files[i] = entry
         Sound.BUNDLED[#Sound.BUNDLED + 1] = { name = cat.folder .. "-" .. entry.name,
-            file = cat.folder .. "\\" .. entry.name .. ".mp3", label = entry.label, group = cat.label }
+            file = cat.folder .. "\\" .. entry.name .. ".mp3", label = entry.label, group = cat.label, groupId = cat.key }
     end
 end
