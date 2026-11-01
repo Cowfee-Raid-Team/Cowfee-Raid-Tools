@@ -55,7 +55,8 @@ end
 local function fire(ev) for _, f in ipairs(frames) do if f.events[ev] and f.OnEvent then f.OnEvent(f, ev) end end end
 -- C_Timer.After: runs in the first step whose time has reached it, at that time (the clock moves to it first)
 local timers = {}
-C_Timer = { After = function(d, fn) timers[#timers + 1] = { due = clock + d, fn = fn } end }
+local armed = 0 -- every C_Timer.After asked for
+C_Timer = { After = function(d, fn) armed = armed + 1 timers[#timers + 1] = { due = clock + d, fn = fn } end }
 local function step(dt)
   local stop = clock + dt
   while true do
@@ -334,6 +335,82 @@ do
   local cue = kits[1]
   check("the Sound cue still plays at 0, with the text after the count", cue and math.abs(cue.at - t0 - 20) <= 0.01 and of(out, "Soak") ~= nil,
     cue and string.format("%.3f", cue.at - t0))
+end
+CRT.db.sound.voice = "xavier"
+
+-- A count's text, Lola (her "1" ends before 0, so the text waits for its own time)
+local function textItems(id)
+  local list = {}
+  for i, s in ipairs(Rules.SpeechItems("Soak", 8, true, true, false, { countFrom = 3 })) do list[i] = s end
+  return { { id = id, ph = 1, time = 20, text = "Soak", priority = 21, outputs = { speech = true }, speech = list } }
+end
+local function soaks() local n = 0 for _, p in ipairs(played) do if p.path:find("Soak%.mp3$") then n = n + 1 end end for _, s in ipairs(said) do if s.text == "Soak" then n = n + 1 end end return n end
+
+-- a paused rehearsal just before the text: no timer chain, nothing said; once it plays again, the text once
+do
+  CRT.db.sound.voice = "lola"
+  local saved = { IsRehearsal = Alerts.IsRehearsal, Now = Alerts.Now, RehearsalTick = Alerts.RehearsalTick, RehearsalSpeed = Alerts.RehearsalSpeed }
+  local paused, frozen, lost = false, nil, 0
+  Alerts.IsRehearsal = function() return true end
+  Alerts.RehearsalSpeed = function() return 1 end
+  Alerts.RehearsalTick = function() return paused, 1, nil end
+  Alerts.Now = function() return frozen or (clock - lost) end
+  items = textItems("pause")
+  reset()
+  Alerts:Start(1, "Mythic", "test")
+  local t0 = clock
+  while clock - t0 < 19.94 do step(0.01) end
+  paused, frozen = true, Alerts:Now()
+  local before, n0 = armed, #played
+  for i = 1, 200 do step(0.01) end
+  local during = armed - before
+  check("paused just before the text: no timer chain, nothing said", during <= 1 and #played == n0 and soaks() == 0,
+    "timers " .. during .. ", played " .. (#played - n0))
+  lost = clock - frozen
+  paused, frozen = false, nil
+  for i = 1, 100 do step(0.01) end
+  check("playing again: the text, once", soaks() == 1, soaks())
+  Alerts:Stop()
+  for k, fn in pairs(saved) do Alerts[k] = fn end
+end
+
+-- a wake timer left from a run says nothing: after Stop, and after a new Start
+for _, how in ipairs({ "stop", "start" }) do
+  CRT.db.sound.voice = "lola"
+  items = textItems("stale" .. how)
+  reset()
+  Alerts:Start(1, "Mythic", "test")
+  local t0 = clock
+  while clock - t0 < 19.95 do step(0.01) end -- the text's timer is armed, under a tick away
+  if how == "stop" then
+    Alerts:Stop()
+  else
+    items = {}
+    Alerts:Start(1, "Mythic", "test")
+  end
+  for i = 1, 50 do step(0.01) end
+  check("a wake timer from a run that ended (" .. how .. ") says nothing", soaks() == 0 and (Speech.wakeAt == nil or how == "start"), soaks())
+  Alerts:Stop()
+end
+
+-- the game's text to speech: the text waits for the finished event after "1", and never starts before 0
+for _, finishAt in ipairs({ 19.5, 20.3 }) do
+  CRT.db.sound.voice = "tts"
+  items = textItems("tts" .. finishAt)
+  reset()
+  Alerts:Start(1, "Mythic", "test")
+  local t0 = clock
+  local fired = false
+  local soakAt
+  while clock - t0 < 22 do
+    step(0.01)
+    if not fired and clock - t0 >= finishAt then fired = true fire("VOICE_CHAT_TTS_PLAYBACK_FINISHED") end
+    if not soakAt then for _, s in ipairs(said) do if s.text == "Soak" then soakAt = s.at - t0 end end end
+  end
+  local want = math.max(20, finishAt)
+  check("text to speech: 1 finished at " .. finishAt .. " s, the text at " .. want .. " s", soakAt and soakAt >= want - 1e-6 and soakAt <= want + 0.015,
+    tostring(soakAt))
+  Alerts:Stop()
 end
 CRT.db.sound.voice = "xavier"
 

@@ -105,6 +105,7 @@ function Speech:Reset()
     self.playingUntil = 0
     self.number = nil
     self.clip = false
+    self.wakeAt = nil -- a wake timer still coming finds the run gone and does nothing
 end
 
 -- Stops what is being said now and drops the queue.
@@ -215,7 +216,8 @@ local fireCue
 
 -- The text after a count starts the moment "1" ends, not at the next tick: when that moment (the end of the "1" clip
 -- playing, and the text's own time) is under a tick away, a timer runs the tick at it. A spoken "1" ends with the
--- game's finished event, which runs the tick itself. One timer per moment; a new run drops it.
+-- game's finished event, which runs the tick itself. One timer per moment; a new run drops it. While a rehearsal is
+-- paused the text's time never comes, so only the end of a clip playing is waited for.
 local function wake(self, lines, now, real)
     local head = self.queue[1]
     local left = (self.playing and self.clip) and math.max(0, self.playingUntil - real) or nil
@@ -224,7 +226,7 @@ local function wake(self, lines, now, real)
         if head.afterCount and left then
             wait = left
         end
-    elseif not self.playing or left then
+    elseif (not self.playing or left) and clockPlays() then
         local at = Rules.NextAfterCount(lines, now, self.spoken)
         if at then
             wait = math.max(at - now, left or 0)
