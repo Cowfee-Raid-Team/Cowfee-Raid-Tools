@@ -66,45 +66,19 @@ local TEXT = {
     timeHelp = "Minutes:seconds or plain seconds, from the pull or from the start of the phase in "
         .. "Relative to: 1:30 or 90.\n\nA reminder with several times keeps them all until you change "
         .. "Relative to or Time.",
-    showFrom = "Duration",
-    showFromHelp = "How long before the specified time this alert should start showing up",
-    linger = "Linger",
-    seconds = "%d s",
-    icon = "Icon",
+    -- the shared settings' words are Alerts/Fields.lua's (it loads first): one copy for both screens
+    icon = CRT.AlertFields.TEXT.icon,
     iconSpell = "Spell",
     iconID = "Icon ID",
-    iconHelpTitle = "Icon",
+    iconHelpTitle = CRT.AlertFields.TEXT.icon,
     iconHelp = "Spell: type the spell's ID. The alert shows its icon and, with no text, its name.\n\n"
         .. "Icon ID: type an icon's file ID to show that icon instead.\n\n"
         .. "Or type a spell name (3 letters or more) to search this boss's abilities and your own "
         .. "spells (a close spelling works too), then click one or press Enter for the top match.",
-    text = "Text",
-    color = "Color",
+    text = CRT.AlertFields.TEXT.text,
+    color = CRT.AlertFields.TEXT.color,
     colorDefault = "Default",
-    showAs = "Show as",
-    callout = "Note callout/assignments",
-    showText = "Critical alerts text",
-    showIcon = "Icon",
-    bar = "Bar",
-    circle = "Circle",
-    timeline = "Alert timeline",
-    also = "Also",
-    speak = "Speak the text",
-    sayInstead = "Say instead",
-    sayInsteadHelp = "Words to say in place of the alert's text. Leave it empty to say the text.\n\n"
-        .. "Only your own alerts have it: a raid note line always says its text.",
-    count = "Count down from",
-    countDownHelp = "Says one number each second, from N down to 1, then the text at 0 when Speak the text is on. Speaks even when Read them out is off.",
-    glow = "Glow at 0",
-    sound = "Sound",
-    none = "None",
-    speakAt = "Speak at",
-    speakAtHelp = "When the text is said: as the alert shows (On show), at its time (At 0), or a set time before it (Before 0).\n\nWith Count down on, On show and At 0 both say the text after the count, the moment \"1\" ends.",
-    onShow = "On show",
-    atZero = "At 0",
-    beforeZero = "Before 0",
-    secondsBefore = "Seconds before",
-    halfSeconds = "%g s",
+    showAs = CRT.AlertFields.TEXT.showAs,
     fromPrefix = "From ",
     timesPrefix = "Times: ",
     castsPrefix = "Casts: ",
@@ -155,7 +129,6 @@ local TEST_BEFORE = 0
 local TEST_AFTER = 5
 local NO_TIME = 10 -- a saved alert or a special alert has no time of its own: a test plays it this far into phase 1
 local ANY = "any"    -- a raid note line's difficulty dropdown key for its note with no difficulty (saved as nil)
-local NO_SOUND = Draft.NO_SOUND
 local FRAME_NAME = "CowfeeRaidToolsAlertEditor"
 local EXPORT_NAME = "CowfeeRaidToolsAlertExport"
 local WIDTH, HEIGHT = 600, 360
@@ -176,7 +149,6 @@ local EXPORT_PAD, EXPORT_MIN_TEXT, EXPORT_MAX_TEXT = 6, 16, 180
 local EXPORT_WIDTH = WIDTH - 88 -- the text box
 local EXPORT_TEXT_WIDTH = EXPORT_WIDTH - 2 * EXPORT_PAD
 local PREVIEW_INSET = 16 -- the editor Previews opens sits this far into the screen's bottom right corner
-local SPEAK_AT_X, SPEAK_AT_LABEL, SPEAK_AT_W = 316, 56, 104 -- Speak at, beside Sound and its Play button under the Also row
 local ID_WIDTH = 140 -- the Spell / Icon ID box, wide enough for a spell name being looked up
 local ID_SHIFT = ID_WIDTH - 80 -- the (?), preview and name sit this much right of where an 80 px box put them
 
@@ -227,17 +199,6 @@ end
 -- a reminder or a template) only with Use custom colours on (Alerts:CustomColors), so it is greyed without.
 local function colourEditable()
     return (draft ~= nil and draft.saveAs == "note") or CRT.Alerts:CustomColors()
-end
-
--- Whether the draft is one of your own alerts (a reminder or a template), not a raid note line: only those have
--- Say instead, Count down from and Before 0 (a note line has no field for them).
-local function ownAlert()
-    return draft ~= nil and draft.saveAs ~= "note"
-end
-
--- Whether Speak at is Before 0 on your own alert: its Seconds before slider shows only then.
-local function speaksBefore()
-    return ownAlert() and Draft.SpeakAtKey(draft) == "before"
 end
 
 -- "m:ss" for whole seconds; a note line's time with a fraction stays plain seconds.
@@ -473,9 +434,6 @@ local function phaseOptions()
     return out
 end
 
-local function soundOptions()
-    return Draft.SoundOptions(TEXT.none)
-end
 
 -- Showing the draft -------------------------------------------------------------------------------
 
@@ -598,9 +556,6 @@ local function refresh(rows)
     for _, k in ipairs(SHOW_KEYS) do
         frame.checks[k]:SetEnabled(not locked)
     end
-    for _, check in pairs(frame.also) do
-        check:SetEnabled(not locked)
-    end
     if rows then
         for _, row in ipairs(frame.rows) do
             row.refresh()
@@ -616,12 +571,8 @@ local function refresh(rows)
     for _, k in ipairs(SHOW_KEYS) do
         frame.checks[k]:SetChecked(draft.show[k] and true or false)
     end
-    frame.also.speak:SetChecked(draft.speak and true or false)
-    frame.also.count:SetChecked(draft.count and true or false)
-    frame.also.glow:SetChecked(draft.glow and true or false)
-    -- Seconds before only for Before 0; Say instead greyed with Speak the text off or on a note line
-    frame.speakBefore:SetShown(speaksBefore())
-    frame.sayInstead:SetEnabled(not locked and ownAlert() and draft.speak and true or false)
+    -- Sound and speech (Alerts/Fields.lua, the Mech Alerts panel's too): its boxes, Say instead and Seconds before
+    CRT.AlertFields.DrawSound(frame.speech, frame.speechHost)
     frame.shield.Refresh() -- its dropdown and slider are among frame.rows, redrawn above
     frame.tabs:Paint(draft) -- each tab's dot: something on it is on
     local c = draft.color or { 1, 1, 1 }
@@ -1182,20 +1133,6 @@ local function makeEdit(parent, x, y, width, onChange)
     return edit
 end
 
-local function makeCheck(parent, label, x, y, onClick)
-    local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
-    check:SetSize(24, 24)
-    lay(check, x, y)
-    local text = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    text:SetPoint("LEFT", check, "RIGHT", 2, 0)
-    text:SetText(label)
-    check.label = text
-    check:SetScript("OnClick", function(self)
-        onClick(self:GetChecked() and true or false)
-    end)
-    return check
-end
-
 -- A setter for a dropdown, slider or checkbox: edits the draft (when there is one) and redraws. A
 -- read-only draft is only redrawn, which puts the control back.
 local function setter(fn)
@@ -1454,63 +1391,6 @@ local function pickColor()
     UI.LiftOver(ColorPickerFrame)
 end
 
--- Speak at: when Speak the text says the text, On show, At 0 (the alert's time) or, for your own alert, Before 0.
--- Greyed while Speak the text is off, and on a read-only note line. Its own function: build is near Lua 5.1's 60
--- upvalue limit.
-local function speakAtRow(p, row)
-    return row(UI.Dropdown(p, TEXT.speakAt, {
-        labelWidth = SPEAK_AT_LABEL, width = SPEAK_AT_W,
-        enabledIf = function() return editable() and draft ~= nil and draft.speak and true or false end,
-        options = function()
-            return Draft.SpeakAtOptions(TEXT.onShow, TEXT.atZero, ownAlert() and TEXT.beforeZero or nil)
-        end,
-        get = function()
-            local key = Draft.SpeakAtKey(draft)
-            -- a note line saves Before 0 as On show (Draft.NoteTimer), so it shows it so
-            return (key == "before" and not ownAlert()) and "show" or key
-        end,
-        set = setter(function(v) Draft.SetSpeakAt(draft, v) end),
-    }), SPEAK_AT_X, C)
-end
-
--- The (?) right of Speak at and of Count down from's slider: the text comes after the count.
-local function speechHelps(f)
-    UI.HelpRight(f.speakAt, TEXT.speakAt, TEXT.speakAtHelp)
-    UI.HelpRight(f.countFrom, TEXT.count, TEXT.countDownHelp)
-end
-
--- The speech settings beside Speak at and the Also boxes: Seconds before (indented under Speak at, for Before 0),
--- Say instead (indented under Speak the text, its (?) beside it) and Count down from's slider (beside its box).
--- Each is greyed on a note line and while what it belongs to is off. Its own function: build is near Lua 5.1's
--- 60 upvalue limit.
-local function speechRows(f, p, row, alsoY)
-    local R = Reminders
-    f.speakBefore = row(UI.Slider(p, TEXT.secondsBefore, {
-        min = R.SPEAK_BEFORE.min, max = R.SPEAK_BEFORE.max, step = R.SPEAK_BEFORE.step, labelWidth = 86, width = 110,
-        enabledIf = function() return editable() and draft ~= nil and draft.speak and speaksBefore() end,
-        format = function(v) return string.format(TEXT.halfSeconds, v) end,
-        get = function() return draft and draft.speakBefore or R.SPEAK_BEFORE.default end,
-        set = setter(function(v) draft.speakBefore = v end),
-    }), SPEAK_AT_X + 16, alsoY)
-    makeLabel(p, TEXT.sayInstead, FIELD_X + 26, alsoY - 34)
-    f.sayInstead = makeEdit(p, FIELD_X + 106, alsoY - 30, 220, function(text)
-        if draft then
-            draft.speakText = text
-            changed()
-        end
-    end)
-    UI.HelpRight(f.sayInstead, TEXT.sayInstead, TEXT.sayInsteadHelp)
-    local R2 = R.COUNT_FROM
-    f.countFrom = UI.Slider(p, "", {
-        min = R2.min, max = R2.max, step = R2.step, labelWidth = 0, width = 120,
-        enabledIf = function() return editable() and ownAlert() and draft.count and true or false end,
-        get = function() return draft and draft.countFrom or R2.default end,
-        set = setter(function(v) draft.countFrom = v end),
-    })
-    f.countFrom:SetPoint("LEFT", f.also.count.label, "RIGHT", 6, 0)
-    f.rows[#f.rows + 1] = f.countFrom
-end
-
 -- The Show as boxes placed by their labels' width (Draft.FlowShowAs), inside the window at any text size.
 -- Run on build and on every open, so a text size changed since then is measured again.
 local function placeShowAs(f)
@@ -1542,40 +1422,45 @@ local function shieldRows(f, p)
     })
 end
 
--- The Sound and speech tab: Sound with its Play button and Speak at beside it (Seconds before under it for Before
--- 0), then Also, one box a row: Speak the text (Say instead under it), Count down from with its slider, and Glow
--- at 0. Its own function: build is near Lua 5.1's 60 upvalue limit.
+-- The Sound and speech tab, built from the settings table (Alerts/Fields.lua) as the Mech Alerts panel's is: Sound and
+-- Speak at, Also when it lands on me (greyed on a raid note line, which can't carry it), Speak the text, Say instead,
+-- Count down from with its slider, Glow at 0, and Seconds before for Before 0. Its own function: build is near Lua
+-- 5.1's 60 upvalue limit.
 local function soundRows(f, p, row)
-    row(UI.SoundDropdown(p, TEXT.sound, {
-        labelWidth = 70, width = 160, maxHeight = MENU_MAX_HEIGHT, enabledIf = editable, playButton = true,
-        options = soundOptions,
-        get = function() return draft and Draft.SoundKey(draft.sound) or NO_SOUND end,
-        set = setter(function(v) draft.sound = v ~= NO_SOUND and v or nil end),
-    }), LEFT, C)
-    f.speakAt = speakAtRow(p, row)
-    local alsoY = C - 34
-    makeLabel(p, TEXT.also, LEFT, alsoY - 6)
-    f.also = {
-        speak = makeCheck(p, TEXT.speak, FIELD_X, alsoY, setter(function(on) draft.speak = on end)),
-        count = makeCheck(p, TEXT.count, FIELD_X, alsoY - 62, setter(function(on) draft.count = on end)),
-        glow = makeCheck(p, TEXT.glow, FIELD_X, alsoY - 92, setter(function(on) draft.glow = on end)),
+    local h = {
+        x = LEFT, y = C, menuH = MENU_MAX_HEIGHT,
+        draft = function() return draft end,
+        set = setter,
+        typed = function(key, text)
+            if draft and not readOnly() then
+                draft[key] = text
+                changed()
+            end
+        end,
+        register = function(r) f.rows[#f.rows + 1] = r end,
+        editable = editable,
+        -- where the draft is kept: a template (a saved alert), a raid note line, or your reminder (Alerts/Fields.lua lives)
+        kind = function()
+            if ctx and ctx.savedMode then
+                return "template"
+            end
+            return (draft ~= nil and draft.saveAs == "note") and "note" or "reminder"
+        end,
     }
-    speechRows(f, p, row, alsoY)
-    speechHelps(f)
+    local c = CRT.AlertFields.BuildSound(p, h)
+    f.speech, f.speechHost = c, h
+    f.also, f.speakAt, f.sayInstead, f.countFrom, f.speakBefore, f.auraSound = c.also, c.speakAt, c.sayInstead, c.countFrom,
+        c.speakBefore, c.auraSound
 end
 
--- The Looks tab, top: Show as in two rows. Its own function: build is near Lua 5.1's 60 upvalue limit.
+-- The Looks tab, top: Show as in two rows (Alerts/Fields.lua's boxes). Its own function: build is near Lua 5.1's 60
+-- upvalue limit.
 local function showAsRows(f, p)
     makeLabel(p, TEXT.showAs, LEFT, C - 6)
-    local labels = { alert = TEXT.callout, text = TEXT.showText, icon = TEXT.showIcon, bar = TEXT.bar, circle = TEXT.circle,
-        timeline = TEXT.timeline }
-    f.checks = {}
+    f.checks = CRT.AlertFields.BuildShowAs(p, { set = setter, draft = function() return draft end }, FIELD_X, C)
     for r, keys in ipairs(Draft.SHOW_ROWS) do
         for _, key in ipairs(keys) do
-            local y = C - (r - 1) * SHOW_ROW
-            local check = makeCheck(p, labels[key], FIELD_X, y, setter(function(on) draft.show[key] = on end))
-            check.rowY = y -- its row, which placeShowAs moves it along
-            f.checks[key] = check
+            f.checks[key].rowY = C - (r - 1) * SHOW_ROW -- its row, which placeShowAs moves it along
         end
     end
     placeShowAs(f)
@@ -1692,21 +1577,10 @@ local function whenRows(f, p, row)
     f.castsText:SetWordWrap(false)
     f.castsHelp = UI.HelpRight(f.castsText, TEXT.castsHelpTitle, TEXT.castsHelp)
 
-    -- Show from, Linger
+    -- Show from, Linger (Alerts/Fields.lua's, as the Mech Alerts panel's)
     local y = C - SAVED_SHIFT
-    local showFrom = row(UI.Slider(p, TEXT.showFrom, {
-        min = 1, max = 60, step = 1, labelWidth = 70, width = 150, enabledIf = editable,
-        tipTitle = TEXT.showFrom, tipText = TEXT.showFromHelp,
-        format = function(v) return string.format(TEXT.seconds, v) end,
-        get = function() return draft and draft.warn or 5 end,
-        set = setter(function(v) draft.warn = v end),
-    }), LEFT, y)
-    local linger = row(UI.Slider(p, TEXT.linger, {
-        min = 0, max = 10, step = 1, labelWidth = 50, width = 150, enabledIf = editable,
-        format = function(v) return string.format(TEXT.seconds, v) end,
-        get = function() return draft and draft.linger or 0 end,
-        set = setter(function(v) draft.linger = v end),
-    }), 306, y)
+    local showFrom, linger = CRT.AlertFields.BuildTiming(p, { set = setter, draft = function() return draft end,
+        register = function(r) f.rows[#f.rows + 1] = r end, editable = editable }, LEFT, y, 306)
     shifted[1], shifted[2] = { showFrom, LEFT, y }, { linger, 306, y }
     f.showFrom, f.linger = showFrom, linger
 end
@@ -2013,7 +1887,7 @@ local function show()
         end
     end
     frame.textEdit:SetText(draft.text or "")
-    frame.sayInstead:SetText(draft.speakText or "")
+    CRT.AlertFields.FillSound(frame.speech, draft) -- Say instead
     frame.timeEdit:SetText(draft.timeText)
     local id = draft.iconType == "id" and draft.iconID or draft.spellID
     frame.idEdit:SetText(id and tostring(id) or "")
@@ -2142,8 +2016,8 @@ function Editor:OpenNote(noteID, lineNumber)
     draft.spellID = validID(timer.spellId)
     draft.text = timer.text or ""
     draft.color = copy(timer.color)
-    -- kept even on a line with no show: field, which the engine also speaks at 0
-    draft.speakAt = timer.speakAt == "zero" and "zero" or nil
+    -- Speak at, Count down from and Say instead: kept even on a line with no show: field
+    Draft.SpeechFromTimer(draft, timer)
     if timer.show then
         for _, k in ipairs(SHOW_KEYS) do
             draft.show[k] = timer.show[k] and true or false

@@ -463,6 +463,28 @@ check("speak at: old lines without ttsat speak on show", function()
   same(plain.speech, { { offset = Notes:Alert().ttsSeconds or 3, text = "Spell1022" } }, "a line without show: as today")
 end)
 
+-- countfrom:, ttsbefore: and say: (#1243): a note line speaks as a reminder with the same settings does
+check("speech fields: Count down from, Before 0 and Say instead on a note line", function()
+  local n = P.Parse(table.concat({
+    "time:30;ph:1;tag:Cheoeqar;text:Adds;show:alert;tts:1;ttsbefore:2;say:Adds incoming;warn:6;",
+    "time:40;ph:1;tag:Cheoeqar;text:Soak;show:alert;tts:1;count:1;countfrom:5;say:Soak now;warn:3;",
+    "time:50;ph:1;tag:Cheoeqar;text:Odd;show:alert;tts:1;count:1;countfrom:40;ttsbefore:99;warn:6;",
+  }, "\\n"))
+  local a = E.ItemFor(n.timers[1], 1, true)
+  same(a.speech, { { offset = 2, text = "Adds incoming" } }, "Say instead, 2 s before")
+  local b = E.ItemFor(n.timers[2], 2, true)
+  same(b.speech, { { offset = 5, text = "5" }, { offset = 4, text = "4" }, { offset = 3, text = "3" }, { offset = 2, text = "2" },
+    { offset = 1, text = "1" }, { offset = 0, text = "Soak now", afterCount = true } }, "one number a second from 5, then Say instead")
+  assert(b.warn == 5, "it shows by its first spoken part, 5 s before: " .. tostring(b.warn))
+  assert(b.text == "Soak", "it shows its own text")
+  -- out of range: read as a reminder reads it (Reminders.CountFrom, SpeakBefore)
+  local c = E.ItemFor(n.timers[3], 3, true)
+  assert(c.speech[1].offset == 10 and c.speech[1].text == "Odd", "Before 0 at most 10 s: " .. tostring(c.speech[1].offset))
+  -- a shield bar's window opens at the line's own Show from, not at the earlier show of its speech
+  local s = E.ItemFor(P.Parse("time:60;ph:1;tag:Cheoeqar;text:Break;show:bar;tts:1;ttsbefore:8;warn:3;shield:boss2,15;").timers[1], 4, true)
+  assert(s.warn == 8 and s.absorb and s.absorb.lead == 3, "shows at 8 s, its shield window from 3 s: " .. tostring(s.absorb and s.absorb.lead))
+end)
+
 -- A note line's own speech or sound setting (Notes/Engine.lua ownSpeech, ownSound): it speaks, and its cue plays, with
 -- Read them out off (Alerts/Speech.lua readOutOnly; Alex, 2026-11-01)
 check("note lines: their own speech and sound settings are marked", function()
@@ -516,7 +538,7 @@ assert(#errors == 0, "errors: " .. #errors)
 if checks.failed then error(checks.failed .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const names = ['CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/Engine.lua', 'CRT_Core/Sound/Engine.lua'];
+const names = ['CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/Engine.lua', 'CRT_Modules/Alerts/Reminders.lua', 'CRT_Core/Sound/Engine.lua'];
 const files = process.argv.slice(2);
 if (files.length !== names.length) { console.error('usage: node run_alerts_notefields.js ' + names.join(' ')); process.exit(2); }
 files.forEach((p, i) => { lua.lua_pushstring(L, to_luastring(names[i])); lua.lua_pushstring(L, to_luastring(fs.readFileSync(p, 'utf8'))); });

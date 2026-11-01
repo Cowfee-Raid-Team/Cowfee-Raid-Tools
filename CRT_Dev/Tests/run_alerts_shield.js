@@ -14,7 +14,7 @@ const FILES = [
   'CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua',
   'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/Engine.lua',
   'CRT_Modules/Alerts/Reminders.lua', 'CRT_Modules/Alerts/Special.lua', 'CRT_Modules/Alerts/Absorb.lua', 'CRT_Modules/Alerts/ShieldPulls.lua',
-  'CRT_Modules/Alerts/Draft.lua', 'CRT_Modules/Alerts/SpellLookup.lua', 'CRT_Modules/Alerts/ShieldSection.lua', 'CRT_Modules/Alerts/SubTabs.lua', 'CRT_Modules/Alerts/Editor.lua',
+  'CRT_Modules/Alerts/Draft.lua', 'CRT_Modules/Alerts/SpellLookup.lua', 'CRT_Modules/Alerts/ShieldSection.lua', 'CRT_Modules/Alerts/SubTabs.lua', 'CRT_Modules/Alerts/Fields.lua', 'CRT_Modules/Alerts/Editor.lua',
 ];
 const harness = `
 local sources = { ... }
@@ -402,5 +402,6 @@ print(ok_ .. " passed, " .. fail .. " failed")
 if fail > 0 then error("shield alerts: " .. fail .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
+lua.lua_checkstack(L, FILES.length + 2); // more sources than the stack's first 20 slots
 for (const p of FILES) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
 if (lua.lua_pcall(L, FILES.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

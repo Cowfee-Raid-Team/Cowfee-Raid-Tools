@@ -50,10 +50,11 @@ end
 -- glowunit:) but not the same values, so they are left out rather than guessed.
 -- shield: (a shield bar, Alerts/Absorb.lua), ticks:, fill:, countto: (a bar's impact ticks), prio:, mech: (the Mech Alerts
 -- marker, Notes/MechNote.lua) and assign: (an assignment block's marker, Notes/Assign.lua) are CRT's alone, so NSRT never
--- sees a field it doesn't know.
-local CRT_ONLY = { show = true, tts = true, ttsat = true, count = true, glow = true, warn = true, linger = true,
-    icon = true, sound = true, shield = true, ticks = true, fill = true, countto = true, prio = true, mech = true,
-    assign = true }
+-- sees a field it doesn't know. So are countfrom:, ttsbefore: and say: (Count down from, Before 0's seconds and Say
+-- instead): NSRT's countdown:, TTSTimer: and TTS: words differ, so they are left out rather than translated.
+local CRT_ONLY = { show = true, tts = true, ttsat = true, ttsbefore = true, say = true, count = true, countfrom = true,
+    glow = true, warn = true, linger = true, icon = true, sound = true, shield = true, ticks = true, fill = true,
+    countto = true, prio = true, mech = true, assign = true }
 
 local classIDs -- "DEATHKNIGHT" -> 6, built on first use
 

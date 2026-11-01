@@ -462,14 +462,28 @@ function Engine.ItemFor(t, index, mine)
         item.hold = math.max(0.5, t.linger or t.dur or 0)
         item.sound = t.sound
         item.glow = t.glow and true or nil
-        item.speech = Rules.SpeechItems(item.text, item.warn, t.tts and true or false, t.count and true or false,
-            t.speakAt == "zero")
+        -- say: in place of the text, countfrom: and ttsbefore: as a reminder reads them (Alerts/Reminders.lua), and the
+        -- line shows at least as early as its first spoken part, as a reminder does
+        local R = CRT.AlertReminders
+        local lineWarn = item.warn -- the bar and its ticks keep the line's own Show from
+        local said = (type(t.speakText) == "string" and t.speakText ~= "") and t.speakText or item.text
+        item.speech = Rules.SpeechItems(said, item.warn, t.tts and true or false, t.count and true or false,
+            t.speakAt == "zero", R and { countFrom = R.CountFrom({ countFrom = t.countFrom }),
+                before = t.speakAt == "before" and R.SpeakBefore({ speakBefore = t.speakBefore }) or nil } or nil)
+        if speaks then
+            for _, sp in ipairs(item.speech) do
+                item.warn = math.max(item.warn, sp.offset or 0)
+            end
+        end
+        if item.absorb then
+            item.absorb.lead = lineWarn -- its shield window opens at the line's Show from (Alerts/Absorb.lua), as a reminder's
+        end
         -- ticks:, fill: and countto: (a Mech Alert's bar, Notes/MechNote.lua): the bar from Show from to the line's
         -- time with its impact ticks on it, as a reminder's (Alerts/Reminders.lua BarTicks); a shield bar has none
         local Reminders = CRT.AlertReminders
-        local ticks = not item.absorb and Reminders and Reminders.BarTicks and Reminders.BarTicks(t.ticks, item.warn) or nil
+        local ticks = not item.absorb and Reminders and Reminders.BarTicks and Reminders.BarTicks(t.ticks, lineWarn) or nil
         item.ticks = ticks
-        item.barStart = ticks and -item.warn or nil
+        item.barStart = ticks and -lineWarn or nil
         item.barEnd = ticks and 0 or nil
         item.countTo = ticks and t.countTo or nil
         item.fill = not item.absorb and t.fill or nil
