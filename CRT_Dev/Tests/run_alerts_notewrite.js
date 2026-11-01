@@ -248,11 +248,106 @@ check("shield: an older CRT ignores the option and keeps it", function()
   assert(back.absorb and back.absorb.unit == "boss2" and back.absorb.length == 15, "the option survives an older CRT's edit")
 end)
 
+-- countfrom:, ttsbefore: and say: (#1243): Count down from, Speak at Before 0 with its seconds, and Say instead
+local SPEECH = "time:40;ph:1;tag:everyone;text:Adds;show:alert,bar;tts:1;ttsbefore:2;say:Adds incoming;count:1;countfrom:5;warn:6;"
+local PLAIN = "time:40;ph:1;tag:everyone;text:Adds;show:alert,bar;tts:1;count:1;warn:6;"
+
+check("speech fields: a note line writes and reads them, and round-trips", function()
+  local t = P.Parse(SPEECH).timers[1]
+  assert(t.countFrom == 5 and t.speakAt == "before" and t.speakBefore == 2 and t.speakText == "Adds incoming", "read: "
+    .. tostring(t.countFrom) .. "," .. tostring(t.speakAt) .. "," .. tostring(t.speakBefore) .. "," .. tostring(t.speakText))
+  local line = P.FormatLine(t)
+  assert(line == SPEECH, "written back as it was: " .. line)
+  assert(P.UnknownFields(SPEECH) == "", "known fields, not kept twice")
+  -- half seconds, and a Say instead with a colon in it
+  local h = P.Parse("time:5;text:x;tts:1;ttsbefore:0.5;say:Go: now;").timers[1]
+  assert(h.speakBefore == 0.5 and h.speakAt == "before" and h.speakText == "Go: now", "0.5 s and a colon")
+  assert(P.FormatLine(h):find("ttsbefore:0.5;say:Go: now;", 1, true), P.FormatLine(h))
+  -- ttsat:0 wins over ttsbefore: (At 0), and a value that doesn't read is none
+  local z = P.Parse("time:5;text:x;tts:1;ttsat:0;ttsbefore:2;").timers[1]
+  assert(z.speakAt == "zero" and z.speakBefore == nil, "At 0 wins")
+  for _, bad in ipairs({ "0", "-2", "soon", "" }) do
+    local b = P.Parse("time:5;text:x;tts:1;ttsbefore:" .. bad .. ";countfrom:" .. bad .. ";say:;").timers[1]
+    assert(b.speakAt == nil and b.speakBefore == nil and b.countFrom == nil and b.speakText == nil, "'" .. bad .. "' is none")
+  end
+  -- written only when set: the old line stays the old line
+  assert(P.FormatLine(P.Parse(PLAIN).timers[1]) == PLAIN, "no new fields on a line without them")
+  assert(not P.FormatLine({ time = 5, kind = "text", text = "x", speakAt = "before" }):find("ttsbefore", 1, true), "Before 0 needs its seconds")
+end)
+
+-- A raider on an older CRT reads the line as it always did: the same timer and the same note text as the line without
+-- the three fields, which it keeps when it writes the line back (UnknownFields). OLD_PARSERS holds the fixtures (v1.1.5's
+-- old_Parse.lua, v1.2.0's old_Parse_v1.2.0.lua, byte for byte git show v1.2.0:CRT_Modules/Notes/Parse.lua) and, when
+-- git is there, Parse.lua from every tag from v1.0.0 on.
+local function same(a, b, path)
+  if type(a) ~= type(b) then error((path or "timer") .. ": " .. tostring(a) .. " vs " .. tostring(b)) end
+  if type(a) ~= "table" then
+    if a ~= b then error((path or "timer") .. ": " .. tostring(a) .. " vs " .. tostring(b)) end
+    return
+  end
+  for k, v in pairs(a) do same(v, b[k], (path or "timer") .. "." .. tostring(k)) end
+  for k in pairs(b) do if a[k] == nil then error((path or "timer") .. "." .. tostring(k) .. " only without the fields") end end
+end
+
+check("speech fields: every older CRT ignores them and keeps them", function()
+  local note = "EncounterID:3470;Name:Boss\\nStack on the boss\\n" .. SPEECH .. "\\nThen spread"
+  local plainNote = "EncounterID:3470;Name:Boss\\nStack on the boss\\n" .. PLAIN .. "\\nThen spread"
+  assert(#OLD_PARSERS >= 2, "the two fixtures at least")
+  for _, old in ipairs(OLD_PARSERS) do
+    local Old = { MarkerCodes = { Number = function() return nil end } }
+    assert(load(old.src, "@" .. old.name))("CowfeeRaidTools", Old)
+    local OP = Old.NoteParser
+    local with, without = OP.Parse(note), OP.Parse(plainNote)
+    assert(#with.timers == 1 and #(with.unread or {}) == 0,old.name .. ": one timer, nothing unread")
+    same(with.timers[1], without.timers[1])
+    same(with.lines, without.lines, "lines")
+    assert(table.concat(with.lines, "|") == "Stack on the boss|Then spread", old.name .. ": the note's text: " .. table.concat(with.lines, "|"))
+    local t = with.timers[1]
+    assert(t.text == "Adds" and t.tts and t.count and t.speakAt == nil, old.name .. ": says the text on show, counts 3, 2, 1")
+    if OP.UnknownFields then
+      local kept = OP.UnknownFields(SPEECH)
+      assert(kept == "ttsbefore:2;say:Adds incoming;countfrom:5;", old.name .. " keeps them: " .. kept)
+      local back = P.Parse(OP.FormatLine(t) .. kept).timers[1]
+      assert(back.countFrom == 5 and back.speakAt == "before" and back.speakBefore == 2 and back.speakText == "Adds incoming",
+        old.name .. ": they survive an older CRT's edit")
+    end
+  end
+  print("ok checked against " .. #OLD_PARSERS .. " older parsers: " .. OLD_NAMES)
+end)
+
 if checks.failed then error(checks.failed .. " failed") end
 `;
 // the v1.1.5 parser, as a raider on an older CRT has it (a fixture beside this file)
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(require('path').join(__dirname, 'old_Parse.lua'), 'utf8')));
 lua.lua_setglobal(L, to_luastring('OLD_PARSE'));
+// Every older parser the speech fields are checked against: the two fixtures, then Parse.lua at every tag from v1.0.0 on
+// when git can read them (the working copy's git; skipped quietly without it). The v1.2.0 fixture must be that tag's file.
+{
+  const path = require('path');
+  const { execFileSync } = require('child_process');
+  const olds = [
+    { name: 'old_Parse.lua (v1.1.5)', src: fs.readFileSync(path.join(__dirname, 'old_Parse.lua'), 'utf8') },
+    { name: 'old_Parse_v1.2.0.lua', src: fs.readFileSync(path.join(__dirname, 'old_Parse_v1.2.0.lua'), 'utf8') },
+  ];
+  const git = (args) => execFileSync('git', args, { cwd: __dirname, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  try {
+    const tagged = git(['show', 'v1.2.0:CRT_Modules/Notes/Parse.lua']);
+    if (tagged !== olds[1].src) { console.log('FAIL old_Parse_v1.2.0.lua is not git show v1.2.0:CRT_Modules/Notes/Parse.lua'); process.exit(1); }
+    for (const tag of git(['tag', '--list', 'v*']).split(/\r?\n/).filter((t) => /^v(\d+)\./.test(t) && Number(t.match(/^v(\d+)/)[1]) >= 1)) {
+      try { olds.push({ name: tag + ':Parse.lua', src: git(['show', tag + ':CRT_Modules/Notes/Parse.lua']) }); } catch (e) { /* no such file at that tag */ }
+    }
+  } catch (e) { /* no git here: the fixtures only */ }
+  lua.lua_createtable(L, olds.length, 0);
+  olds.forEach((o, i) => {
+    lua.lua_createtable(L, 0, 2);
+    lua.lua_pushstring(L, to_luastring(o.name)); lua.lua_setfield(L, -2, to_luastring('name'));
+    lua.lua_pushstring(L, to_luastring(o.src)); lua.lua_setfield(L, -2, to_luastring('src'));
+    lua.lua_rawseti(L, -2, i + 1);
+  });
+  lua.lua_setglobal(L, to_luastring('OLD_PARSERS'));
+  lua.lua_pushstring(L, to_luastring(olds.map((o) => o.name).join(', ')));
+  lua.lua_setglobal(L, to_luastring('OLD_NAMES'));
+}
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const names = ['CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua'];
 const files = process.argv.slice(2);

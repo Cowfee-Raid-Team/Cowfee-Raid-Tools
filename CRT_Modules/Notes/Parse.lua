@@ -28,6 +28,12 @@ local ADDON, CRT = ...
 --                     Mech Alert's (Alerts/Rules.lua Priority). Read as timer.prio; a CRT from before it keeps it.
 --   mech:1234;        the Mech Alerts ability a line was written for (Notes/MechNote.lua). FormatLine never writes it,
 --                     so every writer keeps it with the other fields it doesn't know. Read as timer.mech, in lower case.
+--   countfrom:5; ttsbefore:2; say:Adds incoming;   Count down from (3 to 10; absent: 3), Speak at Before 0 with its
+--                     seconds (absent: as ttsat: says), and Say instead (the words said in place of the text), as a
+--                     reminder keeps them (Alerts/Fields.lua lists every alert setting). Read as timer.countFrom,
+--                     timer.speakAt "before" with timer.speakBefore, and timer.speakText. A CRT from before them (every
+--                     version back to 1.0.0 skips a key it doesn't know) counts 3, 2, 1, says the text on show and keeps
+--                     the fields when it writes the line back (UnknownFields); run_alerts_notewrite.js proves it.
 -- DisplayType: is ignored.
 
 local Parser = {}
@@ -89,6 +95,13 @@ local function flag(s)
         return true
     end
     return nil
+end
+
+-- A number over 0 as written ("2.5"), or nil. Whether it is in range is the reader's call (Alerts/Reminders.lua
+-- CountFrom and SpeakBefore), so a line reads back exactly as it was written.
+local function positive(s)
+    local n = s and s:match("^%d*%.?%d+$") and tonumber(s)
+    return (n and n > 0) and n or nil
 end
 
 -- The one rule for a shield bar's absorb (Alerts/Absorb.lua), shared by a note line's shield: (below), your reminders
@@ -471,7 +484,7 @@ end
 -- unread = {...} }, unread the lines that start like a timer but have no time it can read, as written.
 -- Each timer is { time, ph, tags, kind = "spell" or "text", spellId, text, dur, color, line } with `line`
 -- its line number in the text, and, when the line has them: show (a set), tts, speakAt ("zero" for
--- ttsat:0), count, glow (true),
+-- ttsat:0, "before" for ttsbefore:), speakBefore, countFrom, speakText, count, glow (true),
 -- sound (the text as written; the sound engine plays it if it names a sound, see Sound/Engine.lua), warn, linger
 -- (seconds), iconID, absorb (shield:, { unit, length, anyDifficulty }), ticks, fill, countTo, prio and mech; and
 -- specInfo when a tag is a spec word (Notes/SpecWords.lua's Mark).
@@ -496,6 +509,7 @@ function Parser.Parse(text)
             local f = fields(line)
             local t = tonumber(f.time)
             if t then
+                local before = positive(f.ttsbefore)
                 local item = {
                     time = t,
                     ph = tonumber(f.ph) or 1,
@@ -508,7 +522,11 @@ function Parser.Parse(text)
                     show = f.show and showSet(f.show) or nil,
                     tts = flag(f.tts),
                     count = flag(f.count),
-                    speakAt = (tonumber(f.ttsat) == 0) and "zero" or nil,
+                    -- ttsat:0 is At 0, else ttsbefore: is Before 0 (an older CRT reads neither as On show)
+                    speakAt = (tonumber(f.ttsat) == 0) and "zero" or (before and "before") or nil,
+                    speakBefore = (tonumber(f.ttsat) ~= 0) and before or nil,
+                    countFrom = positive(f.countfrom),
+                    speakText = (f.say and f.say ~= "") and f.say or nil,
                     glow = flag(f.glow),
                     sound = (f.sound and f.sound ~= "") and f.sound or nil,
                     warn = tonumber(f.warn),
@@ -658,9 +676,17 @@ function Parser.FormatLine(t)
     end
     if t.speakAt == "zero" then
         add("ttsat", "0")
+    elseif t.speakAt == "before" and type(t.speakBefore) == "number" and t.speakBefore > 0 then
+        add("ttsbefore", num(t.speakBefore))
+    end
+    if type(t.speakText) == "string" and t.speakText ~= "" then
+        add("say", t.speakText)
     end
     if t.count then
         add("count", "1")
+    end
+    if type(t.countFrom) == "number" and t.countFrom > 0 then
+        add("countfrom", num(t.countFrom))
     end
     if t.sound then
         add("sound", t.sound)
@@ -702,8 +728,8 @@ end
 
 -- The keys FormatLine writes.
 local FORMAT_KEYS = {}
-for _, k in ipairs({ "time", "ph", "tag", "spellid", "text", "dur", "colors", "show", "tts", "ttsat", "count", "sound",
-    "glow", "warn", "linger", "icon", "shield", "ticks", "fill", "countto", "prio" }) do
+for _, k in ipairs({ "time", "ph", "tag", "spellid", "text", "dur", "colors", "show", "tts", "ttsat", "ttsbefore", "say",
+    "count", "countfrom", "sound", "glow", "warn", "linger", "icon", "shield", "ticks", "fill", "countto", "prio" }) do
     FORMAT_KEYS[k] = true
 end
 

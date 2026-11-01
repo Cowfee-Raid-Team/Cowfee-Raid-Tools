@@ -197,6 +197,19 @@ check("NSRT: a Mech Alerts line's ticks:, fill:, countto:, prio: and mech: are l
   assert(text:find("time:36;ph:1;tag:everyone;spellid:5;text:Spread;", 1, true), "the rest as before: " .. text)
 end)
 
+-- Count down from, Before 0's seconds and Say instead (#1243) are CRT's own: neither send carries them
+check("NSRT and MRT: countfrom:, ttsbefore: and say: are left out", function()
+  local note = "EncounterID:3001;Name:Boss\\ntime:40;ph:1;tag:all;text:Adds;show:alert,bar;tts:1;ttsbefore:2;say:Adds incoming;count:1;countfrom:5;warn:6;"
+  local text = NSRT.ToNSRTText(note)
+  for _, k in ipairs({ "countfrom", "ttsbefore", "say", "count" }) do
+    assert(not text:lower():find(";" .. k .. ":", 1, true), k .. ": reached the NSRT text: " .. text)
+  end
+  assert(not text:find("incoming", 1, true), "no Say instead words: " .. text)
+  assert(text:find("time:40;ph:1;tag:everyone;text:Adds;$"), "the rest as before: " .. text)
+  local mrt = MRT.ToMRTText(note)
+  assert(not mrt:find("incoming", 1, true) and not mrt:lower():find("countfrom", 1, true) and not mrt:lower():find("ttsbefore", 1, true), "MRT: " .. mrt)
+end)
+
 -- an assignment block (Notes/Assign.lua): its timed lines' assign: marker is CRT's own, its heading line plain text
 check("NSRT and MRT: an assignment block's assign: marker is left out, its heading is its name", function()
   local note = "EncounterID:3001;Name:Boss\\nassign:ravenous feast;name:Ravenous Feast;for:5;times:1@36;\\nLeft: Abu, Cheo\\n"
