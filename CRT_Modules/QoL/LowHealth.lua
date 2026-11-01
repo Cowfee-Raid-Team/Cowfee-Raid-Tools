@@ -20,6 +20,13 @@ local ADDON, CRT = ...
 local LowHealth = {}
 CRT.LowHealth = LowHealth
 
+local TEXT = {
+    curveFailed = "UnitHealthPercent with the curve raised an error",
+    curveNothing = "UnitHealthPercent with the curve gave no number",
+    alphaRefused = "SetAlpha refused the curve's result",
+    combat = "The low-health alert can't read your health in combat on this client. Turn it off with /crt lowhp off.",
+}
+
 local frame, curve
 local SCALE = 1 -- the curve's input range, 0 to 1
 local previewOn = false
@@ -77,9 +84,13 @@ local function isDead()
     return ok and not isSecret(dead) and dead and true or false
 end
 
--- How the last update went, for /crt lowhp info: "preview", "off", "dead", "curve" or "plain",
--- and the last error from the curve route, if any.
+-- How the last update went, for /crt lowhp info and the dev probe: "preview", "off", "dead", "curve" or
+-- "plain", and the last error from the curve route, if any (fixed words: a secret is never put in them).
 local lastPath, lastError
+
+function LowHealth:State()
+    return { path = lastPath, error = lastError, curve = curve, frame = frame }
+end
 
 function LowHealth:Update()
     if not frame then
@@ -96,24 +107,27 @@ function LowHealth:Update()
         return
     end
     if curve then
+        -- The result is secret: it is never compared (not even with nil), joined or turned into text, only asked its
+        -- type (type() gives a secret's real type) and passed to SetAlpha. Before #1242 it was compared with nil here,
+        -- outside the pcall: addon code may not compare a secret, so that most likely raised an error on every health
+        -- change and left the banner unseen (/crt dev lowhp confirms it in game).
         local ok, alpha = pcall(UnitHealthPercent, "player", true, curve)
         if not ok then
-            lastError = "UnitHealthPercent with the curve failed: " .. tostring(alpha)
-        elseif alpha == nil then
-            lastError = "UnitHealthPercent with the curve returned nothing"
+            lastError = TEXT.curveFailed
+        elseif type(alpha) ~= "number" then
+            lastError = TEXT.curveNothing
         else
-            local set, err = pcall(frame.SetAlpha, frame, alpha)
-            if set then
-                lastPath = "curve"
+            if pcall(frame.SetAlpha, frame, alpha) then
+                lastPath, lastError = "curve", nil
                 return
             end
-            lastError = "SetAlpha refused the curve result: " .. tostring(err)
+            lastError = TEXT.alphaRefused
         end
     end
     lastPath = "plain"
     if InCombatLockdown() and not warned then
         warned = true
-        CRT:Print("The low-health alert can't read your health in combat on this client. Turn it off with /crt lowhp off.")
+        CRT:Print(TEXT.combat)
     end
     frame:SetAlpha(plainAlpha())
 end
