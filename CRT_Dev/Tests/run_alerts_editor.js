@@ -2177,6 +2177,22 @@ do
   print("ok editor: Say instead, Count down from and Before 0")
 end
 
+-- a reminder imported for someone else (#1235): the editor says who it was for, under the header
+do
+  reset()
+  local id = R:Save(ENC, nil, { text = "For Solex", times = "P1 0:30", boss = "Test Boss", group = "nh",
+    import = { source = "timeline-reminders", tag = "Solex", tagKind = "player", forOther = true } })
+  E:Open(ENC, id)
+  local w = win()
+  assert(w.savesText.text == "Imported for Solex", "who it was for: " .. tostring(w.savesText.text))
+  local mine = R:Save(ENC, nil, { text = "Mine", times = "P1 0:40", boss = "Test Boss", group = "nh",
+    import = { source = "timeline-reminders", tag = "everyone", tagKind = "everyone" } })
+  E:Open(ENC, mine)
+  assert(w.savesText.text == "", "one imported for you: nothing")
+  E:Close()
+  print("ok editor: an import for someone else says who it was for")
+end
+
 -- speak at: a dropped cooldown speaks at 0
 do
   reset()
