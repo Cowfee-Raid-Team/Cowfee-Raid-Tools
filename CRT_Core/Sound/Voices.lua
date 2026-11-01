@@ -153,26 +153,6 @@ function Sound:ClipFor(text, key)
     return clip.ref, clip.seconds
 end
 
--- A count from `from` down to 1 in a voice (the one in use by default) as its number clips back to back:
--- { clips = { { ref, seconds }, ... }, seconds = the whole phrase }, or nil when the voice is text to speech or has
--- no clip for one of the numbers (10): then the count is read out.
-function Sound:CountPlan(from, key)
-    local voice = byKey[self:VoiceKey(key)]
-    if not voice or type(from) ~= "number" then
-        return nil
-    end
-    local clips, total = {}, 0
-    for n = from, 1, -1 do
-        local clip = voice.clips[tostring(n)]
-        if not (clip and clip.seconds) then
-            return nil
-        end
-        clips[#clips + 1] = clip
-        total = total + clip.seconds
-    end
-    return { clips = clips, seconds = total }
-end
-
 -- The Voice dropdown's choices: each voice, then the game's text to speech.
 function Sound:VoiceChoices()
     local out = {}

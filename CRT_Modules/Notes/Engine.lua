@@ -445,6 +445,8 @@ function Engine.ItemFor(t, index, mine)
     if t.show then
         local show = t.show
         local speaks = (t.tts or t.count) and true or false
+        -- its own speech setting (tts:, count:): it speaks even with Read them out off (Alerts/Speech.lua readOutOnly)
+        item.ownSpeech = speaks or nil
         item.outputs = {
             alert = show.alert and true or false,
             text = show.text and true or false,

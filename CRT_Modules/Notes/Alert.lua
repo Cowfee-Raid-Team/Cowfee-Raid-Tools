@@ -29,7 +29,7 @@ local TEXT = {
     icon = "Spell icon",
     speech = "Read them out (text to speech)",
     speechHelp = "The same switch as Read them out under Your note lines go to: ticking or unticking one ticks or unticks the other.\n\n"
-        .. "On, your note lines are read out wherever they show, here included. Off, nothing is read out, your reminders included.\n\n"
+        .. "On, your note lines are read out wherever they show, here included. Off, your note lines are quiet. Alerts with their own Speak the text or Count down still speak.\n\n"
         .. "The rows under it set when, how loud and how fast.",
     readAt = "Read it at",
     readAtValue = "%ds left",

@@ -186,10 +186,21 @@ check("a tts: sound uses the voice too", lastFile() == "Xavier\\\\Stack.mp3")
 reset() local h = Sound:Play("tts:Stack") Sound:Stop(h)
 check("stopping speech stops the clip", stopped[#stopped] == handles)
 
--- The alert speech queue: the count as one quick phrase ending at 0, then the text (Alex, 2026-11-01) -----------
+-- The alert speech queue: a count says 3, 2, 1 with the number clips, on time ---------------------------
 local items = {}
 Alerts:RegisterBlock("t", { label = "t", group = false, Entries = function() return items end })
-local start
+local spoken = {}
+for i, s in ipairs(Rules.SpeechItems("Soak", 5, true, true)) do spoken[i] = s end
+items = { { id = "c", ph = 1, time = 10, text = "Soak", priority = 21, outputs = { alert = true, speech = true }, speech = spoken } }
+reset()
+Alerts:Start(1, "Mythic", "test")
+local start = clock
+for i = 1, 120 do step(0.1) end
+local seq = {}
+for _, p in ipairs(played) do seq[#seq + 1] = p.path:match("([^\\\\]+)%.mp3$") .. "@" .. string.format("%.1f", p.at - start) end
+check("the count plays 3, 2, 1, then Soak, as clips", #played == 4 and #said == 0 and seq[1]:find("^3@") and seq[2]:find("^2@") and seq[3]:find("^1@") and seq[4]:find("^Soak@"), table.concat(seq, " "))
+local function near(i, t) local p = played[i] return p and math.abs((p.at - start) - t) <= 0.15 end
+check("each number on its second, not held by the speech timeout", near(1, 7) and near(2, 8) and near(3, 9), table.concat(seq, " "))
 -- a clip, then a text with no clip, then a clip: the speaker is free after the clip
 items = {
   { id = "a", ph = 1, time = 2, text = "Spread", priority = 21, outputs = { speech = true }, speech = { { offset = 0, text = "Spread" } } },
@@ -227,183 +238,129 @@ for i = 1, 40 do step(0.1) end
 check("text to speech too: a line due between ticks is said at its time", #said == 1 and math.abs(said[1].at - start - 2.05) <= 0.005,
   said[1] and string.format("%.3f", said[1].at - start) or "none")
 CRT.db.sound.voice = "xavier"
-CRT.db.notes.alert.ttsRate = 0
--- an alert at 20 s with Speak the text and Count down: what is played and said, from the run's start
-local function runCount(voice, opts, extra)
+-- a word clip longer than a second right before the count (Speak at: Before 0, at 4 s): the numbers keep their second
+local tight = {}
+for i, s in ipairs(Rules.SpeechItems("Soak", 4, true, true, false, { before = 4 })) do tight[i] = s end
+items = { { id = "e", ph = 1, time = 10, text = "Soak", priority = 21, outputs = { speech = true }, speech = tight } }
+reset()
+Alerts:Start(1, "Mythic", "test")
+start = clock
+for i = 1, 120 do step(0.1) end
+local gaps = {}
+for i = 2, #played do gaps[#gaps + 1] = string.format("%.1f", played[i].at - played[i - 1].at) end
+check("Soak (over a second) then 3: 3 starts in Soak's last quarter second, and 3, 2, 1 are each on their second",
+  #played == 4 and played[2].at - played[1].at >= X.seconds.Soak - 0.25 - 1e-6 and near(2, 7) and near(3, 8) and near(4, 9), table.concat(gaps, " ") .. " last at " .. (played[4] and string.format("%.2f", played[4].at - start) or "-"))
+CRT.db.sound.voice = "tts"
+items = { { id = "d", ph = 1, time = 6, text = "Soak", priority = 21, outputs = { speech = true }, speech = spoken } }
+reset()
+Alerts:Start(1, "Mythic", "test")
+for i = 1, 80 do step(0.1) fire("VOICE_CHAT_TTS_PLAYBACK_FINISHED") end
+check("the tts voice reads the count out", #played == 0 and #said == 4)
+CRT.db.sound.voice = "xavier"
+Alerts:Stop()
+
+-- Counts from 5 and from 10 (Rules.SpeechItems opts.countFrom), and Speak at: Before 0 (opts.before)
+local function runCount(text, warn, opts, seconds)
+  local list = {}
+  for i, s in ipairs(Rules.SpeechItems(text, warn, true, true, false, opts)) do list[i] = s end
+  items = { { id = "k" .. tostring(opts.countFrom) .. tostring(opts.before), ph = 1, time = 20, text = text, priority = 21,
+    outputs = { speech = true }, speech = list } }
+  reset()
+  Alerts:Start(1, "Mythic", "test")
+  local t0 = clock
+  for i = 1, (seconds or 25) * 10 do step(0.1) end
+  local out = {}
+  for _, p in ipairs(played) do out[#out + 1] = { what = p.path:match("([^\\\\]+)%.mp3$"), at = p.at - t0 } end
+  for _, s in ipairs(said) do out[#out + 1] = { what = "tts:" .. tostring(s.text), at = s.at - t0 } end
+  table.sort(out, function(a, b) return a.at < b.at end)
+  return out
+end
+local function show(out) local t = {} for _, o in ipairs(out) do t[#t + 1] = o.what .. "@" .. string.format("%.1f", o.at) end return table.concat(t, " ") end
+local function find(out, what) for _, o in ipairs(out) do if o.what == what then return o end end end
+local function onSecond(out, n) local o = find(out, tostring(n)) return o and math.abs(o.at - (20 - n)) <= 0.15 end
+
+local c5 = runCount("Soak", 8, { countFrom = 5 })
+check("a count from 5 plays 5, 4, 3, 2, 1 as clips, each on its second",
+  find(c5, "Soak") and onSecond(c5, 5) and onSecond(c5, 4) and onSecond(c5, 3) and onSecond(c5, 2) and onSecond(c5, 1) and #said == 0
+    and find(c5, "5seconds321") == nil, show(c5))
+local function exactSecond(out, n) local o = find(out, tostring(n)) return o and math.abs(o.at - (20 - n)) <= 0.005 end
+check("a count from 5: each number within 5 ms of its second",
+  exactSecond(c5, 5) and exactSecond(c5, 4) and exactSecond(c5, 3) and exactSecond(c5, 2) and exactSecond(c5, 1), show(c5))
+local c10 = runCount("Soak", 12, { countFrom = 10 })
+local ten = find(c10, "tts:10")
+check("a count from 10: 10 has no clip and is read out", ten ~= nil and math.abs(ten.at - 10) <= 0.15, show(c10))
+check("then 9 is still on its second, with the 9 clip, and so on down to 1",
+  onSecond(c10, 9) and onSecond(c10, 8) and onSecond(c10, 5) and onSecond(c10, 1) and find(c10, "5seconds321") == nil, show(c10))
+local cb = runCount("Soak", 8, { countFrom = 5, before = 3 })
+check("Speak at Before 3 inside a count from 5: Soak at 3 s, then 2 and 1 each on their second",
+  find(cb, "Soak") and math.abs(find(cb, "Soak").at - 17) <= 0.15 and find(cb, "3") == nil
+    and onSecond(cb, 2) and onSecond(cb, 1) and find(cb, "2").at - find(cb, "Soak").at >= X.seconds.Soak - 0.25 - 1e-6, show(cb))
+-- a late finished event (for the read-out 10) while the 9 clip plays frees nothing: Spread, due mid-clip, waits for the clip
+do
+  local list = {}
+  for i, s in ipairs(Rules.SpeechItems("Soak", 12, true, true, false, { countFrom = 10 })) do list[i] = s end
+  items = {
+    { id = "f10", ph = 1, time = 20, text = "Soak", priority = 21, outputs = { speech = true }, speech = list },
+    { id = "fs", ph = 1, time = 11.2, text = "Spread", priority = 21, outputs = { speech = true }, speech = { { offset = 0, text = "Spread" } } },
+  }
+  reset()
+  Alerts:Start(1, "Mythic", "test")
+  local t0 = clock
+  for i = 1, 113 do step(0.1) end -- 9 started at 11; Spread is queued
+  fire("VOICE_CHAT_TTS_PLAYBACK_FINISHED")
+  for i = 1, 30 do step(0.1) end
+  local nine, spread
+  for _, p in ipairs(played) do
+    if p.path:find("9%.mp3$") and not nine then nine = p.at - t0 end
+    if p.path:find("Spread%.mp3$") then spread = p.at - t0 end
+  end
+  check("a finished event while a clip plays doesn't free the speaker", nine and spread and spread - nine >= X.seconds["9"] - 1e-6,
+    tostring(nine) .. " " .. tostring(spread))
+end
+Alerts:Stop()
+
+-- With Count down on: the numbers, then the text, straight after "1" (Alex, 2026-11-01) -----------------------
+local function countThenText(voice, atZero, sound)
   CRT.db.sound.voice = voice
   local list = {}
-  for i, s in ipairs(Rules.SpeechItems(opts.text or "Soak", opts.warn or 8, opts.speak ~= false, true, opts.atZero, opts)) do list[i] = s end
-  items = { { id = "q" .. tostring(math.random(1e9)), ph = 1, time = 20, text = opts.text or "Soak", priority = 21, sound = opts.sound,
+  for i, s in ipairs(Rules.SpeechItems("Soak", 8, true, true, atZero, { countFrom = 5 })) do list[i] = s end
+  items = { { id = "ct" .. voice .. tostring(atZero), ph = 1, time = 20, text = "Soak", priority = 21, sound = sound,
     outputs = { speech = true }, speech = list } }
-  for _, e in ipairs(extra or {}) do items[#items + 1] = e end
   reset()
   kits = {}
   Alerts:Start(1, "Mythic", "test")
   local t0 = clock
-  for i = 1, 2500 do
-    step(0.01)
-    if opts.each then opts.each(clock - t0) end
-  end
+  for i = 1, 250 do step(0.1) end
   Alerts:Stop()
   local out = {}
   for _, p in ipairs(played) do out[#out + 1] = { what = p.path:match("([^\\\\]+)%.mp3$"), at = p.at - t0 } end
   for _, s in ipairs(said) do out[#out + 1] = { what = "tts:" .. tostring(s.text), at = s.at - t0 } end
   table.sort(out, function(a, b) return a.at < b.at end)
-  return out, list, t0
+  return out, t0
 end
-local function names(out) local t = {} for _, o in ipairs(out) do t[#t + 1] = o.what .. "@" .. string.format("%.3f", o.at) end return table.concat(t, " ") end
+local function names(out) local t = {} for _, o in ipairs(out) do t[#t + 1] = o.what .. "@" .. string.format("%.2f", o.at) end return table.concat(t, " ") end
 local function of(out, what) for _, o in ipairs(out) do if o.what == what then return o end end end
-local function order(out) local t = {} for _, o in ipairs(out) do t[#t + 1] = o.what end return table.concat(t, ",") end
-
--- clips: back to back, each starting as the one before ends, the last ending at 0; then the text at 0
-for _, case in ipairs({ { "xavier", 3, false }, { "xavier", 5, false }, { "xavier", 3, true }, { "lola", 3, false }, { "lola", 5, false } }) do
-  local voice, from, atZero = case[1], case[2], case[3]
-  local secs = byKey[voice].seconds
-  local out = runCount(voice, { countFrom = from, atZero = atZero })
-  local want, total = {}, 0
-  for n = from, 1, -1 do want[#want + 1] = tostring(n) total = total + secs[tostring(n)] end
-  want[#want + 1] = "Soak"
-  local label = voice .. ", count from " .. from .. (atZero and ", At 0" or ", On show")
-  check(label .. ": " .. table.concat(want, ", "), order(out) == table.concat(want, ","), names(out))
-  local ok, at = #out == from + 1, 20 - total
-  for i = 1, from do
-    local o = out[i]
-    if not (o and math.abs(o.at - at) <= 0.02) then ok = false end
-    at = at + secs[tostring(from - i + 1)]
-  end
-  check(label .. ": the numbers back to back, the last ending at 0 (within 0.02 s)", ok and math.abs(at - 20) <= 1e-6, names(out))
-  local soak = of(out, "Soak")
-  check(label .. ": the text at 0", soak and math.abs(soak.at - 20) <= 0.02, names(out))
+for _, case in ipairs({ { "xavier", false }, { "xavier", true }, { "lola", false } }) do
+  local voice, atZero = case[1], case[2]
+  local out = countThenText(voice, atZero)
+  local order = {}
+  for _, o in ipairs(out) do order[#order + 1] = o.what end
+  local one, soak = of(out, "1"), of(out, "Soak")
+  local secs = byKey[voice].seconds["1"]
+  local want = one and math.max(20, one.at + secs)
+  check(voice .. (atZero and ", At 0" or ", On show") .. ": 5, 4, 3, 2, 1, then Soak", table.concat(order, ",") == "5,4,3,2,1,Soak", names(out))
+  check(voice .. (atZero and ", At 0" or ", On show") .. ": Soak starts as the 1 clip ends, at 0 at the earliest, without waiting a tick",
+    soak and want and soak.at >= want - 1e-6 and soak.at <= want + 0.01, names(out))
 end
--- the phrase's length is what the alert's speech list says (its show time follows it)
 do
-  CRT.db.sound.voice = "xavier"
-  local list = Rules.SpeechItems("Soak", 1, true, true, false, { countFrom = 5 })
-  local total = 0
-  for n = 5, 1, -1 do total = total + X.seconds[tostring(n)] end
-  check("the count's item starts the phrase's length before 0", list[1].countFrom == 5 and math.abs(list[1].offset - total) <= 1e-9
-    and list[2].afterCount and list[2].offset == 0, tostring(list[1].offset))
-  check("Rules.CountSeconds is the same length", math.abs(Rules.CountSeconds(5) - total) <= 1e-9)
-end
--- the Sound cue at 0 is unchanged
-do
-  local out, _, t0 = runCount("xavier", { countFrom = 3, sound = "kit:RAID_WARNING" })
+  local out, t0 = countThenText("xavier", false, "kit:RAID_WARNING")
   local cue = kits[1]
-  check("the Sound cue still plays at 0, with the quick count", cue and math.abs(cue.at - t0 - 20) <= 0.01 and of(out, "Soak") ~= nil,
+  check("the Sound cue still plays at 0, with the text after the count", cue and math.abs(cue.at - t0 - 20) <= 0.01 and of(out, "Soak") ~= nil,
     cue and string.format("%.3f", cue.at - t0))
 end
--- count without Speak the text: the phrase alone
-do
-  local out = runCount("xavier", { countFrom = 3, speak = false })
-  check("count without the text: the phrase alone", order(out) == "3,2,1", names(out))
-end
--- a count the voice has no clips for (from 10: no 10 clip): the whole count read out as one line
-do
-  local out = runCount("xavier", { countFrom = 10 })
-  check("count from 10 with Xavier (no 10 clip): one line read out, numbers and text", #out == 1 and out[1].what == "tts:10, 9, 8, 7, 6, 5, 4, 3, 2, 1, Soak", names(out))
-end
+CRT.db.sound.voice = "xavier"
 
--- the game's text to speech: one line, the numbers and the text, started an estimate before 0
-for _, rate in ipairs({ 0, 5 }) do
-  CRT.db.notes.alert.ttsRate = rate
-  local out = runCount("tts", { countFrom = 3 })
-  local lead = 3 * Speech.TTS_COUNT_LEAD * 2 ^ (-rate / 10)
-  check("text to speech at rate " .. rate .. ": one line, 3, 2, 1, Soak", #out == 1 and out[1].what == "tts:3, 2, 1, Soak", names(out))
-  check("text to speech at rate " .. rate .. ": started " .. string.format("%.2f", lead) .. " s before 0", out[1] and math.abs(out[1].at - (20 - lead)) <= 0.02, names(out))
-end
-CRT.db.notes.alert.ttsRate = 0
-do
-  local _, list = runCount("tts", { countFrom = 5, text = "Stack" })
-  check("the count's item carries the text said after it", list[1].thenText == "Stack")
-end
-
--- the one line says the text once: another line holding the speaker across the lead, so the phrase and the text are
--- both queued by 0, and a run that starts inside the lead, so both come due on the first tick
-do
-  local fired = false
-  local out = runCount("tts", { countFrom = 3, each = function(t)
-    if not fired and t >= 20.2 then fired = true fire("VOICE_CHAT_TTS_PLAYBACK_FINISHED") end
-  end }, { { id = "hold", ph = 1, time = 18.5, text = "Stack on Abu", priority = 21, outputs = { speech = true }, speech = { { offset = 0, text = "Stack on Abu" } } } })
-  local lines, soak = 0, 0
-  for _, o in ipairs(out) do
-    if o.what == "tts:3, 2, 1, Soak" then lines = lines + 1 end
-    if o.what == "tts:Soak" then soak = soak + 1 end
-  end
-  check("text to speech held across the lead: one line with the text, no separate Soak", lines == 1 and soak == 0, names(out))
-end
-do
-  CRT.db.sound.voice = "tts"
-  local list = {}
-  for i, s in ipairs(Rules.SpeechItems("Soak", 8, true, true, false, { countFrom = 3 })) do list[i] = s end
-  items = { { id = "inlead", ph = 1, time = 0.05, text = "Soak", priority = 21, outputs = { speech = true }, speech = list } }
-  reset()
-  Alerts:Start(1, "Mythic", "test")
-  for i = 1, 300 do step(0.01) if i % 10 == 0 then fire("VOICE_CHAT_TTS_PLAYBACK_FINISHED") end end
-  Alerts:Stop()
-  local texts = {}
-  for _, s in ipairs(said) do texts[#texts + 1] = tostring(s.text) end
-  check("text to speech, phrase and text due on the same tick: one line, no separate Soak", table.concat(texts, "|") == "3, 2, 1, Soak", table.concat(texts, "|"))
-end
-
--- a rehearsal speed change away from 1x, and Hush, mid-phrase drop the clips still to come
-for _, how in ipairs({ "speed", "hush" }) do
-  CRT.db.sound.voice = "xavier"
-  local saved = { IsRehearsal = Alerts.IsRehearsal, Now = Alerts.Now, RehearsalTick = Alerts.RehearsalTick, RehearsalSpeed = Alerts.RehearsalSpeed }
-  local speed = 1
-  Alerts.IsRehearsal = function() return true end
-  Alerts.RehearsalSpeed = function() return speed end
-  Alerts.RehearsalTick = function() return false, speed, nil end
-  Alerts.Now = function() return clock end
-  local list = {}
-  for i, s in ipairs(Rules.SpeechItems("Soak", 8, true, true, false, { countFrom = 5 })) do list[i] = s end
-  items = { { id = "cut" .. how, ph = 1, time = 20, text = "Soak", priority = 21, outputs = { speech = true }, speech = list } }
-  reset()
-  Alerts:Start(1, "Mythic", "test")
-  local t0 = clock
-  local total = 0
-  for n = 5, 1, -1 do total = total + X.seconds[tostring(n)] end
-  local mid = 20 - total + X.seconds["5"] + 0.1 -- the 4 is playing
-  while clock - t0 < mid do step(0.01) end
-  local n0 = #played
-  if how == "speed" then speed = 2 else Speech:Hush() end
-  for i = 1, 300 do step(0.01) end
-  Alerts:Stop()
-  for k, fn in pairs(saved) do Alerts[k] = fn end
-  local later = {}
-  for i = n0 + 1, #played do later[#later + 1] = played[i].path:match("([^\\\\]+)%.mp3$") end
-  local numbers = 0
-  for _, w in ipairs(later) do if tonumber(w) then numbers = numbers + 1 end end
-  check((how == "speed" and "a speed change to 2x" or "Hush") .. " mid-phrase drops the numbers still to come", n0 == 2 and numbers == 0,
-    n0 .. " then " .. table.concat(later, ","))
-end
-
--- Before 0 is unchanged: the text early, the numbers after it on their seconds
-do
-  local out = runCount("xavier", { countFrom = 5, before = 3 })
-  local function sec(n) local o = of(out, tostring(n)) return o and math.abs(o.at - (20 - n)) <= 0.15 end
-  check("Before 0 at 3 s, count from 5: Soak at 3 s, then 2 and 1 on their seconds", of(out, "Soak") and math.abs(of(out, "Soak").at - 17) <= 0.15
-    and of(out, "3") == nil and sec(2) and sec(1), names(out))
-end
--- a word clip right before the numbers at Before 0 (at 4 s): 3 starts in Soak's last quarter second
-do
-  local out = runCount("xavier", { countFrom = 3, before = 4, warn = 4 })
-  local soak, three = of(out, "Soak"), of(out, "3")
-  check("Before 0 at 4 s: 3 starts in Soak's last quarter second, then 2 and 1 a second apart",
-    soak and three and three.at - soak.at >= X.seconds.Soak - 0.25 - 1e-6 and math.abs(of(out, "2").at - 18) <= 0.15 and math.abs(of(out, "1").at - 19) <= 0.15, names(out))
-end
-
--- while the phrase plays, a finished event frees nothing: a line due mid-phrase waits for the phrase's end
-do
-  local total = X.seconds["3"] + X.seconds["2"] + X.seconds["1"]
-  local fired = false
-  local out = runCount("xavier", { countFrom = 3, speak = false, each = function(t)
-    if not fired and t >= 19.5 then fired = true fire("VOICE_CHAT_TTS_PLAYBACK_FINISHED") end
-  end }, { { id = "mid", ph = 1, time = 19.3, text = "Spread", priority = 21, outputs = { speech = true }, speech = { { offset = 0, text = "Spread" } } } })
-  local spread = of(out, "Spread")
-  check("a line due mid-phrase waits for its end, even with a finished event", spread and spread.at >= 20 - 1e-6, names(out))
-end
-
--- A count's text, Lola: the phrase ends at 0, then the text
+-- A count's text, Lola (her "1" ends before 0, so the text waits for its own time)
 local function textItems(id)
   local list = {}
   for i, s in ipairs(Rules.SpeechItems("Soak", 8, true, true, false, { countFrom = 3 })) do list[i] = s end
@@ -439,26 +396,141 @@ do
   for k, fn in pairs(saved) do Alerts[k] = fn end
 end
 
--- a timer left from a run plays nothing: after Stop, and after a new Start, in the phrase and just before the text
+-- a wake timer left from a run says nothing: after Stop, and after a new Start
 for _, how in ipairs({ "stop", "start" }) do
-  for _, cut in ipairs({ 19.5, 19.95 }) do
-    CRT.db.sound.voice = "lola"
-    items = textItems("stale" .. how .. cut)
-    reset()
-    Alerts:Start(1, "Mythic", "test")
-    local t0 = clock
-    while clock - t0 < cut do step(0.01) end
-    local n0 = #played
-    if how == "stop" then
-      Alerts:Stop()
-    else
-      items = {}
-      Alerts:Start(1, "Mythic", "test")
-    end
-    for i = 1, 100 do step(0.01) end
-    check("a run that ended at " .. cut .. " s (" .. how .. ") plays nothing more", #played == n0 and soaks() == 0, names({}) .. (#played - n0))
+  CRT.db.sound.voice = "lola"
+  items = textItems("stale" .. how)
+  reset()
+  Alerts:Start(1, "Mythic", "test")
+  local t0 = clock
+  while clock - t0 < 19.95 do step(0.01) end -- the text's timer is armed, under a tick away
+  if how == "stop" then
     Alerts:Stop()
+  else
+    items = {}
+    Alerts:Start(1, "Mythic", "test")
   end
+  for i = 1, 50 do step(0.01) end
+  check("a wake timer from a run that ended (" .. how .. ") says nothing", soaks() == 0 and (Speech.wakeAt == nil or how == "start"), soaks())
+  Alerts:Stop()
+end
+
+-- the game's text to speech: the text waits for the finished event after "1", and never starts before 0
+for _, finishAt in ipairs({ 19.5, 20.3 }) do
+  CRT.db.sound.voice = "tts"
+  items = textItems("tts" .. finishAt)
+  reset()
+  Alerts:Start(1, "Mythic", "test")
+  local t0 = clock
+  local fired = false
+  local soakAt
+  while clock - t0 < 22 do
+    step(0.01)
+    if not fired and clock - t0 >= finishAt then fired = true fire("VOICE_CHAT_TTS_PLAYBACK_FINISHED") end
+    if not soakAt then for _, s in ipairs(said) do if s.text == "Soak" then soakAt = s.at - t0 end end end
+  end
+  local want = math.max(20, finishAt)
+  check("text to speech: 1 finished at " .. finishAt .. " s, the text at " .. want .. " s", soakAt and soakAt >= want - 1e-6 and soakAt <= want + 0.015,
+    tostring(soakAt))
+  Alerts:Stop()
+end
+CRT.db.sound.voice = "xavier"
+
+-- Count down speaks one number on each second, whatever "Read them out" says (Alex, 2026-11-01, #1244) ----------
+local noteItems = {}
+Alerts:RegisterBlock("note", { label = "note", group = false, Entries = function() return noteItems end })
+-- an alert at 20 s with Count down from the given number: what is played and said, from the run's start
+local function perSecond(voice, from, opts)
+  opts = opts or {}
+  CRT.db.sound.voice = voice
+  local list = {}
+  for i, s in ipairs(Rules.SpeechItems(opts.text or "Soak", opts.warn or 12, opts.speak ~= false, true, false, { countFrom = from, before = opts.before })) do list[i] = s end
+  items = { { id = "ps" .. voice .. from .. tostring(opts.tag), ph = 1, time = 20, text = opts.text or "Soak", priority = 21, outputs = { speech = true }, speech = list } }
+  for _, e in ipairs(opts.extra or {}) do items[#items + 1] = e end
+  noteItems = opts.notes or {}
+  reset()
+  Alerts:Start(1, "Mythic", "test")
+  local t0 = clock
+  for i = 1, 2500 do
+    step(0.01)
+    if opts.each then opts.each(clock - t0) end
+  end
+  Alerts:Stop()
+  noteItems = {}
+  local out = {}
+  for _, p in ipairs(played) do out[#out + 1] = { what = p.path:match("([^\\\\]+)%.mp3$"), at = p.at - t0, clip = true } end
+  for _, s in ipairs(said) do out[#out + 1] = { what = "tts:" .. tostring(s.text), at = s.at - t0 } end
+  table.sort(out, function(a, b) return a.at < b.at end)
+  return out
+end
+local function names2(out) local t = {} for _, o in ipairs(out) do t[#t + 1] = o.what .. "@" .. string.format("%.3f", o.at) end return table.concat(t, " ") end
+local function find2(out, what) for _, o in ipairs(out) do if o.what == what then return o end end end
+local function onItsSecond(out, n, tts) local o = find2(out, (tts and "tts:" or "") .. tostring(n)) return o and math.abs(o.at - (20 - n)) <= 0.01 end
+
+-- every number on its second within 0.01 s, then the text at 0: both clip voices and the game's text to speech
+for _, voice in ipairs({ "xavier", "lola", "tts" }) do
+  local tts = voice == "tts"
+  local fired = false
+  local out = perSecond(voice, 5, { tag = "exact", each = tts and function(t) if not fired and t >= 20.3 then fired = true fire("VOICE_CHAT_TTS_PLAYBACK_FINISHED") end end or nil })
+  local ok = true
+  for n = 5, 1, -1 do if not onItsSecond(out, n, tts) then ok = false end end
+  check(voice .. ": 5, 4, 3, 2, 1 each on its second (within 0.01 s)", ok, names2(out))
+  local soak = find2(out, tts and "tts:Soak" or "Soak")
+  check(voice .. ": then the text, at 0 or as 1 ends", soak and soak.at >= 20 - 1e-6 and soak.at <= 20.5, names2(out))
+end
+
+-- clean: no clip runs into the next, every number clip is under a second, both voices
+for _, voice in ipairs({ "xavier", "lola" }) do
+  local under = true
+  for n = 0, 9 do if not (byKey[voice].seconds[tostring(n)] < 1) then under = false end end
+  check(voice .. ": every number clip is under a second", under)
+  local out = perSecond(voice, 10)
+  local clean = true
+  local clips = {}
+  for _, o in ipairs(out) do if o.clip then clips[#clips + 1] = o end end
+  for i = 2, #clips do
+    local prev = clips[i - 1]
+    local len = byKey[voice].seconds[prev.what] or 1
+    if prev.at + len > clips[i].at + 1e-6 then clean = false end
+  end
+  check(voice .. ": from 10, no clip overlaps the next", clean and #clips == 10, names2(out))
+  -- 10 has no clip: read out at its second, then 9 to 1 as clips, each on its second
+  local ok = onItsSecond(out, 10, true)
+  for n = 9, 1, -1 do if not onItsSecond(out, n) then ok = false end end
+  check(voice .. ": from 10, the game voice says 10 and the clips 9 to 1, each on its second", ok, names2(out))
+end
+
+-- a number waits behind a clip at most the clip's length; one that can't start within NUMBER_LATE of its second is
+-- dropped, and the next stays on its second
+do
+  local out = perSecond("xavier", 5, { tag = "late", extra = {
+      { id = "hold", ph = 1, time = 16.8, text = "Spread", priority = 21, outputs = { speech = true }, speech = { { offset = 0, text = "Spread" } } } } })
+  check("a number held past its second by a clip is dropped, not said late", find2(out, "Spread") ~= nil and find2(out, "3") == nil, names2(out))
+  check("the next number is on its second", onItsSecond(out, 2) and onItsSecond(out, 4), names2(out))
+end
+-- a spoken line before a number never holds it: the number starts on its second
+do
+  local out = perSecond("tts", 3, { tag = "spoken", extra = {
+      { id = "hold2", ph = 1, time = 16.5, text = "Stack on Abu", priority = 21, outputs = { speech = true }, speech = { { offset = 0, text = "Stack on Abu" } } } } })
+  check("a spoken line still being said doesn't hold the next number", onItsSecond(out, 3, true) and onItsSecond(out, 2, true), names2(out))
+end
+
+-- Read them out off: an alert's own Count down and Speak the text still speak; a raid note's plain line is silent,
+-- and a note line with its own speech setting (tts:1 or count:1) speaks
+CRT.db.notes.alert.tts = false
+do
+  local out = perSecond("xavier", 3, { tag = "off", notes = {
+    { id = "plain", ph = 1, time = 10, text = "Spread", priority = 21, outputs = { speech = true }, speech = { { offset = 0, text = "Spread" } } },
+    { id = "own", ph = 1, time = 12, text = "Stack", priority = 21, ownSpeech = true, outputs = { speech = true }, speech = { { offset = 0, text = "Stack" } } } } })
+  check("Read them out off: the alert counts 3, 2, 1 and says the text", onItsSecond(out, 3) and onItsSecond(out, 2) and onItsSecond(out, 1) and find2(out, "Soak") ~= nil, names2(out))
+  check("Read them out off: a raid note's plain line is silent", find2(out, "Spread") == nil, names2(out))
+  check("Read them out off: a note line with its own speech setting speaks", find2(out, "Stack") ~= nil, names2(out))
+end
+CRT.db.notes.alert.tts = true
+do
+  local out = perSecond("xavier", 3, { tag = "on", notes = {
+    { id = "plain2", ph = 1, time = 10, text = "Spread", priority = 21, outputs = { speech = true }, speech = { { offset = 0, text = "Spread" } } } } })
+  check("Read them out on: the plain note line speaks", find2(out, "Spread") ~= nil, names2(out))
 end
 CRT.db.sound.voice = "xavier"
 

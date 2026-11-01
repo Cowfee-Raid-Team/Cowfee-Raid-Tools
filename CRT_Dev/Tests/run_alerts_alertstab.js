@@ -398,7 +398,8 @@ check("tab: routing checkboxes bind the saved fields", function()
   for _, fn in ipairs(listeners) do fn() end
   local speechHelp
   for _, f in ipairs(frames) do if rawget(f, "helpTitle") == "Read them out (text to speech)" and not under(f, scroll) then speechHelp = f end end
-  assert(speechHelp and speechHelp.helpText:find("wherever") and speechHelp.helpText:find("reminders"), "speech (?)")
+  assert(speechHelp and speechHelp.helpText:find("wherever") and speechHelp.helpText:find("own Speak the text or Count down still speak", 1, true)
+    and not speechHelp.helpText:find("silences your reminders", 1, true), "speech (?): " .. tostring(speechHelp and speechHelp.helpText))
   -- Try it: Preview alerts (the callout and the five areas only) and Test all areas
   local previewsBtn, testBtn, tryIt
   for _, f in ipairs(frames) do

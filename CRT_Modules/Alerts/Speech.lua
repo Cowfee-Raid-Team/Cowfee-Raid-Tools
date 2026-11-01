@@ -3,26 +3,24 @@ local ADDON, CRT = ...
 -- The speech queue: every block's spoken lines play one at a time through the game's text to speech.
 -- A line plays until the game says it finished (or SPEECH_TIMEOUT seconds pass), then the next starts.
 -- When the queue falls behind, the lowest priority line is dropped first: raid-wide lines go first,
--- your note lines are kept longer, and your reminders are kept longest. Speech plays only while the
--- Raid Notes "Read them out" switch (notes.alert.tts) is on, for every block. A line's sound cue plays once
--- at zero, whatever that switch says; a raid note line's sound only while it is on, like its speech, and
--- whether or not the note callout is on (ruling B2).
+-- your note lines are kept longer, and your reminders are kept longest. The Raid Notes "Read them out" switch
+-- (notes.alert.tts) keeps quiet only a raid note's plain lines, which have no speech setting of their own
+-- (readOutOnly): an alert's own Speak the text or Count down always speaks, and so does a note line with its own
+-- tts: or count: (Alex, 2026-11-01). A line's sound cue plays once at zero; a plain note line's only while the
+-- switch is on, like its speech, and whether or not the note callout is on (ruling B2).
 -- In a rehearsal run the queue ticks on the engine's time (Alerts:Now()), and speech plays only at 1x: a
 -- change away from 1x stops what is being said and drops the queue, and lines that come due at 2x or 4x
 -- are never said. What was queued at 1x stays while the speed stays 1x. Sound cues play at any speed.
 -- Both go through the sound engine (Sound/Engine.lua): a cue is any sound reference, and a line is said
 -- with CRT.Sound:Speak at the Raid Notes rate and volume. A line the chosen voice has a clip for plays the clip
--- (Sound/Voices.lua); no finished event comes for a clip, so the next line waits the clip's own length. A count's
--- numbers keep their one second: when the next line is the next number down (10 then 9, 3 then 2), it may start
--- COUNT_HOLD seconds after the number before, clip or speech, even while that one still plays; a due number may
--- also start in a clip's last CLIP_TAIL seconds, so a word clip a little over a second never delays the count. While
--- a clip plays, the game's speech-finished event frees nothing: it is for an earlier spoken line, or not ours.
--- With Count down on (not Before 0), the count is one quick phrase that ends at 0 (#1238): Rules.SpeechItems gives
--- one item (countFrom, due Rules.CountSeconds before 0; Rules.countSeconds, set below, is the voice's number clips back
--- to back, or an estimate for the game's text to speech). playPhrase plays the clips back to back; with no clips for
--- the count (text to speech, or a number the voice lacks) speakCount says the numbers and the text as one line and
--- drops the text's own item. Otherwise the text comes after the phrase (afterCount, due at 0): it starts the moment
--- the phrase ends and not before 0.
+-- (Sound/Voices.lua); no finished event comes for a clip, so the next line waits the clip's own length. While a clip
+-- plays, the game's speech-finished event frees nothing: it is for an earlier spoken line, or not ours.
+-- A count says one number on each second (Alex, 2026-11-01, #1244): each number is its own line, due on its second.
+-- A spoken line never holds a number (the number starts on its second); a clip holds it at most for the clip's own
+-- length, and a number that can't start within NUMBER_LATE of its second is dropped rather than said late, so the
+-- rhythm stays clean. The number clips are under a second (1.4x), so they never run into each other. With Count down
+-- on, the text comes after "1" (Rules.SpeechItems marks it afterCount, due at 0): it starts the moment "1" ends and
+-- not before 0; after a spoken "1" the game's finished event runs it.
 -- Every line starts at its exact moment, not at the next tick: when the next line's start (its own time, and the
 -- moment the speaker frees for it: a clip's end, a count's next number) is within CUE_AHEAD, a timer (wake) runs
 -- the tick then.
@@ -44,13 +42,11 @@ local TICK = 0.1
 local SOUND_LATE = 1  -- a sound whose time passed more than this many seconds ago is not played
 local CUE_AHEAD = 2 * TICK -- a cue this many real seconds from zero is scheduled: the next tick may come a slow frame after TICK
 local CUE_EARLY = Rules.ZERO_EPSILON -- a cue this close before its time plays: the tolerance the displays draw 0 in
-local COUNT_HOLD = 0.95 -- seconds a count's number holds the next number: under the count's one second
 local CLIP_HOLD = 1 -- seconds a clip of unknown length holds the queue
-local CLIP_TAIL = 0.25 -- a due count number may start this many seconds before the clip playing ends
+-- A count's number that can't start within this many seconds of its own second (a clip before it still playing) is
+-- dropped, not said late: a quarter second late still sounds on the beat, later breaks the count's rhythm.
+local NUMBER_LATE = 0.25
 local WAKE_LATE = 0.001 -- a wake timer comes this much after its moment, so the moment has surely passed
--- The game's text to speech gives no word timing, so a count read out as one line ("3, 2, 1, Soak") starts this many
--- seconds a number before 0, an estimate at speech rate 0 (Raid Notes), shorter at a faster rate: "1" lands near 0.
-local TTS_COUNT_LEAD = 0.35
 
 local NOTICE = {
     speech = "Raid Notes: your note lines are now read out even with the note callout off. Untick 'Read them out' on Raid Notes > Alert Settings to stop it.",
@@ -64,14 +60,11 @@ local Speech = {
     timing = {},    -- functions (kind, info) told of each cue and each line said (OnTiming)
     playing = false,
     playingUntil = 0,
-    playingSince = 0, -- when the line being said started
-    number = nil,     -- that line's number, when it is a count's
-    clip = false,     -- whether that line is a voice clip, which no finished event ends
+    clip = false,     -- whether the line being said is a voice clip, which no finished event ends
     runId = nil,
     speed = 1,      -- the rehearsal speed at the last tick (1 outside a rehearsal)
 }
 CRT.AlertSpeech = Speech
-Speech.TTS_COUNT_LEAD = TTS_COUNT_LEAD
 
 -- Note lines used to be read out only with the note callout on (ruling B2 changed that). A save with
 -- the alert off and the speech on is told once, on login; the flag keeps it to once per profile.
@@ -95,14 +88,12 @@ local function settings()
     return notes and notes.alert or {}
 end
 
--- How long a count takes to say (Rules.CountSeconds): the voice's number clips back to back, or for the game's text
--- to speech an estimate, TTS_COUNT_LEAD a number, scaled by the Raid Notes rate (each 10 steps about twice as fast).
-Rules.countSeconds = function(from)
-    local plan = CRT.Sound and CRT.Sound.CountPlan and CRT.Sound:CountPlan(from)
-    if plan then
-        return plan.seconds
-    end
-    return from * TTS_COUNT_LEAD * 2 ^ (-(settings().ttsRate or 0) / 10)
+-- Whether "Read them out" (notes.alert.tts) keeps a line quiet: only a raid note's plain line, from the note
+-- block with no speech setting of its own (own: its tts: or count: field, Notes/Engine.lua ownSpeech). An alert's
+-- own Speak the text or Count down, and a note line with its own, always speak (Alex, 2026-11-01). The one rule for
+-- the speech and the sound cue.
+local function readOutOnly(block, own)
+    return block == "note" and not own and not settings().tts
 end
 
 -- Speaks now, outside the queue (the Test speech button uses this), at the Raid Notes rate and volume.
@@ -123,20 +114,13 @@ function Speech:Reset()
     wipe(self.pending) -- a timer still coming finds its token gone and plays nothing
     self.playing = false
     self.playingUntil = 0
-    self.number = nil
     self.clip = false
     self.wakeAt = nil -- a wake timer still coming finds the run gone and does nothing
-    self.phrase = (self.phrase or 0) + 1 -- and a count's clips still to come play nothing
 end
 
 -- Stops what is being said now and drops the queue.
 function Speech:Hush()
     CRT.Sound:StopSpeaking()
-    self.phrase = (self.phrase or 0) + 1
-    if self.phraseHandle then
-        CRT.Sound:Stop(self.phraseHandle)
-        self.phraseHandle = nil
-    end
     wipe(self.queue)
     self.playing = false
     self.playingUntil = 0
@@ -179,9 +163,9 @@ local function cueKey(member)
     return tostring(member.id) .. "#sound"
 end
 
--- A member's cue, with its time, when it has one that may play: a raid note line's only with speech on.
+-- A member's cue, with its time, when it has one that may play: a raid note's plain line's only with Read them out on.
 local function cueOf(line, member)
-    if not member.sound or (member.block == "note" and not settings().tts) then
+    if not member.sound or readOutOnly(member.block, member.ownSpeech) then
         return nil
     end
     return member.at or line.at
@@ -240,70 +224,18 @@ end
 local tokens = 0
 local fireCue
 
--- A count's number clips back to back (Sound:CountPlan): the first now, each next one as the one before ends, on
--- C_Timer.After. A stop, a new run or Hush (self.phrase moves on; a rehearsal speed change hushes) leaves the rest
--- unplayed. The clips run on real time, like a spoken line: a rehearsal paused mid-phrase finishes the phrase.
-local function playPhrase(self, plan)
-    self.phrase = (self.phrase or 0) + 1
-    local token, runId = self.phrase, self.runId
-    self.phraseHandle = CRT.Sound:Play(plan.clips[1].ref)
-    local at = 0
-    for i = 2, #plan.clips do
-        at = at + plan.clips[i - 1].seconds
-        local ref = plan.clips[i].ref
-        if C_Timer and C_Timer.After then
-            C_Timer.After(at, function()
-                if Speech.phrase == token and Speech.runId == runId and Alerts.running then
-                    Speech.phraseHandle = CRT.Sound:Play(ref)
-                end
-            end)
-        end
-    end
-end
-
--- Says a count's phrase: the voice's number clips, or with no clips for it (text to speech, or a number the voice
--- lacks) one line read out, with the text after it in the same line (its own item is marked said). Returns how and
--- the seconds it lasts, as SpeakNow does.
-local function speakCount(self, item)
-    local plan = CRT.Sound.CountPlan and CRT.Sound:CountPlan(item.countFrom)
-    if plan then
-        playPhrase(self, plan)
-        return "clip", plan.seconds
-    end
-    local text = item.text or ""
-    if item.thenText then
-        text = text .. ", " .. item.thenText
-        if item.thenKey then
-            -- the line says the text: its own item is never said, whether still to come or already queued
-            self.spoken[item.thenKey] = true
-            for i = #self.queue, 1, -1 do
-                if self.queue[i].key == item.thenKey then
-                    table.remove(self.queue, i)
-                end
-            end
-        end
-    end
-    local _, how, seconds = self:SpeakNow(text)
-    return how, seconds
-end
-
 -- The real moment a line due at `at` (engine time) with `text` can start: its own time, and while something plays,
--- the moment Tick frees the speaker for it (the clip's end, CLIP_TAIL before it for a count's number, or COUNT_HOLD
--- after the number before). Nil while a spoken line plays that only the game's finished event (or the timeout) frees.
+-- the moment Tick frees the speaker for it: a clip's end, or for a count's number its own second (a spoken line never
+-- holds a number). Nil while a spoken line plays that only the game's finished event (or the timeout) frees.
 local function startsAt(self, at, text, now, real)
     local from = real + math.max(0, at - now)
     if not self.playing then
         return from
     end
-    local n = numberOf(text)
-    local free
     if self.clip then
-        free = n and (self.playingUntil - CLIP_TAIL) or self.playingUntil
+        return math.max(from, self.playingUntil)
     end
-    if n and self.number and n == self.number - 1 then
-        free = math.min(free or math.huge, self.playingSince + COUNT_HOLD)
-    end
-    return free and math.max(from, free) or nil
+    return numberOf(text) and from or nil
 end
 
 -- A line starts at its moment, not at the next tick: when the queue's head (or, with none, the next line coming due)
@@ -434,17 +366,13 @@ function Speech:Tick(now)
     end
     self.speed = 1
 
-    if not settings().tts then
-        return
-    end
-
     local due = Rules.SpeechDue(lines, now, self.spoken)
     if #due > 0 then
         for _, item in ipairs(due) do
-            -- An empty or unreadable text is skipped.
+            -- An empty or unreadable text is skipped, and a plain note line while Read them out is off.
             local text = item.text
             local readable = not (CRT.Timeline and CRT.Timeline.readable) or CRT.Timeline.readable(text)
-            if readable and type(text) == "string" and text ~= "" then
+            if readable and type(text) == "string" and text ~= "" and not readOutOnly(item.block, item.own) then
                 arrivals = arrivals + 1
                 item.seq = arrivals
                 item.text = text
@@ -460,26 +388,21 @@ function Speech:Tick(now)
     if self.playing and real >= self.playingUntil then
         self.playing = false
     end
-    if self.playing and self.number and self.queue[1] and numberOf(self.queue[1].text) == self.number - 1
-        and real >= self.playingSince + COUNT_HOLD then
-        self.playing = false -- the count's next number keeps its second
+    if self.playing and not self.clip and self.queue[1] and numberOf(self.queue[1].text) then
+        self.playing = false -- a spoken line never holds a count's number past its second
     end
-    if self.playing and self.clip and self.queue[1] and numberOf(self.queue[1].text)
-        and real >= self.playingUntil - CLIP_TAIL then
-        self.playing = false -- a due number starts in the clip's last moment
+    -- a count's number that comes up too late to sound on its second is dropped, not said late
+    while not self.playing and self.queue[1] and numberOf(self.queue[1].text) and now - self.queue[1].at > NUMBER_LATE do
+        local late = table.remove(self.queue, 1)
+        if #self.timing > 0 then
+            tell(self, "dropped", { text = late.text, at = late.at, now = now })
+        end
     end
     if not self.playing and self.queue[1] then
         local item = table.remove(self.queue, 1)
         self.playing = true
-        self.playingSince = real
         self.playingUntil = real + Rules.SPEECH_TIMEOUT
-        self.number = numberOf(item.text)
-        local how, seconds
-        if item.countFrom then
-            how, seconds = speakCount(self, item)
-        else
-            _, how, seconds = self:SpeakNow(item.text or "")
-        end
+        local _, how, seconds = self:SpeakNow(item.text or "")
         self.clip = how == "clip"
         if self.clip then
             self.playingUntil = real + (seconds or CLIP_HOLD)
