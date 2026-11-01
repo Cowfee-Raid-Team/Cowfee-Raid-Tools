@@ -735,7 +735,7 @@ do
     when = { dropdowns["Relative to"], w.timeEdit, w.timeLabel, w.castsText, w.sourceText, sliders["Duration"], sliders["Linger"] },
     looks = { w.checks.alert, w.checks.text, w.checks.icon, w.checks.bar, w.checks.circle, w.checks.timeline, w.textEdit, dropdowns["Icon"],
       w.idEdit, w.iconPreview, w.colorSwatch, w.colorDefault, w.colorLabel },
-    sound = { dropdowns["Sound"], dropdowns["Speak at"], w.also.speak, w.also.count, w.also.glow },
+    sound = { dropdowns["Sound"], dropdowns["Speak at"], w.auraSound, w.also.speak, w.sayInstead, w.also.count, w.countFrom, w.also.glow, w.speakBefore },
     shield = { s.check, s.unitRow, s.lengthRow, s.any, s.lastText },
   }
   for key, list in pairs(tabs) do
@@ -753,7 +753,7 @@ do
   assert(top(sliders["Duration"]) == -150 and top(dropdowns["Relative to"]) == -116, "Relative to, then Show from")
   assert(top(w.checks.alert) == -116 and top(w.checks.bar) == -142 and top(w.textEdit) == -176 and top(dropdowns["Icon"]) == -202
     and top(w.colorSwatch) == -240, "Show as, Text, Icon, Color")
-  assert(top(dropdowns["Sound"]) == -116 and top(w.also.speak) == -150, "Sound, then Also")
+  assert(top(dropdowns["Sound"]) == -116 and top(w.auraSound) == -150 and top(w.also.speak) == -180, "Sound, then Also")
   assert(top(s.check) == -116, "the Shield bar section at the top of its tab")
   -- the lowest row ends above the message and the buttons (window 360 high, buttons 14 up and 24 high, the message 8 above)
   assert(-top(w.colorDefault) + 24 <= 360 - 14 - 24 - 8 - 14, "Color clears the message line")
@@ -2131,11 +2131,10 @@ do
     if h.helpTitle == "Count down from" then countHelp = h end
   end
   assert(atHelp and tostring(atHelp.helpText):find("after the count", 1, true) and rawget(atHelp, "crtHelpTarget") == w.speakAt, "Speak at has a (?) right of it on the count")
-  assert(countHelp and tostring(countHelp.helpText):find("quick phrase", 1, true) and tostring(countHelp.helpText):find("ending at 0", 1, true)
-    and tostring(countHelp.helpText):find("after", 1, true) and tostring(countHelp.helpText):find("Before 0", 1, true)
-    and rawget(countHelp, "crtHelpTarget") == w.countFrom, "Count down from has a (?) right of its slider")
+  assert(countHelp and tostring(countHelp.helpText) == CRT.AlertFields.TEXT.countDownHelp
+    and rawget(countHelp, "crtHelpTarget") == w.countFrom, "Count down from has a (?) right of its slider, the one shared text")
   local function top(m) local pt = m.pts[#m.pts] return pt[#pt] end
-  assert(top(w.also.speak) == -150 and top(w.sayInstead) < -150 and top(w.also.count) < top(w.sayInstead) and top(w.also.glow) < top(w.also.count), "Speak, Say instead, Count, Glow, downwards")
+  assert(top(w.auraSound) == -150 and top(w.also.speak) == -180 and top(w.sayInstead) < -180 and top(w.also.count) < top(w.sayInstead) and top(w.also.glow) < top(w.also.count), "Speak, Say instead, Count, Glow, downwards")
   local px = w.sayInstead.pts[#w.sayInstead.pts][2]
   assert(px > w.also.speak.pts[#w.also.speak.pts][2], "Say instead is indented")
   assert(-top(w.also.glow) + 24 <= 360 - 14 - 24 - 8 - 14, "Glow clears the message line")
@@ -2187,12 +2186,40 @@ do
   assert(not sb.shown, "hidden again")
   setCheck(w.also.speak, false)
   assert(w.sayInstead.enabled == false, "greyed with Speak the text off")
-  -- a raid note line: none of the three (the note line has no field for them)
+  -- a raid note line has all three now (countfrom:, ttsbefore:, say:; #1243), and never Also when it lands on me
   E:Open(ENC, nil, { spellID = 777, boss = "Test Boss", saveAs = "note" })
   setCheck(w.also.count, true)
-  assert(optionKeys(dropdowns["Speak at"]) == "show,zero", "no Before 0 on a note line")
-  assert(cf.opts.enabledIf() == false and w.sayInstead.enabled == false, "greyed on a note line")
+  assert(optionKeys(dropdowns["Speak at"]) == "show,zero,before", "Before 0 on a note line too")
+  assert(cf.opts.enabledIf() == true and w.sayInstead.enabled ~= false, "on for a note line")
+  assert(w.auraSound.enabled == false, "Also when it lands on me: greyed on a note line")
   print("ok editor: Say instead, Count down from and Before 0")
+end
+
+-- a raid note line with countfrom:, ttsbefore: and say: (#1243): it opens with them, and a save writes them back
+do
+  reset()
+  local line = "time:40;ph:1;tag:everyone;text:Adds;show:alert,bar;tts:1;ttsbefore:2;say:Adds incoming;count:1;countfrom:5;warn:6;"
+  local id = Notes:Import("EncounterID:9001;Name:Test Boss\\n" .. line)
+  assert(E:OpenNote(id, 2))
+  local w = win()
+  assert(w.sayInstead.text == "Adds incoming" and w.countFrom.opts.get() == 5 and value("Speak at") == "before"
+    and w.speakBefore.opts.get() == 2 and w.speakBefore.shown, "the line's three settings on show")
+  click(w.saveBtn)
+  assert(Notes:Get(id).raw == "EncounterID:9001;Name:Test Boss\\n" .. line, "saved back as it was: " .. Notes:Get(id).raw)
+  -- changed in the editor: written to the line
+  assert(E:OpenNote(id, 2))
+  w.countFrom.opts.set(7) w.speakBefore.opts.set(3.5) typeInto(w.sayInstead, "Adds now")
+  click(w.saveBtn)
+  local t = CRT.NoteParser.Parse(Notes:Get(id).raw).timers[1]
+  assert(t.countFrom == 7 and t.speakAt == "before" and t.speakBefore == 3.5 and t.speakText == "Adds now", Notes:Get(id).raw)
+  -- Speak the text off: no Speak at, Say instead or Before 0 written; Count down off: no countfrom:
+  assert(E:OpenNote(id, 2))
+  setCheck(w.also.speak, false) setCheck(w.also.count, false)
+  click(w.saveBtn)
+  local raw = Notes:Get(id).raw
+  assert(not raw:find("ttsbefore", 1, true) and not raw:find("say:", 1, true) and not raw:find("countfrom", 1, true), raw)
+  E:Close()
+  print("ok editor: a raid note line carries Say instead, Count down from and Before 0")
 end
 
 -- a reminder imported for someone else (#1235): the editor says who it was for, under the header

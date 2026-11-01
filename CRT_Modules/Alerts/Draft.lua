@@ -11,7 +11,8 @@ local ADDON, CRT = ...
 --          speakText }
 --          speakAt is nil (Speak at: On show), "zero" (At 0) or "before" (Before 0, speakBefore seconds), as a
 --          reminder keeps it; countFrom where Count down starts; speakText the Say instead box (Reminders.lua's
---          fields of those names). A raid note line has none of the three, so it saves Before 0 as On show
+--          fields of those names). A raid note line carries all three (countfrom:, ttsbefore:, say:; Notes/Parse.lua).
+--          Every setting, its range and where it can live is listed once in Alerts/Fields.lua
 --          ticksText is the Impact ticks box as typed ("2, 4": seconds into the bar, Draft.ParseTicks), fill
 --          "up" (Bar fills up) or nil (it empties), as a reminder keeps them (Alerts/Bars.lua draws them; a note line
 --          keeps them as ticks:, fill: and countto:). An older reminder's barTo stays saved as it was and is never read
@@ -224,11 +225,10 @@ function Draft.SetSpeakAt(draft, key)
     draft.speakAt = SPEAK_AT[key]
 end
 
--- The words of a count box with no slider (the Mech Alerts panel's), in the caller's words: plain, or from (with
--- a %d) when the draft's count starts past 3, so "Count down from 6".
-function Draft.CountWords(draft, plain, from)
-    local n = draft and Reminders.CountFrom({ countFrom = draft.countFrom })
-    return (n and n > Reminders.COUNT_FROM.default) and string.format(from, n) or plain
+-- Where the draft's count starts as it is saved: 4 to 10, or nil for 3 (the old 3, 2, 1), which is saved as nothing.
+function Draft.CountFrom(draft)
+    local n = Reminders.CountFrom({ countFrom = draft and draft.countFrom })
+    return n ~= Reminders.COUNT_FROM.default and n or nil
 end
 
 -- The Say instead words as a reminder saves them (speakText), or nil for an empty box.
@@ -548,8 +548,7 @@ function Draft.BuildReminder(ctx, draft)
     r.speakAt = SPEAK_AT[draft.speakAt]
     -- Count down from (only while Count down is on), Before 0's seconds (only while Speak at is Before 0) and Say
     -- instead; each default (3, 3 s, an empty box) is saved as nothing
-    local from = Reminders.CountFrom({ countFrom = draft.countFrom })
-    r.countFrom = (draft.count and from ~= Reminders.COUNT_FROM.default) and from or nil
+    r.countFrom = draft.count and Draft.CountFrom(draft) or nil
     local before = Reminders.SpeakBefore({ speakBefore = draft.speakBefore })
     r.speakBefore = (r.speakAt == "before" and before ~= Reminders.SPEAK_BEFORE.default) and before or nil
     r.speakText = Draft.SpeakText(draft)
@@ -631,9 +630,12 @@ function Draft.NoteTimer(ctx, draft)
         color = copy(draft.color),
         show = show,
         tts = draft.speak or nil,
-        -- ttsat:0 only with the text read out: a line without it speaks when it shows
-        speakAt = (draft.speak and draft.speakAt == "zero") and "zero" or nil,
+        -- ttsat:0 or ttsbefore: only with the text read out: a line without them speaks when it shows
+        speakAt = draft.speak and SPEAK_AT[draft.speakAt] or nil,
+        speakBefore = (draft.speak and draft.speakAt == "before") and Reminders.SpeakBefore({ speakBefore = draft.speakBefore }) or nil,
+        speakText = draft.speak and Draft.SpeakText({ speakText = clean(draft.speakText) }) or nil, -- say:
         count = draft.count or nil,
+        countFrom = draft.count and Draft.CountFrom(draft) or nil, -- countfrom:, past 3 only
         sound = CRT.Sound.Compact(draft.sound), -- a game sound by its bare name, as older versions read it
         glow = draft.glow or nil,
         warn = draft.warn,
@@ -645,6 +647,15 @@ function Draft.NoteTimer(ctx, draft)
         fill = (not Draft.Absorb(draft) and draft.fill == "up") and "up" or nil,
         countTo = (not Draft.Absorb(draft) and Draft.Ticks(draft) and draft.countTo == "impact") and "impact" or nil,
     }
+end
+
+-- A note line's timer's speech into the draft, the reverse of NoteTimer's: Speak at (ttsat:0 At 0, ttsbefore: Before 0
+-- with its seconds), Count down from (countfrom:) and Say instead (say:). Kept even on a line with no show: field.
+function Draft.SpeechFromTimer(draft, timer)
+    draft.speakAt = SPEAK_AT[timer.speakAt]
+    draft.speakBefore = Reminders.SpeakBefore({ speakBefore = timer.speakBefore })
+    draft.countFrom = Reminders.CountFrom({ countFrom = timer.countFrom })
+    draft.speakText = type(timer.speakText) == "string" and timer.speakText or ""
 end
 
 -- The fields of the raw line the draft was opened from that FormatLine doesn't write (such as

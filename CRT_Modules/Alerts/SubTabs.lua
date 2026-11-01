@@ -6,7 +6,8 @@ local ADDON, CRT = ...
 --   When              Show from, Linger and the alert's times (Special: the When line, Duration)
 --   Who               the special alert's roles or rotation, the Special panel only
 --   Looks             Show as, Text, Icon, Color, and the bar's rows
---   Sound and speech  Sound, Also when it lands on me, Speak the text, Speak at, Count down 3 2 1, Glow at 0
+--   Sound and speech  Sound, Speak at, Also when it lands on me, Speak the text, Say instead, Count down from, Glow at 0,
+--                     Seconds before (Alerts/Fields.lua builds them for both hosts)
 --   Shield bar        the Shield bar section (Alerts/ShieldSection.lua)
 --   Assign            the mechanic's assignment blocks in the raid note (Notes/AssignTab.lua), the Mech Alerts panel only
 --   Markers           the special alert's marks and Mark the players, the Special panel only

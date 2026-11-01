@@ -631,6 +631,109 @@ check("mech raid note: Save as Raid note writes one line per cast", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- #1243: Say instead, Count down from and Before 0 with its seconds, saved and read back as Only me and as Raid note.
+-- The alert editor opens here too, so what this harness's UI lacks for its window is filled in first.
+local function editorReady()
+  local U = CRT.UI
+  local function frameStub(parent) return CreateFrame("Button", nil, parent) end
+  U.ResetButton = rawget(U, "ResetButton") or frameStub
+  for _, k in ipairs({ "SetFrameTitle", "StyleWindow", "RegisterPreview", "SkinEditBox", "SkinTree", "LiftOver", "ShownPopup" }) do
+    if rawget(U, k) == nil and U[k] == nil then U[k] = function(_, x) return x end end
+  end
+  for _, k in ipairs({ "BadText", "WarnText" }) do
+    if U[k] == nil then U[k] = function(s) return s end end
+  end
+  UISpecialFrames = UISpecialFrames or {}
+  tinsert = tinsert or table.insert
+end
+local function speechOn(p)
+  setCheck(p.also.speak, true) setCheck(p.also.count, true)
+  p.countFrom.opts.set(5)
+  p.speakAt.opts.set("before")
+  p.speakBefore.opts.set(2)
+  typeInto(p.sayInstead, "Adds incoming")
+  p.sayInstead.OnEnterPressed(p.sayInstead)
+end
+check("mech speech: Say instead, Count down from and Before 0, as Only me", function()
+  resetNotes()
+  local f = fresh()
+  local p = f.panel
+  assert(p.sayInstead and p.countFrom and p.speakBefore and p.auraSound, "the editor's rows")
+  assert(p.countFrom.opts.min == 3 and p.countFrom.opts.max == 10 and p.speakBefore.opts.min == 0.5 and p.speakBefore.opts.step == 0.5, "the same ranges")
+  speechOn(p)
+  local r, id = only()
+  assert(r.countFrom == 5 and r.speakAt == "before" and r.speakBefore == 2 and r.speakText == "Adds incoming" and r.speech == "textcount", "saved: "
+    .. tostring(r.countFrom) .. "," .. tostring(r.speakBefore) .. "," .. tostring(r.speakText))
+  -- read back: another row, then this one
+  click(f.rows[2].frame) click(f.rows[1].frame)
+  assert(p.sayInstead.text == "Adds incoming" and p.countFrom.opts.get() == 5 and p.speakAt.opts.get() == "before"
+    and p.speakBefore.opts.get() == 2 and p.speakBefore.shown, "read back")
+  -- the same alert in the alert editor: every value matches
+  editorReady()
+  E:Open(ENC, id)
+  local w = E:Frame()
+  assert(w.sayInstead.text == "Adds incoming" and w.countFrom.opts.get() == 5 and w.speakAt.opts.get() == "before" and w.speakBefore.opts.get() == 2, "the editor reads the same")
+  E:Close()
+  -- Speak the text off greys Say instead, Speak at and Seconds before; Count down off greys its slider
+  setCheck(p.also.speak, false)
+  assert(p.sayInstead.enabled == false and p.speakAt.opts.enabledIf() == false and p.speakBefore.opts.enabledIf() == false, "greyed with Speak the text off")
+  setCheck(p.also.count, false)
+  assert(p.countFrom.opts.enabledIf() == false, "greyed with Count down off")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("mech speech: as Raid note, the lines carry them", function()
+  resetNotes()
+  local f = fresh()
+  local p = f.panel
+  p.saveAs.opts.set("note")
+  speechOn(p)
+  local note = noteFor(ENC, "Mythic")
+  local lines = marked(note.raw, "777")
+  assert(#lines == 2, "two lines: " .. note.raw)
+  for _, t in ipairs(lines) do
+    assert(t.countFrom == 5 and t.speakAt == "before" and t.speakBefore == 2 and t.speakText == "Adds incoming", "a line: " .. note.raw)
+  end
+  assert(note.raw:find("ttsbefore:2;say:Adds incoming;count:1;countfrom:5;", 1, true), note.raw)
+  click(f.rows[2].frame) click(f.rows[1].frame)
+  assert(p.sayInstead.text == "Adds incoming" and p.countFrom.opts.get() == 5 and p.speakBefore.opts.get() == 2, "read back")
+  assert(p.noteStatus.text:find("2 lines", 1, true), "in step: " .. p.noteStatus.text)
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- #1243: the alert editor and the Mech Alerts panel build their Sound and speech tab from one table (Alerts/Fields.lua)
+check("alert settings: both screens build the same Sound and speech controls", function()
+  local f = fresh()
+  local p = f.panel
+  editorReady()
+  E:Open(ENC, nil, { spellID = 777, boss = "Test Boss" })
+  local w = E:Frame()
+  local function shape(c)
+    local out = {}
+    local function add(name, m)
+      local label = rawget(m, "label")
+      if type(label) == "table" then label = label.text end
+      out[#out + 1] = name .. "=" .. tostring(m.kind) .. ":" .. tostring(label)
+    end
+    add("sound", c.sound) add("speakAt", c.speakAt) add("auraSound", c.auraSound) add("speak", c.also.speak)
+    add("sayInstead", c.sayInstead) add("count", c.also.count) add("countFrom", c.countFrom) add("glow", c.also.glow)
+    add("speakBefore", c.speakBefore)
+    return table.concat(out, ",")
+  end
+  assert(p.speech and w.speech, "both keep the built controls")
+  assert(shape(p.speech) == shape(w.speech), "the same controls:\\n" .. shape(p.speech) .. "\\n" .. shape(w.speech))
+  -- the same places from each tab's top left, the editor's approved layout
+  local function rel(c, m) local a, b = m.pts[#m.pts], c.sound.pts[#c.sound.pts] return (a[#a - 1] - b[#b - 1]) .. "," .. (a[#a] - b[#b]) end
+  for _, k in ipairs({ "speakAt", "auraSound", "sayInstead", "speakBefore" }) do
+    assert(rel(p.speech, p.speech[k]) == rel(w.speech, w.speech[k]), k .. ": " .. rel(p.speech, p.speech[k]) .. " vs " .. rel(w.speech, w.speech[k]))
+  end
+  for _, k in ipairs({ "speak", "count", "glow" }) do
+    assert(rel(p.speech, p.speech.also[k]) == rel(w.speech, w.speech.also[k]), k)
+  end
+  E:Close()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("mech raid note: For, the tick, and Only me", function()
   resetNotes()
   local f = fresh()
@@ -978,12 +1081,12 @@ check("mech: every (?) is right of what it explains", function()
   local atHelp, countHelp
   for _, h in ipairs(helps) do
     if rawget(h, "helpTarget") == p.speakAt then atHelp = h end
-    if rawget(h, "helpTarget") == p.also.count.label then countHelp = h end
+    if rawget(h, "helpTarget") == p.countFrom then countHelp = h end
   end
-  assert(atHelp and tostring(atHelp.helpText):find("after the count", 1, true), "Speak at: its (?) says the text comes after the count")
-  assert(tostring(atHelp.helpText):find("alert editor", 1, true), "Speak at: its (?) says Before 0's seconds are set in the alert editor")
-  assert(countHelp and tostring(countHelp.helpText):find("Before 0", 1, true), "Count down: its (?) says when the text comes")
-  assert(tostring(countHelp.helpText):find("quick phrase", 1, true) and tostring(countHelp.helpText):find("ending at 0", 1, true), "Count down: its (?) says the count is a quick phrase ending at 0")
+  -- the editor's (?) texts: one copy (Alerts/Fields.lua), #1243
+  local FT = CRT.AlertFields.TEXT
+  assert(atHelp and atHelp.helpText == FT.speakAtHelp and tostring(atHelp.helpText):find("after the count", 1, true), "Speak at: the shared (?)")
+  assert(countHelp and countHelp.helpText == FT.countDownHelp, "Count down from: the shared (?), right of its slider")
 end)
 
 check("mech: your own reminder button", function()
@@ -1788,7 +1891,7 @@ check("speak at: Mech Alerts panel has it too", function()
   assert(row and p.speakAt == row, "a Speak at dropdown on the panel")
   local function list() return type(row.opts.options) == "function" and row.opts.options() or row.opts.options end
   local function keyList() local keys = {} for i, o in ipairs(list()) do keys[i] = o.key end return table.concat(keys, ",") end
-  assert(keyList() == "show,zero" and list()[2].label == "At 0", "On show, At 0")
+  assert(keyList() == "show,zero,before" and list()[2].label == "At 0" and list()[3].label == "Before 0", "On show, At 0, Before 0 always listed")
   assert(row.opts.get() == "show" and row.opts.enabledIf() == true, "On show, enabled")
   row.opts.set("zero")
   assert(R:Get(ENC, id).speakAt == "zero", "saved at once")
@@ -1799,16 +1902,11 @@ check("speak at: Mech Alerts panel has it too", function()
   assert(row.opts.enabledIf() == true, "back on")
   row.opts.set("show")
   assert(R:Get(ENC, id).speakAt == nil, "On show saved as nothing")
-  -- Before 0 (set in the alert editor) is listed only for an alert that has it, so it shows as it is saved
-  assert(not keyList():find("before", 1, true), "no Before 0 for an alert without it")
   row.opts.set("before")
-  assert(keyList() == "show,zero,before" and list()[3].label == "Before 0" and row.opts.get() == "before", "listed while it has it")
-  assert(R:Get(ENC, id).speakAt == "before", "kept")
-  -- the count box: "Count down", or where it starts when that is past 3 (set in the alert editor)
-  assert(p.also.count.label.text == "Count down", "its words: " .. tostring(p.also.count.label.text))
-  local D = CRT.AlertDraft
-  assert(D.CountWords({ countFrom = 6 }, "Count down", "Count down from %d") == "Count down from 6", "from 6")
-  assert(D.CountWords({ countFrom = 3 }, "Count down", "Count down from %d") == "Count down" and D.CountWords(nil, "Count down", "x %d") == "Count down", "3 or none: plain")
+  assert(row.opts.get() == "before" and R:Get(ENC, id).speakAt == "before", "Before 0 saved")
+  assert(p.speakBefore.shown, "its Seconds before slider shows")
+  -- the count box reads as the editor's, its start on a slider beside it
+  assert(p.also.count.label.text == "Count down from", "its words: " .. tostring(p.also.count.label.text))
   assert(#errors == 0, tostring(errors[1]))
 end)
 
@@ -1858,7 +1956,8 @@ check("mech ticks: the rows follow Bar and the ticks", function()
   local function x(fr) local pt = fr.pts[#fr.pts] return pt[#pt - 1] end
   assert(y(p.barFill) - y(p.countTo) == 22, "Count down to under Bar fill")
   assert(y(p.shield.check) == -100 and p.shield.check.parent == p.tabs.frames.shield, "Shield bar at the top of its tab: " .. y(p.shield.check))
-  assert(y(p.also.speak) - y(p.also.count) == 26 and y(p.also.count) - y(p.also.glow) == 26 and x(p.also.speak) < 20, "Sound and speech's rows, one column")
+  assert(y(p.auraSound) - y(p.also.speak) == 30 and y(p.also.speak) - y(p.also.count) == 60 and y(p.also.count) - y(p.also.glow) == 30
+    and x(p.also.speak) == x(p.also.count) and x(p.sayInstead) > x(p.also.speak), "Sound and speech's rows, the editor's layout")
   assert(p.message.pts[1][1] == "BOTTOMLEFT" and p.message.parent == p.content, "the message above the bottom row, outside the tabs")
   -- a new alert has Bar on: ticks and Bar fill on
   assert(p.checks.bar.checked, "Bar on")
