@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Speeds up the number clips 0.mp3 to 9.mp3 of every voice in CRT_Media/Media/Sounds/<voice>/ (Sound/Voices.lua),
-# in place, so a count is a quick phrase (#1238). ffmpeg's atempo keeps the pitch. Word clips are left alone.
+# in place, so each number of a count is well under a second and never runs into the next (#1238, #1244). ffmpeg's atempo keeps the pitch. Word clips are left alone.
 # Developer only: CRT_Dev is never packaged.
 #   bash CRT_Dev/Tools/tempo-numbers.sh [voice folder ...]    default: every folder under CRT_Media/Media/Sounds
 # Settings, as environment variables:

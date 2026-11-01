@@ -398,7 +398,8 @@ check("tab: routing checkboxes bind the saved fields", function()
   for _, fn in ipairs(listeners) do fn() end
   local speechHelp
   for _, f in ipairs(frames) do if rawget(f, "helpTitle") == "Read them out (text to speech)" and not under(f, scroll) then speechHelp = f end end
-  assert(speechHelp and speechHelp.helpText:find("wherever") and speechHelp.helpText:find("reminders"), "speech (?)")
+  assert(speechHelp and speechHelp.helpText:find("wherever") and speechHelp.helpText:find("own Speak the text or Count down still speak", 1, true)
+    and not speechHelp.helpText:find("silences your reminders", 1, true), "speech (?): " .. tostring(speechHelp and speechHelp.helpText))
   -- Try it: Preview alerts (the callout and the five areas only) and Test all areas
   local previewsBtn, testBtn, tryIt
   for _, f in ipairs(frames) do
@@ -638,7 +639,9 @@ check("callout: Read them out is notes.alert.tts, the left column's switch, and 
   tts:SetChecked(false) click(tts)
   assert(alertSettings.tts == false, "unticked saves notes.alert.tts")
   assert(left.checked == false, "the left column's box follows")
-  for _, label in ipairs(speechRows) do assert(calloutRow(label).enabled == false, label .. " greyed") end
+  -- Read it at is for the note lines only, so it greys; volume, rate and Test speech apply to every alert that speaks
+  assert(calloutRow("Read it at").enabled == false, "Read it at greyed")
+  for _, label in ipairs({ "Speech volume", "Speech rate", "Test speech" }) do assert(calloutRow(label).enabled ~= false, label .. " still usable") end
   assert(calloutRow("Size").enabled ~= false, "the look rows stay usable")
   -- the left column's box turns it back on, and the panel follows
   left:SetChecked(true) click(left)

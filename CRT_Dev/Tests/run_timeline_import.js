@@ -485,7 +485,7 @@ check("twin fangs: spell icon and name, speech and display on the reminder", fun
   assert(circle.outputs.speech == true and circle.speech == "textcount" and circle.speakAt == nil and circle.countFrom == 5, "text and count: " .. tostring(circle.speech))
   assert(circle.import.countdown == 5 and circle.import.tagKind == "player", "the count kept")
   local function said(list) local o = {} for _, s in ipairs(list) do o[#o + 1] = s.text .. "@" .. ("%g"):format(s.offset) end return table.concat(o, " ") end
-  assert(said(items[1].speech) == "5, 4, 3, 2, 1@" .. ("%g"):format(CRT.AlertRules.CountSeconds(5)) .. " Spell383410@0", said(items[1].speech))
+  assert(said(items[1].speech) == "5@5 4@4 3@3 2@2 1@1 Spell383410@0", said(items[1].speech))
   -- DisplayType Circle: the circle, with the new alert's defaults
   assert(circle.outputs.circle and circle.outputs.alert and circle.outputs.bar and not circle.outputs.text, "Circle")
   -- TTS + TTSTimer 3: Before 0, 3 s (the default, so saved as nothing)

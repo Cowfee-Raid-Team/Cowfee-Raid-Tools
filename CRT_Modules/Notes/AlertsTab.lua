@@ -35,7 +35,7 @@ local TEXT = {
     timeline = "Alert timeline",
     speech = "Read them out (text to speech)",
     speechHelp = "Reads your note lines out wherever they show, with or without the note callout, and plays their sounds.\n\n"
-        .. "It is also the switch for all speech: turning it off silences your reminders' speech too.\n\n"
+        .. "Off, your note lines are quiet. Alerts with their own Speak the text or Count down still speak.\n\n"
         .. "Note callout/assignments under Configuration has the same switch, with when, how loud and how fast it reads.",
 
     colours = "Colours",

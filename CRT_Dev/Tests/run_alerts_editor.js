@@ -2131,9 +2131,8 @@ do
     if h.helpTitle == "Count down from" then countHelp = h end
   end
   assert(atHelp and tostring(atHelp.helpText):find("after the count", 1, true) and rawget(atHelp, "crtHelpTarget") == w.speakAt, "Speak at has a (?) right of it on the count")
-  assert(countHelp and tostring(countHelp.helpText):find("quick phrase", 1, true) and tostring(countHelp.helpText):find("ending at 0", 1, true)
-    and tostring(countHelp.helpText):find("after", 1, true) and tostring(countHelp.helpText):find("Before 0", 1, true)
-    and rawget(countHelp, "crtHelpTarget") == w.countFrom, "Count down from has a (?) right of its slider")
+  assert(countHelp and tostring(countHelp.helpText) == "Says one number each second, from N down to 1, then the text at 0 when Speak the text is on. Speaks even when Read them out is off."
+    and rawget(countHelp, "crtHelpTarget") == w.countFrom, "Count down from has a (?) right of its slider: " .. tostring(countHelp and countHelp.helpText))
   local function top(m) local pt = m.pts[#m.pts] return pt[#pt] end
   assert(top(w.also.speak) == -150 and top(w.sayInstead) < -150 and top(w.also.count) < top(w.sayInstead) and top(w.also.glow) < top(w.also.count), "Speak, Say instead, Count, Glow, downwards")
   local px = w.sayInstead.pts[#w.sayInstead.pts][2]
