@@ -46,16 +46,94 @@ end
 --              with title = true is a heading in the open list (such as a raid over its bosses). An
 --              option's tooltip, when it has one, shows while the mouse is over it in the open list. One with
 --              checkbox = true is a tick box in the open list, so several can be ticked: checked(key) says
---              whether it is, toggle(key) is called on a click (the closed dropdown lists what is ticked).
+--              whether it is, toggle(key) is called on a click (the closed dropdown lists what is ticked). One
+--              with children = { option, ... } is a submenu (the game's: a description with elements in it,
+--              Blizzard_Menu), left out while it has none: its row is ticked while it holds the pick, a click on it
+--              picks nothing, and the closed dropdown reads "<its label>: <the pick's label>".
 --   get()      the selected key
 --   set(key)   called when a choice is picked
 --   width, labelWidth, enabledIf() (greys the row out while it returns false)
---   maxHeight  optional: the open menu scrolls past this many pixels, for a long list
+--   maxHeight  optional: the open menu, and each submenu, scrolls past this many pixels, for a long list
 --   onClose()  optional: called when the open list closes
 --   decorate(button, option)  optional: adds to each item in the open menu, such as a Play button.
 --                             It may return the item's width and height. Anything it attaches with
 --                             button:AttachFrame or AttachFontString is removed when the menu closes.
 -- Returns the row, with row.refresh() to call when the setting may have changed.
+-- One choice in the open list (or a submenu), as a radio or a tick box, with its greying, tooltip and decoration.
+local function addChoice(menu, option, opts)
+    local radio
+    if option.checkbox then
+        radio = menu:CreateCheckbox(option.label, function(key)
+            return opts.checked ~= nil and opts.checked(key) and true or false
+        end, function(key)
+            if opts.toggle then
+                opts.toggle(key)
+            end
+        end, option.key)
+    else
+        radio = menu:CreateRadio(option.label, function(key)
+            return opts.get() == key
+        end, function(key)
+            opts.set(key)
+        end, option.key)
+    end
+    if type(option.disabled) == "function" and radio and radio.SetEnabled then
+        -- the game's menu asks a function again while the list is open (IsEnabled, polled)
+        local disabled = option.disabled
+        radio:SetEnabled(function()
+            return not disabled()
+        end)
+    elseif option.disabled and radio and radio.SetEnabled then
+        radio:SetEnabled(false)
+    end
+    if option.tooltip and radio and radio.SetTooltip then
+        radio:SetTooltip(function(tooltip)
+            GameTooltip_SetTitle(tooltip, option.label)
+            GameTooltip_AddNormalLine(tooltip, option.tooltip)
+        end)
+    end
+    if opts.decorate then
+        radio:AddInitializer(function(button)
+            return opts.decorate(button, option)
+        end)
+    end
+    return radio
+end
+
+-- A submenu: its row a radio, ticked while one of its choices is the pick (a click on it picks nothing, and it is
+-- never the closed text: SetSelectionIgnored), then its choices; on top of every window and scrolling like the root.
+-- texts[key] is what the closed dropdown reads for each of its choices.
+local function addGroup(root, option, opts, texts)
+    local group = root:CreateRadio(option.label, function()
+        local picked = opts.get()
+        for _, child in ipairs(option.children) do
+            if child.key == picked then
+                return true
+            end
+        end
+        return false
+    end, function() end)
+    if group.SetSelectionIgnored then
+        group:SetSelectionIgnored()
+    end
+    if UI.MenuOnTop then
+        UI.MenuOnTop(group)
+    end
+    if opts.maxHeight and group.SetScrollMode then
+        group:SetScrollMode(opts.maxHeight)
+    end
+    for _, child in ipairs(option.children) do
+        if child.title then
+            group:CreateTitle(child.label)
+        else
+            addChoice(group, child, opts)
+            if child.key ~= nil then
+                texts[child.key] = option.label .. ": " .. child.label
+            end
+        end
+    end
+end
+
 function UI.Dropdown(parent, text, opts)
     local labelWidth, width = opts.labelWidth or LABEL_W, opts.width or 200
     local row = makeRow(parent, text, labelWidth)
@@ -76,49 +154,32 @@ function UI.Dropdown(parent, text, opts)
             root:SetScrollMode(opts.maxHeight)
         end
         local list = type(opts.options) == "function" and opts.options() or opts.options
+        local texts = {}
         for _, option in ipairs(list) do
             if option.title then
                 root:CreateTitle(option.label)
+            elseif option.children then
+                if #option.children > 0 then
+                    addGroup(root, option, opts, texts)
+                end
             else
-                local radio
-                if option.checkbox then
-                    radio = root:CreateCheckbox(option.label, function(key)
-                        return opts.checked ~= nil and opts.checked(key) and true or false
-                    end, function(key)
-                        if opts.toggle then
-                            opts.toggle(key)
-                        end
-                    end, option.key)
-                else
-                    radio = root:CreateRadio(option.label, function(key)
-                        return opts.get() == key
-                    end, function(key)
-                        opts.set(key)
-                    end, option.key)
-                end
-                if type(option.disabled) == "function" and radio and radio.SetEnabled then
-                    -- the game's menu asks a function again while the list is open (IsEnabled, polled)
-                    local disabled = option.disabled
-                    radio:SetEnabled(function()
-                        return not disabled()
-                    end)
-                elseif option.disabled and radio and radio.SetEnabled then
-                    radio:SetEnabled(false)
-                end
-                if option.tooltip and radio and radio.SetTooltip then
-                    radio:SetTooltip(function(tooltip)
-                        GameTooltip_SetTitle(tooltip, option.label)
-                        GameTooltip_AddNormalLine(tooltip, option.tooltip)
-                    end)
-                end
-                if opts.decorate then
-                    radio:AddInitializer(function(button)
-                        return opts.decorate(button, option)
-                    end)
-                end
+                addChoice(root, option, opts)
             end
         end
+        dropdown.crtTexts = texts
     end)
+    -- The closed text of a pick inside a submenu is "<group>: <pick>"; any other, as the game shows it
+    -- (DropdownSelectionTextMixin:SetSelectionTranslator, Blizzard_Menu/MenuTemplates.lua: one call per selection).
+    if dropdown.SetSelectionTranslator then
+        dropdown:SetSelectionTranslator(function(selection)
+            local key = selection.GetData and selection:GetData()
+            local texts = dropdown.crtTexts
+            if key ~= nil and texts and texts[key] then
+                return texts[key]
+            end
+            return MenuUtil and MenuUtil.GetElementText and MenuUtil.GetElementText(selection) or nil
+        end)
+    end
     row.Dropdown = dropdown
     UI:SkinDropdown(dropdown)
     -- The game opens a dropdown's list on the FULLSCREEN_DIALOG layer, the same as the alert editor,

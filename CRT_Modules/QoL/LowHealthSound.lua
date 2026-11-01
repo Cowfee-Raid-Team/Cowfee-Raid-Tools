@@ -61,17 +61,20 @@ local MUTED_VOLUME = 1
 -- other addons appear.
 function Sound.Choices()
     local pulse = { key = "pulse", label = "Game pulse (speeds up)" }
-    local list, out, placed = CRT.Sound:Choices(), {}, false
-    for _, c in ipairs(list) do
-        if not placed and not c.title then
-            -- the first sound of the game's own: right after its heading, or the very first entry
-            local prev = out[#out]
-            if not prev or (prev.title and c.key and c.key:find("^kit:")) then
-                out[#out + 1] = pulse
-                placed = true
+    local out = {}
+    local placed = false
+    for _, c in ipairs(CRT.Sound:Choices()) do
+        if c.id == "game" and c.children then
+            -- the game's sounds' submenu: the pulse first in it (a copy, so the engine's list is never changed)
+            local children = { pulse }
+            for _, child in ipairs(c.children) do
+                children[#children + 1] = child
             end
+            out[#out + 1] = { id = c.id, label = c.label, children = children }
+            placed = true
+        else
+            out[#out + 1] = c
         end
-        out[#out + 1] = c
     end
     if not placed then
         table.insert(out, 1, pulse)
