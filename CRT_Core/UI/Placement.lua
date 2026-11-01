@@ -40,7 +40,8 @@ local ADDON, CRT = ...
 --     draggable() optional, for an element that is its own drag box: whether a drag may move it now while it isn't
 --                 being placed (the ready check window, unlocked, during a real check). Such a drag moves and saves
 --                 it, snapping as any drag does, but selects nothing: no outline, gear, Reset, panel or arrow keys,
---                 which stay for placing (editing()). Refused in combat like every drag
+--                 which stay for placing (editing()). Refused in combat like every drag, but silently: no "Can't
+--                 move that in combat." line (placing keeps it)
 --     place()     optional: places it itself (consumables docks under the game's window); it calls
 --                 el:ApplySaved() when it goes where it is saved
 --     canAnchor   false: it always sits on the screen (it holds the game's protected buttons)
@@ -68,7 +69,7 @@ local ADDON, CRT = ...
 -- the selection and puts a dragged element back at its saved place. Nothing is selected, dragged or given the keys
 -- unless it is being placed (el:Editable: its drag box on screen in Previews or its page's own preview), and its
 -- drag box hiding lets go of it and closes its panel. The one exception is a drag spec.draggable allows (el:Draggable):
--- it moves and saves, nothing more.
+-- it moves and saves, nothing more, and in combat it is refused without the message.
 
 local UI = CRT.UI
 local P = { list = {}, byKey = {}, queued = {} } -- queued: elements waiting for combat to end to be placed
@@ -1027,7 +1028,10 @@ function El:BeginDrag()
         return
     end
     if inCombat() then
-        P.Refuse()
+        -- placing says why; a drag spec.draggable allows is refused silently
+        if editable then
+            P.Refuse()
+        end
         return
     end
     if editable then

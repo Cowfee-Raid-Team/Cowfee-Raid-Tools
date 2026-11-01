@@ -335,10 +335,54 @@ show()
 inCombat = true
 local cx0, cy0 = frame:GetCenter()
 cursorX, cursorY = cx0 - frame.w / 2 + 20, cy0 + frame.h / 2 - 8
+local linesBefore = #errorLines
 dragTo(cursorX + 100, cursorY)
 inCombat = false
-check(select(1, frame:GetCenter()) == cx0 and errorLines[#errorLines] == P.TEXT.combat, "in combat a drag is refused, with a message")
+check(select(1, frame:GetCenter()) == cx0 and #errorLines == linesBefore, "in combat a drag outside Previews is refused silently")
+-- in Previews (placing) the refusal keeps its message
+previews.readycheckwindow(true)
+inCombat = true
+cx0, cy0 = frame:GetCenter()
+cursorX, cursorY = cx0 - frame.w / 2 + 20, cy0 + frame.h / 2 - 8
+dragTo(cursorX + 100, cursorY)
+inCombat = false
+check(select(1, frame:GetCenter()) == cx0 and errorLines[#errorLines] == P.TEXT.combat, "in combat a drag in Previews is refused, with a message")
+previews.readycheckwindow(false)
 W:Hide()
+
+-- the window hiding mid-drag lets go of the drag: its driver stops, and it goes back to its saved place
+local function midDrag()
+  local mx, my = frame:GetCenter()
+  cursorX, cursorY = mx - frame.w / 2 + 20, my + frame.h / 2 - 8
+  shiftDown = true
+  frame.scripts.OnDragStart(frame, "LeftButton")
+  cursorX = cursorX + 60
+  tick(0.05)
+  shiftDown = false
+  return mx, my
+end
+local function dropped(mx, what)
+  check(P.Dragging() == nil, what .. ": the drag is cancelled")
+  local before = select(1, frame:GetCenter())
+  cursorX = cursorX + 200
+  tick(0.1)
+  check(select(1, frame:GetCenter()) == before and before == mx, what .. ": its driver stopped, back at its saved place")
+end
+away()
+show(30)
+local mx = midDrag()
+check(P.Dragging() ~= nil, "(a drag under way)")
+fire("START_PLAYER_COUNTDOWN")
+window.holdOnHover = false
+tick(FADE + 0.1)
+check(not frame.shown, "a pull fade ends mid-drag: hidden")
+dropped(mx, "hidden by the pull fade mid-drag")
+window.holdOnHover = true
+show(30)
+mx = midDrag()
+clickAt("RightButton")
+check(not frame.shown, "a right-click mid-drag: hidden")
+dropped(mx, "hidden by a right-click mid-drag")
 
 -- the hover hold ----------------------------------------------------------------------------------------------
 window.holdOnHover = true
@@ -421,6 +465,31 @@ check(frame.shown and frame.alpha < 0.9, "Keep it open off: the mouse over it do
 tick(FADE * 0.5 + 0.1)
 check(not frame.shown, "Keep it open off: hidden after the fade")
 window.holdOnHover = true
+-- Keep it open turned off while the fade is held: the fade starts again and closes it
+show(30)
+fire("START_PLAYER_COUNTDOWN")
+overWindow()
+tick(0.1)
+check(frame.shown and frame.alpha == 1, "(the fade held by the mouse)")
+window.holdOnHover = false
+tick(0.1)
+check(frame.alpha < 1, "Keep it open turned off while held: the fade starts again")
+tick(FADE)
+check(not frame.shown, "and closes it, mouse over or not")
+window.holdOnHover = true
+-- Previews on during a pull fade (running or held): the preview stays at full alpha
+for _, held in ipairs({ false, true }) do
+  away()
+  show(30)
+  fire("START_PLAYER_COUNTDOWN")
+  if held then overWindow() end
+  tick(FADE * 0.5)
+  previews.readycheckwindow(true)
+  away()
+  tick(FADE * 2)
+  check(frame.shown and frame.alpha == 1, "Previews on during a " .. (held and "held" or "running") .. " pull fade: shown at full alpha")
+  previews.readycheckwindow(false)
+end
 -- right-click and the X still close it mid-hold
 show(30)
 fire("START_PLAYER_COUNTDOWN")

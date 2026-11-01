@@ -572,8 +572,9 @@ do
   check(P.selected == nil, "a click on it selects nothing either")
   inCombat = true
   cursorX, cursorY = centre(fd)
+  local linesBefore = #errorLines
   DR:BeginDrag()
-  check(P.Dragging() == nil and errorLines[#errorLines] == P.TEXT.combat, "in combat a draggable drag is refused, with a message")
+  check(P.Dragging() == nil and #errorLines == linesBefore, "in combat a draggable drag is refused silently, no message")
   inCombat = false
   fd:Hide()
   check(DR:Draggable() == false, "hidden, it can't be dragged")

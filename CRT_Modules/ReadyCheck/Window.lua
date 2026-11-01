@@ -900,9 +900,15 @@ local function startPullFade()
 end
 
 -- Every frame while a pull fade is on: the mouse over it (Keep it open on) stops the fade at full alpha, the mouse
--- leaving starts it again from the start.
+-- leaving starts it again from the start. Keep it open turned off while it is held starts it again too.
 local function followPullFade()
-    if not pullFade or not settings().holdOnHover then
+    if not pullFade then
+        return
+    end
+    if not settings().holdOnHover then
+        if pullFade == "held" then
+            startPullFade()
+        end
         return
     end
     local over = frame:IsMouseOver()
@@ -1047,6 +1053,11 @@ CRT.UI:RegisterPreview("readycheckwindow", function(on)
         build()
     end
     previewOn = on
+    -- a pull fade (running or held) never fades the preview away
+    if on then
+        pullFade = nil
+        CRT.UI.CancelFade(frame)
+    end
     frame.reset:SetShown(on and true or false)
     frame.gear:SetShown(on and true or false)
     -- the timer text sits left of whichever is shown: the gear (left of Reset) or the X
