@@ -37,6 +37,10 @@ local ADDON, CRT = ...
 --     settings()  optional: opens its settings (the gear's Settings)
 --     editing()   optional, for an element that is its own drag box: whether it is being placed now (its Previews
 --                 flag). Without it, an element is being placed while its drag box is on screen
+--     draggable() optional, for an element that is its own drag box: whether a drag may move it now while it isn't
+--                 being placed (the ready check window, unlocked, during a real check). Such a drag moves and saves
+--                 it, snapping as any drag does, but selects nothing: no outline, gear, Reset, panel or arrow keys,
+--                 which stay for placing (editing()). Refused in combat like every drag
 --     place()     optional: places it itself (consumables docks under the game's window); it calls
 --                 el:ApplySaved() when it goes where it is saved
 --     canAnchor   false: it always sits on the screen (it holds the game's protected buttons)
@@ -63,7 +67,8 @@ local ADDON, CRT = ...
 -- Nothing moves and no key is taken in combat: a drag, the gear, the keys and Reset refuse, and combat starting drops
 -- the selection and puts a dragged element back at its saved place. Nothing is selected, dragged or given the keys
 -- unless it is being placed (el:Editable: its drag box on screen in Previews or its page's own preview), and its
--- drag box hiding lets go of it and closes its panel.
+-- drag box hiding lets go of it and closes its panel. The one exception is a drag spec.draggable allows (el:Draggable):
+-- it moves and saves, nothing more.
 
 local UI = CRT.UI
 local P = { list = {}, byKey = {}, queued = {} } -- queued: elements waiting for combat to end to be placed
@@ -889,6 +894,15 @@ function El:Editable()
     return h ~= self.frame
 end
 
+-- Whether a drag may move it now without it being placed (spec.draggable): its drag box on screen and the spec says so.
+function El:Draggable()
+    local h = self.handle
+    if not (self.spec.draggable and h and h.IsVisible and h:IsVisible()) then
+        return false
+    end
+    return self.spec.draggable() and true or false
+end
+
 -- Snapping -----------------------------------------------------------------------------------
 
 -- The guides a drag snaps to, in UIParent units: the screen's centre lines, and when it is anchored, its anchor's
@@ -1003,15 +1017,22 @@ function P.Dragging()
     return drag and drag.el or nil
 end
 
+-- Being placed, a drag selects it too; a drag spec.draggable allows outside placing doesn't.
 function El:BeginDrag()
-    if P.picking or not self.frame or not self:Editable() then
+    if P.picking or not self.frame then
+        return
+    end
+    local editable = self:Editable()
+    if not (editable or self:Draggable()) then
         return
     end
     if inCombat() then
         P.Refuse()
         return
     end
-    P.Select(self)
+    if editable then
+        P.Select(self)
+    end
     local cx, cy = P.Rect(self.frame)
     local mx, my = cursor()
     if not (cx and mx) then

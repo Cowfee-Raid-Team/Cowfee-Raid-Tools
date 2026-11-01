@@ -231,7 +231,8 @@ check(P and type(P.Define) == "function" and type(P.OpenPanel) == "function", "t
 local function el(key, store, default, opts)
   opts = opts or {}
   local spec = { title = opts.title or key, store = function() return store end, default = default, point = opts.point,
-    build = opts.build, settings = opts.settings, canAnchor = opts.canAnchor, target = opts.target, editing = opts.editing }
+    build = opts.build, settings = opts.settings, canAnchor = opts.canAnchor, target = opts.target, editing = opts.editing,
+    draggable = opts.draggable }
   return P.Define(key, spec)
 end
 local function make(e, w, h)
@@ -549,6 +550,35 @@ fr.scripts.OnMouseUp(fr, "LeftButton")
 check(P.selected == R and keys.shown, "in Previews it is selected")
 editing = false
 check(P.OnKey("RIGHT") == false and P.selected == nil and not keys.shown, "Previews gone (its own preview flag off): the next arrow lets go")
+-- spec.draggable: a window its own drag box may be dragged outside Previews (the ready check window, unlocked), saved,
+-- with nothing selected and no keys taken; draggable off, it isn't; in combat it is refused
+do
+  local free = false
+  local DR = el("rcfree", {}, { point = "TOP", relativePoint = "TOP", x = 0, y = -140 }, { title = "Free window", point = "TOP",
+    editing = function() return false end, draggable = function() return free end })
+  local fd = CreateFrame("Frame", nil, UIParent)
+  fd:SetSize(300, 100)
+  DR:Attach(fd, fd, {})
+  local dx0, dy0 = centre(fd)
+  dragTo(DR, fd, dx0 + 200, dy0 - 100)
+  check(DR:Saved() == nil and select(1, centre(fd)) == dx0, "draggable off: a drag outside Previews doesn't move it")
+  free = true
+  check(DR:Draggable() == true and DR:Editable() == false, "draggable on: it may be dragged, but isn't being placed")
+  dragTo(DR, fd, dx0 + 200, dy0 - 100)
+  local dx1, dy1 = centre(fd)
+  check(dx1 == dx0 + 200 and dy1 == dy0 - 100 and DR:Saved() ~= nil, "draggable on: a drag moves it and saves the place: " .. dx1 .. ", " .. dy1)
+  check(P.selected == nil and not keys.shown and not (P.Panel() and P.Panel().shown), "and selects nothing: no outline, keys or panel")
+  fd.scripts.OnMouseUp(fd, "LeftButton")
+  check(P.selected == nil, "a click on it selects nothing either")
+  inCombat = true
+  cursorX, cursorY = centre(fd)
+  DR:BeginDrag()
+  check(P.Dragging() == nil and errorLines[#errorLines] == P.TEXT.combat, "in combat a draggable drag is refused, with a message")
+  inCombat = false
+  fd:Hide()
+  check(DR:Draggable() == false, "hidden, it can't be dragged")
+  fd:Show()
+end
 -- a drag box that hides (a page's own preview stopping) lets go and closes the panel
 P.OpenPanel(A)
 check(P.selected == A and P.Panel().shown, "the panel open on it")
