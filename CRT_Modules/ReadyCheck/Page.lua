@@ -18,7 +18,13 @@ local TEXT = {
     previewAllTip = "Shows the ready check window and your consumables bar on screen so you can drag them into place. Other previews stay as they are.",
     previewWindow = "Preview window",
     previewWindowTip = "Shows the ready check window on screen so you can drag it into place. It stays until you stop it.",
+    lock = "Lock the window in place",
+    lockTip = "Unlocked, drag the window anywhere during a ready check. Locked, it only moves in Previews.",
+    hold = "Keep it open while my mouse is over it",
+    holdTip = "Past its seconds, the window stays while your mouse is over it, and closes a second after you move away. A pull timer's fade stops while your mouse is over it.",
 }
+-- The Window tab's Lock and Keep it open boxes, in the right column under Class color bar (Keep it open 24 below).
+local WINDOW_LOCK_Y = -68
 local PREVIEW_KEYS = { "readycheckwindow", "consumables" }
 -- Where the preview buttons sit: Settings', under its last check box in the left column; the Window tab's, at the
 -- end of its button row.
@@ -269,6 +275,14 @@ local function buildWindow(f)
     makeCheck(f, 28, -64, "Only raid buff columns my group can give", "groupBuffsOnly", windowSettings)
     makeDropdown(f, 400, -8, "Sort players by", "sort", CRT.ReadyCheckWindow.SORTS, windowSettings, 100, 150)
     makeCheck(f, 396, -44, "Class color bar behind each row", "classBars", windowSettings)
+    -- How the open window moves and closes: only while it opens at all.
+    local function windowOn()
+        return windowSettings().enabled
+    end
+    local lock = makeCheck(f, 396, WINDOW_LOCK_Y, TEXT.lock, "locked", windowSettings, windowOn)
+    UI.HelpRight(lock, TEXT.lock, TEXT.lockTip)
+    local hold = makeCheck(f, 396, WINDOW_LOCK_Y - 24, TEXT.hold, "holdOnHover", windowSettings, windowOn)
+    UI.HelpRight(hold, TEXT.hold, TEXT.holdTip)
     makeNumber(f, 32, -90, "Seconds open (5 to 120)", "seconds", 5, 120)
     makeNumber(f, 32, -114, "Size % (50 to 150)", "scale", 50, 150)
 

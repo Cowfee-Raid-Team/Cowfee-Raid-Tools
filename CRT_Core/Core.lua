@@ -114,6 +114,8 @@ local defaults = {
             order = {}, -- column keys left to right, filled in when a column is moved
             sort = "group", -- players by "group", "role" or "name"
             classBars = true, -- a class colored bar behind each player's row
+            locked = false, -- true: moved only in Previews; false: dragged anywhere while it is open
+            holdOnHover = true, -- past its seconds, it stays open while the mouse is over it
             columns = {
                 food = true, flask = true, rune = true, vantus = false,
                 intellect = true, stamina = true, attack = true, versatility = true, mastery = true, movement = true,

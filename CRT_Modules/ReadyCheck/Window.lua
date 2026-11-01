@@ -37,6 +37,14 @@ local ROW_H = 20
 local TOP_H = 50 -- title and column headings
 local ICON = 16
 local DURABILITY_LOW = 30 -- a shift-clicked Dur heading posts players under this percent
+-- Past its seconds, with "Keep it open while my mouse is over it" on, it stays while the mouse is over it and closes
+-- this many seconds after the mouse leaves.
+local HOVER_GRACE = 1
+Window.HOVER_GRACE = HOVER_GRACE
+-- A pull timer fades it out over this many seconds (fadeOnPull). With "Keep it open while my mouse is over it" on,
+-- the mouse over it stops the fade, and the mouse leaving starts it again from the start.
+local PULL_FADE = 2
+Window.PULL_FADE = PULL_FADE
 
 local READY_ICONS = {
     ready = "Interface\\RaidFrame\\ReadyCheck-Ready",
@@ -460,6 +468,15 @@ function Table:Header(j)
         end)
     else
         h:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        -- A drag on a heading moves the window like a drag anywhere else on it (unlocked, or in Previews). A drag
+        -- with a registered button fires no OnClick (Frame:RegisterForDrag), so it never posts or closes.
+        h:RegisterForDrag("LeftButton")
+        h:SetScript("OnDragStart", function()
+            Window:BeginDrag()
+        end)
+        h:SetScript("OnDragStop", function()
+            Window:EndDrag()
+        end)
         h:SetScript("OnClick", function(self, button)
             if button == "RightButton" then
                 Window:Hide()
@@ -840,8 +857,10 @@ end
 local build
 
 -- Its place, drag, nudge, reset and anchor are the shared helper's (UI/Placement.lua); the whole window is its drag
--- box. Held by its top, so more rows grow it downwards.
-local placement = CRT.UI.Placement.Define("readycheck", {
+-- box. Held by its top, so more rows grow it downwards. Unlocked ("Lock the window in place" off), a drag moves it
+-- while it is open too; the gear, Reset, the outline and the arrow keys stay for Previews.
+local Placement = CRT.UI.Placement
+local placement = Placement.Define("readycheck", {
     title = "Ready check window",
     store = settings,
     default = { point = "TOP", relativePoint = "TOP", x = 0, y = -140 },
@@ -855,7 +874,64 @@ local placement = CRT.UI.Placement.Define("readycheck", {
     editing = function()
         return previewOn
     end,
+    draggable = function()
+        return not settings().locked
+    end,
 })
+
+-- A drag that starts on a heading (a button of its own) moves the window too.
+function Window:BeginDrag()
+    placement:BeginDrag()
+end
+
+function Window:EndDrag()
+    placement:EndDrag()
+end
+
+-- A pull timer's fade (the shared UI.FadeOut): nil, "running", or "held" while the mouse is over it.
+local pullFade
+local function startPullFade()
+    pullFade = "running"
+    CRT.UI.FadeOut(frame, PULL_FADE, function()
+        pullFade = nil
+        stayOpen = false
+        Window:Hide()
+    end)
+end
+
+-- Every frame while a pull fade is on: the mouse over it (Keep it open on) stops the fade at full alpha, the mouse
+-- leaving starts it again from the start.
+local function followPullFade()
+    if not pullFade or not settings().holdOnHover then
+        return
+    end
+    local over = frame:IsMouseOver()
+    if over and pullFade == "running" then
+        CRT.UI.CancelFade(frame)
+        pullFade = "held"
+    elseif not over and pullFade == "held" then
+        startPullFade()
+    end
+end
+
+-- Past its seconds: whether it stays open now. It stays while it is being dragged, while a pull fade is on (the fade
+-- closes it), and with "Keep it open while my mouse is over it" on, while the mouse is over it and HOVER_GRACE seconds
+-- after the mouse leaves.
+local hoverUntil = 0
+local function heldOpen()
+    if Placement.Dragging() == placement or pullFade then
+        return true
+    end
+    if not settings().holdOnHover then
+        return false
+    end
+    local now = GetTime()
+    if frame:IsMouseOver() then
+        hoverUntil = now + HOVER_GRACE
+        return true
+    end
+    return now < hoverUntil
+end
 
 -- Its size (Scale on the Ready Check page), then its place.
 local function applyPosition()
@@ -889,18 +965,20 @@ function build()
     frame.timer:SetPoint("RIGHT", frame.close, "LEFT", -4, 0)
 
 
+    -- Its time is checked every frame, so the mouse leaving is seen at once; it refreshes once a second.
     local elapsed = 0
     frame:SetScript("OnUpdate", function(_, dt)
+        followPullFade()
+        if not previewOn and GetTime() >= shownUntil and not heldOpen() then
+            Window:Hide()
+            return
+        end
         elapsed = elapsed + dt
         if elapsed < 1 then
             return
         end
         elapsed = 0
-        if not previewOn and GetTime() >= shownUntil then
-            Window:Hide()
-        else
-            Window:Refresh()
-        end
+        Window:Refresh()
     end)
     frame.reset = CRT.UI.ResetButton(frame, function()
         Window:ResetPosition()
@@ -930,6 +1008,7 @@ function Window:Show(seconds, sample, stay)
     elseif not stayOpen then
         shownUntil = GetTime() + (seconds or settings().seconds or 30)
     end
+    hoverUntil, pullFade = 0, nil
     CRT.UI.CancelFade(frame)
     frame:Show()
     self:Refresh()
@@ -938,6 +1017,10 @@ end
 function Window:Hide()
     stayOpen = false
     if frame and not previewOn then
+        if pullFade then
+            pullFade = nil
+            CRT.UI.CancelFade(frame)
+        end
         frame:Hide()
     end
 end
@@ -1017,12 +1100,10 @@ events:SetScript("OnEvent", function(_, event, ...)
         checkActive = false
         Window:Refresh()
     elseif event == "START_PLAYER_COUNTDOWN" then
-        -- A pull timer started: the window fades out over 2 seconds (Ready Check settings).
+        -- A pull timer started: the window fades out over PULL_FADE seconds (Ready Check settings); the mouse over it
+        -- holds the fade (followPullFade).
         if frame and frame:IsShown() and not previewOn and CRT.db.readycheck.fadeOnPull then
-            CRT.UI.FadeOut(frame, 2, function()
-                stayOpen = false
-                Window:Hide()
-            end)
+            startPullFade()
         end
     elseif event == "READY_CHECK_CONFIRM" then
         local unit, isReady = ...
