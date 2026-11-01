@@ -983,6 +983,7 @@ check("mech: every (?) is right of what it explains", function()
   assert(atHelp and tostring(atHelp.helpText):find("after the count", 1, true), "Speak at: its (?) says the text comes after the count")
   assert(tostring(atHelp.helpText):find("alert editor", 1, true), "Speak at: its (?) says Before 0's seconds are set in the alert editor")
   assert(countHelp and tostring(countHelp.helpText):find("Before 0", 1, true), "Count down: its (?) says when the text comes")
+  assert(tostring(countHelp.helpText):find("quick phrase", 1, true) and tostring(countHelp.helpText):find("ending at 0", 1, true), "Count down: its (?) says the count is a quick phrase ending at 0")
 end)
 
 check("mech: your own reminder button", function()

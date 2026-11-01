@@ -670,7 +670,8 @@ function Alerts:Lines(now)
             if it.speech then
                 e.speech = {}
                 for i, s in ipairs(it.speech) do
-                    e.speech[i] = { at = e.at - (s.offset or 0), text = s.text, afterCount = s.afterCount }
+                    e.speech[i] = { at = e.at - (s.offset or 0), text = s.text, afterCount = s.afterCount,
+                        countFrom = s.countFrom, thenText = s.thenText }
                 end
             end
             entries[#entries + 1] = e
