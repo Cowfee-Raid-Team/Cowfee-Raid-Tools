@@ -41,6 +41,10 @@ CRT.LowHealthSound = Sound
 -- and the game's Combat Audio Alerts code raised "string conversion on a secret string value" errors
 -- on every health change once it was turned on, blamed on whichever shared library loaded first. While
 -- WIP is true, Apply only turns everything off and puts back any game setting the sound had changed.
+-- Since #1242 (Alex, 2026-11-01) the Quality of Life page shows none of its controls: a line points to the game's own
+-- pulse in Options > Accessibility > Combat Audio Alerts instead, and CRT never turns it on. This file stays for that
+-- put-back (an older version's caaSaved, restored once on load), /crt lowhp info and stop; the saved fields stay.
+-- The research (no secret-safe way for an addon to play a low-health sound) is in job #1242's build log.
 Sound.WIP = true
 
 -- The spoken alerts, switched off when Combat Audio Alerts were off before.

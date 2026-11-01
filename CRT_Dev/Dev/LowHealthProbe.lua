@@ -7,9 +7,12 @@ local ADDON, CRT = ...
 --                         death and release, and each call of the game's Combat Audio Alerts health pulse
 --   /crt dev lowhp off    stops; the log stays
 --   /crt dev lowhp show   opens the log to copy (Ctrl+C)
--- A health line says: combat on or off, the event's unit, UnitHealthPercent with the banner's curve ("curve result"),
--- UnitHealthPercent without one and UnitHealth, each "<secret number>", a plain value or "error"; then the banner's
--- path and its last error (LowHealth:State: curve, plain, off, dead or preview) and whether its alpha is secret. A pulse
+-- Your health events only (RegisterUnitEvent "player"). A health line says: combat on or off, the event's unit,
+-- UnitHealthPercent with the banner's curve ("curve result") and whether comparing that with nil raises an error (in
+-- a pcall: "nil compare ok (false)" or "error"), UnitHealthPercent without a curve and UnitHealth, each "<secret
+-- number>", a plain value or "error"; then the banner's path and its last error (LowHealth:State: curve, plain, off,
+-- dead or preview), whether its alpha is secret, its setting, shown and visible, strata and layer, and its saved
+-- anchor and point. A pulse
 -- line says the kit the game picked (CombatAudioAlertManager:SetHealthPulseSoundKit, "<secret number>", a number or
 -- nil) or a stop (StopHealthPulse), and a settings line the game's CAAEnabled and CAAPulsePlayerHealthPercent. The same
 -- line twice in a row is counted, not logged again.
@@ -109,22 +112,60 @@ local function settingsLine()
     add("settings: CAAEnabled " .. getCVar("CAAEnabled") .. ", CAAPulsePlayerHealthPercent " .. getCVar("CAAPulsePlayerHealthPercent"))
 end
 
+-- Whether comparing the curve's result with nil, as the banner's update did before #1242, raises an error in game:
+-- "ok (false)", "ok (true)" or "error". Only ever in this pcall.
+local function nilCompare(result)
+    local ok, isNil = pcall(function()
+        return result == nil
+    end)
+    if not ok then
+        return "error"
+    end
+    return "ok (" .. tostring(isNil == true) .. ")"
+end
+
+-- A frame method's first result as the log shows it.
+local function ask(f, method)
+    if not (f and f[method]) then
+        return "missing"
+    end
+    return call(f[method], f)
+end
+
+-- The banner as it stands: its setting, shown and visible, strata and layer, and where it is saved (its anchor, or the
+-- screen, and its point; "default" with no saved place).
+local function bannerLine(st)
+    local q = CRT.db.qol and CRT.db.qol.lowHealth or {}
+    local f = st.frame
+    local layer = "missing"
+    if CRT.UI and CRT.UI.Layer then
+        local ok, l = pcall(CRT.UI.Layer, CRT.UI, "lowhealth")
+        layer = ok and show(l) or "error"
+    end
+    local p = type(q.position) == "table" and q.position or nil
+    local anchor = p and (tostring(p.anchor or "UIParent") .. " " .. tostring(p.point or "?")) or "default"
+    return string.format("enabled %s, shown %s, visible %s, strata %s, layer %s, anchor %s", tostring(q.enabled == true),
+        ask(f, "IsShown"), ask(f, "IsVisible"), ask(f, "GetFrameStrata"), layer, anchor)
+end
+
 -- One health line: every way an addon might see the dip, each shown only by its secret-ness or plain value.
 local function healthLine(event, unit)
     local LH = CRT.LowHealth
     local st = LH and LH.State and LH:State() or {}
-    local curveResult = "no curve"
-    if st.curve then
-        curveResult = call(UnitHealthPercent, "player", true, st.curve)
+    local curveResult, compared = "no curve", "no curve"
+    if st.curve and UnitHealthPercent then
+        local ok, result = pcall(UnitHealthPercent, "player", true, st.curve)
+        curveResult = ok and show(result) or "error"
+        compared = ok and nilCompare(result) or "no result"
     end
     local alpha = "no banner"
     if st.frame then
         local ok, a = pcall(st.frame.GetAlpha, st.frame)
         alpha = ok and (isSecret(a) and "<secret>" or "plain") or "error"
     end
-    add(string.format("%s %s, combat %s: curve result %s, percent %s, UnitHealth %s; banner %s%s, alpha %s",
-        event, show(unit), combat(), curveResult, call(UnitHealthPercent, "player", true), call(UnitHealth, "player"),
-        tostring(st.path or "none"), st.error and (" (" .. st.error .. ")") or "", alpha))
+    add(string.format("%s %s, combat %s: curve result %s (nil compare %s), percent %s, UnitHealth %s; banner %s%s, alpha %s; %s",
+        event, show(unit), combat(), curveResult, compared, call(UnitHealthPercent, "player", true), call(UnitHealth, "player"),
+        tostring(st.path or "none"), st.error and (" (" .. st.error .. ")") or "", alpha, bannerLine(st)))
 end
 
 -- The game's pulse: the kit it picked, by its secret-ness, or its stop.
@@ -162,8 +203,9 @@ function Probe.HandleEvent(event, unit)
     end
 end
 
-local EVENTS = { "UNIT_HEALTH", "UNIT_MAXHEALTH", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_DEAD", "PLAYER_ALIVE",
-    "PLAYER_UNGHOST" }
+local EVENTS = { "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_DEAD", "PLAYER_ALIVE", "PLAYER_UNGHOST" }
+-- your health only (RegisterUnitEvent), as the banner listens: never every unit's
+local UNIT_EVENTS = { "UNIT_HEALTH", "UNIT_MAXHEALTH" }
 
 local function listen(on)
     if not frame then
@@ -178,6 +220,13 @@ local function listen(on)
     for _, e in ipairs(EVENTS) do
         if on then
             frame:RegisterEvent(e)
+        else
+            frame:UnregisterEvent(e)
+        end
+    end
+    for _, e in ipairs(UNIT_EVENTS) do
+        if on then
+            frame:RegisterUnitEvent(e, "player")
         else
             frame:UnregisterEvent(e)
         end

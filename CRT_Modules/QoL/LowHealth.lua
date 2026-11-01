@@ -107,10 +107,9 @@ function LowHealth:Update()
         return
     end
     if curve then
-        -- The result is secret: it is never compared (not even with nil), joined or turned into text, only asked its
-        -- type (type() gives a secret's real type) and passed to SetAlpha. Before #1242 it was compared with nil here,
-        -- outside the pcall: addon code may not compare a secret, so that most likely raised an error on every health
-        -- change and left the banner unseen (/crt dev lowhp confirms it in game).
+        -- The result may be secret: it is never compared (not even with nil), joined or turned into text, only asked
+        -- its type (type() gives a secret's real type) and passed to SetAlpha. Hardening (#1242): the wiki forbids
+        -- comparing a secret in addon code; the earlier nil check worked in game, and this does the same without it.
         local ok, alpha = pcall(UnitHealthPercent, "player", true, curve)
         if not ok then
             lastError = TEXT.curveFailed

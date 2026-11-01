@@ -9,7 +9,7 @@ const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
-local lowSrc, probeSrc = ...
+local lowSrc, probeSrc, soundSrc = ...
 local out = print
 local passed, failed = 0, 0
 local function check(name, cond, detail)
@@ -57,7 +57,8 @@ local function frameMock(name)
     if k == "SetScript" then return function(self, n, fn) self.scripts[n] = fn end end
     if k == "RegisterEvent" then return function(self, e) self.events[e] = true end end
     if k == "UnregisterEvent" then return function(self, e) self.events[e] = nil end end
-    if k == "RegisterUnitEvent" then return function(self, e) self.events[e] = true end end
+    -- a unit event comes only for the units it was registered for, as in the game
+    if k == "RegisterUnitEvent" then return function(self, e, ...) self.events[e] = { ... } end end
     if k == "CreateFontString" then return function() return frameMock() end end
     if k == "GetPoint" then return function() return "CENTER", nil, "CENTER", 0, 0 end end
     if k == "GetFrameStrata" then return function() return "DIALOG" end end
@@ -66,9 +67,16 @@ local function frameMock(name)
 end
 function CreateFrame(kind, name) return frameMock(name) end
 UIParent = frameMock("UIParent")
+-- a unit event registered with RegisterEvent reaches a frame for any unit (so a probe that did would hear "target")
+local function heard(f, event, unit)
+  local reg = f.events[event]
+  if type(reg) ~= "table" then return reg ~= nil end
+  for _, u in ipairs(reg) do if rawequal(u, unit) then return true end end
+  return false
+end
 local function fire(event, ...)
   for _, f in ipairs(frames) do
-    if f.events[event] and f.scripts.OnEvent then
+    if heard(f, event, (...)) and f.scripts.OnEvent then
       local ok, err = pcall(f.scripts.OnEvent, f, event, ...)
       if not ok then errors[#errors + 1] = tostring(err) end
     end
@@ -98,6 +106,7 @@ CRT.ConsumablesTools = { ShowText = function(_, title, text) shown = { title = t
 local UI = {}
 CRT.UI = UI
 function UI:RegisterLayer() end
+function UI:Layer() return "DIALOG" end
 function UI.Tint() end
 function UI.ThemedText(fs, build) fs:SetText(build()) end
 function UI.BadText(s) return s end
@@ -136,16 +145,23 @@ inCombat = false
 LH:SetEnabled(false)
 check("off: hidden, alpha 0", not banner.shown and banner.alpha == 0)
 
--- the code never compares the curve's result: it is only checked with type() and passed to SetAlpha
+-- the code never compares the curve's result: it is only checked with type() and passed to SetAlpha. The name is
+-- whatever local receives UnitHealthPercent's result in Update.
 local update = lowSrc:match("function LowHealth:Update%(%).-\\nend\\r?\\n")
 check("Update is in the file", update ~= nil)
-if update then
-  local bad = update:match("alpha%s*[=~<>]=") or update:match("alpha%s*[<>]") or update:match("[=~<>]=%s*alpha") or update:match("%.%.%s*alpha") or update:match("tostring%(alpha%)")
-  check("Update never compares, joins or converts the curve's result", bad == nil, bad)
+local name = update and update:match("local%s+[%w_]+%s*,%s*([%w_]+)%s*=%s*pcall%(%s*UnitHealthPercent")
+check("the local that gets the curve's result is found", name ~= nil)
+if update and name then
+  local n = name:gsub("%p", "%%%0")
+  local bad = update:match("[^%w_]" .. n .. "%s*[=~<>]=") or update:match("[^%w_]" .. n .. "%s*[<>]") or update:match("[=~<>]=%s*" .. n .. "[^%w_]")
+    or update:match("%.%.%s*" .. n .. "[^%w_]") or update:match("[^%w_]" .. n .. "%s*%.%.") or update:match("tostring%(%s*" .. n .. "%s*%)")
+    or update:match("[%[]%s*" .. n .. "%s*%]") or update:match("#%s*" .. n .. "[^%w_]")
+  check("Update never compares, joins, converts or indexes by the curve's result (" .. name .. ")", bad == nil, bad)
 end
 
 -- The dev probe -----------------------------------------------------------------------------------------
 LH:SetEnabled(true)
+CRT.db.qol.lowHealth.position = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 41 }
 local okP, errP = pcall(function() assert(load(probeSrc, "@LowHealthProbe.lua"))("CowfeeRaidTools", CRT) end)
 check("LowHealthProbe.lua loads", okP, errP)
 local P = CRT.LowHealthProbe
@@ -159,7 +175,9 @@ CombatAudioAlertManager:SetHealthPulseSoundKit(SECRET)
 CombatAudioAlertManager:SetHealthPulseSoundKit(12345)
 CombatAudioAlertManager:SetHealthPulseSoundKit(nil)
 CombatAudioAlertManager:StopHealthPulse()
-fire("UNIT_HEALTH", SECRET) -- even the unit hidden
+local beforeTarget = #CRT.db.dev.lowhpProbe.last.lines
+fire("UNIT_HEALTH", "target") -- another unit's health: the probe listens to yours only
+check("the probe hears only your health events", #CRT.db.dev.lowhpProbe.last.lines == beforeTarget, #CRT.db.dev.lowhpProbe.last.lines - beforeTarget)
 inCombat = false
 fire("PLAYER_REGEN_ENABLED")
 check("no error from the probe, whatever was secret", #errors == 0, errors[1])
@@ -169,7 +187,10 @@ check("the log: the curve result's secret-ness, the banner's path and the combat
 check("the log: each pulse call, a secret kit told apart", text:find("pulse kit <secret number>", 1, true) and text:find("pulse kit 12345", 1, true)
   and text:find("pulse kit nil", 1, true) and text:find("pulse stop", 1, true), text)
 check("the log: the game's pulse settings", text:find("CAAEnabled 0", 1, true) and text:find("CAAPulsePlayerHealthPercent 0", 1, true), text)
-check("the log: a hidden unit is logged, not read", text:find("UNIT_HEALTH <secret number>", 1, true), text)
+check("the log: whether comparing the curve result with nil errors, in a pcall", text:find("nil compare ok", 1, true) or text:find("nil compare error", 1, true), text)
+check("the log: the banner's setting, shown and visible, layer and strata, and saved anchor",
+  text:find("enabled true", 1, true) and text:find("shown true", 1, true) and text:find("visible true", 1, true)
+  and text:find("strata DIALOG", 1, true) and text:find("layer DIALOG", 1, true) and text:find("anchor UIParent CENTER", 1, true), text)
 -- repeats of the same line are counted, not logged again
 local before = #CRT.db.dev.lowhpProbe.last.lines
 fire("UNIT_HEALTH", "player") fire("UNIT_HEALTH", "player") fire("UNIT_HEALTH", "player")
@@ -182,14 +203,43 @@ CombatAudioAlertManager:SetHealthPulseSoundKit(777)
 fire("UNIT_HEALTH", "player")
 check("off: nothing more is logged (the hooks stay, quiet)", #CRT.db.dev.lowhpProbe.last.lines == n and CRT.db.dev.lowhpProbe.on == false)
 check("the probe changes no game setting", cvars.CAAEnabled == "0" and cvars.CAAPulsePlayerHealthPercent == "0")
+
+-- The sound (QoL/LowHealthSound.lua): CRT never turns the game's pulse on; old WIP settings are only put back --------
+local sets = {}
+C_CVar.SetCVar = function(n, v) sets[#sets + 1] = n .. "=" .. tostring(v) cvars[n] = tostring(v) end
+Enum.CombatAudioAlertCategory = { PlayerHealthPulse = 3 }
+Enum.CombatAudioAlertSpecSetting = { SayIfTargeted = 1 }
+local volumes = {}
+C_CombatAudioAlert = { GetCategoryVolume = function() return 100 end, SetCategoryVolume = function(_, v) volumes[#volumes + 1] = v end,
+  GetSpecSetting = function() return 0 end, SetSpecSetting = function() end }
+local lhs = CRT.db.qol.lowHealth
+lhs.enabled, lhs.sound, lhs.soundChoice, lhs.soundChannel, lhs.soundOnce, lhs.soundVolume = true, true, "crt:Devices-AirHorn", "Master", false, 40
+local okS, errS = pcall(function() assert(load(soundSrc, "@LowHealthSound.lua"))("CowfeeRaidTools", CRT) end)
+check("LowHealthSound.lua loads", okS, errS)
+local S = CRT.LowHealthSound
+S:Apply()
+LH:Apply()
+check("with the sound ticked from before, no CAA setting is touched", #sets == 0 and #volumes == 0, table.concat(sets, ","))
+check("the old saved fields stay", lhs.sound == true and lhs.soundChoice == "crt:Devices-AirHorn" and lhs.soundChannel == "Master" and lhs.soundOnce == false and lhs.soundVolume == 40)
+-- someone who had the old (pre-WIP) sound on: their game settings come back once, and CAA is never turned on
+cvars.CAAEnabled, cvars.CAAPulsePlayerHealthPercent = "1", "6"
+lhs.caaSaved = { CAAEnabled = "0", CAAPulsePlayerHealthPercent = "0", speech = { CAASayCombatStart = "1" }, volume = 80 }
+S:Apply()
+check("old settings put back on load", cvars.CAAEnabled == "0" and cvars.CAAPulsePlayerHealthPercent == "0" and cvars.CAASayCombatStart == "1" and lhs.caaSaved == nil, table.concat(sets, ","))
+local turnedOn = false
+for _, s in ipairs(sets) do if s == "CAAEnabled=1" then turnedOn = true end end
+check("CAA is never turned on", not turnedOn)
+local n0 = #sets
+S:Apply() LH:Apply()
+check("once only: nothing more after", #sets == n0, #sets - n0)
 check("no error at all", #errors == 0, errors[1])
 out(passed .. " passed, " .. failed .. " failed")
 if failed > 0 then error(failed .. " checks failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-for (const f of ['CRT_Modules/QoL/LowHealth.lua', 'CRT_Dev/Dev/LowHealthProbe.lua']) {
+for (const f of ['CRT_Modules/QoL/LowHealth.lua', 'CRT_Dev/Dev/LowHealthProbe.lua', 'CRT_Modules/QoL/LowHealthSound.lua']) {
   const p = path.join(d, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : ''));
 }
-if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
