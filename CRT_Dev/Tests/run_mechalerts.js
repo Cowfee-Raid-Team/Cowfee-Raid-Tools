@@ -2673,7 +2673,7 @@ end)
 check("mech: a split reminder's aura sound is wanted once", function()
   reset()
   local Au = CRT.SoundAuras
-  local sound = CRT.Sound:Choices({ none = "None" })[2].key
+  local sound = CRT.Sound.Flat(CRT.Sound:Choices({ none = "None" }))[2].key
   local id = R:Save(ENC, nil, { spellID = 777, boss = "Test Boss", text = "Real Name", enabled = true, auraSound = true, sound = sound })
   assert(R.SplitOne(ENC, id), "split")
   Au:SyncReminders()

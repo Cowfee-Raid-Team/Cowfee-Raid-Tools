@@ -217,10 +217,18 @@ local function setCheck(c, on) c.checked = on c.OnClick(c) end
 local function pick(label, key) dropdowns[label].opts.set(key) end
 local function value(label) return dropdowns[label].opts.get() end
 local function optionList(row) local list = type(row.opts.options) == "function" and row.opts.options() or row.opts.options return list end
-local function optionKeys(row)
-  local t = {} for i, o in ipairs(optionList(row)) do t[i] = tostring(o.key) end return table.concat(t, ",")
+-- a sound list's choices are in submenus (#1241): every choice, the submenus' too, headings left out
+local function flatOptions(row)
+  local out = {}
+  for _, o in ipairs(optionList(row)) do
+    if o.children then for _, c in ipairs(o.children) do out[#out + 1] = c end elseif not o.title then out[#out + 1] = o end
+  end
+  return out
 end
-local function hasOption(row, key) for _, o in ipairs(optionList(row)) do if o.key == key then return o end end end
+local function optionKeys(row)
+  local t = {} for i, o in ipairs(flatOptions(row)) do t[i] = tostring(o.key) end return table.concat(t, ",")
+end
+local function hasOption(row, key) for _, o in ipairs(flatOptions(row)) do if o.key == key then return o end end end
 local function message() return win().messageText.text or "" end
 local function noteRaw(id) return Notes:Get(id).raw end
 

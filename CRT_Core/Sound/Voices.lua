@@ -44,7 +44,7 @@ Sound.VOICE_LABELS = {
 -- length, from its mp3 frames (run_voices.js reads them again from the files).
 Sound.VOICES = {
     {
-        key = "xavier", label = "Xavier (male)", folder = "Xavier",
+        key = "xavier", label = "Male01", folder = "Xavier",
         seconds = {
             ["0"] = 0.73, ["1"] = 0.76, ["2"] = 0.71, ["3"] = 0.76, ["4"] = 0.73, ["5"] = 0.81, ["6"] = 0.81,
             ["7"] = 0.81, ["8"] = 0.63, ["9"] = 0.78, ["5seconds321"] = 4.75, Adds = 1.07, Beam = 0.91, Blue = 0.86,
@@ -60,7 +60,7 @@ Sound.VOICES = {
         },
     },
     {
-        key = "lola", label = "Lola (female)", folder = "Lola",
+        key = "lola", label = "Female01", folder = "Lola",
         seconds = {
             ["0"] = 0.57, ["1"] = 0.50, ["2"] = 0.55, ["3"] = 0.73, ["4"] = 0.57, ["5"] = 0.63, ["6"] = 0.57,
             ["7"] = 0.57, ["8"] = 0.52, ["9"] = 0.55, ["5seconds321"] = 4.08, Adds = 0.71, Beam = 0.71, Blue = 0.71,
@@ -119,7 +119,7 @@ for _, voice in ipairs(Sound.VOICES) do
             voice.words[#voice.words + 1] = word
             voice.clips[Sound.WordKey(word)] = { ref = "crt:" .. name, seconds = voice.seconds[word] }
             Sound.BUNDLED[#Sound.BUNDLED + 1] = { name = name, file = voice.folder .. "\\" .. word .. ".mp3",
-                label = wordLabel(word), group = voice.folder }
+                label = wordLabel(word), group = voice.label, groupId = voice.key }
         end
     end
 end
@@ -170,12 +170,12 @@ local function listed(items)
     return string.format(TEXT.listAnd, table.concat(items, ", ", 1, #items - 1), items[#items])
 end
 
--- For the (?) texts, read from the table each time: the voices' names ("Xavier and Lola"), a line per voice
--- that lacks words ("Lola has no Void, West or Yellow, ..."; none does now), and that clips take no volume.
+-- For the (?) texts, read from the table each time: the voices' names as shown ("Male01 and Female01"), a line per
+-- voice that lacks words ("Female01 has no Void, West or Yellow, ..."; none does now), and that clips take no volume.
 function Sound:VoiceNames()
     local names = {}
     for _, voice in ipairs(Sound.VOICES) do
-        names[#names + 1] = voice.folder
+        names[#names + 1] = voice.label
     end
     return listed(names)
 end
@@ -187,7 +187,7 @@ function Sound:VoiceLacks()
         if #lacks > 0 then
             local words = #lacks < 2 and lacks[1]
                 or string.format(TEXT.listOr, table.concat(lacks, ", ", 1, #lacks - 1), lacks[#lacks])
-            lines[#lines + 1] = string.format(#lacks < 2 and TEXT.lacksOne or TEXT.lacks, voice.folder, words)
+            lines[#lines + 1] = string.format(#lacks < 2 and TEXT.lacksOne or TEXT.lacks, voice.label, words)
         end
     end
     return table.concat(lines, "\n\n")

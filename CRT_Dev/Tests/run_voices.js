@@ -85,7 +85,7 @@ if type(Sound.VOICES) ~= "table" or #Sound.VOICES == 0 then print(passed .. " pa
 local byKey = {}
 for _, v in ipairs(Sound.VOICES) do byKey[v.key] = v end
 local X, Lo = byKey.xavier, byKey.lola
-check("Xavier and Lola, labelled", X and Lo and X.label == "Xavier (male)" and Lo.label == "Lola (female)" and X.folder == "Xavier" and Lo.folder == "Lola")
+check("the voices are shown as Male01 and Female01; their keys and folders stay", X and Lo and X.label == "Male01" and Lo.label == "Female01" and X.folder == "Xavier" and Lo.folder == "Lola")
 for _, v in ipairs(Sound.VOICES) do
   local files = onDisk[v.folder] or {}
   local missing, extra, listed = {}, {}, {}
@@ -118,23 +118,35 @@ check("crt:Lola-Run-Out resolves", Sound:Resolve("crt:Lola-Run-Out") ~= nil)
 check("crt:Lola-Void resolves", Sound:Resolve("crt:Lola-Void") ~= nil)
 check("a word no voice has is no sound", Sound:Resolve("crt:Lola-Nope") == nil)
 local list = Sound:Choices({ none = "None" })
-local order, at = {}, {}
-for i, c in ipairs(list) do if c.title then order[#order + 1] = c.label at[c.label] = i end end
-check("titles Xavier, Lola, then Game sounds", table.concat(order, ",") == "Xavier,Lola,Game sounds", table.concat(order, ","))
-check("None comes first", list[1].key == "none")
-check("Xavier's clips under Xavier", list[at.Xavier + 1].key == "crt:Xavier-0" and at.Lola - at.Xavier - 1 == 70, list[at.Xavier + 1].key)
-check("Lola's clips under Lola", list[at.Lola + 1].key == "crt:Lola-0" and at["Game sounds"] - at.Lola - 1 == 70)
-check("game sounds after the title", list[at["Game sounds"] + 1].key == "kit:RAID_WARNING")
+local top = {}
+for _, c in ipairs(list) do top[#top + 1] = c.title and ("#" .. c.label) or c.children and (c.label .. ">") or c.label end
+-- without Effects.lua here: Voices, then More with the game sounds (no shared sounds, no files of yours)
+check("the top level: None, Voices with Male01 and Female01, More with Game sounds", table.concat(top, ",") == "None,#Voices,Male01>,Female01>,#More,Game sounds>", table.concat(top, ","))
+local function groupOf(l, label) for _, c in ipairs(l) do if c.children and c.label == label then return c end end end
+local male, female = groupOf(list, "Male01"), groupOf(list, "Female01")
+check("Male01's clips in its submenu", male and #male.children == 70 and male.children[1].key == "crt:Xavier-0", male and #male.children)
+check("Female01's clips in its submenu", female and #female.children == 70 and female.children[1].key == "crt:Lola-0")
+check("the game sounds in theirs", groupOf(list, "Game sounds").children[1].key == "kit:RAID_WARNING")
 local labels = {}
-for _, c in ipairs(list) do if c.key then labels[c.key] = c.label end end
+for _, c in ipairs(Sound.Flat(list)) do labels[c.key] = c.label end
+check("a voice clip names its voice", Sound:Label("crt:Xavier-Soak") == "Male01: Soak" and Sound:Label("crt:Lola-Soak") == "Female01: Soak", Sound:Label("crt:Xavier-Soak"))
 check("5seconds321's label is in the data", type(Sound.VOICE_LABELS) == "table" and Sound.VOICE_LABELS["5seconds321"] ~= nil
   and labels["crt:Xavier-5seconds321"] == Sound.VOICE_LABELS["5seconds321"])
 check("clip labels read as words", labels["crt:Xavier-Run-Out"] == "Run out" and labels["crt:Xavier-HealAbsorb"] == "Heal absorb" and labels["crt:Lola-Soak"] == "Soak",
   tostring(labels["crt:Xavier-Run-Out"]) .. " " .. tostring(labels["crt:Xavier-HealAbsorb"]))
 local filesOnly = Sound:Choices({ filesOnly = true })
 local t2 = {}
-for _, c in ipairs(filesOnly) do if c.title then t2[#t2 + 1] = c.label end end
-check("files only: the voices without a Game sounds title", table.concat(t2, ",") == "Xavier,Lola", table.concat(t2, ","))
+for _, c in ipairs(filesOnly) do t2[#t2 + 1] = c.title and ("#" .. c.label) or c.label end
+check("files only (aura sounds): no Game sounds, and More hidden with nothing in it", table.concat(t2, ",") == "#Voices,Male01,Female01", table.concat(t2, ","))
+-- your files and shared sounds: their own groups under More, each shown only with something in it
+CRT.db.sound.custom = { "horn.ogg" }
+local withYours = Sound:Choices()
+local yours = groupOf(withYours, "Yours")
+check("your files under More > Yours", yours and #yours.children == 1 and yours.children[1].key == "file:horn.ogg" and yours.children[1].label == "horn.ogg",
+  yours and yours.children[1] and yours.children[1].label)
+check("a file of yours names its group", Sound:Label("file:horn.ogg") == "Yours: horn.ogg", Sound:Label("file:horn.ogg"))
+check("no Shared group without shared sounds", groupOf(withYours, "Shared") == nil)
+CRT.db.sound.custom = {}
 
 -- The speech path ---------------------------------------------------------------------------------------
 local function reset() said, played = {}, {} end
@@ -558,7 +570,7 @@ if v then
   local opts = type(v.opts.options) == "function" and v.opts.options() or v.opts.options
   local keys = {}
   for _, o in ipairs(opts) do keys[#keys + 1] = o.key .. "=" .. o.label end
-  check("its choices: Xavier, Lola, game text to speech", table.concat(keys, ",") == "xavier=Xavier (male),lola=Lola (female),tts=Game text to speech", table.concat(keys, ","))
+  check("its choices: Male01, Female01, game text to speech", table.concat(keys, ",") == "xavier=Male01,lola=Female01,tts=Game text to speech", table.concat(keys, ","))
   check("it shows the saved voice", v.opts.get() == "xavier")
   v.opts.set("lola")
   check("picking saves sound.voice", CRT.db.sound.voice == "lola")
@@ -584,7 +596,8 @@ if v then
   local was = Lo.lacks
   Lo.lacks = { "Void" }
   check("the (?) reads voice names and missing words from the voice table", read():find("West", 1, true) == nil
-    and read():find("Lola has no Void, so", 1, true) ~= nil and read():find("Xavier and Lola", 1, true) ~= nil, read())
+    and read():find("Female01 has no Void, so", 1, true) ~= nil and read():find("Male01 and Female01", 1, true) ~= nil
+    and read():find("Xavier", 1, true) == nil and read():find("Lola", 1, true) == nil, read())
   Lo.lacks = was
 end
 
@@ -594,12 +607,10 @@ hooksecurefunc = function() end
 local okLH, errLH = pcall(function() assert(load(lowHealthSrc, "@lowhealth"))("CowfeeRaidTools", CRT) end)
 check("LowHealthSound.lua loads", okLH and CRT.LowHealthSound ~= nil, errLH)
 if okLH and CRT.LowHealthSound then
-  local lh, gi, n = CRT.LowHealthSound.Choices(), nil, 0
-  for i, c in ipairs(lh) do
-    if c.title and c.label == "Game sounds" then gi = i end
-    if c.key == "pulse" then n = n + 1 end
-  end
-  check("Game pulse is first under Game sounds, once", gi and lh[gi + 1] and lh[gi + 1].key == "pulse" and n == 1, gi)
+  local lh, n = CRT.LowHealthSound.Choices(), 0
+  local game = groupOf(lh, "Game sounds")
+  for _, c in ipairs(Sound.Flat(lh)) do if c.key == "pulse" then n = n + 1 end end
+  check("Game pulse is first in the Game sounds submenu, once", game and game.children[1].key == "pulse" and n == 1, game and game.children[1].key)
 end
 print(passed .. " passed, " .. failed .. " failed")
 if failed > 0 then error(failed .. " checks failed") end

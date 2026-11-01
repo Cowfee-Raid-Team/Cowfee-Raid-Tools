@@ -12,7 +12,16 @@ local function list()
     local Sound = CRT.Sound
     CRT:Print("Sound choices (key, label):")
     for _, c in ipairs(Sound:Choices()) do
-        print(c.title and (" " .. c.label .. ":") or ("  " .. c.key .. "  " .. c.label))
+        if c.title then
+            print(" " .. c.label .. ":")
+        elseif c.children then
+            print("  " .. c.label .. " (" .. #c.children .. ")")
+            for _, child in ipairs(c.children) do
+                print("    " .. child.key .. "  " .. child.label)
+            end
+        else
+            print("  " .. c.key .. "  " .. c.label)
+        end
     end
     print("  voice: " .. Sound:VoiceKey())
     local loaded = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(Sound.MEDIA_ADDON)
