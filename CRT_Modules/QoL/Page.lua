@@ -1,7 +1,8 @@
 local ADDON, CRT = ...
 
 -- The Quality of Life page: a home for small conveniences and their settings, in CRTDB.qol with
--- defaults in Core.lua: the experimental low-health alert (QoL/LowHealth.lua), and on its own tab the
+-- defaults in Core.lua: the experimental low-health alert (QoL/LowHealth.lua; for a sound, a line points to the
+-- game's own Combat Audio Alerts pulse, since an addon can't play one for hidden health), and on its own tab the
 -- break timer's other-addon formats and bridge (QoL/BreakTimer.lua, Integrations/Breaks.lua), and on the Sounds
 -- tab the voice that speaks (sound.voice, Sound/Voices.lua) above your own sound files. The Low health,
 -- Debuffs and Break timer tabs each have a preview button for their display (UI.PreviewButton); with no
@@ -20,14 +21,10 @@ local TEXT = {
     lowHealthTag = "(experimental)",
     lowHealthEnable = "Show a LOW HEALTH banner when my health is low",
     lowHealthThreshold = "Show it at or under this much health:",
-    lowHealthSound = "Also play the game's low-health pulse sound  |cff999999(WIP)|r",
-    lowHealthSoundWIP = "Work in progress: the low-health sound doesn't work yet, so it is off. The game hides its low-health decision from addons, and its Combat Audio Alerts errored when turned on. Any game setting it changed has been put back.",
-    lowHealthSoundNote = "Turns on the game's own low-health pulse (Combat Audio Alerts): it loops while your health is under your threshold, faster as it drops, and works in combat. The pulse works in 10% steps, so your threshold is rounded (35% becomes 40%). Unticking this puts the game's settings back.",
-    lowHealthVolume = "Volume",
-    lowHealthChoice = "Sound",
-    lowHealthChoiceNote = "The game's pulse loops and speeds up as your health drops; any other sound repeats, faster at each lower 10%. Your own sounds are on the Sounds tab. Volume only changes the game's sounds.",
-    lowHealthOnce = "Play once each time my health drops under",
-    lowHealthOnceNote = "On: the sound plays once, in full, each time your health drops under the threshold. Off: it repeats until you heal, faster as your health drops. The game's pulse keeps looping either way.",
+    -- the sound: a pointer to the game's own pulse (#1242); CRT plays none and changes none of its settings
+    lowHealthSound = "Low-health sound",
+    lowHealthSoundLine = "For a sound when your health is low, turn on the game's own low-health pulse in Options > Accessibility > Combat Audio Alerts, and set its health threshold near your banner's.",
+    lowHealthSoundNote = "An addon can't play its own sound for this in Midnight: the game hides your health from addons, and every way to play a sound refuses that hidden value. The game's own pulse can, since it is the game's code. It loops while your health is under its threshold and gets faster as it drops.",
     voice = "Voice",
     voiceNote = "The voice that reads alerts and note lines out. %s say their words with recorded clips: a whole line such as Soak, Spread or Run out, and the numbers of a count. Any other line is read by the game's text to speech.",
     voiceTts = "Game text to speech reads every line with the voice picked in the game's Text to Speech settings, at the Raid Notes speech rate and volume.",
@@ -43,17 +40,13 @@ local TEXT = {
     soundsMedia = "CowfeeRaidTools_Media: %s",
     soundsFromManifest = "from Sounds.lua",
     soundsTyped = "typed here",
-    lowHealthOutput = "Output",
-    lowHealthOutputNote = "Game default plays the sound on the game's voice output, like its own pulse. Pick a channel to follow that channel's volume and mute instead. Sounds other than the game's pulse are played by the addon when the pulse starts or stops, so they work in combat.",
-    lowHealthTest = "Test sound",
-    lowHealthStop = "Stop sound",
     breakTitle = "Break timer",
     breakNote = "/crt break 10 starts a 10 minute break; /crt break 0 cancels it. From the raid leader or an assistant it reaches the whole group. Breaks the leader or an assistant starts in Northern Sky, BigWigs, DBM or MRT show here too.",
     breakAlso = "Also send to",
     breakAlsoNote = "When you start or cancel a break as the leader or an assistant, it is also sent in each ticked format, so raiders on those addons get it in their own break bar. Northern Sky needs NSRT loaded here; BigWigs and DBM are sent even if you don't run them.",
     breakBridge = "Bridge breaks between addons (raid leader)",
     breakBridgeNote = "When you are the raid leader and someone starts or cancels a break in another addon, your CRT sends the same break on in the formats it didn't arrive in, so everyone sees it. It waits a moment to see which formats came in, then sends each missing one once.",
-    lowHealthNote = "Experimental: in combat the game hides your health from addons, so the banner lets the game compare it to your setting. If it misbehaves, untick it here or type /crt lowhp off. Use Preview banner to place the banner.",
+    lowHealthNote = "Off until you tick \"Show a LOW HEALTH banner when my health is low\" below (or type /crt lowhp on).\n\nExperimental: the game hides your health from addons, so the banner lets the game compare it to your setting. If it misbehaves, untick it here or type /crt lowhp off. Use Preview banner to place the banner.",
     lowHealthPreview = "Preview banner",
     lowHealthPreviewTip = "Shows the LOW HEALTH banner with its drag box so you can drag it into place. Other previews stay as they are.",
     breakPreview = "Preview break timer",
@@ -88,8 +81,10 @@ end
 
 -- Both sliders line up: the labels share one width. The sliders are Edit Mode sliders (UI/Controls.lua).
 local SLIDER_LABEL_W = 230
--- The preview buttons: Low health's under its last row (Play once, top - 192), Break timer's under the bridge row.
-local LOWHEALTH_PREVIEW_Y = 230
+-- The preview buttons: Low health's under its sound line (at top - 80, up to two lines of SOUND_LINE_W), Break
+-- timer's under the bridge row.
+local LOWHEALTH_PREVIEW_Y = 124
+local SOUND_LINE_W = 520
 local BREAK_PREVIEW_GAP = 44
 
 local function percent(v)
@@ -149,180 +144,14 @@ local function buildLowHealth(pf, top)
     slider:SetPoint("TOPLEFT", 10, top - 42)
     controls[#controls + 1] = slider
 
-    -- The sound: the game's own low-health pulse.
-    local Sound = CRT.LowHealthSound
-    local function alertOn()
-        return settings().enabled
-    end
-    local sound = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
-    sound:SetSize(24, 24)
-    sound:SetPoint("TOPLEFT", 6, top - 76)
-    local soundText = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    soundText:SetPoint("LEFT", sound, "RIGHT", 1, 0)
-    soundText:SetText(TEXT.lowHealthSound)
-    UI.HelpRight(soundText, TEXT.lowHealthSound, function()
-        return Sound.WIP and TEXT.lowHealthSoundWIP or TEXT.lowHealthSoundNote
-    end)
-    sound:SetScript("OnClick", function(self)
-        settings().sound = self:GetChecked() and true or false
-        Sound:Apply()
-        refresh()
-    end)
-    sound.refresh = function()
-        local on = alertOn() and Sound:Available() and not Sound.WIP
-        sound:SetChecked((settings().sound and not Sound.WIP) and true or false)
-        sound:SetEnabled(on)
-        local c = on and 1 or 0.5
-        soundText:SetTextColor(c, c, c)
-    end
-    controls[#controls + 1] = sound
-
-    local function soundOn()
-        return alertOn() and settings().sound and not Sound.WIP
-    end
-    -- A Play button inside each item of the Sound and Output menus: the Sound menu plays each sound on
-    -- your output, the Output menu plays your sound on each output. Click again to stop; it stops by
-    -- itself after 3 seconds.
-    local function playButton(choiceOf, outputOf)
-        return function(button, option)
-            local choiceKey, outputKey = choiceOf(option), outputOf(option)
-            local hit = button:AttachFrame("Button")
-            hit:SetSize(40, 18)
-            hit:SetPoint("RIGHT", -4, 0)
-            hit:EnableMouse(true)
-            local label = button:AttachFontString()
-            label:SetFontObject(CRTFontButtonSmall)
-            label:SetPoint("CENTER", hit, "CENTER")
-            local token = {}
-            hit.crtToken = token
-            local function show()
-                if Sound:IsPreviewing(choiceKey, outputKey) then
-                    label:SetText(UI.BadText("Stop"))
-                else
-                    label:SetText("|cff80c0ffPlay|r")
-                end
-            end
-            show()
-            hit:SetScript("OnClick", function()
-                Sound:Preview(choiceKey, outputKey, function()
-                    -- The menu reuses its pieces, so only update this label if it is still this item's.
-                    if hit.crtToken == token then
-                        show()
-                    end
-                end)
-                show()
-            end)
-            if button.fontString then
-                button.fontString:SetPoint("RIGHT", hit, "LEFT", -6, 0)
-            end
-            local textWidth = button.fontString and button.fontString:GetUnboundedStringWidth() or 120
-            return textWidth + 80, 20
-        end
-    end
-
-    local choice = UI.Dropdown(pf, TEXT.lowHealthChoice, {
-        options = Sound.Choices,
-        decorate = playButton(function(option)
-            return option.key
-        end, function()
-            return settings().soundChannel or "game"
-        end),
-        labelWidth = SLIDER_LABEL_W,
-        width = 200,
-        maxHeight = UI.SOUND_MENU_H,
-        get = function()
-            return settings().soundChoice or "pulse"
-        end,
-        set = function(key)
-            settings().soundChoice = key
-            Sound:Apply()
-            refresh()
-        end,
-        enabledIf = soundOn,
-    })
-    choice:SetPoint("TOPLEFT", 10, top - 100)
-    controls[#controls + 1] = choice
-    UI.HelpRight(choice, TEXT.lowHealthChoice, TEXT.lowHealthChoiceNote)
-
-    local output = UI.Dropdown(pf, TEXT.lowHealthOutput, {
-        options = Sound.Outputs,
-        decorate = playButton(function()
-            return settings().soundChoice or "pulse"
-        end, function(option)
-            return option.key
-        end),
-        labelWidth = SLIDER_LABEL_W,
-        width = 200,
-        get = function()
-            return settings().soundChannel or "game"
-        end,
-        set = function(key)
-            settings().soundChannel = key
-            Sound:Apply()
-            refresh()
-        end,
-        enabledIf = soundOn,
-    })
-    output:SetPoint("TOPLEFT", 10, top - 130)
-    controls[#controls + 1] = output
-    UI.HelpRight(output, TEXT.lowHealthOutput, TEXT.lowHealthOutputNote)
-
-    local volume = UI.Slider(pf, TEXT.lowHealthVolume, {
-        min = 0,
-        max = 100,
-        step = 5,
-        labelWidth = SLIDER_LABEL_W,
-        width = 200,
-        format = percent,
-        get = function()
-            return settings().soundVolume or 100
-        end,
-        set = function(v)
-            settings().soundVolume = v
-            Sound:Apply()
-        end,
-        enabledIf = soundOn,
-    })
-    volume:SetPoint("TOPLEFT", 10, top - 160)
-    controls[#controls + 1] = volume
-
-    -- Play once: the sound plays one time per dip under the threshold (not the game's looping pulse).
-    local once = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
-    once:SetSize(24, 24)
-    once:SetPoint("TOPLEFT", 6, top - 192)
-    local onceText = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    onceText:SetPoint("LEFT", once, "RIGHT", 1, 0)
-    onceText:SetText(TEXT.lowHealthOnce)
-    UI.HelpRight(onceText, TEXT.lowHealthOnce, TEXT.lowHealthOnceNote)
-    once:SetScript("OnClick", function(self)
-        settings().soundOnce = self:GetChecked() and true or false
-        Sound:StopOurs()
-        refresh()
-    end)
-    once.refresh = function()
-        local on = soundOn() and (settings().soundChoice or "pulse") ~= "pulse"
-        once:SetChecked(settings().soundOnce ~= false)
-        once:SetEnabled(on and true or false)
-        local c = on and 1 or 0.5
-        onceText:SetTextColor(c, c, c)
-    end
-    controls[#controls + 1] = once
-
-    local test = smallButton(pf, TEXT.lowHealthTest)
-    test:SetPoint("LEFT", volume, "RIGHT", 12, 0)
-    -- Test sound plays your choice for 3 seconds; while it plays the button stops it.
-    test:SetScript("OnClick", function()
-        local started = Sound:Test(function()
-            test:SetText(TEXT.lowHealthTest)
-        end)
-        test:SetText(started and TEXT.lowHealthStop or TEXT.lowHealthTest)
-    end)
-    -- Greyed out with the rest of the sound settings, and while the sound is a work in progress.
-    controls[#controls + 1] = {
-        refresh = function()
-            test:SetEnabled(soundOn() and true or false)
-        end,
-    }
+    -- The sound: a line pointing to the game's own low-health pulse, with a (?) on why CRT plays none (#1242). CRT never
+    -- turns the pulse on or changes its settings (QoL/LowHealthSound.lua only puts back what an older version changed).
+    local soundLine = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    soundLine:SetPoint("TOPLEFT", 10, top - 80)
+    soundLine:SetWidth(SOUND_LINE_W)
+    soundLine:SetJustifyH("LEFT")
+    soundLine:SetText(TEXT.lowHealthSoundLine)
+    UI.HelpRight(soundLine, TEXT.lowHealthSound, TEXT.lowHealthSoundNote)
 
     local preview = UI.PreviewButton(pf, TEXT.lowHealthPreview, { "lowhealth" }, { tooltip = TEXT.lowHealthPreviewTip })
     preview:SetPoint("TOPLEFT", 8, top - LOWHEALTH_PREVIEW_Y)

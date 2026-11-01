@@ -529,6 +529,20 @@ if v then
   Lo.lacks = was
 end
 
+-- Quality of Life > Low health: no sound controls of its own, a line pointing to the game's pulse (#1242)
+do
+  local pointer
+  for _, h in ipairs(helps) do if h.title == "Low-health sound" then pointer = h end end
+  local line = pointer and rawget(pointer.target, "text") or ""
+  check("Low health points to the game's pulse in Combat Audio Alerts", pointer ~= nil and line:find("Options > Accessibility > Combat Audio Alerts", 1, true) ~= nil, line)
+  local tip = pointer and (type(pointer.text) == "function" and pointer.text() or pointer.text) or ""
+  check("its (?) says why an addon can't play its own sound", tip:find("hides your health from addons", 1, true) ~= nil, tip)
+  check("the old sound controls are gone", dropdowns.Output == nil and dropdowns.Sound == nil, tostring(dropdowns.Output) .. " " .. tostring(dropdowns.Sound))
+  local wip = false
+  for _, h in ipairs(helps) do if tostring(h.title):find("WIP", 1, true) then wip = true end end
+  check("no (WIP) row", not wip)
+end
+
 -- The low-health Sound list: the game's pulse sits under the Game sounds heading
 CRT.LowHealthSound = nil
 hooksecurefunc = function() end
