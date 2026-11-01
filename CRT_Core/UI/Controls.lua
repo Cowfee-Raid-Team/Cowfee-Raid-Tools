@@ -156,7 +156,20 @@ end
 -- and filesOnly; options defaults to the engine's list. opts.help true adds the (?) on where your own
 -- files go, as row.help, right of the dropdown (or of its Play button). opts.playButton true adds a small Play button after the
 -- closed dropdown, as row.play, that plays the chosen sound once (nothing else: no alert, bar or speech).
+-- The open list scrolls past UI.SOUND_MENU_H pixels unless opts.maxHeight says otherwise: the voices' clips
+-- make it long.
 UI.SOUND_PLAY_W, UI.SOUND_PLAY_GAP = 44, 6
+UI.SOUND_MENU_H = 400
+UI.SOUND_HELP_VOICES = "The %s voice clips, under each voice's name, then the game sounds."
+
+-- The (?) text, with the voices' names from the voice table (Sound/Voices.lua).
+function UI.SoundHelp()
+    local Sound = CRT.Sound
+    if not (Sound and Sound.VoiceNames and Sound:VoiceNames() ~= "") then
+        return UI.SOUND_HELP
+    end
+    return string.format(UI.SOUND_HELP_VOICES, Sound:VoiceNames()) .. "\n\n" .. UI.SOUND_HELP
+end
 UI.SOUND_HELP = "Game sounds, sounds shared by other addons, and your own files.\n\nYour own .ogg or .mp3 files go in the CowfeeRaidTools_Media addon's Sounds folder: Quality of Life > Sounds shows how, with a Test button for each file.\n\nPlay in the list plays the sound on your sound channel (General Settings)."
 
 function UI.SoundDropdown(parent, text, opts)
@@ -167,6 +180,7 @@ function UI.SoundDropdown(parent, text, opts)
     o.options = opts.options or function()
         return CRT.Sound:Choices({ none = opts.none, filesOnly = opts.filesOnly })
     end
+    o.maxHeight = opts.maxHeight or UI.SOUND_MENU_H
     o.decorate = function(button, option)
         if option.key == "none" then
             return nil
@@ -221,7 +235,7 @@ function UI.SoundDropdown(parent, text, opts)
     end
     if opts.help then
         -- after the closed dropdown, or after its Play button
-        row.help = UI.HelpRight(row.play or row, text ~= "" and text or "Sound", UI.SOUND_HELP, { parent = parent })
+        row.help = UI.HelpRight(row.play or row, text ~= "" and text or "Sound", UI.SoundHelp, { parent = parent })
     end
     return row
 end

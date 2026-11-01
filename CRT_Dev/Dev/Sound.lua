@@ -12,8 +12,9 @@ local function list()
     local Sound = CRT.Sound
     CRT:Print("Sound choices (key, label):")
     for _, c in ipairs(Sound:Choices()) do
-        print("  " .. c.key .. "  " .. c.label)
+        print(c.title and (" " .. c.label .. ":") or ("  " .. c.key .. "  " .. c.label))
     end
+    print("  voice: " .. Sound:VoiceKey())
     local loaded = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(Sound.MEDIA_ADDON)
     print("  " .. Sound.MEDIA_ADDON .. ": " .. (loaded and "loaded" or "not installed") .. ", voice " .. tostring(Sound:Voice())
         .. ", channel " .. Sound:Channel())

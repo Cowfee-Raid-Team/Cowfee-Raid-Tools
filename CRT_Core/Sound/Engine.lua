@@ -5,15 +5,16 @@ local ADDON, CRT = ...
 -- A sound is named by a reference string:
 --   kit:<NAME or id>   a game sound kit (SOUNDKIT name, such as kit:RAID_WARNING, or its number)
 --   lsm:<name>         a sound another addon shares through LibSharedMedia-3.0 (the library isn't shipped)
---   crt:<name>         a sound shipped with the addon (none yet: Sound.BUNDLED)
+--   crt:<name>         a sound shipped with the addon (Sound.BUNDLED: the voice packs' clips, Sound/Voices.lua)
 --   file:<name>        your own .ogg or .mp3 file, in the CowfeeRaidTools_Media companion addon's Sounds
 --                      folder
 --   tts:<text>         text to speech
 -- Older saved values (a bare kit name such as RAID_WARNING, "none") are read through Sound.Normalize.
 --
 -- Play(ref, opts) returns the game's handle (nil when it didn't play), Stop(handle) stops it,
--- Speak(text, opts) reads text out, PlayOrSpeak(ref, text) speaks the text when the sound didn't play,
--- and Choices(opts) is the list every sound dropdown shows: game sounds, the addon's own, shared, yours.
+-- Speak(text, opts) reads text out (with the chosen voice's clip when one says the whole text), PlayOrSpeak(ref,
+-- text) speaks the text when the sound didn't play, and Choices(opts) is the list every sound dropdown shows: the
+-- voices' clips under each voice's name, game sounds, the addon's other own, shared, yours.
 -- Sounds play on the General Settings channel unless opts.channel says otherwise.
 --
 -- Your own files: the game can't list a folder, so a file is known by name, from the companion addon's
@@ -53,9 +54,14 @@ for _, k in ipairs(Sound.KITS) do
     kitByName[k.name] = k
 end
 
--- Sounds shipped with the addon, as { name, file, label } under BUNDLED_FOLDER. None yet: only audio
--- made for the addon or licensed for it may go here.
+-- Sounds shipped with the addon, as { name, file, label, group } under BUNDLED_FOLDER; group is the title the
+-- sound lists show it under. Sound/Voices.lua adds the voice packs' clips. Only audio made for the addon or
+-- licensed for it may go here.
 Sound.BUNDLED = {}
+
+local TEXT = {
+    gameSounds = "Game sounds",
+}
 
 local function isSecret(value)
     return issecretvalue and issecretvalue(value) or false
@@ -270,9 +276,26 @@ function Sound:Voice()
     return voiceCache or nil
 end
 
--- Reads text out. opts: rate (-10 to 10), volume (0 to 100). A secret text is passed on as it is: the
--- game's speech takes it. Returns true when the game took it, false and why when not.
+local clipHandle -- the last voice clip Speak played, which StopSpeaking stops
+
+-- Reads text out. opts: rate (-10 to 10), volume (0 to 100), voice (a voice's key; the saved one when
+-- not given). When a clip of the voice says the whole text (Sound/Voices.lua, ClipFor), the clip plays on the
+-- sound channel instead, at the channel's volume (the game takes no volume for a file, so opts.volume and
+-- rate are text to speech's only); a clip that didn't play falls back to text to speech. A secret text is
+-- passed on as it is: the game's speech takes it. Returns true when the game took it (true, "clip" and the
+-- clip's seconds for a clip), false and why when not.
 function Sound:Speak(text, opts)
+    local clip, seconds
+    if self.ClipFor then
+        clip, seconds = self:ClipFor(text, opts and opts.voice)
+    end
+    if clip then
+        local handle = self:Play(clip, { channel = opts and opts.channel })
+        if handle then
+            clipHandle = handle
+            return true, "clip", seconds
+        end
+    end
     if not (C_VoiceChat and C_VoiceChat.SpeakText) then
         return false, "Text to speech isn't available on this client."
     end
@@ -298,6 +321,10 @@ function Sound:Speak(text, opts)
 end
 
 function Sound:StopSpeaking()
+    if type(clipHandle) == "number" then
+        pcall(StopSound, clipHandle)
+    end
+    clipHandle = nil
     if C_VoiceChat and C_VoiceChat.StopSpeakingText then
         pcall(C_VoiceChat.StopSpeakingText)
     end
@@ -321,15 +348,30 @@ end
 
 -- Choices -------------------------------------------------------------------------------------
 
--- The list a sound dropdown shows, as { key = reference, label }: opts.none (a label) adds a "no sound"
--- choice first with key "none"; then game sounds, the addon's own, shared ones and your files.
--- opts.filesOnly leaves out game sounds (for aura sounds, which play files). Read each time a menu opens.
+-- The list a sound dropdown shows, as { key = reference, label }, with { title = true, label } headings:
+-- opts.none (a label) adds a "no sound" choice first with key "none"; then the addon's own sounds that have a
+-- group, under each group's title (the voices); game sounds, under a Game sounds title when groups came before;
+-- the addon's other own sounds, shared ones and your files. opts.filesOnly leaves out game sounds (for aura
+-- sounds, which play files). Read each time a menu opens.
 function Sound:Choices(opts)
     local out = {}
     if opts and opts.none then
         out[#out + 1] = { key = "none", label = opts.none }
     end
+    local group
+    for _, b in ipairs(Sound.BUNDLED) do
+        if b.group then
+            if b.group ~= group then
+                group = b.group
+                out[#out + 1] = { title = true, label = group }
+            end
+            out[#out + 1] = { key = "crt:" .. b.name, label = b.label or b.name }
+        end
+    end
     if not (opts and opts.filesOnly) then
+        if group then
+            out[#out + 1] = { title = true, label = TEXT.gameSounds }
+        end
         for _, k in ipairs(Sound.KITS) do
             if kitID(k.name) then
                 out[#out + 1] = { key = "kit:" .. k.name, label = k.label }
@@ -337,7 +379,9 @@ function Sound:Choices(opts)
         end
     end
     for _, b in ipairs(Sound.BUNDLED) do
-        out[#out + 1] = { key = "crt:" .. b.name, label = b.label or b.name }
+        if not b.group then
+            out[#out + 1] = { key = "crt:" .. b.name, label = b.label or b.name }
+        end
     end
     local lib = sharedMedia()
     if lib then
@@ -357,11 +401,16 @@ function Sound:Choices(opts)
     return out
 end
 
--- The label a reference shows with, for chat and lists.
+-- The label a reference shows with, for chat and lists; a grouped sound with its group (Xavier: Soak).
 function Sound:Label(ref)
     ref = Sound.Normalize(ref)
     if not ref then
         return "none"
+    end
+    for _, b in ipairs(Sound.BUNDLED) do
+        if b.group and ref == "crt:" .. b.name then
+            return b.group .. ": " .. (b.label or b.name)
+        end
     end
     for _, c in ipairs(self:Choices()) do
         if c.key == ref then

@@ -306,9 +306,11 @@ local defaults = {
         extra = { upgrade = false, ilvl = false, quality = false, empty = false, minIlvl = 0 },
     },
     -- The sound engine (Sound/Engine.lua): custom, your own sound file names typed on Quality of Life >
-    -- Sounds (the companion addon CowfeeRaidTools_Media lists more in its Sounds.lua).
+    -- Sounds (the companion addon CowfeeRaidTools_Media lists more in its Sounds.lua); voice, the voice
+    -- that speaks (Sound/Voices.lua): "xavier", "lola" or "tts" for the game's text to speech only.
     sound = {
         custom = {},
+        voice = "xavier",
     },
     -- The late tracker. days[wday] is true for raid days (1 is Sunday, as date() counts them), and
     -- hour and minute are the start on this computer's clock. Who is expected is the active Raid

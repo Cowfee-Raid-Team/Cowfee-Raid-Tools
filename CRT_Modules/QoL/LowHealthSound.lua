@@ -56,12 +56,25 @@ local PREVIEW_SECONDS = 3
 -- was never told to stop. At 1% the game plays and ends it as usual.
 local MUTED_VOLUME = 1
 
--- Every sound to choose from: the game's pulse, then the sound engine's list. Read each time the menu
--- opens, so sounds shared by other addons appear.
+-- Every sound to choose from: the sound engine's list, with the game's pulse first under its Game sounds
+-- heading (first of all when the list has no headings). Read each time the menu opens, so sounds shared by
+-- other addons appear.
 function Sound.Choices()
-    local out = { { key = "pulse", label = "Game pulse (speeds up)" } }
-    for _, c in ipairs(CRT.Sound:Choices()) do
+    local pulse = { key = "pulse", label = "Game pulse (speeds up)" }
+    local list, out, placed = CRT.Sound:Choices(), {}, false
+    for _, c in ipairs(list) do
+        if not placed and not c.title then
+            -- the first sound of the game's own: right after its heading, or the very first entry
+            local prev = out[#out]
+            if not prev or (prev.title and c.key and c.key:find("^kit:")) then
+                out[#out + 1] = pulse
+                placed = true
+            end
+        end
         out[#out + 1] = c
+    end
+    if not placed then
+        table.insert(out, 1, pulse)
     end
     return out
 end
