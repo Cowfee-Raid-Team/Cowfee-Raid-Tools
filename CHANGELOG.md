@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0 (2026-10-31)
+
+- **Voice packs:** spoken alerts and countdowns now use a voice, Xavier (male, the default) or Lola (female), for raid calls such as Soak, Spread and Adds, and for numbers. Anything else is read by the game's text to speech. Pick one under Quality of Life > Sounds; every sound list has the clips too. Restart the game after updating so it finds the new sound files.
+- **Alert timing:** sounds now play exactly at 0, and every countdown (text, icons, circles, bars, the Timeline area, note windows) reads 0 at that same moment. Time left now rounds up, so the last number before NOW is 0.1.
+- **Sound and speech:** new **Say instead** (speak other words than the text), **Count down from** 3 to 10, and **Speak at: Before 0** with the seconds to speak early. An alert shows early enough for its whole count.
+- **Import reminders (Timeline):** paste a Timeline Reminders export, one boss or many, into your own Timeline reminders. Lines are matched to you by name, class, spec, role, melee or ranged, and raid group. Each boss lists every line, yours ticked, and you can tick other players' lines to import them too. Spell icons, speech, countdowns and circle or text display carry over.
+- **Healer CDs:** drag a healer's name to move their whole block, or a spell to reorder it. The order is kept per boss and goes to the raid with Push note.
+- **Healer slots:** plan a healer by spec before you know who plays it, with spec words in notes such as RestoDruid2.
+- **Push note also shares your roster:** raiders' Raid Groups and Late Tracker use the lead's active layout. The group leader's own layout is never replaced.
+- **Notes:** an assignment with a raid marker in its label, such as "Soak Ghost at {cross}: Name", can be edited and dragged in the note editor. "melee" and "ranged" lines now include tanks and melee healers.
+- **Timeline:** your own note flags are blue, with their own size setting (Personal note size), and your reminders show their colour and a bar for how long before 0 they show.
+- **Pace:** pace bars are named for their boss.
+
 ## 1.2.2 (2026-10-30)
 
 - **Raid marker icons in notes:** {cross}, {skull}, {star}, {rt1} to {rt8} and the other marker names now show as icons wherever a note is shown: the note windows, the Raid Notes page, the note editor's preview and note alerts. The edit boxes and anything sent to chat stay as plain text.
