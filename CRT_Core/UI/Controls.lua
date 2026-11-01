@@ -161,12 +161,18 @@ end
 UI.SOUND_PLAY_W, UI.SOUND_PLAY_GAP = 44, 6
 UI.SOUND_MENU_H = 400
 UI.SOUND_HELP_VOICES = "The %s voice clips, under each voice's name, then the game sounds."
+UI.SOUND_HELP_EFFECTS = "The %s voice clips, under each voice's name, then the sound effects by category (%s), then the game sounds."
 
--- The (?) text, with the voices' names from the voice table (Sound/Voices.lua).
+-- The (?) text, with the voices' names from the voice table (Sound/Voices.lua) and the effects' categories from
+-- theirs (Sound/Effects.lua), in the order the list shows them.
 function UI.SoundHelp()
     local Sound = CRT.Sound
     if not (Sound and Sound.VoiceNames and Sound:VoiceNames() ~= "") then
         return UI.SOUND_HELP
+    end
+    local effects = Sound.EffectNames and Sound:EffectNames() or ""
+    if effects ~= "" then
+        return string.format(UI.SOUND_HELP_EFFECTS, Sound:VoiceNames(), effects) .. "\n\n" .. UI.SOUND_HELP
     end
     return string.format(UI.SOUND_HELP_VOICES, Sound:VoiceNames()) .. "\n\n" .. UI.SOUND_HELP
 end

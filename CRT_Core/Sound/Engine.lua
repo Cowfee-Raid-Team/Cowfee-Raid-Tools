@@ -5,7 +5,8 @@ local ADDON, CRT = ...
 -- A sound is named by a reference string:
 --   kit:<NAME or id>   a game sound kit (SOUNDKIT name, such as kit:RAID_WARNING, or its number)
 --   lsm:<name>         a sound another addon shares through LibSharedMedia-3.0 (the library isn't shipped)
---   crt:<name>         a sound shipped with the addon (Sound.BUNDLED: the voice packs' clips, Sound/Voices.lua)
+--   crt:<name>         a sound shipped with the addon (Sound.BUNDLED: the voice packs' clips, Sound/Voices.lua,
+--                      and the sound effects, Sound/Effects.lua)
 --   file:<name>        your own .ogg or .mp3 file, in the CowfeeRaidTools_Media companion addon's Sounds
 --                      folder
 --   tts:<text>         text to speech
@@ -55,7 +56,8 @@ for _, k in ipairs(Sound.KITS) do
 end
 
 -- Sounds shipped with the addon, as { name, file, label, group } under BUNDLED_FOLDER; group is the title the
--- sound lists show it under. Sound/Voices.lua adds the voice packs' clips. Only audio made for the addon or
+-- sound lists show it under. Sound/Voices.lua adds the voice packs' clips, then Sound/Effects.lua the sound
+-- effects (each category a group, so a heading). Only audio made for the addon or
 -- licensed for it may go here.
 Sound.BUNDLED = {}
 
@@ -350,9 +352,9 @@ end
 
 -- The list a sound dropdown shows, as { key = reference, label }, with { title = true, label } headings:
 -- opts.none (a label) adds a "no sound" choice first with key "none"; then the addon's own sounds that have a
--- group, under each group's title (the voices); game sounds, under a Game sounds title when groups came before;
--- the addon's other own sounds, shared ones and your files. opts.filesOnly leaves out game sounds (for aura
--- sounds, which play files). Read each time a menu opens.
+-- group, under each group's title (the voices, then the effects' categories); game sounds, under a Game
+-- sounds title when groups came before; the addon's other own sounds, shared ones and your files.
+-- opts.filesOnly leaves out game sounds (for aura sounds, which play files). Read each time a menu opens.
 function Sound:Choices(opts)
     local out = {}
     if opts and opts.none then
