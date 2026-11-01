@@ -119,12 +119,15 @@ for i = 1, 100 do step(0.1) end
 assert(#said == 1, "once")
 print("ok speech: note line spoken once at ttsSeconds")
 
--- extras: tts off plays nothing; SpeakNow is outside the queue; new run clears; late item skipped
+-- extras: an alert of its own still speaks with Read them out off (Alex, 2026-11-01); SpeakNow is outside the queue;
+-- new run clears; late item skipped
 CRT.db.notes.alert.tts = false
-start({ speechItem("a", 1, "quiet", 21) })
+start({ speechItem("a", 1, "still", 21) })
 step(2)
-assert(#said == 0, "tts off")
+assert(texts() == "still", "Read them out off: an alert of its own still speaks: " .. texts())
 CRT.db.notes.alert.tts = true
+A:Stop()
+said = {}
 S:SpeakNow("test phrase")
 assert(texts() == "test phrase", "SpeakNow outside queue")
 start({ speechItem("a", 1, "x", 21), speechItem("b", 1, "y", 21) })
@@ -154,9 +157,9 @@ CRT.db.notes.alert.tts = false
 said = {}
 A:Start(1, "Mythic", "test")
 step(1) finished() step(0.1) finished() step(0.1)
-assert(texts() == "", "tts off silences the note block and the others: " .. texts())
+assert(texts() == "other", "Read them out off silences only the note block's plain line: " .. texts())
 CRT.db.notes.alert.tts = true
-print("ok speech: note block follows only tts")
+print("ok speech: Read them out silences only the note block's plain lines")
 
 -- the one-time notice: alert off and speech on, once per profile; not in the other cases
 local function login(enabled, tts, flag)

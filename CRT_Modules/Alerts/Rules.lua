@@ -178,27 +178,13 @@ function Rules.Area(lines, now, output, cap)
     return out, #list - #out
 end
 
--- How long a count from `from` takes to say, in seconds: the quick phrase that ends at 0. The speech queue sets
--- Rules.countSeconds (Alerts/Speech.lua: the voice's number clips back to back, or an estimate for the game's text to
--- speech); without it, or when it gives nothing usable, a second a number.
-function Rules.CountSeconds(from)
-    local f, seconds = Rules.countSeconds, nil
-    if f then
-        local ok, s = pcall(f, from)
-        seconds = ok and s or nil
-    end
-    return (type(seconds) == "number" and seconds > 0) and seconds or from
-end
-
 -- The spoken parts of one alert as { { offset, text } }, offset in seconds before it is due, in the order they are
 -- said: `speak` says the text at `warn` seconds (On show), at 0 when `atZero` (Speak at: At 0), or at opts.before
--- seconds (Speak at: Before 0); `count` counts down from opts.countFrom (3 without) to 1.
--- With Count down on (and not Before 0), the count is one quick phrase that ends at 0 (Alex, 2026-11-01): one item
--- { countFrom, text "3, 2, 1", thenText } due Rules.CountSeconds(from) before 0, which the speech queue says as the
--- number clips back to back, or with the game's text to speech as one line with thenText. Then the text, due at 0 and
--- marked afterCount, said the moment the phrase ends (On show and At 0 alike). Before 0 keeps its early text and one
--- number a second: the numbers up to the text's second are left out (only those a full second after it are said),
--- so the text never lands on a number and the numbers after it stay on time. opts is optional.
+-- seconds (Speak at: Before 0); `count` says the numbers from opts.countFrom (3 without) down to 1, each at its own
+-- second. With Count down on, the text comes after the count, due at 0 (On show and At 0 alike, Alex 2026-11-01); the
+-- speech queue says it the moment "1" ends. It is marked afterCount, which only readers such as the tests use. Before 0 keeps its early text: inside the
+-- count, the numbers up to the text's second are left out (only those a full second after it are said), so the text
+-- never lands on a number and the numbers after it stay on time. opts is optional.
 function Rules.SpeechItems(text, warn, speak, count, atZero, opts)
     local out = {}
     local from = opts and type(opts.countFrom) == "number" and opts.countFrom or 3
@@ -206,22 +192,15 @@ function Rules.SpeechItems(text, warn, speak, count, atZero, opts)
     if speak and (before or not count) then
         out[1] = { offset = before or (atZero and 0) or warn, text = text }
     end
-    if count and before then
+    if count then
         -- the text at Before 0: only the numbers a full second after it
-        local top = speak and math.min(from, before - 1) or from
+        local top = (speak and before) and math.min(from, before - 1) or from
         for n = from, 1, -1 do
             if n <= top then
                 out[#out + 1] = { offset = n, text = tostring(n) }
             end
         end
-    elseif count then
-        local numbers = {}
-        for n = from, 1, -1 do
-            numbers[#numbers + 1] = tostring(n)
-        end
-        out[#out + 1] = { offset = Rules.CountSeconds(from), text = table.concat(numbers, ", "), countFrom = from,
-            thenText = speak and text or nil }
-        if speak then
+        if speak and not before then
             out[#out + 1] = { offset = 0, text = text, afterCount = true }
         end
     end
@@ -244,11 +223,7 @@ function Rules.SpeechDue(lines, now, spoken)
                         -- Late is measured against the entry, as the note always did: a line whose speech
                         -- time passed before the pull is still read out while the line itself is ahead.
                         if now - (member.at or s.at) <= LATE then
-                            -- a count's phrase knows the text after it (thenKey), which a single spoken line also says
-                            local nextOne = s.countFrom and member.speech[i + 1]
-                            items[#items + 1] = { key = key, at = s.at, text = s.text, afterCount = s.afterCount,
-                                countFrom = s.countFrom, thenText = s.thenText,
-                                thenKey = (nextOne and nextOne.afterCount) and (tostring(member.id) .. "#" .. (i + 1)) or nil,
+                            items[#items + 1] = { key = key, at = s.at, text = s.text, afterCount = s.afterCount, own = member.ownSpeech,
                                 priority = member.priority or line.priority, block = member.block or line.block, seq = #items + 1 }
                         end
                     end
@@ -265,12 +240,13 @@ function Rules.SpeechDue(lines, now, spoken)
 end
 
 -- The earliest speech item after now that was not spoken yet, as its time and text, or nil. The speech queue wakes
--- for it between its ticks, so every line is said at its own time, not at the next tick.
-function Rules.NextSpeech(lines, now, spoken)
+-- for it between its ticks, so every line is said at its own time, not at the next tick. skip(member), when given,
+-- leaves out the members it is true for (the speech queue's: a line Read them out keeps quiet).
+function Rules.NextSpeech(lines, now, spoken, skip)
     local best, text
     for _, line in ipairs(lines) do
         for _, member in ipairs(line.members or { line }) do
-            if member.outputs and member.outputs.speech then
+            if member.outputs and member.outputs.speech and not (skip and skip(member)) then
                 for i, s in ipairs(member.speech or {}) do
                     if s.at > now and not spoken[tostring(member.id) .. "#" .. i] and (not best or s.at < best) then
                         best, text = s.at, s.text

@@ -210,6 +210,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         -- dev absorbprobe on, off, show: log whether a boss's absorb shield is readable in a pull (Dev/AbsorbProbe.lua)
     elseif CRT.AuraProbe and CRT.AuraProbe:Command(msg) then
         -- dev aura <spellID>, on [spellID], off, show: what an addon can read of a debuff on the group (Dev/AuraProbe.lua)
+    elseif CRT.LowHealthProbe and CRT.LowHealthProbe:Command(msg) then
+        -- dev lowhp (on), off, show: what an addon sees of your health going under the low-health threshold (Dev/LowHealthProbe.lua)
     elseif CRT.ShieldBarDev and CRT.ShieldBarDev:Command(msg) then
         -- dev shieldbar (off): the shield bar on your own absorb, against a dummy (Dev/ShieldBarDev.lua)
     elseif CRT.BossDebug and CRT.BossDebug:Command(msg) then

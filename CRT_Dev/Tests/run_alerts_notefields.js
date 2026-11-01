@@ -177,7 +177,7 @@ check("note lines: show field picks outputs", function()
   same(i1.speech, Rules.SpeechItems("Spell1022", 6, true, true), "speech 1")
   local order = {}
   for _, sp in ipairs(i1.speech) do order[#order + 1] = sp.offset .. ":" .. sp.text end
-  assert(table.concat(order, ",") == Rules.CountSeconds(3) .. ":3, 2, 1,0:Spell1022", "a note line with tts and count: the phrase, then the text: " .. table.concat(order, ","))
+  assert(table.concat(order, ",") == "3:3,2:2,1:1,0:Spell1022", "a note line with tts and count: the count, then the text: " .. table.concat(order, ","))
   assert(i1.warn == 6 and i1.hold == 3 and i1.icon == 12345 and i1.sound == "RAID_WARNING" and i1.glow == true, "fields 1")
   assert(i1.text == "Spell1022" and i1.priority == Rules.Priority(2, "normal"), "text and rank 1")
   local i2 = E.ItemFor(t2, 2, true)
@@ -458,7 +458,7 @@ check("speak at: old lines without ttsat speak on show", function()
   local new = E.ItemFor(n.timers[2], 2, true)
   same(new.speech, { { offset = 0, text = "New" } }, "ttsat:0 speaks at the cast")
   local both = E.ItemFor(n.timers[3], 3, true)
-  same(both.speech, { { offset = Rules.CountSeconds(3), text = "3, 2, 1", countFrom = 3, thenText = "Both" }, { offset = 0, text = "Both", afterCount = true } }, "the phrase, then the text at 0")
+  same(both.speech, { { offset = 3, text = "3" }, { offset = 2, text = "2" }, { offset = 1, text = "1" }, { offset = 0, text = "Both", afterCount = true } }, "the count, then the text at 0")
   local plain = E.ItemFor(n.timers[4], 4, true)
   same(plain.speech, { { offset = Notes:Alert().ttsSeconds or 3, text = "Spell1022" } }, "a line without show: as today")
 end)
@@ -473,9 +473,9 @@ check("speech fields: Count down from, Before 0 and Say instead on a note line",
   local a = E.ItemFor(n.timers[1], 1, true)
   same(a.speech, { { offset = 2, text = "Adds incoming" } }, "Say instead, 2 s before")
   local b = E.ItemFor(n.timers[2], 2, true)
-  same(b.speech, { { offset = Rules.CountSeconds(5), text = "5, 4, 3, 2, 1", countFrom = 5, thenText = "Soak now" },
-    { offset = 0, text = "Soak now", afterCount = true } }, "the count from 5, then Say instead")
-  assert(b.warn == math.max(3, Rules.CountSeconds(5)), "it shows by its first spoken part: " .. tostring(b.warn))
+  same(b.speech, { { offset = 5, text = "5" }, { offset = 4, text = "4" }, { offset = 3, text = "3" }, { offset = 2, text = "2" },
+    { offset = 1, text = "1" }, { offset = 0, text = "Soak now", afterCount = true } }, "one number a second from 5, then Say instead")
+  assert(b.warn == 5, "it shows by its first spoken part, 5 s before: " .. tostring(b.warn))
   assert(b.text == "Soak", "it shows its own text")
   -- out of range: read as a reminder reads it (Reminders.CountFrom, SpeakBefore)
   local c = E.ItemFor(n.timers[3], 3, true)
@@ -485,12 +485,60 @@ check("speech fields: Count down from, Before 0 and Say instead on a note line",
   assert(s.warn == 8 and s.absorb and s.absorb.lead == 3, "shows at 8 s, its shield window from 3 s: " .. tostring(s.absorb and s.absorb.lead))
 end)
 
+-- A note line's own speech or sound setting (Notes/Engine.lua ownSpeech, ownSound): it speaks, and its cue plays, with
+-- Read them out off (Alerts/Speech.lua readOutOnly; Alex, 2026-11-01)
+check("note lines: their own speech and sound settings are marked", function()
+  local n = P.Parse(table.concat({
+    "time:30;ph:1;tag:Cheoeqar;text:Said;show:text;tts:1;",
+    "time:40;ph:1;tag:Cheoeqar;text:Counted;show:text;count:1;",
+    "time:50;ph:1;tag:Cheoeqar;text:Looked;show:text;",
+    "time:60;ph:1;tag:Cheoeqar;text:Plain;",
+    "time:70;ph:1;tag:Cheoeqar;text:Rung;show:text;sound:RAID_WARNING;",
+    "time:80;ph:1;tag:Cheoeqar;text:PlainRung;sound:RAID_WARNING;",
+  }, "\\n"))
+  local it = {}
+  for i = 1, 6 do it[i] = E.ItemFor(n.timers[i], i, true) end
+  assert(it[1].ownSpeech == true and it[2].ownSpeech == true, "show: with tts: or count: has its own speech")
+  assert(it[3].ownSpeech == nil and it[4].ownSpeech == nil and it[5].ownSpeech == nil and it[6].ownSpeech == nil, "show: with neither, and a plain line, has none")
+  assert(it[5].ownSound == true and it[1].ownSound == nil and it[6].ownSound == nil, "show: with sound: has its own sound; a plain line never")
+end)
+
+check("Read them out off: a note line with show: and count: counts, and its sound cue plays", function()
+  local said, kits = {}, {}
+  local wasSpeak, wasPlay = C_VoiceChat, PlaySound
+  C_VoiceChat = { SpeakText = function(_, text) said[#said + 1] = { text = text, at = clock } end }
+  PlaySound = function(id) kits[#kits + 1] = { id = id, at = clock } return true end
+  local n = P.Parse("time:20;ph:1;tag:Cheoeqar;text:Soak;show:text;count:1;sound:RAID_WARNING;warn:6;")
+  local item = E.ItemFor(n.timers[1], 1, true)
+  local plainN = P.Parse("time:21;ph:1;tag:Cheoeqar;text:Quiet;")
+  local plain = E.ItemFor(plainN.timers[1], 2, true)
+  plain.id = "note:quiet"
+  plain.outputs.speech = true
+  A:RegisterBlock("note", { label = "Raid note", group = false, Entries = function() return { item, plain } end })
+  CRT.db.notes.alert.tts = false
+  A:Start(1, "Mythic", "test")
+  local t0 = clock
+  for i = 1, 300 do
+    clock = clock + 0.1
+    for _, f in ipairs(frames) do if f.scripts.OnUpdate then f.scripts.OnUpdate(f, 0.1) end end
+    if i % 3 == 0 then for _, f in ipairs(frames) do if f.events.VOICE_CHAT_TTS_PLAYBACK_FINISHED and f.scripts.OnEvent then f.scripts.OnEvent(f, "VOICE_CHAT_TTS_PLAYBACK_FINISHED") end end end
+  end
+  A:Stop()
+  CRT.db.notes.alert.tts = true
+  C_VoiceChat, PlaySound = wasSpeak, wasPlay
+  local texts = {}
+  for _, s in ipairs(said) do texts[#texts + 1] = s.text .. "@" .. string.format("%.1f", s.at - t0) end
+  assert(table.concat(texts, " "):find("3@17%.[01] 2@18%.[01] 1@19%.[01]"), "counted on its seconds (on the ticks here: this harness has no timers): " .. table.concat(texts, " "))
+  assert(not table.concat(texts, " "):find("Quiet", 1, true), "the plain line is quiet: " .. table.concat(texts, " "))
+  assert(#kits == 1 and kits[1].id == 8959 and math.abs(kits[1].at - t0 - 20) <= 0.11, "its sound cue at 0: " .. #kits)
+end)
+
 for _, e in ipairs(errors) do print("error " .. e) end
 assert(#errors == 0, "errors: " .. #errors)
 if checks.failed then error(checks.failed .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const names = ['CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/Engine.lua', 'CRT_Modules/Alerts/Reminders.lua'];
+const names = ['CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/Engine.lua', 'CRT_Modules/Alerts/Reminders.lua', 'CRT_Core/Sound/Engine.lua'];
 const files = process.argv.slice(2);
 if (files.length !== names.length) { console.error('usage: node run_alerts_notefields.js ' + names.join(' ')); process.exit(2); }
 files.forEach((p, i) => { lua.lua_pushstring(L, to_luastring(names[i])); lua.lua_pushstring(L, to_luastring(fs.readFileSync(p, 'utf8'))); });
