@@ -55,14 +55,30 @@ for _, k in ipairs(Sound.KITS) do
     kitByName[k.name] = k
 end
 
--- Sounds shipped with the addon, as { name, file, label, group } under BUNDLED_FOLDER; group is the title the
--- sound lists show it under. Sound/Voices.lua adds the voice packs' clips, then Sound/Effects.lua the sound
--- effects (each category a group, so a heading). Only audio made for the addon or
--- licensed for it may go here.
+-- Sounds shipped with the addon, as { name, file, label, group, groupId } under BUNDLED_FOLDER: groupId is the key
+-- of the voice or effect category whose submenu lists it (Sound.MENU), group that one's label. Sound/Voices.lua adds
+-- the voice packs' clips, then Sound/Effects.lua the sound effects. Only audio made for the addon or licensed for it
+-- may go here.
 Sound.BUNDLED = {}
 
 local TEXT = {
+    voices = "Voices",
+    effects = "Sound effects",
+    more = "More",
     gameSounds = "Game sounds",
+    shared = "Shared",
+    yours = "Yours",
+    other = "Other",
+}
+
+-- The sound lists' top level, in order (#1241): a heading, then one submenu per group of its source. "voices" is a
+-- group per Sound.VOICES entry (Sound/Voices.lua), "effects" one per Sound.EFFECTS category (Sound/Effects.lua), and
+-- "more" the game sounds, shared sounds, your files and any other sound of the addon's own. An empty group, and a
+-- heading left with none, isn't shown.
+Sound.MENU = {
+    { heading = TEXT.voices, from = "voices" },
+    { heading = TEXT.effects, from = "effects" },
+    { heading = TEXT.more, from = "more" },
 }
 
 local function isSecret(value)
@@ -350,73 +366,113 @@ end
 
 -- Choices -------------------------------------------------------------------------------------
 
--- The list a sound dropdown shows, as { key = reference, label }, with { title = true, label } headings:
--- opts.none (a label) adds a "no sound" choice first with key "none"; then the addon's own sounds that have a
--- group, under each group's title (the voices, then the effects' categories); game sounds, under a Game
--- sounds title when groups came before; the addon's other own sounds, shared ones and your files.
--- opts.filesOnly leaves out game sounds (for aura sounds, which play files). Read each time a menu opens.
+-- The addon's own sounds of one group (groupId), as choices; with no groupId, those in no group.
+local function bundledOf(groupId)
+    local out = {}
+    for _, b in ipairs(Sound.BUNDLED) do
+        if b.groupId == groupId then
+            out[#out + 1] = { key = "crt:" .. b.name, label = b.label or b.name }
+        end
+    end
+    return out
+end
+
+-- The groups of a Sound.MENU source, as { id, label, children }.
+local function groupsOf(from, opts)
+    local out = {}
+    if from == "voices" then
+        for _, voice in ipairs(Sound.VOICES or {}) do
+            out[#out + 1] = { id = voice.key, label = voice.label, children = bundledOf(voice.key) }
+        end
+    elseif from == "effects" then
+        for _, cat in ipairs(Sound.EFFECTS or {}) do
+            out[#out + 1] = { id = cat.key, label = cat.label, children = bundledOf(cat.key) }
+        end
+    elseif from == "more" then
+        if not (opts and opts.filesOnly) then
+            local kits = {}
+            for _, k in ipairs(Sound.KITS) do
+                if kitID(k.name) then
+                    kits[#kits + 1] = { key = "kit:" .. k.name, label = k.label }
+                end
+            end
+            out[#out + 1] = { id = "game", label = TEXT.gameSounds, children = kits }
+        end
+        local shared = {}
+        local lib = sharedMedia()
+        if lib then
+            local ok, list = pcall(lib.List, lib, "sound")
+            if ok and type(list) == "table" then
+                for _, name in ipairs(list) do
+                    -- the addon's own files are listed as yours, not again as shared
+                    if name ~= "None" and name:sub(1, #Sound.LSM_PREFIX) ~= Sound.LSM_PREFIX then
+                        shared[#shared + 1] = { key = "lsm:" .. name, label = name }
+                    end
+                end
+            end
+        end
+        out[#out + 1] = { id = "shared", label = TEXT.shared, children = shared }
+        local yours = {}
+        for _, f in ipairs(Sound:CustomFiles()) do
+            yours[#yours + 1] = { key = "file:" .. f.name, label = f.name }
+        end
+        out[#out + 1] = { id = "yours", label = TEXT.yours, children = yours }
+        out[#out + 1] = { id = "other", label = TEXT.other, children = bundledOf(nil) }
+    end
+    return out
+end
+
+-- The list a sound dropdown shows (#1241): opts.none (a label) adds a "no sound" choice first with key "none"; then
+-- for each Sound.MENU entry its heading ({ title = true, label }) and its groups, each { id, label, children =
+-- { { key = reference, label }, ... } }, a submenu in UI.Dropdown. Empty groups, and a heading with none, are left out.
+-- opts.filesOnly leaves out the game sounds (for aura sounds, which play files). Read each time a menu opens.
 function Sound:Choices(opts)
     local out = {}
     if opts and opts.none then
         out[#out + 1] = { key = "none", label = opts.none }
     end
-    local group
-    for _, b in ipairs(Sound.BUNDLED) do
-        if b.group then
-            if b.group ~= group then
-                group = b.group
-                out[#out + 1] = { title = true, label = group }
-            end
-            out[#out + 1] = { key = "crt:" .. b.name, label = b.label or b.name }
-        end
-    end
-    if not (opts and opts.filesOnly) then
-        if group then
-            out[#out + 1] = { title = true, label = TEXT.gameSounds }
-        end
-        for _, k in ipairs(Sound.KITS) do
-            if kitID(k.name) then
-                out[#out + 1] = { key = "kit:" .. k.name, label = k.label }
-            end
-        end
-    end
-    for _, b in ipairs(Sound.BUNDLED) do
-        if not b.group then
-            out[#out + 1] = { key = "crt:" .. b.name, label = b.label or b.name }
-        end
-    end
-    local lib = sharedMedia()
-    if lib then
-        local ok, list = pcall(lib.List, lib, "sound")
-        if ok and type(list) == "table" then
-            for _, name in ipairs(list) do
-                -- the addon's own files are listed as yours below, not again as shared
-                if name ~= "None" and name:sub(1, #Sound.LSM_PREFIX) ~= Sound.LSM_PREFIX then
-                    out[#out + 1] = { key = "lsm:" .. name, label = name .. " (shared)" }
+    for _, entry in ipairs(Sound.MENU) do
+        local heading = false
+        for _, group in ipairs(groupsOf(entry.from, opts)) do
+            if #group.children > 0 then
+                if not heading then
+                    heading = true
+                    out[#out + 1] = { title = true, label = entry.heading }
                 end
+                out[#out + 1] = group
             end
         end
-    end
-    for _, f in ipairs(self:CustomFiles()) do
-        out[#out + 1] = { key = "file:" .. f.name, label = f.name .. " (yours)" }
     end
     return out
 end
 
--- The label a reference shows with, for chat and lists; a grouped sound with its group (Xavier: Soak).
+-- Every sound in a list from Choices, one level, in order: { key, label, group = its group's label or nil }.
+function Sound.Flat(list)
+    local out = {}
+    for _, c in ipairs(list or {}) do
+        if c.children then
+            for _, child in ipairs(c.children) do
+                if child.key ~= nil then
+                    out[#out + 1] = { key = child.key, label = child.label, group = c.label }
+                end
+            end
+        elseif not c.title and c.key ~= nil then
+            out[#out + 1] = { key = c.key, label = c.label }
+        end
+    end
+    return out
+end
+
+-- The label a reference shows with, for chat and lists, as the closed dropdown reads it: "<group>: <sound>"
+-- (Male01: Soak, Short: Cowbell, Yours: horn.ogg).
 function Sound:Label(ref)
     ref = Sound.Normalize(ref)
     if not ref then
         return "none"
     end
-    for _, b in ipairs(Sound.BUNDLED) do
-        if b.group and ref == "crt:" .. b.name then
-            return b.group .. ": " .. (b.label or b.name)
-        end
-    end
-    for _, c in ipairs(self:Choices()) do
+    for _, c in ipairs(Sound.Flat(self:Choices())) do
         if c.key == ref then
-            return c.label
+            return c.group and (c.group .. ": " .. c.label) or c.label
         end
     end
     return ref

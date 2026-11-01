@@ -39,6 +39,79 @@ local function greyLabel(row, on)
     end
 end
 
+-- One choice in the open list (or a submenu), as a radio or a tick box, with its greying, tooltip and decoration.
+local function addChoice(menu, option, opts)
+    local radio
+    if option.checkbox then
+        radio = menu:CreateCheckbox(option.label, function(key)
+            return opts.checked ~= nil and opts.checked(key) and true or false
+        end, function(key)
+            if opts.toggle then
+                opts.toggle(key)
+            end
+        end, option.key)
+    else
+        radio = menu:CreateRadio(option.label, function(key)
+            return opts.get() == key
+        end, function(key)
+            opts.set(key)
+        end, option.key)
+    end
+    if type(option.disabled) == "function" and radio and radio.SetEnabled then
+        -- the game's menu asks a function again while the list is open (IsEnabled, polled)
+        local disabled = option.disabled
+        radio:SetEnabled(function()
+            return not disabled()
+        end)
+    elseif option.disabled and radio and radio.SetEnabled then
+        radio:SetEnabled(false)
+    end
+    if option.tooltip and radio and radio.SetTooltip then
+        radio:SetTooltip(function(tooltip)
+            GameTooltip_SetTitle(tooltip, option.label)
+            GameTooltip_AddNormalLine(tooltip, option.tooltip)
+        end)
+    end
+    if opts.decorate then
+        radio:AddInitializer(function(button)
+            return opts.decorate(button, option)
+        end)
+    end
+    return radio
+end
+
+-- A submenu: its row a radio, ticked while one of its choices is the pick (a click on it picks nothing, and it is
+-- never the closed text: SetSelectionIgnored), then its choices, scrolling like the root. It is on top of every window
+-- through the root's UI.MenuOnTop: the root's menu-acquired callback runs for each submenu as it opens, and a submenu's
+-- element description has no callback of its own. texts[key] is what the closed dropdown reads for each of its choices.
+local function addGroup(root, option, opts, texts)
+    local group = root:CreateRadio(option.label, function()
+        local picked = opts.get()
+        for _, child in ipairs(option.children) do
+            if child.key == picked then
+                return true
+            end
+        end
+        return false
+    end, function() end)
+    if group.SetSelectionIgnored then
+        group:SetSelectionIgnored()
+    end
+    if opts.maxHeight and group.SetScrollMode then
+        group:SetScrollMode(opts.maxHeight)
+    end
+    for _, child in ipairs(option.children) do
+        if child.title then
+            group:CreateTitle(child.label)
+        else
+            addChoice(group, child, opts)
+            if child.key ~= nil then
+                texts[child.key] = option.label .. ": " .. child.label
+            end
+        end
+    end
+end
+
 -- A dropdown. opts:
 --   options    { { key, label }, ... }, or a function returning that list when the menu opens. An
 --              option with disabled = true is shown greyed out and can't be picked (disabled may be a
@@ -46,11 +119,14 @@ end
 --              with title = true is a heading in the open list (such as a raid over its bosses). An
 --              option's tooltip, when it has one, shows while the mouse is over it in the open list. One with
 --              checkbox = true is a tick box in the open list, so several can be ticked: checked(key) says
---              whether it is, toggle(key) is called on a click (the closed dropdown lists what is ticked).
+--              whether it is, toggle(key) is called on a click (the closed dropdown lists what is ticked). One
+--              with children = { option, ... } is a submenu (the game's: a description with elements in it,
+--              Blizzard_Menu), left out while it has none: its row is ticked while it holds the pick, a click on it
+--              picks nothing, and the closed dropdown reads "<its label>: <the pick's label>".
 --   get()      the selected key
 --   set(key)   called when a choice is picked
 --   width, labelWidth, enabledIf() (greys the row out while it returns false)
---   maxHeight  optional: the open menu scrolls past this many pixels, for a long list
+--   maxHeight  optional: the open menu, and each submenu, scrolls past this many pixels, for a long list
 --   onClose()  optional: called when the open list closes
 --   decorate(button, option)  optional: adds to each item in the open menu, such as a Play button.
 --                             It may return the item's width and height. Anything it attaches with
@@ -76,49 +152,32 @@ function UI.Dropdown(parent, text, opts)
             root:SetScrollMode(opts.maxHeight)
         end
         local list = type(opts.options) == "function" and opts.options() or opts.options
+        local texts = {}
         for _, option in ipairs(list) do
             if option.title then
                 root:CreateTitle(option.label)
+            elseif option.children then
+                if #option.children > 0 then
+                    addGroup(root, option, opts, texts)
+                end
             else
-                local radio
-                if option.checkbox then
-                    radio = root:CreateCheckbox(option.label, function(key)
-                        return opts.checked ~= nil and opts.checked(key) and true or false
-                    end, function(key)
-                        if opts.toggle then
-                            opts.toggle(key)
-                        end
-                    end, option.key)
-                else
-                    radio = root:CreateRadio(option.label, function(key)
-                        return opts.get() == key
-                    end, function(key)
-                        opts.set(key)
-                    end, option.key)
-                end
-                if type(option.disabled) == "function" and radio and radio.SetEnabled then
-                    -- the game's menu asks a function again while the list is open (IsEnabled, polled)
-                    local disabled = option.disabled
-                    radio:SetEnabled(function()
-                        return not disabled()
-                    end)
-                elseif option.disabled and radio and radio.SetEnabled then
-                    radio:SetEnabled(false)
-                end
-                if option.tooltip and radio and radio.SetTooltip then
-                    radio:SetTooltip(function(tooltip)
-                        GameTooltip_SetTitle(tooltip, option.label)
-                        GameTooltip_AddNormalLine(tooltip, option.tooltip)
-                    end)
-                end
-                if opts.decorate then
-                    radio:AddInitializer(function(button)
-                        return opts.decorate(button, option)
-                    end)
-                end
+                addChoice(root, option, opts)
             end
         end
+        dropdown.crtTexts = texts
     end)
+    -- The closed text of a pick inside a submenu is "<group>: <pick>"; any other, as the game shows it
+    -- (DropdownSelectionTextMixin:SetSelectionTranslator, Blizzard_Menu/MenuTemplates.lua: one call per selection).
+    if dropdown.SetSelectionTranslator then
+        dropdown:SetSelectionTranslator(function(selection)
+            local key = selection.GetData and selection:GetData()
+            local texts = dropdown.crtTexts
+            if key ~= nil and texts and texts[key] then
+                return texts[key]
+            end
+            return MenuUtil and MenuUtil.GetElementText and MenuUtil.GetElementText(selection) or nil
+        end)
+    end
     row.Dropdown = dropdown
     UI:SkinDropdown(dropdown)
     -- The game opens a dropdown's list on the FULLSCREEN_DIALOG layer, the same as the alert editor,
@@ -160,8 +219,8 @@ end
 -- make it long.
 UI.SOUND_PLAY_W, UI.SOUND_PLAY_GAP = 44, 6
 UI.SOUND_MENU_H = 400
-UI.SOUND_HELP_VOICES = "The %s voice clips, under each voice's name, then the game sounds."
-UI.SOUND_HELP_EFFECTS = "The %s voice clips, under each voice's name, then the sound effects by category (%s), then the game sounds."
+UI.SOUND_HELP_VOICES = "Voices (%s) and More (game sounds, sounds shared by other addons, and your own files). Hover a group to see its sounds."
+UI.SOUND_HELP_EFFECTS = "Voices (%s), Sound effects (%s) and More (game sounds, sounds shared by other addons, and your own files). Hover a group to see its sounds."
 
 -- The (?) text, with the voices' names from the voice table (Sound/Voices.lua) and the effects' categories from
 -- theirs (Sound/Effects.lua), in the order the list shows them.
@@ -172,11 +231,13 @@ function UI.SoundHelp()
     end
     local effects = Sound.EffectNames and Sound:EffectNames() or ""
     if effects ~= "" then
-        return string.format(UI.SOUND_HELP_EFFECTS, Sound:VoiceNames(), effects) .. "\n\n" .. UI.SOUND_HELP
+        return string.format(UI.SOUND_HELP_EFFECTS, Sound:VoiceNames(), effects) .. "\n\n" .. UI.SOUND_HELP_FILES
     end
-    return string.format(UI.SOUND_HELP_VOICES, Sound:VoiceNames()) .. "\n\n" .. UI.SOUND_HELP
+    return string.format(UI.SOUND_HELP_VOICES, Sound:VoiceNames()) .. "\n\n" .. UI.SOUND_HELP_FILES
 end
-UI.SOUND_HELP = "Game sounds, sounds shared by other addons, and your own files.\n\nYour own .ogg or .mp3 files go in the CowfeeRaidTools_Media addon's Sounds folder: Quality of Life > Sounds shows how, with a Test button for each file.\n\nPlay in the list plays the sound on your sound channel (General Settings)."
+-- your own files and Play; UI.SOUND_HELP is the whole text without the voices (a harness without Sound/Voices.lua)
+UI.SOUND_HELP_FILES = "Your own .ogg or .mp3 files go in the CowfeeRaidTools_Media addon's Sounds folder: Quality of Life > Sounds shows how, with a Test button for each file.\n\nPlay in the list plays the sound on your sound channel (General Settings)."
+UI.SOUND_HELP = "Game sounds, sounds shared by other addons, and your own files.\n\n" .. UI.SOUND_HELP_FILES
 
 function UI.SoundDropdown(parent, text, opts)
     local o = {}

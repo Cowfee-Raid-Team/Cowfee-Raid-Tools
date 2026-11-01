@@ -48,31 +48,60 @@ local function frame(kind, template)
     function f:SetupMenu(gen) self.gen = gen end
     function f:GenerateMenu()
       local radios = {}
+      local element
+      -- like the game's descriptions: adding elements to one makes it a submenu (Menu.lua); the root and each
+      -- submenu can scroll (SetScrollMode) and take a menu-acquired callback
+      local function describe(d)
+        d.children, d.order = {}, {}
+        function d:CreateRadio(...) local c = element("radio", ...) c.parent = self self.children[#self.children + 1] = c self.order[#self.order + 1] = c return c end
+        function d:CreateCheckbox(...) local c = element("checkbox", ...) c.parent = self self.children[#self.children + 1] = c self.order[#self.order + 1] = c return c end
+        function d:CreateTitle(label) self.order[#self.order + 1] = { kind = "title", label = label } if self.isRoot then f.titles = f.titles or {} f.titles[#f.titles + 1] = label end end
+        function d:SetScrollMode(h) self.scroll = h end
+        -- as the game's: only the root takes a menu-acquired callback, which runs for the root and each submenu
+        if d.isRoot then function d:AddMenuAcquiredCallback(fn) self.acquired = fn end end
+        return d
+      end
       -- like the game's element description: SetEnabled(false) greys the item and a click on it does nothing
-      local function element(kind, label, isSel, setSel, data)
-        local d = { kind = kind, label = label, isSel = isSel, setSel = setSel, data = data, enabled = true }
+      element = function(kind, label, isSel, setSel, data)
+        local d = describe({ kind = kind, label = label, isSel = isSel, setSel = setSel, data = data, enabled = true })
+        function d:GetData() return self.data end
+        function d:SetSelectionIgnored() self.ignored = true end
+        function d:IsSelectionIgnored() return self.ignored == true end
         -- a function is asked again while the list is open (the game's IsEnabled polls it): enabledNow() asks it
         function d:SetEnabled(on)
           self.enabledFn = type(on) == "function" and on or nil
           if self.enabledFn then self.enabled = on(self) and true or false else self.enabled = on and true or false end
         end
         function d:EnabledNow() if self.enabledFn then self.enabled = self.enabledFn(self) and true or false end return self.enabled end
-        function d:AddInitializer() end
+        function d:AddInitializer(fn) self.inits = self.inits or {} self.inits[#self.inits + 1] = fn end
         radios[#radios + 1] = d return d
       end
-      -- like the game's: every ticked element is a selection, the closed dropdown lists them
-      local root = { CreateRadio = function(_, ...) return element("radio", ...) end,
-        CreateCheckbox = function(_, ...) return element("checkbox", ...) end,
-        CreateTitle = function(_, label) self.titles = self.titles or {} self.titles[#self.titles + 1] = label end }
+      -- like the game's: every ticked element is a selection (submenus' too, MenuUtil.TraverseMenu), the closed
+      -- dropdown lists those not ignored, each through the selection translator (DropdownSelectionTextMixin)
+      local root = describe({ isRoot = true })
       self.titles = nil
+      self.root = root
       self.gen(self, root)
       self.radios = radios
+      -- the menus the game acquires as the list and its submenus open: the root's callback hears each one
+      self.menus = {}
+      local function acquire(desc)
+        local menu = { level = desc }
+        function menu:SetFrameStrata(s) self.strata = s end
+        self.menus[desc] = menu
+        if root.acquired then root.acquired(menu) end
+        for _, c in ipairs(desc.children or {}) do if #c.children > 0 then acquire(c) end end
+      end
+      acquire(root)
       self.shown = nil
       local picked = {}
-      for _, r in ipairs(radios) do if r.isSel(r.data) then picked[#picked + 1] = r.label end end
+      for _, r in ipairs(radios) do
+        if r.isSel(r.data) and not r:IsSelectionIgnored() then picked[#picked + 1] = self.translator and self.translator(r) or r.label end
+      end
       self.shown = #picked > 0 and table.concat(picked, ", ") or nil
     end
     function f:Pick(label) self:GenerateMenu() for _, r in ipairs(self.radios) do if r.label == label and r:EnabledNow() then r.setSel(r.data) end end end
+    function f:SetSelectionTranslator(fn) self.translator = fn end
     -- the game's dropdown events (DropdownButtonMixin.Event): a callback with an owner gets the owner first
     function f:RegisterCallback(event, fn, owner) self.cbs = self.cbs or {} self.cbs[event] = function(...) fn(owner, ...) end end
     function f:CloseList() if self.cbs and self.cbs.OnMenuClose then self.cbs.OnMenuClose(self) end end
@@ -89,6 +118,7 @@ function CreateFrame(kind, name, parent, template) return frame(kind, template) 
 MinimalSliderWithSteppersMixin = { Label = { Left = 1, Right = 2 }, Event = { OnValueChanged = "OnValueChanged", OnInteractStart = "OnInteractStart", OnInteractEnd = "OnInteractEnd" } }
 function CreateMinimalSliderFormatter(label, fn) return fn end
 DropdownButtonMixin = { Event = { OnUpdate = "OnUpdate", OnMenuOpen = "OnMenuOpen", OnMenuClose = "OnMenuClose" } }
+MenuUtil = { GetElementText = function(d) return d.label end }
 local CRT = { UI = { SkinDropdown = function() end } } -- Panel.lua skins the dropdown; not under test here
 assert(load(src, "Controls.lua"))("CowfeeRaidTools", CRT)
 local UI = CRT.UI
@@ -183,6 +213,70 @@ assert(s.play.enabled == false, "greyed when the row is disabled")
 local plain = UI.SoundDropdown({}, "Sound", { none = "None", get = function() return "none" end, set = function() end })
 assert(plain.play == nil, "no Play button unless asked")
 print("ok controls: a sound dropdown's Play button plays the chosen sound")
+
+-- Submenus: an option with children is a submenu (the game's: a description with elements in it), its radio ticked
+-- while it holds the pick; the closed dropdown reads "<Group>: <Sound>"; an empty group isn't shown; each submenu is on
+-- top of every window (UI.MenuOnTop) and scrolls past maxHeight.
+local function check(name, cond, detail) assert(cond, name .. (detail and (": " .. tostring(detail)) or "")) print("ok " .. name) end
+do
+  -- as UI/Window.lua's: a callback on the root that puts each menu acquired on TOOLTIP
+  local onTop = {}
+  UI.MenuOnTop = function(desc)
+    onTop[#onTop + 1] = desc
+    if desc and desc.AddMenuAcquiredCallback then desc:AddMenuAcquiredCallback(function(menu) menu:SetFrameStrata("TOOLTIP") end) end
+  end
+  local pick = "kit:B"
+  local sd = UI.Dropdown({}, "Sound", { maxHeight = 300, options = function() return {
+      { key = "none", label = "None" },
+      { title = true, label = "Sound effects" },
+      { label = "Short", children = { { key = "crt:Short-CowBell", label = "Cowbell" }, { key = "crt:Short-Blades", label = "Blades" } } },
+      { label = "Empty", children = {} },
+      { title = true, label = "More" },
+      { label = "Game sounds", children = { { key = "kit:A", label = "Alarm" }, { key = "kit:B", label = "Bell" } } } } end,
+    get = function() return pick end, set = function(k) pick = k end })
+  sd.refresh()
+  local D = sd.Dropdown
+  local function top() local t = {} for _, e in ipairs(D.root.order) do t[#t + 1] = (e.kind == "title" and "#" or "") .. e.label .. (e.children and #e.children > 0 and ">" or "") end return table.concat(t, ",") end
+  check("the top level: None, headings, one submenu per group, the empty one hidden", top() == "None,#Sound effects,Short>,#More,Game sounds>", top())
+  local function group(label) for _, e in ipairs(D.root.order) do if e.label == label then return e end end end
+  local short, game = group("Short"), group("Game sounds")
+  local function kids(g) local t = {} for _, c in ipairs(g.children) do t[#t + 1] = c.label end return table.concat(t, ",") end
+  check("each submenu holds its group's sounds", kids(short) == "Cowbell,Blades" and kids(game) == "Alarm,Bell", kids(short) .. " / " .. kids(game))
+  check("the group of the pick is ticked", game.isSel(game.data) and not short.isSel(short.data))
+  check("a group is never the closed text", short:IsSelectionIgnored() and game:IsSelectionIgnored())
+  check("the closed dropdown reads group: sound", D.shown == "Game sounds: Bell", D.shown)
+  D:Pick("Cowbell") sd.refresh()
+  short, game = group("Short"), group("Game sounds")
+  check("a pick in a submenu", pick == "crt:Short-CowBell" and D.shown == "Short: Cowbell" and short.isSel(short.data) and not game.isSel(game.data), tostring(D.shown))
+  short.setSel(short.data)
+  check("a click on a group picks nothing", pick == "crt:Short-CowBell")
+  check("a submenu scrolls past maxHeight", short.scroll == 300 and game.scroll == 300)
+  check("UI.MenuOnTop is set on the root only", #onTop >= 1 and onTop[#onTop] == D.root and short.AddMenuAcquiredCallback == nil)
+  local strata = {}
+  for _, desc in ipairs({ D.root, short, game }) do strata[#strata + 1] = tostring(D.menus[desc] and D.menus[desc].strata) end
+  check("every level is on top of the windows: the root's callback runs for each submenu as it opens", table.concat(strata, ",") == "TOOLTIP,TOOLTIP,TOOLTIP", table.concat(strata, ","))
+end
+
+-- A sound dropdown with submenus: Play on each sound inside them
+do
+  local playedKey
+  CRT.Sound = { Choices = function() return { { key = "none", label = "None" },
+      { label = "Short", children = { { key = "crt:Short-CowBell", label = "Cowbell" } } } } end,
+    Play = function(_, key) playedKey = key return 1 end }
+  local s2 = UI.SoundDropdown({}, "Sound", { none = "None", get = function() return "none" end, set = function() end })
+  s2.refresh()
+  local cow
+  for _, r in ipairs(s2.Dropdown.radios) do if r.label == "Cowbell" then cow = r end end
+  local hit
+  local button = { fontString = region(), AttachFontString = function() return region() end,
+    AttachFrame = function() hit = frame("Button") return hit end }
+  if cow and cow.inits then cow.inits[1](button) end
+  if hit and hit.OnClick then hit.OnClick(hit) end
+  check("Play inside a submenu plays that sound", playedKey == "crt:Short-CowBell", tostring(playedKey))
+  local short
+  for _, r in ipairs(s2.Dropdown.radios) do if r.label == "Short" then short = r end end
+  check("a group row has no Play", short and short.inits == nil)
+end
 
 -- Slider.
 local value, sets = 35, 0

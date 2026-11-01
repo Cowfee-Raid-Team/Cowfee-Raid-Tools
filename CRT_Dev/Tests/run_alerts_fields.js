@@ -156,7 +156,7 @@ end
 
 do
   -- the sound list now lives in the sound engine (CRT_Core/Sound/Engine.lua): CRT.Sound:Choices
-  local list = CRT.Sound:Choices()
+  local list = CRT.Sound.Flat(CRT.Sound:Choices())
   assert(type(list) == "table" and #list >= 5 and #list <= 12, "sounds list size " .. #list)
   assert(list[1].key == "kit:RAID_WARNING" and type(list[1].label) == "string", "entry shape")
   for _, s in ipairs(list) do
@@ -169,7 +169,7 @@ do
   local saved = SOUNDKIT
   SOUNDKIT = { RAID_WARNING = 1 }
   local names = {}
-  for _, s in ipairs(CRT.Sound:Choices()) do names[s.key] = true end
+  for _, s in ipairs(CRT.Sound.Flat(CRT.Sound:Choices())) do names[s.key] = true end
   assert(names["kit:RAID_WARNING"] and not names["kit:UI_BNET_TOAST"], "names the client lacks, with no id of the engine's own, skipped")
   SOUNDKIT = saved
   print("ok sound: list built from SOUNDKIT")
