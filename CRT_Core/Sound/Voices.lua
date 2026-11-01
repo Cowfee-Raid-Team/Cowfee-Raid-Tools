@@ -46,32 +46,33 @@ Sound.VOICES = {
     {
         key = "xavier", label = "Xavier (male)", folder = "Xavier",
         seconds = {
-            ["0"] = 1.10, ["1"] = 1.02, ["2"] = 1.02, ["3"] = 1.10, ["4"] = 1.10, ["5"] = 1.10, ["6"] = 1.10,
-            ["7"] = 1.10, ["8"] = 0.94, ["9"] = 1.10, ["5seconds321"] = 4.78, Adds = 1.10, Beam = 1.10, Blue = 1.10,
-            Bomb = 1.10, Boss = 1.10, Bouncer = 1.18, Break = 1.02, Charge = 1.25, Cleaner = 1.18, Clear = 1.10,
-            Collect = 1.10, Debuff = 1.33, Dispel = 1.25, Done = 1.02, DropPool = 1.52, East = 1.02,
-            Entertainer = 1.59, Feather = 1.10, Fire = 1.10, Fixate = 1.25, Frost = 1.25, Fung = 1.18, Gate = 1.02,
-            Green = 1.10, HealAbsorb = 1.99, Hide = 1.10, Interrupt = 1.18, Left = 1.10, Light = 1.10, Linked = 1.10,
-            Macro = 1.18, MindControl = 1.75, Moon = 1.10, Move = 1.10, Next = 1.10, North = 1.10, Obelisk = 1.33,
-            Orange = 1.10, Orb = 1.10, Purple = 1.02, Ranged = 1.25, Red = 1.10, Right = 1.02, Root = 1.10,
-            ["Run-Out"] = 1.33, Rune = 1.18, Safe = 1.10, Server = 1.10, Shroom = 1.33, Skull = 1.25, Soak = 1.18,
-            South = 1.10, Spread = 1.18, Stack = 1.10, Suck = 1.18, Targeted = 1.10, Void = 1.10, West = 1.10,
-            Yellow = 1.10,
+            ["0"] = 0.97, ["1"] = 0.99, ["2"] = 0.91, ["3"] = 0.99, ["4"] = 0.97, ["5"] = 1.07, ["6"] = 1.07,
+            ["7"] = 1.07, ["8"] = 0.81, ["9"] = 1.04, ["5seconds321"] = 4.75, Adds = 1.07, Beam = 0.91, Blue = 0.86,
+            Bomb = 1.07, Boss = 1.07, Bouncer = 1.15, Break = 0.99, Charge = 1.23, Cleaner = 1.04, Clear = 0.89,
+            Collect = 0.99, Debuff = 1.18, Dispel = 1.23, Done = 0.99, DropPool = 1.33, East = 0.91,
+            Entertainer = 1.38, Feather = 1.04, Fire = 1.07, Fixate = 1.23, Frost = 0.97, Fung = 0.99, Gate = 0.91,
+            Green = 1.07, HealAbsorb = 1.75, Hide = 0.97, Interrupt = 1.15, Left = 0.91, Light = 0.91, Linked = 0.91,
+            Macro = 1.12, MindControl = 1.52, Moon = 0.97, Move = 0.97, Next = 1.04, North = 0.94, Obelisk = 1.28,
+            Orange = 1.02, Orb = 1.07, Purple = 0.99, Ranged = 1.23, Red = 0.91, Right = 0.89, Root = 0.97,
+            ["Run-Out"] = 1.12, Rune = 1.07, Safe = 0.91, Server = 0.97, Shroom = 1.10, Skull = 1.07, Soak = 1.02,
+            South = 1.02, Spread = 1.07, Stack = 0.99, Suck = 0.91, Targeted = 1.07, Void = 1.07, West = 0.99,
+            Yellow = 1.07,
         },
     },
     {
-        key = "lola", label = "Lola (female)", folder = "Lola", lacks = { "Void", "West", "Yellow" },
+        key = "lola", label = "Lola (female)", folder = "Lola",
         seconds = {
-            ["0"] = 0.94, ["1"] = 0.94, ["2"] = 0.71, ["3"] = 1.02, ["4"] = 1.02, ["5"] = 0.94, ["6"] = 0.86,
-            ["7"] = 0.94, ["8"] = 0.78, ["9"] = 0.86, ["5seconds321"] = 4.23, Adds = 1.02, Beam = 1.02, Blue = 1.02,
-            Bomb = 0.86, Boss = 0.86, Bouncer = 1.02, Break = 0.86, Charge = 0.94, Cleaner = 0.94, Clear = 0.86,
-            Collect = 1.02, Debuff = 1.02, Dispel = 1.02, Done = 1.02, DropPool = 1.25, East = 1.02,
-            Entertainer = 1.33, Feather = 0.94, Fire = 1.10, Fixate = 1.10, Frost = 1.02, Fung = 0.94, Gate = 0.86,
-            Green = 1.10, HealAbsorb = 1.75, Hide = 0.94, Interrupt = 1.10, Left = 1.10, Light = 0.94, Linked = 0.94,
-            Macro = 0.86, MindControl = 1.33, Moon = 0.86, Move = 0.94, Next = 0.86, North = 0.86, Obelisk = 1.10,
-            Orange = 0.94, Orb = 0.94, Purple = 0.94, Ranged = 1.02, Red = 0.86, Right = 0.86, Root = 1.02,
-            ["Run-Out"] = 1.59, Rune = 1.02, Safe = 0.94, Server = 0.94, Shroom = 1.02, Skull = 1.02, Soak = 1.02,
-            South = 0.94, Spread = 1.10, Stack = 0.94, Suck = 0.94, Targeted = 1.02,
+            ["0"] = 0.76, ["1"] = 0.63, ["2"] = 0.68, ["3"] = 0.97, ["4"] = 0.73, ["5"] = 0.81, ["6"] = 0.73,
+            ["7"] = 0.76, ["8"] = 0.65, ["9"] = 0.71, ["5seconds321"] = 4.08, Adds = 0.71, Beam = 0.71, Blue = 0.71,
+            Bomb = 0.71, Boss = 0.73, Bouncer = 0.86, Break = 0.73, Charge = 0.89, Cleaner = 0.78, Clear = 0.71,
+            Collect = 0.76, Debuff = 0.91, Dispel = 0.86, Done = 0.73, DropPool = 1.10, East = 0.73,
+            Entertainer = 1.15, Feather = 0.78, Fire = 0.81, Fixate = 0.97, Frost = 0.81, Fung = 0.78, Gate = 0.73,
+            Green = 1.07, HealAbsorb = 1.54, Hide = 0.78, Interrupt = 0.99, Left = 0.73, Light = 0.76, Linked = 0.76,
+            Macro = 0.63, MindControl = 1.20, Moon = 0.71, Move = 0.76, Next = 0.71, North = 0.71, Obelisk = 0.94,
+            Orange = 0.73, Orb = 0.73, Purple = 0.71, Ranged = 0.94, Red = 0.71, Right = 0.68, Root = 0.71,
+            ["Run-Out"] = 1.02, Rune = 0.68, Safe = 0.81, Server = 0.78, Shroom = 0.86, Skull = 0.78, Soak = 0.81,
+            South = 0.78, Spread = 0.84, Stack = 0.84, Suck = 0.76, Targeted = 0.89, Void = 0.81, West = 0.73,
+            Yellow = 0.68,
         },
     },
 }
@@ -170,7 +171,7 @@ local function listed(items)
 end
 
 -- For the (?) texts, read from the table each time: the voices' names ("Xavier and Lola"), a line per voice
--- that lacks words ("Lola has no Void, West or Yellow, ..."), and that clips take no volume.
+-- that lacks words ("Lola has no Void, West or Yellow, ..."; none does now), and that clips take no volume.
 function Sound:VoiceNames()
     local names = {}
     for _, voice in ipairs(Sound.VOICES) do

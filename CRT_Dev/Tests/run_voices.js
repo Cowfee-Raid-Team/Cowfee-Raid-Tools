@@ -106,23 +106,24 @@ for _, v in ipairs(Sound.VOICES) do
   check(v.key .. ": each clip's seconds match its mp3 frames", #wrong == 0, table.concat(wrong, ","))
   check(v.key .. ": no clip has an ID3 tag or a GEOB or c2pa frame", #tagged == 0, table.concat(tagged, ","))
 end
-check("Xavier has 70 words, Lola 67", #X.words == 70 and #Lo.words == 67, #X.words .. " " .. #Lo.words)
+check("Xavier and Lola have all 70 words", #X.words == 70 and #Lo.words == 70, #X.words .. " " .. #Lo.words)
 local lolaHas = {}
 for _, w in ipairs(Lo.words) do lolaHas[w] = true end
-check("Lola has no Void, West or Yellow", not lolaHas.Void and not lolaHas.West and not lolaHas.Yellow and lolaHas.Soak)
+check("Lola has Void, West and Yellow", lolaHas.Void and lolaHas.West and lolaHas.Yellow and lolaHas.Soak)
 
 -- crt: references, and the groups in every sound list ---------------------------------------------------
 local soak = Sound:Resolve("crt:Xavier-Soak")
 check("crt:Xavier-Soak plays Xavier's Soak.mp3", soak and soak.kind == "file" and soak.paths[1] == Sound.BUNDLED_FOLDER .. "Xavier\\\\Soak.mp3", soak and soak.paths[1])
 check("crt:Lola-Run-Out resolves", Sound:Resolve("crt:Lola-Run-Out") ~= nil)
-check("crt:Lola-Void is no sound", Sound:Resolve("crt:Lola-Void") == nil)
+check("crt:Lola-Void resolves", Sound:Resolve("crt:Lola-Void") ~= nil)
+check("a word no voice has is no sound", Sound:Resolve("crt:Lola-Nope") == nil)
 local list = Sound:Choices({ none = "None" })
 local order, at = {}, {}
 for i, c in ipairs(list) do if c.title then order[#order + 1] = c.label at[c.label] = i end end
 check("titles Xavier, Lola, then Game sounds", table.concat(order, ",") == "Xavier,Lola,Game sounds", table.concat(order, ","))
 check("None comes first", list[1].key == "none")
 check("Xavier's clips under Xavier", list[at.Xavier + 1].key == "crt:Xavier-0" and at.Lola - at.Xavier - 1 == 70, list[at.Xavier + 1].key)
-check("Lola's clips under Lola", list[at.Lola + 1].key == "crt:Lola-0" and at["Game sounds"] - at.Lola - 1 == 67)
+check("Lola's clips under Lola", list[at.Lola + 1].key == "crt:Lola-0" and at["Game sounds"] - at.Lola - 1 == 70)
 check("game sounds after the title", list[at["Game sounds"] + 1].key == "kit:RAID_WARNING")
 local labels = {}
 for _, c in ipairs(list) do if c.key then labels[c.key] = c.label end end
@@ -156,7 +157,7 @@ reset() Sound:Speak("Spread")
 check("Lola says Spread with her clip", lastFile() == "Lola\\\\Spread.mp3" and #said == 0, lastFile())
 for _, w in ipairs({ "Void", "West", "Yellow" }) do
   reset() Sound:Speak(w)
-  check("Lola's missing " .. w .. " falls back to text to speech", #played == 0 and said[1] and said[1].text == w)
+  check("Lola says " .. w .. " with her clip", lastFile() == "Lola\\\\" .. w .. ".mp3" and #said == 0, lastFile())
 end
 CRT.db.sound.voice = "tts"
 reset() Sound:Speak("Soak") Sound:Speak("3")
@@ -229,7 +230,7 @@ start = clock
 for i = 1, 120 do step(0.1) end
 local gaps = {}
 for i = 2, #played do gaps[#gaps + 1] = string.format("%.1f", played[i].at - played[i - 1].at) end
-check("Soak (1.18 s) then 3: 3 starts in Soak's last quarter second, and 3, 2, 1 are each on their second",
+check("Soak (over a second) then 3: 3 starts in Soak's last quarter second, and 3, 2, 1 are each on their second",
   #played == 4 and played[2].at - played[1].at >= X.seconds.Soak - 0.25 - 1e-6 and near(2, 7) and near(3, 8) and near(4, 9), table.concat(gaps, " ") .. " last at " .. (played[4] and string.format("%.2f", played[4].at - start) or "-"))
 CRT.db.sound.voice = "tts"
 items = { { id = "d", ph = 1, time = 6, text = "Soak", priority = 21, outputs = { speech = true }, speech = spoken } }
@@ -459,8 +460,8 @@ if v then
   local note
   for _, h in ipairs(helps) do if h.target == (v.test or v) then note = h.text end end
   local function read() local t = type(note) == "function" and note() or note return type(t) == "string" and t or "" end
-  check("a (?) beside it says what the voice does, the missing words and that clips take no volume",
-    read():find("text to speech", 1, true) and read():find("Lola has no Void, West or Yellow", 1, true) and read():find("volume", 1, true), read())
+  check("a (?) beside it says what the voice does and that clips take no volume, with no missing words while none are",
+    read():find("text to speech", 1, true) and read():find("has no", 1, true) == nil and read():find("volume", 1, true), read())
   local was = Lo.lacks
   Lo.lacks = { "Void" }
   check("the (?) reads voice names and missing words from the voice table", read():find("West", 1, true) == nil
