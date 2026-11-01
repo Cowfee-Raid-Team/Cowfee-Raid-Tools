@@ -8,7 +8,7 @@ const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
-local onDisk, engineSrc, voicesSrc, effectsSrc = ...
+local onDisk, engineSrc, voicesSrc, effectsSrc, controlsSrc, lowHealthSrc = ...
 local passed, failed = 0, 0
 local function check(name, cond, detail)
   if cond then passed = passed + 1 print("ok " .. name) else failed = failed + 1 print("FAIL " .. name .. (detail and (": " .. tostring(detail)) or "")) end
@@ -49,7 +49,7 @@ for _, c in ipairs(E) do
   end
   check(c.folder .. ": every listed sound has its file", #missing == 0, table.concat(missing, ","))
   check(c.folder .. ": every file is listed", #extra == 0, table.concat(extra, ","))
-  check(c.folder .. ": no file has an ID3 tag or a GEOB or c2pa frame, and each starts on an audio frame", #tagged == 0, table.concat(tagged, ","))
+  check(c.folder .. ": no file has an ID3 tag, a GEOB or c2pa frame, an ID3v1 trailer or an APE tag, and each starts on an audio frame", #tagged == 0, table.concat(tagged, ","))
   local unlabelled = {}
   for _, f in ipairs(c.files) do if type(f.label) ~= "string" or f.label == "" then unlabelled[#unlabelled + 1] = f.name end end
   check(c.folder .. ": every sound has a label", #unlabelled == 0, table.concat(unlabelled, ","))
@@ -82,6 +82,27 @@ Sound:Play("crt:Impacts-AnvilStrike")
 local last = played[#played]
 check("it plays its file", last and last.path == Sound.BUNDLED_FOLDER .. "Impacts\\\\AnvilStrike.mp3", last and last.path)
 
+-- The sound dropdowns' (?) and the low-health list -------------------------------------------------------
+CRT.UI = {}
+local okUI, errUI = pcall(function() assert(load(controlsSrc, "@Controls.lua"))("CowfeeRaidTools", CRT) end)
+check("Controls.lua loads", okUI, errUI)
+check("the effect categories, from the table", Sound:EffectNames() == "Short, Impacts, Instruments and Devices", Sound:EffectNames())
+local help = okUI and CRT.UI.SoundHelp() or ""
+check("the (?) says the voices, then the effects by category, then the game sounds",
+  help:find("The Xavier and Lola voice clips, under each voice's name, then the sound effects by category (Short, Impacts, Instruments and Devices), then the game sounds.", 1, true) ~= nil, help)
+hooksecurefunc = function() end
+local okLH, errLH = pcall(function() assert(load(lowHealthSrc, "@lowhealth"))("CowfeeRaidTools", CRT) end)
+check("LowHealthSound.lua loads", okLH and CRT.LowHealthSound ~= nil, errLH)
+if okLH and CRT.LowHealthSound then
+  local lh, gi, n = CRT.LowHealthSound.Choices(), nil, 0
+  for i, c in ipairs(lh) do
+    if c.title and c.label == "Game sounds" then gi = i end
+    if c.key == "pulse" then n = n + 1 end
+  end
+  check("low health: Game pulse first under Game sounds, not under Devices", gi and lh[gi + 1] and lh[gi + 1].key == "pulse" and n == 1
+    and lh[gi - 1].key == "crt:Devices-TrashcanLid", gi)
+end
+
 -- Sounds, not speech ------------------------------------------------------------------------------------
 check("no effect is a voice's word", Sound:ClipFor("Air horn") == nil and Sound:ClipFor("Cowbell") == nil and Sound:ClipFor("Triangle") == nil)
 local words = 0
@@ -102,12 +123,14 @@ for (const v of ['Short', 'Impacts', 'Instruments', 'Devices']) {
     const b = fs.readFileSync(path.join(dir, f));
     lua.lua_newtable(L);
     lua.lua_pushboolean(L, id3Length(b) > 0 ? 1 : 0); lua.lua_setfield(L, -2, to_luastring('tag'));
-    lua.lua_pushboolean(L, (b.indexOf('GEOB') >= 0 || b.indexOf('c2pa') >= 0) ? 1 : 0); lua.lua_setfield(L, -2, to_luastring('meta'));
+    // GEOB and c2pa frames anywhere, an ID3v1 "TAG" trailer (the last 128 bytes) or an APE tag
+    const v1 = b.length >= 128 && b.slice(b.length - 128, b.length - 125).toString() === 'TAG';
+    lua.lua_pushboolean(L, (b.indexOf('GEOB') >= 0 || b.indexOf('c2pa') >= 0 || v1 || b.indexOf('APETAGEX') >= 0) ? 1 : 0); lua.lua_setfield(L, -2, to_luastring('meta'));
     lua.lua_pushboolean(L, (b[0] === 0xFF && (b[1] & 0xE0) === 0xE0) ? 1 : 0); lua.lua_setfield(L, -2, to_luastring('sync'));
     lua.lua_setfield(L, -2, to_luastring(f));
   }
   lua.lua_setfield(L, -2, to_luastring(v));
 }
-const files = ['CRT_Core/Sound/Engine.lua', 'CRT_Core/Sound/Voices.lua', 'CRT_Core/Sound/Effects.lua'];
+const files = ['CRT_Core/Sound/Engine.lua', 'CRT_Core/Sound/Voices.lua', 'CRT_Core/Sound/Effects.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Modules/QoL/LowHealthSound.lua'];
 for (const f of files) { const p = path.join(d, f); lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '')); }
 if (lua.lua_pcall(L, files.length + 1, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

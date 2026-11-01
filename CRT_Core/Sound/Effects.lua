@@ -60,6 +60,23 @@ Sound.EFFECTS = {
     },
 }
 
+local TEXT = {
+    listAnd = "%s and %s",
+}
+
+-- For the sound dropdowns' (?) (UI.SoundHelp), read from the table each time: the categories' names in list order,
+-- "Short, Impacts, Instruments and Devices".
+function Sound:EffectNames()
+    local names = {}
+    for _, cat in ipairs(Sound.EFFECTS) do
+        names[#names + 1] = cat.label
+    end
+    if #names < 2 then
+        return names[1] or ""
+    end
+    return string.format(TEXT.listAnd, table.concat(names, ", ", 1, #names - 1), names[#names])
+end
+
 -- Each effect as a crt: sound, under its category's heading.
 for _, cat in ipairs(Sound.EFFECTS) do
     for i, f in ipairs(cat.files) do
