@@ -94,7 +94,7 @@ local TEXT = {
     sayInsteadHelp = "Words to say in place of the alert's text. Leave it empty to say the text.\n\n"
         .. "Only your own alerts have it: a raid note line always says its text.",
     count = "Count down from",
-    countDownHelp = "Says the numbers down to 1 as one quick phrase ending at 0, the alert's time, then the text right after it.\n\nWith Speak at: Before 0, the text is said early instead, and the numbers after it one a second.",
+    countDownHelp = "Says the numbers down to 1 as one quick phrase ending at 0, the alert's time. With Speak the text on, then the text right after it.\n\nWith Speak at: Before 0, the text is said early instead, and the numbers after it one a second.",
     glow = "Glow at 0",
     sound = "Sound",
     none = "None",

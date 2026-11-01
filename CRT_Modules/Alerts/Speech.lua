@@ -17,8 +17,12 @@ local ADDON, CRT = ...
 -- COUNT_HOLD seconds after the number before, clip or speech, even while that one still plays; a due number may
 -- also start in a clip's last CLIP_TAIL seconds, so a word clip a little over a second never delays the count. While
 -- a clip plays, the game's speech-finished event frees nothing: it is for an earlier spoken line, or not ours.
--- With Count down on, the text comes after "1" (Rules.SpeechItems marks it afterCount, due at 0): it starts the
--- moment "1" ends and not before 0; after a spoken "1" the game's finished event runs it.
+-- With Count down on (not Before 0), the count is one quick phrase that ends at 0 (#1238): Rules.SpeechItems gives
+-- one item (countFrom, due Rules.CountSeconds before 0; Rules.countSeconds, set below, is the voice's number clips back
+-- to back, or an estimate for the game's text to speech). playPhrase plays the clips back to back; with no clips for
+-- the count (text to speech, or a number the voice lacks) speakCount says the numbers and the text as one line and
+-- drops the text's own item. Otherwise the text comes after the phrase (afterCount, due at 0): it starts the moment
+-- the phrase ends and not before 0.
 -- Every line starts at its exact moment, not at the next tick: when the next line's start (its own time, and the
 -- moment the speaker frees for it: a clip's end, a count's next number) is within CUE_AHEAD, a timer (wake) runs
 -- the tick then.
@@ -237,7 +241,8 @@ local tokens = 0
 local fireCue
 
 -- A count's number clips back to back (Sound:CountPlan): the first now, each next one as the one before ends, on
--- C_Timer.After. A stop, a new run or Hush (self.phrase moves on) leaves the rest unplayed.
+-- C_Timer.After. A stop, a new run or Hush (self.phrase moves on; a rehearsal speed change hushes) leaves the rest
+-- unplayed. The clips run on real time, like a spoken line: a rehearsal paused mid-phrase finishes the phrase.
 local function playPhrase(self, plan)
     self.phrase = (self.phrase or 0) + 1
     local token, runId = self.phrase, self.runId
@@ -269,7 +274,13 @@ local function speakCount(self, item)
     if item.thenText then
         text = text .. ", " .. item.thenText
         if item.thenKey then
+            -- the line says the text: its own item is never said, whether still to come or already queued
             self.spoken[item.thenKey] = true
+            for i = #self.queue, 1, -1 do
+                if self.queue[i].key == item.thenKey then
+                    table.remove(self.queue, i)
+                end
+            end
         end
     end
     local _, how, seconds = self:SpeakNow(text)

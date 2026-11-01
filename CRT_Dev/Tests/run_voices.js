@@ -313,8 +313,68 @@ for _, rate in ipairs({ 0, 5 }) do
 end
 CRT.db.notes.alert.ttsRate = 0
 do
-  local _, list = runCount("tts", { countFrom = 5, text = "Stack", speakText = "Say this" })
-  check("text to speech: the count's item carries the words said after it", list[1].thenText == "Stack")
+  local _, list = runCount("tts", { countFrom = 5, text = "Stack" })
+  check("the count's item carries the text said after it", list[1].thenText == "Stack")
+end
+
+-- the one line says the text once: another line holding the speaker across the lead, so the phrase and the text are
+-- both queued by 0, and a run that starts inside the lead, so both come due on the first tick
+do
+  local fired = false
+  local out = runCount("tts", { countFrom = 3, each = function(t)
+    if not fired and t >= 20.2 then fired = true fire("VOICE_CHAT_TTS_PLAYBACK_FINISHED") end
+  end }, { { id = "hold", ph = 1, time = 18.5, text = "Stack on Abu", priority = 21, outputs = { speech = true }, speech = { { offset = 0, text = "Stack on Abu" } } } })
+  local lines, soak = 0, 0
+  for _, o in ipairs(out) do
+    if o.what == "tts:3, 2, 1, Soak" then lines = lines + 1 end
+    if o.what == "tts:Soak" then soak = soak + 1 end
+  end
+  check("text to speech held across the lead: one line with the text, no separate Soak", lines == 1 and soak == 0, names(out))
+end
+do
+  CRT.db.sound.voice = "tts"
+  local list = {}
+  for i, s in ipairs(Rules.SpeechItems("Soak", 8, true, true, false, { countFrom = 3 })) do list[i] = s end
+  items = { { id = "inlead", ph = 1, time = 0.05, text = "Soak", priority = 21, outputs = { speech = true }, speech = list } }
+  reset()
+  Alerts:Start(1, "Mythic", "test")
+  for i = 1, 300 do step(0.01) if i % 10 == 0 then fire("VOICE_CHAT_TTS_PLAYBACK_FINISHED") end end
+  Alerts:Stop()
+  local texts = {}
+  for _, s in ipairs(said) do texts[#texts + 1] = tostring(s.text) end
+  check("text to speech, phrase and text due on the same tick: one line, no separate Soak", table.concat(texts, "|") == "3, 2, 1, Soak", table.concat(texts, "|"))
+end
+
+-- a rehearsal speed change away from 1x, and Hush, mid-phrase drop the clips still to come
+for _, how in ipairs({ "speed", "hush" }) do
+  CRT.db.sound.voice = "xavier"
+  local saved = { IsRehearsal = Alerts.IsRehearsal, Now = Alerts.Now, RehearsalTick = Alerts.RehearsalTick, RehearsalSpeed = Alerts.RehearsalSpeed }
+  local speed = 1
+  Alerts.IsRehearsal = function() return true end
+  Alerts.RehearsalSpeed = function() return speed end
+  Alerts.RehearsalTick = function() return false, speed, nil end
+  Alerts.Now = function() return clock end
+  local list = {}
+  for i, s in ipairs(Rules.SpeechItems("Soak", 8, true, true, false, { countFrom = 5 })) do list[i] = s end
+  items = { { id = "cut" .. how, ph = 1, time = 20, text = "Soak", priority = 21, outputs = { speech = true }, speech = list } }
+  reset()
+  Alerts:Start(1, "Mythic", "test")
+  local t0 = clock
+  local total = 0
+  for n = 5, 1, -1 do total = total + X.seconds[tostring(n)] end
+  local mid = 20 - total + X.seconds["5"] + 0.1 -- the 4 is playing
+  while clock - t0 < mid do step(0.01) end
+  local n0 = #played
+  if how == "speed" then speed = 2 else Speech:Hush() end
+  for i = 1, 300 do step(0.01) end
+  Alerts:Stop()
+  for k, fn in pairs(saved) do Alerts[k] = fn end
+  local later = {}
+  for i = n0 + 1, #played do later[#later + 1] = played[i].path:match("([^\\\\]+)%.mp3$") end
+  local numbers = 0
+  for _, w in ipairs(later) do if tonumber(w) then numbers = numbers + 1 end end
+  check((how == "speed" and "a speed change to 2x" or "Hush") .. " mid-phrase drops the numbers still to come", n0 == 2 and numbers == 0,
+    n0 .. " then " .. table.concat(later, ","))
 end
 
 -- Before 0 is unchanged: the text early, the numbers after it on their seconds
