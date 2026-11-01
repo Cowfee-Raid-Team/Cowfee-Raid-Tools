@@ -239,23 +239,22 @@ function Rules.SpeechDue(lines, now, spoken)
     return items
 end
 
--- The earliest time after now that a text following a count (afterCount) comes due and was not spoken yet, or nil.
--- The speech queue wakes for it between its ticks, so the text follows "1" without waiting for the next tick.
-function Rules.NextAfterCount(lines, now, spoken)
-    local best
+-- The earliest speech item after now that was not spoken yet, as its time and text, or nil. The speech queue wakes
+-- for it between its ticks, so every line is said at its own time, not at the next tick.
+function Rules.NextSpeech(lines, now, spoken)
+    local best, text
     for _, line in ipairs(lines) do
         for _, member in ipairs(line.members or { line }) do
             if member.outputs and member.outputs.speech then
                 for i, s in ipairs(member.speech or {}) do
-                    if s.afterCount and s.at > now and not spoken[tostring(member.id) .. "#" .. i]
-                        and (not best or s.at < best) then
-                        best = s.at
+                    if s.at > now and not spoken[tostring(member.id) .. "#" .. i] and (not best or s.at < best) then
+                        best, text = s.at, s.text
                     end
                 end
             end
         end
     end
-    return best
+    return best, text
 end
 
 -- Drops the lowest-priority item (earliest of equals) while the head of the queue is too far behind.

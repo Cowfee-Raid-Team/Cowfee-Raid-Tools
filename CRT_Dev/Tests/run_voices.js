@@ -220,6 +220,24 @@ Alerts:Start(1, "Mythic", "test")
 for i = 1, 60 do step(0.1) end
 check("a clip line 1 s after a long clip starts once it ends", #played == 2 and played[2].at - played[1].at >= X.seconds.HealAbsorb - 1e-6,
   #played == 2 and string.format("%.2f", played[2].at - played[1].at) or #played)
+check("the waiting line starts as the clip ends, not at the next tick", #played == 2 and played[2].at - played[1].at <= X.seconds.HealAbsorb + 0.01,
+  #played == 2 and string.format("%.3f", played[2].at - played[1].at) or #played)
+-- a line due between two ticks is said at its own time (a wake timer), not up to a tick later
+items = { { id = "between", ph = 1, time = 2.05, text = "Spread", priority = 21, outputs = { speech = true }, speech = { { offset = 0, text = "Spread" } } } }
+reset()
+Alerts:Start(1, "Mythic", "test")
+start = clock
+for i = 1, 40 do step(0.1) end
+check("a line due between ticks is said at its time", #played == 1 and math.abs(played[1].at - start - 2.05) <= 0.005,
+  played[1] and string.format("%.3f", played[1].at - start) or "none")
+CRT.db.sound.voice = "tts"
+reset()
+Alerts:Start(1, "Mythic", "test")
+start = clock
+for i = 1, 40 do step(0.1) end
+check("text to speech too: a line due between ticks is said at its time", #said == 1 and math.abs(said[1].at - start - 2.05) <= 0.005,
+  said[1] and string.format("%.3f", said[1].at - start) or "none")
+CRT.db.sound.voice = "xavier"
 -- a word clip longer than a second right before the count (Speak at: Before 0, at 4 s): the numbers keep their second
 local tight = {}
 for i, s in ipairs(Rules.SpeechItems("Soak", 4, true, true, false, { before = 4 })) do tight[i] = s end
@@ -265,6 +283,9 @@ local c5 = runCount("Soak", 8, { countFrom = 5 })
 check("a count from 5 plays 5, 4, 3, 2, 1 as clips, each on its second",
   find(c5, "Soak") and onSecond(c5, 5) and onSecond(c5, 4) and onSecond(c5, 3) and onSecond(c5, 2) and onSecond(c5, 1) and #said == 0
     and find(c5, "5seconds321") == nil, show(c5))
+local function exactSecond(out, n) local o = find(out, tostring(n)) return o and math.abs(o.at - (20 - n)) <= 0.005 end
+check("a count from 5: each number within 5 ms of its second",
+  exactSecond(c5, 5) and exactSecond(c5, 4) and exactSecond(c5, 3) and exactSecond(c5, 2) and exactSecond(c5, 1), show(c5))
 local c10 = runCount("Soak", 12, { countFrom = 10 })
 local ten = find(c10, "tts:10")
 check("a count from 10: 10 has no clip and is read out", ten ~= nil and math.abs(ten.at - 10) <= 0.15, show(c10))

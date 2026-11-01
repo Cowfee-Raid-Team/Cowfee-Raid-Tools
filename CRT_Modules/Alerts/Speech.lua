@@ -18,8 +18,10 @@ local ADDON, CRT = ...
 -- also start in a clip's last CLIP_TAIL seconds, so a word clip a little over a second never delays the count. While
 -- a clip plays, the game's speech-finished event frees nothing: it is for an earlier spoken line, or not ours.
 -- With Count down on, the text comes after "1" (Rules.SpeechItems marks it afterCount, due at 0): it starts the
--- moment "1" ends and not before 0. When that moment falls before the next tick, a timer (wake) runs the tick then:
--- the end of the "1" clip, or the text's own time; after a spoken "1" the game's finished event runs it.
+-- moment "1" ends and not before 0; after a spoken "1" the game's finished event runs it.
+-- Every line starts at its exact moment, not at the next tick: when the next line's start (its own time, and the
+-- moment the speaker frees for it: a clip's end, a count's next number) is within CUE_AHEAD, a timer (wake) runs
+-- the tick then.
 -- A cue plays at its exact moment, not at the next tick: once it is within CUE_AHEAD of zero, the tick schedules
 -- it with C_Timer.After for the real seconds left (engine seconds over the rehearsal's speed). When the timer
 -- comes, the cue plays if it is still in this run's lines and due (within Rules.ZERO_EPSILON, the tolerance the
@@ -214,28 +216,44 @@ end
 local tokens = 0
 local fireCue
 
--- The text after a count starts the moment "1" ends, not at the next tick: when that moment (the end of the "1" clip
--- playing, and the text's own time) is under a tick away, a timer runs the tick at it. A spoken "1" ends with the
--- game's finished event, which runs the tick itself. One timer per moment; a new run drops it. While a rehearsal is
--- paused the text's time never comes, so only the end of a clip playing is waited for.
+-- The real moment a line due at `at` (engine time) with `text` can start: its own time, and while something plays,
+-- the moment Tick frees the speaker for it (the clip's end, CLIP_TAIL before it for a count's number, or COUNT_HOLD
+-- after the number before). Nil while a spoken line plays that only the game's finished event (or the timeout) frees.
+local function startsAt(self, at, text, now, real)
+    local from = real + math.max(0, at - now)
+    if not self.playing then
+        return from
+    end
+    local n = numberOf(text)
+    local free
+    if self.clip then
+        free = n and (self.playingUntil - CLIP_TAIL) or self.playingUntil
+    end
+    if n and self.number and n == self.number - 1 then
+        free = math.min(free or math.huge, self.playingSince + COUNT_HOLD)
+    end
+    return free and math.max(from, free) or nil
+end
+
+-- A line starts at its moment, not at the next tick: when the queue's head (or, with none, the next line coming due)
+-- can start within CUE_AHEAD, a timer runs the tick then. A spoken line ends with the game's finished event, which
+-- runs the tick itself. One timer per moment; a new run drops it. While a rehearsal is paused no line's time comes,
+-- so only a line already waiting is woken for.
 local function wake(self, lines, now, real)
     local head = self.queue[1]
-    local left = (self.playing and self.clip) and math.max(0, self.playingUntil - real) or nil
-    local wait
+    local due
     if head then
-        if head.afterCount and left then
-            wait = left
-        end
-    elseif (not self.playing or left) and clockPlays() then
-        local at = Rules.NextAfterCount(lines, now, self.spoken)
+        due = startsAt(self, head.at, head.text, now, real)
+    elseif clockPlays() then
+        local at, text = Rules.NextSpeech(lines, now, self.spoken)
         if at then
-            wait = math.max(at - now, left or 0)
+            due = startsAt(self, at, text, now, real)
         end
     end
-    if not (wait and wait < TICK and C_Timer and C_Timer.After) then
+    if not (due and due - real <= CUE_AHEAD and C_Timer and C_Timer.After) then
         return
     end
-    local due = real + wait
+    local wait = math.max(0, due - real)
     if self.wakeAt and math.abs(self.wakeAt - due) < WAKE_LATE then
         return
     end
