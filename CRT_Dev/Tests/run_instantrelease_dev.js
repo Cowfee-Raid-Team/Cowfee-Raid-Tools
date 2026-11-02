@@ -1,9 +1,9 @@
 // CRT_Dev/Dev/InstantReleaseTest.lua: /crt dev autorelease, the developer test of Instantly release after wipe
 // (Alerts/InstantRelease.lua) outside a raid. status prints each check and the verdict; now runs the real end-of-encounter
-// path as a wipe with only the boss lookup skipped; arm does the same on the next death within ARM_SECONDS, ARM_WAIT
-// after it; off disarms. Also: the file and its slash word are inside the do-not-package blocks, and the dev hook
-// leaves the shipped path as it was (any boss's wipe releases, a kill never).
-// Usage: node run_autorelease_dev.js <addon folder>
+// path as a wipe (InstantRelease:OnEncounterEnd with its dev opts.done); arm does the same on the next death within
+// ARM_SECONDS, ARM_WAIT after it; off disarms. Also: the file and its slash word are inside the do-not-package blocks,
+// and the dev hook leaves the shipped path as it was (any boss's wipe releases, a kill never).
+// Usage: node run_instantrelease_dev.js <addon folder>
 const fs = require('fs');
 const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');

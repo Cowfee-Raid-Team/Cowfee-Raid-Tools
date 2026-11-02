@@ -2968,6 +2968,15 @@ check("mech special (" .. LOOK .. "): Instantly release after wipe sits under th
     assert(cb[1] >= lr[1] and lb[3] + 24 <= lr[3], "inside the list's width, its (?) too: " .. lb[3] .. " of " .. lr[3])
     local pr = rect(s.panel, f)
     assert(lr[3] <= pr[1], "the list stays left of the panel")
+    assert(box.label.wordWrap == false and math.abs(box.label.w - #"Instantly release after wipe" * 6) < 1, "its label as wide as its words, on one line")
+    -- the largest text size: the label is cut, so it and its (?) still fit the list
+    TEXT_SCALE = 1.75
+    CRT.NoteReminders.Refresh()
+    rects = {}
+    lb, lr = rect(box.label, f), rect(s.list, f)
+    assert(lb[3] + 24 <= lr[3], "at 1.75 the label and its (?) fit the list: " .. lb[3] .. " of " .. lr[3])
+    TEXT_SCALE = nil
+    CRT.NoteReminders.Refresh()
     assert(math.abs(lr[4] - rect(f.ownButton, f)[4]) < 1 and lr[4] <= TAB_H, "the list still ends where the Mechanics list's buttons end: " .. lr[4] .. " " .. rect(f.ownButton, f)[4])
     local help
     for _, h in ipairs(helps) do if rawget(h, "helpTarget") == box.label then help = h end end

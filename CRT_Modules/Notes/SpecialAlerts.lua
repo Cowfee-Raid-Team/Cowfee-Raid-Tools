@@ -94,9 +94,9 @@ local L = {
     ROW_H = 24,
     EMPTY_GAP = 6, -- the empty list's hint under its line
     RELEASE_H = 24, RELEASE_GAP = 4, -- the Instantly release after wipe row under the toggle, and its gap to the list
-    RELEASE_LABEL_GAP = 2, -- between its tick and its label
     CHECK_SIZE = 24,
     CHECK_LABEL_W = 96,
+    CHECK_LABEL_GAP = 2, -- between a tick and its label (makeCheck)
     SHOW_GAP = 10,
     CHIP_H = 18,
     CHIP_PAD = 6,
@@ -279,7 +279,7 @@ end
 local function layRelease()
     local label = ui.release.label
     label:SetWidth(0)
-    local room = L.LIST_W - L.CHECK_SIZE - L.RELEASE_LABEL_GAP - UI.HELP_GAP - UI.HELP_SIZE
+    local room = L.LIST_W - L.CHECK_SIZE - L.CHECK_LABEL_GAP - UI.HELP_GAP - UI.HELP_SIZE
     label:SetWidth(math.min(width(label), room))
     ui.release:SetChecked(CRT.db.alerts.instantRelease == true)
 end
@@ -591,7 +591,7 @@ local function makeCheck(parent, label, x, y, onClick)
     check:SetSize(L.CHECK_SIZE, L.CHECK_SIZE)
     check:SetPoint("TOPLEFT", x, y)
     local text = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    text:SetPoint("LEFT", check, "RIGHT", 2, 0)
+    text:SetPoint("LEFT", check, "RIGHT", L.CHECK_LABEL_GAP, 0)
     text:SetWidth(L.CHECK_LABEL_W)
     text:SetJustifyH("LEFT")
     text:SetWordWrap(false)
@@ -987,19 +987,11 @@ local function build(f, g)
     row:SetSize(L.LIST_W, L.RELEASE_H)
     row:SetPoint("TOPLEFT", L.X, g.listY)
     ui.releaseRow = row
-    local release = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
-    release:SetSize(L.CHECK_SIZE, L.CHECK_SIZE)
-    release:SetPoint("TOPLEFT", 0, 0)
-    release.label = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    release.label:SetPoint("LEFT", release, "RIGHT", L.RELEASE_LABEL_GAP, 0)
-    release.label:SetJustifyH("LEFT")
-    release.label:SetWordWrap(false)
-    release.label:SetText(TEXT.instantRelease)
-    release:SetScript("OnClick", function(self)
-        CRT.db.alerts.instantRelease = self:GetChecked() and true or false
+    -- the file's own tick (makeCheck), as Alert me; layRelease sizes its label on every draw
+    ui.release = makeCheck(row, TEXT.instantRelease, 0, 0, function(on)
+        CRT.db.alerts.instantRelease = on
     end)
-    ui.release = release
-    ui.releaseHelp = UI.HelpRight(release.label, TEXT.instantRelease, TEXT.instantReleaseHelp)
+    ui.releaseHelp = UI.HelpRight(ui.release.label, TEXT.instantRelease, TEXT.instantReleaseHelp)
     L.LIST_H = L.LIST_H - L.RELEASE_H - L.RELEASE_GAP
 
     local list = CreateFrame("Frame", nil, f, "BackdropTemplate")
