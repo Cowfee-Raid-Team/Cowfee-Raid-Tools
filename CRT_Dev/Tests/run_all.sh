@@ -27,6 +27,7 @@ g "soundtiming" && { node run_soundtiming.js "$WA/CRT_Modules/Alerts/Rules.lua" 
 g "voices" && { node run_voices.js "$W" 2>&1 | tail -100; echo "exit ${PIPESTATUS[0]}"; }
 g "low health" && { node run_lowhealth.js "$W" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
 g "auto release" && { node run_autorelease.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }
+g "auto release dev" && { node run_autorelease_dev.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }
 g "sound effects" && { node run_sound_effects.js "$W" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
 g "alerts reminders" && { node run_alerts_reminders.js "$WA/CRT_Modules/Timeline/Data.lua" "$WA/CRT_Modules/Timeline/Database.lua" "$WA/CRT_Modules/Timeline/Reference.lua" "$WA/CRT_Modules/Timeline/Lanes.lua" "$WA/CRT_Modules/Alerts/Rules.lua" "$WA/CRT_Modules/Alerts/Engine.lua" "$WA/CRT_Modules/Alerts/Reminders.lua" "$WA/CRT_Data/Bosses/Registry.lua" "$WA/CRT_Dev/Tests/SamplePack/Season.lua" "$WA/CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua" 2>&1  | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "alerts share" && { node run_alerts_share.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }

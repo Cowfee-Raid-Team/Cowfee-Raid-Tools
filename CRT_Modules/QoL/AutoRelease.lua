@@ -9,6 +9,9 @@ local ADDON, CRT = ...
 -- the offer open: the corpse delay (GetCorpseRecoveryDelay, read when the offer comes) plus OFFER_SECONDS. It also holds
 -- while you can resurrect yourself (a soulstone, Reincarnation: C_DeathInfo.GetSelfResurrectOptions), so you release by
 -- hand; Alex, 2026-11-02: "Hold if I have one". A death state the game keeps secret counts as unknown, and unknown never releases.
+-- Dev only (CRT_Dev/Dev/AutoReleaseTest.lua, /crt dev autorelease): OnEncounterEnd's third argument, opts, where
+-- force = true skips the boss lookup (nothing else) and done(released) hears the result after the delay; OfferLeft reads
+-- the offer window. The game's ENCOUNTER_END passes no opts, so the shipped path is the same.
 
 local RELEASE_DELAY = 0.5 -- seconds after the encounter ends
 local OFFER_SECONDS = 60 -- a resurrection offer holds the release back this long after the corpse delay (the game's popup)
@@ -81,6 +84,14 @@ function AutoRelease.Waiting()
     return not AutoRelease.CanResurrectSelf()
 end
 
+-- The seconds left on an open resurrection offer, or nil (read only, for the dev status).
+function AutoRelease.OfferLeft()
+    if offerUntil and GetTime() < offerUntil then
+        return offerUntil - GetTime()
+    end
+    return nil
+end
+
 -- After the delay: the same checks again, then Release Spirit. True when RepopMe was called without an error.
 function AutoRelease:Release()
     pending = false
@@ -90,17 +101,23 @@ function AutoRelease:Release()
     return (pcall(RepopMe))
 end
 
-function AutoRelease:OnEncounterEnd(encounterID, success)
+-- True when a release was set to run after the delay. opts is dev only (see the header).
+function AutoRelease:OnEncounterEnd(encounterID, success, opts)
     if pending or not enabled() or encounterID == nil or success == nil or secret(encounterID) or secret(success) then
-        return
+        return false
     end
-    if success ~= 0 or not (CRT.Bosses and CRT.Bosses:AutoRelease(encounterID)) or not self.Waiting() then
-        return
+    local force = opts ~= nil and opts.force == true
+    if success ~= 0 or not (force or (CRT.Bosses and CRT.Bosses:AutoRelease(encounterID))) or not self.Waiting() then
+        return false
     end
     pending = true
     C_Timer.After(RELEASE_DELAY, function()
-        AutoRelease:Release()
+        local released = AutoRelease:Release()
+        if opts and opts.done then
+            opts.done(released)
+        end
     end)
+    return true
 end
 
 local events = CreateFrame("Frame")

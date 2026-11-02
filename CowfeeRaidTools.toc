@@ -238,6 +238,7 @@ CRT_Dev\Dev\ClearProbe.lua
 CRT_Dev\Dev\AbsorbProbe.lua
 CRT_Dev\Dev\AuraProbe.lua
 CRT_Dev\Dev\LowHealthProbe.lua
+CRT_Dev\Dev\AutoReleaseTest.lua
 CRT_Dev\Dev\ShieldBarDev.lua
 CRT_Dev\Dev\BossDebug.lua
 CRT_Dev\Dev\BossEmotes.lua
