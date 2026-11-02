@@ -17,7 +17,7 @@ local ADDON, CRT = ...
 --                  (Reference.TAGS). One type only: a label has no second type. A player's own labels win field by
 --                  field (Timeline:ApplyAbilities); /crt dev labels exports them in this format. An entry, type, tag
 --                  or field that doesn't read is left out, with a chat line in developer builds.
--- Three fields are read where they are used, through Bosses:Get, not copied here:
+-- Two fields are read where they are used, through Bosses:Get, not copied here:
 --   special     -> CRT.AlertSpecial (Alerts/Special.lua: the boss's scripted special alerts, on Mech Alerts'
 --                  Special list), a list of { key, label, help, type, difficulty, default, when = { row |
 --                  spellID | times (a P1 time may be before the pull: "-0:15") }, lead, icon (a spell ID),
@@ -29,9 +29,6 @@ local ADDON, CRT = ...
 --   interrupts  -> CRT.Interrupts (Interrupts/Data.lua: the boss's kick setups, one per difficulty: groups with
 --                  their raid markers and slots, and optional timing; Interrupts/Setup.lua's header has the format);
 --                  a block that doesn't read is skipped.
---   autoRelease -> Bosses:AutoRelease(encounterID), Bosses:AutoReleaseNames() (QoL/AutoRelease.lua: autoRelease = true lets
---                  Release my spirit after a wipe, a Quality of Life setting off by default, release the player's spirit
---                  after a wipe on this boss; any other value, or none, never does).
 -- Features that don't depend on a boss (the Late Tracker, Raid Groups) never read it. A season's own facts
 -- that aren't about a boss (the Gear Checker's enchant, socket and season checks, the upgrade tracks, and the
 -- game IDs: consumables, class cooldowns, raid buffs and class interrupts) live in a topic file each (Bosses:SeasonData) and are
@@ -360,24 +357,6 @@ seasonLoaded = function(key)
     end
     local def = Bosses.seasons[key]
     return def and def.current and true or false
-end
-
--- Release my spirit after a wipe (QoL/AutoRelease.lua) acts only on a boss whose file has autoRelease = true: true for a
--- loaded boss with it, false for any other boss, a boss of a season that isn't loaded, or no ID.
-function Bosses:AutoRelease(encounterID)
-    local def = self:Get(encounterID)
-    return def ~= nil and def.autoRelease == true and self:Loaded(encounterID) == true
-end
-
--- The names of the loaded bosses with autoRelease, in route order, for the setting's (?).
-function Bosses:AutoReleaseNames()
-    local out = {}
-    for _, def in ipairs(self:RouteList()) do
-        if def.autoRelease == true then
-            out[#out + 1] = def.name
-        end
-    end
-    return out
 end
 
 function Bosses:Loaded(encounterID)

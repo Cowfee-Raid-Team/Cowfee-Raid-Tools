@@ -172,6 +172,7 @@ CRT_Modules\Alerts\DebuffListView.lua
 CRT_Modules\Alerts\Countdown.lua
 CRT_Modules\Alerts\Absorb.lua
 CRT_Modules\Alerts\ShieldPulls.lua
+CRT_Modules\Alerts\InstantRelease.lua
 CRT_Modules\Timeline\Undo.lua
 CRT_Modules\Timeline\JournalExport.lua
 CRT_Modules\SeasonStats\Data.lua
@@ -222,7 +223,6 @@ CRT_Modules\Interrupts\SetupEditor.lua
 CRT_Modules\QoL\LowHealth.lua
 CRT_Modules\QoL\LowHealthSound.lua
 CRT_Modules\QoL\BreakTimer.lua
-CRT_Modules\QoL\AutoRelease.lua
 CRT_Modules\QoL\Page.lua
 CRT_Core\UI\Minimap.lua
 CRT_Core\UI\SettingsPage.lua
@@ -238,7 +238,7 @@ CRT_Dev\Dev\ClearProbe.lua
 CRT_Dev\Dev\AbsorbProbe.lua
 CRT_Dev\Dev\AuraProbe.lua
 CRT_Dev\Dev\LowHealthProbe.lua
-CRT_Dev\Dev\AutoReleaseTest.lua
+CRT_Dev\Dev\InstantReleaseTest.lua
 CRT_Dev\Dev\ShieldBarDev.lua
 CRT_Dev\Dev\BossDebug.lua
 CRT_Dev\Dev\BossEmotes.lua

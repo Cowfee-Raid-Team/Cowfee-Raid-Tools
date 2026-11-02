@@ -2951,6 +2951,45 @@ check("mech special (" .. LOOK .. "): the toggle sits over the list, Special on 
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+check("mech special (" .. LOOK .. "): Instantly release after wipe sits under the toggle, on Special only, every boss", function()
+  for _, withList in ipairs({ false, true }) do
+    if withList then withSpecial(SPECIAL_LIST) else noSpecial() end
+    CRT.db.alerts.instantRelease = nil
+    local f = freshOpen()
+    local s = f.special
+    local box = s.release
+    assert(box and box.kind == "CheckButton" and box.label and box.label.text == "Instantly release after wipe", "the check box and its label")
+    assert(box:IsVisible() and box.label:IsVisible(), "on show on Special" .. (withList and "" or ", a boss with no special alerts too"))
+    assert(box.checked == false, "off by default")
+    rects = {}
+    local a, b, lr, cb, lb = rect(s.specialBtn, f), rect(s.mechBtn, f), rect(s.list, f), rect(box, f), rect(box.label, f)
+    assert(cb[2] >= a[4] and cb[2] >= b[4], "under the toggle: " .. cb[2] .. " < " .. a[4])
+    assert(cb[4] <= lr[2] and lb[4] <= lr[2], "over the list, which moved down: " .. cb[4] .. " > " .. lr[2])
+    assert(cb[1] >= lr[1] and lb[3] + 24 <= lr[3], "inside the list's width, its (?) too: " .. lb[3] .. " of " .. lr[3])
+    local pr = rect(s.panel, f)
+    assert(lr[3] <= pr[1], "the list stays left of the panel")
+    assert(math.abs(lr[4] - rect(f.ownButton, f)[4]) < 1 and lr[4] <= TAB_H, "the list still ends where the Mechanics list's buttons end: " .. lr[4] .. " " .. rect(f.ownButton, f)[4])
+    local help
+    for _, h in ipairs(helps) do if rawget(h, "helpTarget") == box.label then help = h end end
+    assert(help and help.helpTitle == "Instantly release after wipe", "its (?), right of the label")
+    assert(help.helpText == "Releases your spirit half a second after a wipe on any boss. Never after a kill, while a resurrection is on its way, or while you can resurrect yourself.", tostring(help.helpText))
+    box.checked = true click(box)
+    assert(CRT.db.alerts.instantRelease == true, "ticking it saves alerts.instantRelease")
+    box.checked = false click(box)
+    assert(CRT.db.alerts.instantRelease == false, "unticking it saves false")
+    CRT.db.alerts.instantRelease = true
+    CRT.NoteReminders.Refresh()
+    assert(box.checked == true, "it shows the saved setting")
+    click(s.mechBtn)
+    assert(not box:IsVisible() and not box.label:IsVisible(), "not on Mechanics")
+    click(s.specialBtn)
+    assert(box:IsVisible(), "back on Special")
+    CRT.db.alerts.instantRelease = nil
+  end
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("mech special (" .. LOOK .. "): Special shows the empty line and its hint, and a pick holds while the tab stays open", function()
   noSpecial()
   local f = fresh()

@@ -212,8 +212,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         -- dev aura <spellID>, on [spellID], off, show: what an addon can read of a debuff on the group (Dev/AuraProbe.lua)
     elseif CRT.LowHealthProbe and CRT.LowHealthProbe:Command(msg) then
         -- dev lowhp (on), off, show: what an addon sees of your health going under the low-health threshold (Dev/LowHealthProbe.lua)
-    elseif CRT.AutoReleaseTest and CRT.AutoReleaseTest:Command(msg) then
-        -- dev autorelease (status), now, arm, off: test Release my spirit after a wipe outside a raid (Dev/AutoReleaseTest.lua)
+    elseif CRT.InstantReleaseTest and CRT.InstantReleaseTest:Command(msg) then
+        -- dev autorelease (status), now, arm, off: test Instantly release after wipe outside a raid (Dev/InstantReleaseTest.lua)
     elseif CRT.ShieldBarDev and CRT.ShieldBarDev:Command(msg) then
         -- dev shieldbar (off): the shield bar on your own absorb, against a dummy (Dev/ShieldBarDev.lua)
     elseif CRT.BossDebug and CRT.BossDebug:Command(msg) then

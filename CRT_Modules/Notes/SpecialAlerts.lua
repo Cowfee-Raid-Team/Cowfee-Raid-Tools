@@ -16,6 +16,8 @@ local ADDON, CRT = ...
 -- A debuff list (kind debuffList, Alerts/DebuffList.lua) is listed the same way, its icon its debuff's; selected, its
 -- panel hides When, Who, Sound and speech and Shield bar (SubTabs' SetHidden), its Looks are Notes/SpecialDebuffLooks.lua
 -- in place of the alert's, and Test shows its display with sample names (Alerts/DebuffListView.lua).
+-- Under the toggle, while Special is on show, the Instantly release after wipe tick (CRTDB.alerts.instantRelease,
+-- Alerts/InstantRelease.lua), the same on every boss, with the list below it.
 
 local UI = CRT.UI
 
@@ -23,6 +25,8 @@ local UI = CRT.UI
 local TEXT = {
     mechanics = "Mechanics",
     special = "Special (%d)",
+    instantRelease = "Instantly release after wipe",
+    instantReleaseHelp = "Releases your spirit half a second after a wipe on any boss. Never after a kill, while a resurrection is on its way, or while you can resurrect yourself.",
     toggleHelp = "Special lists this tier's prepared alerts for the boss, such as soak rotations. Tick the ones you want. Mechanics is for your own reminders: an ability a special alert already covers is marked Special there.",
     empty = "No special alerts for this boss yet.",
     emptyHint = "Mechanics has every ability for your own reminders.",
@@ -89,6 +93,8 @@ local L = {
     TOGGLE_GAP = 4,
     ROW_H = 24,
     EMPTY_GAP = 6, -- the empty list's hint under its line
+    RELEASE_H = 24, RELEASE_GAP = 4, -- the Instantly release after wipe row under the toggle, and its gap to the list
+    RELEASE_LABEL_GAP = 2, -- between its tick and its label
     CHECK_SIZE = 24,
     CHECK_LABEL_W = 96,
     SHOW_GAP = 10,
@@ -266,6 +272,16 @@ end
 local function layToggle()
     ui.toggle:Size(L.LIST_W - UI.HELP_GAP - UI.HELP_SIZE)
     ui.toggle:PlaceLeft(L.X, L.Y)
+end
+
+-- Instantly release after wipe: its label as wide as its words, cut with "..." when they and the (?) don't fit the
+-- list's width (a large text size). Measured on every draw, as the toggle is.
+local function layRelease()
+    local label = ui.release.label
+    label:SetWidth(0)
+    local room = L.LIST_W - L.CHECK_SIZE - L.RELEASE_LABEL_GAP - UI.HELP_GAP - UI.HELP_SIZE
+    label:SetWidth(math.min(width(label), room))
+    ui.release:SetChecked(CRT.db.alerts.instantRelease == true)
 end
 
 -- The list ---------------------------------------------------------------------------------------
@@ -501,6 +517,7 @@ function M.Refresh()
     local special = view == "special"
     ui.list:SetShown(special)
     ui.panel:SetShown(special)
+    ui.releaseRow:SetShown(special)
     local list, enc = entries()
     ui.specialBtn.text:SetText(string.format(TEXT.special, #list))
     layToggle()
@@ -511,6 +528,7 @@ function M.Refresh()
     if not special then
         return
     end
+    layRelease()
     local current = selected(list, enc)
     paintList(list, enc, current)
     drawPanel(enc, current)
@@ -963,10 +981,31 @@ local function build(f, g)
     layToggle()
     ui.toggleHelp = UI.HelpRight(ui.mechBtn, TEXT.mechanics, TEXT.toggleHelp)
 
+    -- Instantly release after wipe, on its own row where the list began; the list starts under it
+    local row = CreateFrame("Frame", nil, f)
+    row:Hide() -- until M.Refresh shows Special
+    row:SetSize(L.LIST_W, L.RELEASE_H)
+    row:SetPoint("TOPLEFT", L.X, g.listY)
+    ui.releaseRow = row
+    local release = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+    release:SetSize(L.CHECK_SIZE, L.CHECK_SIZE)
+    release:SetPoint("TOPLEFT", 0, 0)
+    release.label = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    release.label:SetPoint("LEFT", release, "RIGHT", L.RELEASE_LABEL_GAP, 0)
+    release.label:SetJustifyH("LEFT")
+    release.label:SetWordWrap(false)
+    release.label:SetText(TEXT.instantRelease)
+    release:SetScript("OnClick", function(self)
+        CRT.db.alerts.instantRelease = self:GetChecked() and true or false
+    end)
+    ui.release = release
+    ui.releaseHelp = UI.HelpRight(release.label, TEXT.instantRelease, TEXT.instantReleaseHelp)
+    L.LIST_H = L.LIST_H - L.RELEASE_H - L.RELEASE_GAP
+
     local list = CreateFrame("Frame", nil, f, "BackdropTemplate")
     list:Hide() -- until M.Refresh shows Special
     list:SetSize(L.LIST_W, L.LIST_H)
-    list:SetPoint("TOPLEFT", L.X, g.listY)
+    list:SetPoint("TOPLEFT", L.X, g.listY - L.RELEASE_H - L.RELEASE_GAP)
     backdrop(list, 0.8)
     ui.list = list
     ui.rows = {}
@@ -997,7 +1036,7 @@ local function build(f, g)
 end
 
 -- The parts on the tab itself, hidden when the view fails to build.
-local OWN_PARTS = { "specialBtn", "mechBtn", "toggleHelp", "list", "panel" }
+local OWN_PARTS = { "specialBtn", "mechBtn", "toggleHelp", "releaseRow", "list", "panel" }
 
 -- Builds the view into the tab f. h: the host (see above). g: where things go, in the tab's numbers:
 -- x, y (the toggle's top left), toggleH, listY, listW, listH (the Special list, down to the tab's
