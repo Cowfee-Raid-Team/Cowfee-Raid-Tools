@@ -245,9 +245,6 @@ local defaults = {
             formats = {}, -- Also send to: format key -> false when unticked (Integrations/Breaks.lua)
             bridge = false, -- the raid leader's CRT passes a break on in the formats it didn't come in
         },
-        -- Release my spirit after a wipe (QoL/AutoRelease.lua): off until the player ticks it, as it acts on their
-        -- character. Only on bosses whose file has autoRelease = true, and never after a kill.
-        autoRelease = false,
     },
     -- Loot History's settings (the records are in CRTLootDB, Loot/Store.lua): minQuality (3 rare, 4 epic,
     -- 5 legendary), dungeons (record dungeon bosses too), keepMonths (0 keeps everything), rcEnrich
@@ -494,6 +491,9 @@ local defaults = {
         -- { on, show, speak, markers }. specialView ("mechanics" or "special") and specialViewPicked were Mech
         -- Alerts' last pick; kept for older saves, no longer read: the tab opens on Special every time.
         special = {},
+        -- Instantly release after wipe (Alerts/InstantRelease.lua, the tick on Mech Alerts > Special): off until the
+        -- player ticks it, as it acts on their character. Any boss's wipe, never a kill.
+        instantRelease = false,
         -- Debuff lists (Alerts/DebuffList.lua), the special alerts of kind debuffList: your looks per boss and entry,
         -- debuffLists[encounterID][key] = { groups = { [side] = { 1, 3 } }, colors = { [side] = { on, off } }, showAll,
         -- sortByRole, barHeight, barWidth, position }, each kept only while it differs from the boss file's; what a

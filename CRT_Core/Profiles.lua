@@ -79,7 +79,6 @@ Profiles.SHARE = {
             customSounds = false, -- your own sound files, which a raider doesn't have
         },
         breakTimer = true,
-        autoRelease = false, -- releasing your spirit acts on your character: only you turn it on
     },
     loot = true, -- Loot History's settings only (the history is in CRTLootDB), Tooltip position and spot among them
     lootmaster = {
@@ -121,6 +120,7 @@ Profiles.SHARE = {
     alerts = {
         bars = true, areas = true, noteLines = true, customColors = true, cooldownFilter = true,
         special = true, -- your special alerts' on/off and Show as choices
+        instantRelease = false, -- releasing your spirit acts on your character: only you turn it on
         specialView = false, specialViewPicked = false, -- the page state of Mech Alerts' list
         speechNotice = false, reminders = false, phases = false, overrides = false, nextId = false, saved = false, nextSavedId = false,
         shieldPulls = false, -- last pull's shields: data

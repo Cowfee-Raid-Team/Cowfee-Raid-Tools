@@ -1,14 +1,14 @@
 local ADDON, CRT = ...
 
--- DEVELOPER ONLY. Tests Release my spirit after a wipe (QoL/AutoRelease.lua) outside a raid (#1248):
+-- DEVELOPER ONLY. Tests Instantly release after wipe (Alerts/InstantRelease.lua) outside a raid (#1248, #1249):
 --   /crt dev autorelease          the same as status
 --   /crt dev autorelease status   one line per check the release makes, with its answer now, then the verdict
---   /crt dev autorelease now      runs the real end-of-encounter path as a wipe, with only the boss lookup skipped
---                                 (AutoRelease:OnEncounterEnd's dev opts, force); says what it decided and, after the
---                                 delay, whether RepopMe was called
+--   /crt dev autorelease now      runs the real end-of-encounter path as a wipe (InstantRelease:OnEncounterEnd, with
+--                                 its dev opts: done, and anyInstance past the raid check, so it works in town); says
+--                                 what it decided and, after the delay, whether RepopMe was called
 --   /crt dev autorelease arm      the next death (PLAYER_DEAD) within ARM_SECONDS does what now does, ARM_WAIT after it
 --   /crt dev autorelease off      disarms
--- It never fakes being dead, and the setting must be on (Quality of Life > Settings): with it off nothing happens,
+-- It never fakes being dead, and the setting must be on (Mech Alerts > Special): with it off nothing happens,
 -- which is part of the test. Every game call is in a pcall; a secret answer shows as <secret>, never compared.
 --
 -- This file never ships: its .toc line is inside the do-not-package block.
@@ -17,7 +17,7 @@ local ARM_SECONDS = 600 -- how long arm waits for a death
 local ARM_WAIT = 1 -- seconds after the death before the wipe, as the encounter's end comes a moment after it
 
 local Test = { ARM_SECONDS = ARM_SECONDS, ARM_WAIT = ARM_WAIT }
-CRT.AutoReleaseTest = Test
+CRT.InstantReleaseTest = Test
 
 local TEXT = {
     prefix = "Auto release test: ",
@@ -29,11 +29,12 @@ local TEXT = {
     offerNone = "Resurrection offer: none",
     selfRes = "Self-resurrect options: %s",
     repop = "RepopMe: %s",
+    raid = "Raid instance: %s (%s). A real wipe counts only in a raid; now and arm go past it.",
     armed = "Armed: %d s left",
     release = "Would release.",
     hold = "Would hold: %s.",
     mismatch = "The release code answers differently (%s): tell Claude.",
-    holdOff = "the setting is off (Quality of Life > Settings)",
+    holdOff = "the setting is off (Mech Alerts > Special)",
     holdUnknown = "your death state can't be read",
     holdAlive = "you're alive",
     holdGhost = "you're already a ghost",
@@ -46,8 +47,7 @@ local TEXT = {
     called = "RepopMe called.",
     notReleased = "Not released: %s.",
     notReleasedWhy = "the checks changed during the delay",
-    armOn = "Armed for %d minutes: die and it acts as a wipe on %s.",
-    armBoss = "a boss set up for it",
+    armOn = "Armed for %d minutes: die and it acts as a boss wipe.",
     armFired = "Death seen. Sending the wipe in %s s.",
     armTimeout = "Disarmed: no death in %d minutes.",
     disarmed = "Disarmed.",
@@ -77,8 +77,23 @@ local function ask(fn, ...)
     return tostring(v), true, v
 end
 
+-- IsInInstance's instance type as text: "no API", "error", "<secret>" or the type ("raid", "party", "none", ...).
+local function instanceText()
+    if type(IsInInstance) ~= "function" then
+        return "no API"
+    end
+    local ok, _, instanceType = pcall(IsInInstance)
+    if not ok then
+        return "error"
+    end
+    if secret(instanceType) then
+        return "<secret>"
+    end
+    return tostring(instanceType)
+end
+
 local function enabled()
-    return CRT.db and CRT.db.qol and CRT.db.qol.autoRelease == true
+    return CRT.db and CRT.db.alerts and CRT.db.alerts.instantRelease == true
 end
 
 local function selfResText()
@@ -98,9 +113,9 @@ local function selfResText()
     return #options .. " (" .. table.concat(names, ", ") .. ")"
 end
 
--- Why the release would hold now, in AutoRelease's own order, or nil when it would release.
+-- Why the release would hold now, in InstantRelease's own order, or nil when it would release.
 local function holdReason()
-    local AR = CRT.AutoRelease
+    local AR = CRT.InstantRelease
     if not enabled() then
         return TEXT.holdOff
     end
@@ -135,7 +150,7 @@ local armedUntil -- GetTime() when arm runs out, or nil
 local armToken = 0 -- each arm's own number, so an old timeout never disarms a newer arm
 
 function Test:Status()
-    local AR = CRT.AutoRelease
+    local AR = CRT.InstantRelease
     say(TEXT.setting:format(enabled() and "on" or "off"))
     say(TEXT.dead:format((ask(UnitIsDead, "player"))))
     say(TEXT.ghost:format((ask(UnitIsGhost, "player"))))
@@ -144,6 +159,7 @@ function Test:Status()
     say(left and TEXT.offerOpen:format(math.ceil(left)) or TEXT.offerNone)
     say(TEXT.selfRes:format(selfResText()))
     say(TEXT.repop:format(type(RepopMe) == "function" and "present" or "missing"))
+    say(TEXT.raid:format(AR.InRaid() and "yes" or "no", instanceText()))
     if armedUntil and GetTime() < armedUntil then
         say(TEXT.armed:format(math.ceil(armedUntil - GetTime())))
     end
@@ -156,14 +172,14 @@ function Test:Status()
     end
 end
 
--- The real end-of-encounter path, as a wipe (success 0) with the boss lookup skipped.
+-- The real end-of-encounter path, as a wipe (success 0).
 function Test:Now()
     if not enabled() then
         say(TEXT.hold:format(TEXT.holdOff))
         return false
     end
-    local sent = CRT.AutoRelease:OnEncounterEnd(0, 0, {
-        force = true,
+    local sent = CRT.InstantRelease:OnEncounterEnd(0, 0, {
+        anyInstance = true, -- in town too: the dev path past the raid check
         done = function(released)
             if released then
                 say(TEXT.called)
@@ -173,7 +189,7 @@ function Test:Now()
         end,
     })
     if sent then
-        say(TEXT.releasing:format(tostring(CRT.AutoRelease.RELEASE_DELAY)))
+        say(TEXT.releasing:format(tostring(CRT.InstantRelease.RELEASE_DELAY)))
     else
         say(TEXT.hold:format(holdReason() or TEXT.holdBusy))
     end
@@ -199,8 +215,7 @@ function Test:Arm()
     local token = armToken
     armedUntil = GetTime() + ARM_SECONDS
     events:RegisterEvent("PLAYER_DEAD")
-    local names = CRT.Bosses and CRT.Bosses:AutoReleaseNames() or {}
-    say(TEXT.armOn:format(math.floor(ARM_SECONDS / 60), #names > 0 and table.concat(names, ", ") or TEXT.armBoss))
+    say(TEXT.armOn:format(math.floor(ARM_SECONDS / 60)))
     C_Timer.After(ARM_SECONDS, function()
         if token == armToken and armedUntil then
             armedUntil = nil
