@@ -5,16 +5,16 @@ local ADDON, CRT = ...
 -- has autoRelease = true (CRT.Bosses:AutoRelease, season data: this file names no boss), while you are dead and not
 -- yet a ghost, it waits RELEASE_DELAY seconds, checks again, then presses Release Spirit for you (RepopMe). Never after
 -- a kill, so a mass resurrection after it still works. It holds back while a resurrection is being cast on you
--- (UnitHasIncomingResurrection) or was offered since your last death (RESURRECT_REQUEST, for up to OFFER_SECONDS, the
--- game's own offer window). A death state the game keeps secret counts as unknown, and unknown never releases.
+-- (UnitHasIncomingResurrection) or was offered since your last death (RESURRECT_REQUEST), for as long as the game keeps
+-- the offer open: the corpse delay (GetCorpseRecoveryDelay, read when the offer comes) plus OFFER_SECONDS. A death state the game keeps secret counts as unknown, and unknown never releases.
 
 local RELEASE_DELAY = 0.5 -- seconds after the encounter ends
-local OFFER_SECONDS = 60 -- a resurrection offer holds the release back this long (the game's popup: 60 s after the corpse delay)
+local OFFER_SECONDS = 60 -- a resurrection offer holds the release back this long after the corpse delay (the game's popup)
 
 local AutoRelease = { RELEASE_DELAY = RELEASE_DELAY, OFFER_SECONDS = OFFER_SECONDS }
 CRT.AutoRelease = AutoRelease
 
-local offeredAt -- GetTime() of the last resurrection offer since your last death, or nil
+local offerUntil -- GetTime() when the last resurrection offer since your last death runs out, or nil
 local pending = false -- a release is waiting for its delay
 
 local function enabled()
@@ -38,6 +38,16 @@ local function read(fn, ...)
     return true, v
 end
 
+-- The seconds before a resurrection can be accepted (GetCorpseRecoveryDelay), or 0 when it can't be read or isn't a
+-- number of 0 or more.
+function AutoRelease.CorpseDelay()
+    local ok, delay = read(GetCorpseRecoveryDelay)
+    if ok and type(delay) == "number" and delay > 0 then
+        return delay
+    end
+    return 0
+end
+
 -- Dead, not a ghost, and no resurrection on the way: the only state a release is for.
 function AutoRelease.Waiting()
     local okDead, dead = read(UnitIsDead, "player")
@@ -49,7 +59,7 @@ function AutoRelease.Waiting()
     if okRes and incoming == true then
         return false
     end
-    if offeredAt and GetTime() - offeredAt < OFFER_SECONDS then
+    if offerUntil and GetTime() < offerUntil then
         return false
     end
     return true
@@ -85,8 +95,8 @@ events:SetScript("OnEvent", function(_, event, encounterID, _, _, _, success)
     if event == "ENCOUNTER_END" then
         AutoRelease:OnEncounterEnd(encounterID, success)
     elseif event == "RESURRECT_REQUEST" then
-        offeredAt = GetTime()
+        offerUntil = GetTime() + AutoRelease.CorpseDelay() + OFFER_SECONDS
     elseif event == "PLAYER_DEAD" then
-        offeredAt = nil -- an offer from before this death is gone
+        offerUntil = nil -- an offer from before this death is gone
     end
 end)

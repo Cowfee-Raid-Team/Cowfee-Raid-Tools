@@ -2,16 +2,17 @@
 // on a boss whose file has autoRelease = true, while you are dead and not a ghost, calls RepopMe once, RELEASE_DELAY
 // seconds later, after checking again. Never after a kill, on another boss, with the setting off, alive, as a ghost, with
 // a resurrection on the way or offered, or with a nil or secret encounter. Also the boss library's accessors
-// (Bosses:AutoRelease, Bosses:AutoReleaseNames) on the shipped season packs, the default in Core.lua (off), and the
-// check box on Quality of Life > Settings with its (?), which names the bosses from the data.
+// (Bosses:AutoRelease, Bosses:AutoReleaseNames) on the sample pack (CRT_Dev/Tests/SamplePack) with test bosses, the
+// default in Core.lua (off), the check box on Quality of Life > Settings with its (?), which names the bosses from the
+// data, and, apart, which shipped bosses have the field (that check changes at a season rollover).
 // Usage: node run_autorelease.js <addon folder>
 const fs = require('fs');
 const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = String.raw`
-local coreText, releaseSrc, pageSrc, nPack = ...
-local args = { select(5, ...) }
+local coreText, releaseSrc, pageSrc, nSample, nShipped = ...
+local args = { select(6, ...) }
 local passed, failed = 0, 0
 local function check(name, cond, detail)
   if cond then passed = passed + 1 print("ok " .. name)
@@ -41,6 +42,8 @@ local dead, ghost, incoming = true, false, false
 function UnitIsDead(u) if u == "player" then return dead end return false end
 function UnitIsGhost(u) if u == "player" then return ghost end return false end
 function UnitHasIncomingResurrection(u) if u == "player" then return incoming end return false end
+corpseDelay = nil -- what GetCorpseRecoveryDelay gives (nil: 0)
+function GetCorpseRecoveryDelay() return corpseDelay or 0 end
 local repops = 0
 function RepopMe() repops = repops + 1 ghost = true dead = false end
 local function mock()
@@ -74,27 +77,40 @@ end
 local CRT = { db = { qol = { lowHealth = {}, breakTimer = {} }, dev = {} } }
 function CRT:Print() end
 
--- The boss library and every shipped pack -------------------------------------------------------------------
-for i = 1, nPack do
-  local name, src = args[2 * i - 1], args[2 * i]
-  local ok, err = pcall(function() assert(load(src, "@" .. name))("CowfeeRaidTools", CRT) end)
-  if not ok then check(name .. " loads", false, err) end
+-- The boss library on the sample pack, and test bosses -----------------------------------------------------------
+local function loadFiles(into, from, n)
+  for i = from, from + n - 1 do
+    local name, src = args[2 * i - 1], args[2 * i]
+    local ok, err = pcall(function() assert(load(src, "@" .. name))("CowfeeRaidTools", into) end)
+    if not ok then check(name .. " loads", false, err) end
+  end
 end
+loadFiles(CRT, 1, nSample)
 local B = CRT.Bosses
-local fangs, other
-for _, def in ipairs(B:List()) do
-  if def.name == "The Twin Fangs" then fangs = def.encounterID elseif not def.autoRelease and not other then other = def.encounterID end
-end
-check("the packs load, with The Twin Fangs and another boss", fangs ~= nil and other ~= nil)
-check("Bosses:AutoRelease: The Twin Fangs has it", type(B.AutoRelease) == "function" and B:AutoRelease(fangs) == true)
+check("the sample pack loads", B ~= nil and #B:List() > 0)
+-- a boss of the sample route with the field, and one of a season that isn't loaded
+local fangs, other, oldBoss = 3421, 3470, 9001
+B:Register({ encounterID = fangs, name = "Sample Release Boss", season = "sample", autoRelease = true })
+B:Season({ key = "old", name = "Old Season", order = 0, current = false, raids = { { key = "old", name = "Old Raid", bosses = { oldBoss } } } })
+B:Register({ encounterID = oldBoss, name = "Old Release Boss", season = "old", autoRelease = true })
+check("Bosses:AutoRelease: a boss with it is true", type(B.AutoRelease) == "function" and B:AutoRelease(fangs) == true)
 if type(B.AutoRelease) ~= "function" then print(passed .. " passed, " .. failed .. " failed") error("no accessor") end
-check("Bosses:AutoRelease: a boss without the field is false", B:AutoRelease(other) == false)
+check("Bosses:AutoRelease: a boss without the field is false", B:Get(other) ~= nil and B:AutoRelease(other) == false)
 check("Bosses:AutoRelease: an unknown or nil ID is false", B:AutoRelease(1) == false and B:AutoRelease(nil) == false)
-local onlyFangs = 0
-for _, def in ipairs(B:List()) do if B:AutoRelease(def.encounterID) then onlyFangs = onlyFangs + 1 end end
-check("only The Twin Fangs ships it", onlyFangs == 1, onlyFangs)
+check("Bosses:AutoRelease: a boss of a season that isn't loaded is false", B:AutoRelease(oldBoss) == false)
 local names = type(B.AutoReleaseNames) == "function" and B:AutoReleaseNames() or {}
-check("Bosses:AutoReleaseNames lists The Twin Fangs", #names == 1 and names[1] == "The Twin Fangs", table.concat(names, ","))
+check("Bosses:AutoReleaseNames lists the loaded bosses with it", #names == 1 and names[1] == "Sample Release Boss", table.concat(names, ","))
+
+-- The shipped packs: which bosses have autoRelease. Shipped data, so this check changes at a season rollover (or when
+-- Alex asks for another boss): The Twin Fangs was Alex's request on 2026-11-02. It reads the field over every pack's
+-- bosses, loaded or not, so a new current season alone doesn't break it.
+do
+  local shipped = {}
+  loadFiles(shipped, nSample + 1, nShipped)
+  local with = {}
+  for _, def in ipairs(shipped.Bosses and shipped.Bosses:List() or {}) do if def.autoRelease == true then with[#with + 1] = def.name end end
+  check("shipped: only The Twin Fangs has autoRelease", #with == 1 and with[1] == "The Twin Fangs", table.concat(with, ","))
+end
 
 -- The default: off -------------------------------------------------------------------------------------------
 local qol = coreText:match("\n    qol = (%b{})")
@@ -148,6 +164,27 @@ reset(true) step(61) wipeOn(fangs, 0) step(2)
 check("an offer over a minute old no longer holds it back", repops == 1, repops)
 reset(true) fire("RESURRECT_REQUEST", "Healer") step(5) fire("PLAYER_DEAD") wipeOn(fangs, 0) step(2)
 check("an offer from before your last death no longer holds it back", repops == 1, repops)
+-- the game's offer lasts the corpse delay plus 60 s (GetCorpseRecoveryDelay, read when the offer comes)
+corpseDelay = 30
+reset(true) fire("PLAYER_DEAD") fire("RESURRECT_REQUEST", "Healer") step(75) wipeOn(fangs, 0) step(2)
+check("with a 30 s corpse delay, an offer 75 s old still holds it back", repops == 0, repops)
+reset(true) step(15) wipeOn(fangs, 0) step(2)
+check("and one past 90 s doesn't", repops == 1, repops)
+for _, case in ipairs({ { SECRET, "secret" }, { "x", "not a number" }, { -5, "below 0" } }) do
+  corpseDelay = case[1]
+  reset(true) fire("PLAYER_DEAD") fire("RESURRECT_REQUEST", "Healer") step(61) wipeOn(fangs, 0) step(2)
+  check("a corpse delay that is " .. case[2] .. " counts as 0, no error", repops == 1, repops)
+end
+corpseDelay = nil
+local keepDelay = GetCorpseRecoveryDelay
+GetCorpseRecoveryDelay = function() error("no") end
+reset(true) fire("PLAYER_DEAD") fire("RESURRECT_REQUEST", "Healer") step(61) wipeOn(fangs, 0) step(2)
+check("a corpse delay call that errors counts as 0", repops == 1, repops)
+GetCorpseRecoveryDelay = nil
+reset(true) fire("PLAYER_DEAD") fire("RESURRECT_REQUEST", "Healer") step(61) wipeOn(fangs, 0) step(2)
+check("no corpse delay call counts as 0", repops == 1, repops)
+GetCorpseRecoveryDelay = keepDelay
+fire("PLAYER_DEAD")
 reset(true) wipeOn(nil, 0) wipeOn(fangs, nil) wipeOn(SECRET, 0) wipeOn(fangs, SECRET) step(2)
 check("a nil or secret encounter or result: nothing, no error", repops == 0)
 reset(true) dead = SECRET wipeOn(fangs, 0) step(2)
@@ -190,7 +227,7 @@ local help
 for _, h in ipairs(helps) do if h.title == "Release my spirit after a wipe" then help = h end end
 check("the check box has its (?)", help ~= nil and rawget(help.target, "text") == "Release my spirit after a wipe")
 local function read() local t = help and (type(help.text) == "function" and help.text() or help.text) return type(t) == "string" and t or "" end
-check("its (?) says what it does", read() == "On bosses set up for it (The Twin Fangs), releases your spirit half a second after a wipe. Never after a kill.", read())
+check("its (?) says what it does", read() == "On bosses set up for it (Sample Release Boss), releases your spirit half a second after a wipe. Never after a kill.", read())
 local was = B.AutoReleaseNames
 B.AutoReleaseNames = function() return { "Boss A", "Boss B" } end
 check("the names come from the data", read():find("(Boss A, Boss B)", 1, true) ~= nil, read())
@@ -215,7 +252,8 @@ if failed > 0 then error(failed .. " checks failed") end
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
 const read = (f) => { const p = path.join(d, f); return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : ''; };
-// the registry, then each pack's files in its Season.xml order
+// the sample pack (the tests' own season), then the registry again with each shipped pack's files in its Season.xml order
+const sample = ['CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua', 'CRT_Dev/Tests/SamplePack/Sszorak.lua'];
 const pack = ['CRT_Data/Bosses/Registry.lua'];
 const seasons = path.join(d, 'CRT_Data/Seasons');
 for (const p of fs.readdirSync(seasons).sort()) {
@@ -224,8 +262,10 @@ for (const p of fs.readdirSync(seasons).sort()) {
   const text = fs.readFileSync(xml, 'utf8').replace(/<!--[\s\S]*?-->/g, '');
   for (const m of text.matchAll(/<Script\s+file="([^"]+)"\s*\/>/g)) pack.push('CRT_Data/Seasons/' + p + '/' + m[1].replace(/\\/g, '/'));
 }
-if (!lua.lua_checkstack(L, 2 * pack.length + 8)) { console.error('LUA ERROR: no stack room'); process.exit(1); }
+const files = sample.concat(pack);
+if (!lua.lua_checkstack(L, 2 * files.length + 8)) { console.error('LUA ERROR: no stack room'); process.exit(1); }
 for (const s of [read('CRT_Core/Core.lua'), read('CRT_Modules/QoL/AutoRelease.lua'), read('CRT_Modules/QoL/Page.lua')]) lua.lua_pushstring(L, to_luastring(s));
+lua.lua_pushinteger(L, sample.length);
 lua.lua_pushinteger(L, pack.length);
-for (const f of pack) { lua.lua_pushstring(L, to_luastring(f)); lua.lua_pushstring(L, to_luastring(read(f))); }
-if (lua.lua_pcall(L, 4 + 2 * pack.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const f of files) { lua.lua_pushstring(L, to_luastring(f)); lua.lua_pushstring(L, to_luastring(read(f))); }
+if (lua.lua_pcall(L, 5 + 2 * files.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
