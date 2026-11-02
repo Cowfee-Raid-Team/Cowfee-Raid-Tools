@@ -222,6 +222,7 @@ CRT_Modules\Interrupts\SetupEditor.lua
 CRT_Modules\QoL\LowHealth.lua
 CRT_Modules\QoL\LowHealthSound.lua
 CRT_Modules\QoL\BreakTimer.lua
+CRT_Modules\QoL\AutoRelease.lua
 CRT_Modules\QoL\Page.lua
 CRT_Core\UI\Minimap.lua
 CRT_Core\UI\SettingsPage.lua

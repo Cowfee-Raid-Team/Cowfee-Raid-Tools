@@ -245,6 +245,9 @@ local defaults = {
             formats = {}, -- Also send to: format key -> false when unticked (Integrations/Breaks.lua)
             bridge = false, -- the raid leader's CRT passes a break on in the formats it didn't come in
         },
+        -- Release my spirit after a wipe (QoL/AutoRelease.lua): off until the player ticks it, as it acts on their
+        -- character. Only on bosses whose file has autoRelease = true, and never after a kill.
+        autoRelease = false,
     },
     -- Loot History's settings (the records are in CRTLootDB, Loot/Store.lua): minQuality (3 rare, 4 epic,
     -- 5 legendary), dungeons (record dungeon bosses too), keepMonths (0 keeps everything), rcEnrich

@@ -4,9 +4,9 @@ local ADDON, CRT = ...
 -- defaults in Core.lua: the experimental low-health alert (QoL/LowHealth.lua; for a sound, a line points to the
 -- game's own Combat Audio Alerts pulse, since an addon can't play one for hidden health), and on its own tab the
 -- break timer's other-addon formats and bridge (QoL/BreakTimer.lua, Integrations/Breaks.lua), and on the Sounds
--- tab the voice that speaks (sound.voice, Sound/Voices.lua) above your own sound files. The Low health,
--- Debuffs and Break timer tabs each have a preview button for their display (UI.PreviewButton); with no
--- Settings tab, the page has no group button. The
+-- tab the voice that speaks (sound.voice, Sound/Voices.lua) above your own sound files, and on the Settings tab,
+-- last, Release my spirit after a wipe (qol.autoRelease, QoL/AutoRelease.lua). The Low health, Debuffs and Break
+-- timer tabs each have a preview button for their display (UI.PreviewButton); the page has no group button. The
 -- window scale moved to the Addon Settings page (UI/SettingsPage.lua) in 0.13.1.
 
 local UI = CRT.UI
@@ -51,6 +51,10 @@ local TEXT = {
     lowHealthPreviewTip = "Shows the LOW HEALTH banner with its drag box so you can drag it into place. Other previews stay as they are.",
     breakPreview = "Preview break timer",
     breakPreviewTip = "Shows the break timer with a sample break so you can drag it into place. Other previews stay as they are.",
+    -- Settings: Release my spirit after a wipe (QoL/AutoRelease.lua); %s is the bosses set up for it, from their boss files
+    autoRelease = "Release my spirit after a wipe",
+    autoReleaseNote = "On bosses set up for it (%s), releases your spirit half a second after a wipe. Never after a kill.",
+    autoReleaseNone = "no boss this season",
 }
 
 local page
@@ -384,12 +388,31 @@ local function buildBreak(pf, top)
     preview:SetPoint("TOPLEFT", 8, y - BREAK_PREVIEW_GAP)
 end
 
--- Tabs: Low health, Debuffs, Break timer and Sounds (the debuff panel, Debuffs/Page.lua). Both are only settings.
+-- Settings ------------------------------------------------------------------------------------
+
+-- Release my spirit after a wipe: one check box; its (?) names the bosses whose files have autoRelease (CRT.Bosses).
+local function buildSettings(pf, top)
+    local release = checkRow(pf, 6, top, TEXT.autoRelease)
+    release:SetScript("OnClick", function(self)
+        CRT.db.qol.autoRelease = self:GetChecked() and true or false
+    end)
+    release.refresh = function()
+        release:SetChecked(CRT.db.qol.autoRelease == true)
+    end
+    controls[#controls + 1] = release
+    UI.HelpRight(release.label, TEXT.autoRelease, function()
+        local names = CRT.Bosses and CRT.Bosses:AutoReleaseNames() or {}
+        return TEXT.autoReleaseNote:format(#names > 0 and table.concat(names, ", ") or TEXT.autoReleaseNone)
+    end)
+end
+
+-- Tabs: Low health, Debuffs, Break timer, Sounds (the debuff panel, Debuffs/Page.lua) and Settings, last.
 local TABS = {
     { key = "lowhealth", label = "Low health" },
     { key = "debuffs", label = "Debuffs" },
     { key = "break", label = "Break timer" },
     { key = "sounds", label = "Sounds" },
+    { key = "settings", label = "Settings" },
 }
 local tabButtons, tabFrames = {}, {}
 
@@ -446,6 +469,7 @@ local function build(pf)
     CRT.DebuffsPage.Build(tabFrames.debuffs)
     buildBreak(tabFrames["break"], -8)
     buildSounds(tabFrames.sounds, -8)
+    buildSettings(tabFrames.settings, -8)
     selectTab(CRT.db.qol.tab)
 
     pf:SetScript("OnShow", refresh)
@@ -457,7 +481,7 @@ end
 
 UI:RegisterPage("qol", TEXT.title, build)
 
--- Opens the page on a tab: "lowhealth", "debuffs" (/crt debuffs), "break" or "sounds".
+-- Opens the page on a tab: "lowhealth", "debuffs" (/crt debuffs), "break", "sounds" or "settings".
 CRT.QoLPage = {
     Open = function(key)
         UI:Show("qol")
