@@ -1,8 +1,9 @@
 local ADDON, CRT = ...
 
--- Instantly release after wipe (CRTDB.alerts.instantRelease, off by default; the tick is on Mech Alerts > Special,
--- Notes/SpecialAlerts.lua, the same on every boss). At ENCOUNTER_END (encounterID, encounterName, difficultyID,
--- groupSize, success) with success 0, on any boss in a raid instance (IsInInstance's instanceType "raid"; Alex,
+-- Instantly release after wipe, ticked per boss (CRTDB.alerts.instantReleaseBosses[encounterID] = true, off for every
+-- boss by default, the same on every difficulty; the tick is on Mech Alerts > Special, Notes/SpecialAlerts.lua, which
+-- reads and saves it with IsOn and Set). At ENCOUNTER_END (encounterID, encounterName, difficultyID, groupSize,
+-- success) with success 0, on a ticked boss (checked again for the same boss after the delay) in a raid instance (IsInInstance's instanceType "raid"; Alex,
 -- 2026-11-02: "Raids only", so never in a dungeon), while you are dead and not yet a ghost, it waits RELEASE_DELAY
 -- seconds, checks again, then presses Release Spirit for you (RepopMe). Never after a kill, so a mass resurrection
 -- after it still works. It holds back while a resurrection is being cast on you (UnitHasIncomingResurrection) or was
@@ -12,7 +13,7 @@ local ADDON, CRT = ...
 -- 2026-11-02: "Hold if I have one". A death state the game keeps secret counts as unknown, and unknown never releases.
 -- Dev only (CRT_Dev/Dev/InstantReleaseTest.lua, /crt dev autorelease): OnEncounterEnd's third argument, opts, where
 -- done(released) hears the result after the delay and anyInstance = true goes past the raid check (so the dev command
--- works in town); OfferLeft and InRaid read the state. The game's ENCOUNTER_END passes no opts, so the shipped path
+-- works in town); OfferLeft, InRaid and Ticked read the state. The game's ENCOUNTER_END passes no opts, so the shipped path
 -- always asks for a raid.
 
 local RELEASE_DELAY = 0.5 -- seconds after the encounter ends
@@ -24,13 +25,56 @@ CRT.InstantRelease = InstantRelease
 local offerUntil -- GetTime() when the last resurrection offer since your last death runs out, or nil
 local pending = false -- a release is waiting for its delay
 
-local function enabled()
-    local alerts = CRT.db and CRT.db.alerts
-    return alerts ~= nil and alerts.instantRelease == true
-end
-
 local function secret(v)
     return issecretvalue ~= nil and issecretvalue(v) == true
+end
+
+-- The per-boss ticks, or nil while there are none (or something else sits in their place).
+local function ticks()
+    local alerts = CRT.db and CRT.db.alerts
+    local t = alerts and alerts.instantReleaseBosses
+    return type(t) == "table" and t or nil
+end
+
+-- An encounter ID that can be looked up: a readable number.
+local function validID(encounterID)
+    return encounterID ~= nil and not secret(encounterID) and type(encounterID) == "number"
+end
+
+-- Whether the boss is ticked. A nil, secret or non-number ID is off.
+function InstantRelease.IsOn(encounterID)
+    local t = validID(encounterID) and ticks()
+    return t and t[encounterID] == true or false
+end
+
+-- Ticks or unticks a boss. False, and nothing saved, for an ID IsOn can't read.
+function InstantRelease.Set(encounterID, on)
+    local alerts = CRT.db and CRT.db.alerts
+    if not (alerts and validID(encounterID)) then
+        return false
+    end
+    if type(alerts.instantReleaseBosses) ~= "table" then
+        alerts.instantReleaseBosses = {}
+    end
+    alerts.instantReleaseBosses[encounterID] = on and true or nil
+    return true
+end
+
+-- The ticked bosses' encounter IDs, sorted, for the dev status.
+function InstantRelease.Ticked()
+    local out = {}
+    for id, on in pairs(ticks() or {}) do
+        if on == true and type(id) == "number" then
+            out[#out + 1] = id
+        end
+    end
+    table.sort(out)
+    return out
+end
+
+-- Kept per boss: declared for the dev season purge (Bosses:DeclareField, CRT_Data/Bosses/Registry.lua).
+if CRT.Bosses and CRT.Bosses.DeclareField then
+    CRT.Bosses:DeclareField("Instantly release after wipe ticks", "alerts", "instantReleaseBosses")
 end
 
 -- A game call's answer when it can be read: false and nil when the call is missing, errors or gives a secret.
@@ -112,9 +156,9 @@ function InstantRelease.OfferLeft()
 end
 
 -- After the delay: the same checks again, then Release Spirit. True when RepopMe was called without an error.
-function InstantRelease:Release(opts)
+function InstantRelease:Release(encounterID, opts)
     pending = false
-    if not enabled() or not where(opts) or not self.Waiting() or type(RepopMe) ~= "function" then
+    if not InstantRelease.IsOn(encounterID) or not where(opts) or not self.Waiting() or type(RepopMe) ~= "function" then
         return false
     end
     return (pcall(RepopMe))
@@ -122,7 +166,7 @@ end
 
 -- True when a release was set to run after the delay. opts is dev only (see the header).
 function InstantRelease:OnEncounterEnd(encounterID, success, opts)
-    if pending or not enabled() or encounterID == nil or success == nil or secret(encounterID) or secret(success) then
+    if pending or not InstantRelease.IsOn(encounterID) or success == nil or secret(success) then
         return false
     end
     if success ~= 0 or not where(opts) or not self.Waiting() then
@@ -130,7 +174,7 @@ function InstantRelease:OnEncounterEnd(encounterID, success, opts)
     end
     pending = true
     C_Timer.After(RELEASE_DELAY, function()
-        local released = InstantRelease:Release(opts)
+        local released = InstantRelease:Release(encounterID, opts)
         if opts and opts.done then
             opts.done(released)
         end
