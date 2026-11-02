@@ -1,5 +1,5 @@
 // CRT_Modules/Alerts/InstantRelease.lua: Instantly release after wipe (Mech Alerts > Special, CRTDB.alerts.instantRelease).
-// With the setting on, a wipe (ENCOUNTER_END success 0) on any boss, while you are dead and not a ghost, calls RepopMe
+// With the setting on, a wipe (ENCOUNTER_END success 0) on any boss in a raid instance (never a dungeon), while you are dead and not a ghost, calls RepopMe
 // once, RELEASE_DELAY seconds later, after checking again. Never after a kill, with the setting off, alive, as a ghost,
 // with a resurrection on the way or offered, while you can resurrect yourself, or with a nil or secret encounter. Also:
 // the default in Core.lua (off, under alerts; no qol.autoRelease), no boss file carries autoRelease and the boss
@@ -46,6 +46,8 @@ selfRes = nil -- what C_DeathInfo.GetSelfResurrectOptions gives; "error" makes i
 C_DeathInfo = { GetSelfResurrectOptions = function() if selfRes == "error" then error("no") end return selfRes end }
 corpseDelay = nil -- what GetCorpseRecoveryDelay gives (nil: 0)
 function GetCorpseRecoveryDelay() return corpseDelay or 0 end
+instanceType = "raid" -- what IsInInstance gives as its second value; "error" makes it error
+function IsInInstance() if instanceType == "error" then error("no") end return instanceType ~= "none", instanceType end
 local repops = 0
 function RepopMe() repops = repops + 1 ghost = true dead = false end
 local function mock()
@@ -198,6 +200,24 @@ C_DeathInfo = nil
 reset(true) wipeOn(fangs, 0) step(2)
 check("no C_DeathInfo on the client: released", repops == 1, repops)
 C_DeathInfo = keepDeath
+-- Raids only: Alex, 2026-11-02, "Raids only" (IsInInstance's instanceType "raid")
+for _, case in ipairs({ { "party", "a dungeon (party) wipe" }, { "none", "outside an instance" }, { "scenario", "a scenario" },
+    { SECRET, "a secret instance type" }, { "error", "an IsInInstance error" } }) do
+  instanceType = case[1]
+  reset(true) wipeOn(fangs, 0) step(2)
+  check(case[2] .. ": not released", repops == 0, repops)
+end
+instanceType = "raid"
+reset(true) wipeOn(fangs, 0) step(0.2) instanceType = "none" step(2)
+check("left the raid by the time the delay ends: not released", repops == 0)
+instanceType = "raid"
+local keepInstance = IsInInstance
+IsInInstance = nil
+reset(true) wipeOn(fangs, 0) step(2)
+check("no IsInInstance on the client: not released", repops == 0)
+IsInInstance = keepInstance
+reset(true) wipeOn(fangs, 0) step(2)
+check("a raid wipe: released", repops == 1, repops)
 reset(true) wipeOn(nil, 0) wipeOn(fangs, nil) wipeOn(SECRET, 0) wipeOn(fangs, SECRET) step(2)
 check("a nil or secret encounter or result: nothing, no error", repops == 0)
 reset(true) dead = SECRET wipeOn(fangs, 0) step(2)

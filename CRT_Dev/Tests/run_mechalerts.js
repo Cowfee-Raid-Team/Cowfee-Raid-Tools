@@ -2981,7 +2981,7 @@ check("mech special (" .. LOOK .. "): Instantly release after wipe sits under th
     local help
     for _, h in ipairs(helps) do if rawget(h, "helpTarget") == box.label then help = h end end
     assert(help and help.helpTitle == "Instantly release after wipe", "its (?), right of the label")
-    assert(help.helpText == "Releases your spirit half a second after a wipe on any boss. Never after a kill, while a resurrection is on its way, or while you can resurrect yourself.", tostring(help.helpText))
+    assert(help.helpText == "Releases your spirit half a second after a wipe on any raid boss. Never after a kill, while a resurrection is on its way, or while you can resurrect yourself.", tostring(help.helpText))
     box.checked = true click(box)
     assert(CRT.db.alerts.instantRelease == true, "ticking it saves alerts.instantRelease")
     box.checked = false click(box)

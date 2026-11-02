@@ -40,6 +40,8 @@ function UnitIsGhost(u) return ghost end
 function UnitHasIncomingResurrection(u) return incoming end
 C_DeathInfo = { GetSelfResurrectOptions = function() return selfRes end }
 function GetCorpseRecoveryDelay() return 0 end
+local instanceType = "none" -- in town: the dev command goes past the raid check
+function IsInInstance() return instanceType ~= "none", instanceType end
 local repops = 0
 function RepopMe() repops = repops + 1 ghost = true dead = false end
 local frames = {}
@@ -72,6 +74,7 @@ reset()
 run("dev autorelease")
 check("status (no word): one line per check", said("Setting: on") and said("Dead: true") and said("Ghost: false") and said("Incoming resurrection: false")
   and said("Resurrection offer: none") and said("Self-resurrect options: none") and said("RepopMe: present"), table.concat(printed, " | "))
+check("status: the raid check's answer, and that the dev command goes past it", said("Raid instance: no (none)") and said("now and arm go past it"), table.concat(printed, " | "))
 check("status: dead, nothing else: would release", said("Would release"), table.concat(printed, " | "))
 reset() dead = false run("dev autorelease status")
 check("status alive: would hold, you're alive", said("Would hold: you're alive") and said("Dead: false"), table.concat(printed, " | "))
@@ -120,11 +123,17 @@ check("off disarms", repops == 0 and said("Disarmed"), table.concat(printed, " |
 reset() dead = false run("dev autorelease arm") CRT.db.alerts.instantRelease = false printed = {} dead = true fire("PLAYER_DEAD") step(3)
 check("armed with the setting off: nothing, and it says the setting is off", repops == 0 and said("the setting is off"), table.concat(printed, " | "))
 
--- the shipped path: any boss's wipe releases
+-- the shipped path: any raid boss's wipe releases; the event never goes past the raid check
 reset() fire("ENCOUNTER_END", 3421, "Boss", 16, 20, 0) step(2)
-check("a real wipe releases", repops == 1)
-reset() fire("ENCOUNTER_END", 9999, "Other boss", 1, 5, 0) step(2)
-check("a real wipe on any other boss releases too", repops == 1)
+check("a real wipe outside a raid does nothing (only the dev command goes past the raid check)", repops == 0)
+instanceType = "party"
+reset() fire("ENCOUNTER_END", 9999, "Dungeon boss", 8, 5, 0) step(2)
+check("a real dungeon wipe does nothing", repops == 0)
+instanceType = "raid"
+reset() fire("ENCOUNTER_END", 3421, "Boss", 16, 20, 0) step(2)
+check("a real raid wipe releases", repops == 1)
+reset() fire("ENCOUNTER_END", 9999, "Other boss", 15, 20, 0) step(2)
+check("a real raid wipe on any other boss releases too", repops == 1)
 reset() fire("ENCOUNTER_END", 3421, "Boss", 16, 20, 1) step(2)
 check("a real kill still does nothing", repops == 0)
 reset() CRT.InstantRelease:OnEncounterEnd(0, 1, { done = function() end }) step(2)

@@ -2,7 +2,8 @@ local ADDON, CRT = ...
 
 -- Instantly release after wipe (CRTDB.alerts.instantRelease, off by default; the tick is on Mech Alerts > Special,
 -- Notes/SpecialAlerts.lua, the same on every boss). At ENCOUNTER_END (encounterID, encounterName, difficultyID,
--- groupSize, success) with success 0, on any boss, while you are dead and not yet a ghost, it waits RELEASE_DELAY
+-- groupSize, success) with success 0, on any boss in a raid instance (IsInInstance's instanceType "raid"; Alex,
+-- 2026-11-02: "Raids only", so never in a dungeon), while you are dead and not yet a ghost, it waits RELEASE_DELAY
 -- seconds, checks again, then presses Release Spirit for you (RepopMe). Never after a kill, so a mass resurrection
 -- after it still works. It holds back while a resurrection is being cast on you (UnitHasIncomingResurrection) or was
 -- offered since your last death (RESURRECT_REQUEST), for as long as the game keeps the offer open: the corpse delay
@@ -10,8 +11,9 @@ local ADDON, CRT = ...
 -- yourself (a soulstone, Reincarnation: C_DeathInfo.GetSelfResurrectOptions), so you release by hand; Alex,
 -- 2026-11-02: "Hold if I have one". A death state the game keeps secret counts as unknown, and unknown never releases.
 -- Dev only (CRT_Dev/Dev/InstantReleaseTest.lua, /crt dev autorelease): OnEncounterEnd's third argument, opts, where
--- done(released) hears the result after the delay; OfferLeft reads the offer window. The game's ENCOUNTER_END passes
--- no opts, so the shipped path is the same.
+-- done(released) hears the result after the delay and anyInstance = true goes past the raid check (so the dev command
+-- works in town); OfferLeft and InRaid read the state. The game's ENCOUNTER_END passes no opts, so the shipped path
+-- always asks for a raid.
 
 local RELEASE_DELAY = 0.5 -- seconds after the encounter ends
 local OFFER_SECONDS = 60 -- a resurrection offer holds the release back this long after the corpse delay (the game's popup)
@@ -67,6 +69,23 @@ function InstantRelease.CanResurrectSelf()
     return type(options) == "table" and #options > 0
 end
 
+-- Whether you are in a raid instance (IsInInstance). A missing call, an error or a secret answer is unknown: not a raid.
+function InstantRelease.InRaid()
+    if type(IsInInstance) ~= "function" then
+        return false
+    end
+    local ok, _, instanceType = pcall(IsInInstance)
+    if not ok or secret(instanceType) then
+        return false
+    end
+    return instanceType == "raid"
+end
+
+-- The raid check, which only the dev command goes past (opts.anyInstance; the game's event passes no opts).
+local function where(opts)
+    return (opts ~= nil and opts.anyInstance == true) or InstantRelease.InRaid()
+end
+
 -- Dead, not a ghost, and no resurrection on the way: the only state a release is for.
 function InstantRelease.Waiting()
     local okDead, dead = read(UnitIsDead, "player")
@@ -93,9 +112,9 @@ function InstantRelease.OfferLeft()
 end
 
 -- After the delay: the same checks again, then Release Spirit. True when RepopMe was called without an error.
-function InstantRelease:Release()
+function InstantRelease:Release(opts)
     pending = false
-    if not enabled() or not self.Waiting() or type(RepopMe) ~= "function" then
+    if not enabled() or not where(opts) or not self.Waiting() or type(RepopMe) ~= "function" then
         return false
     end
     return (pcall(RepopMe))
@@ -106,12 +125,12 @@ function InstantRelease:OnEncounterEnd(encounterID, success, opts)
     if pending or not enabled() or encounterID == nil or success == nil or secret(encounterID) or secret(success) then
         return false
     end
-    if success ~= 0 or not self.Waiting() then
+    if success ~= 0 or not where(opts) or not self.Waiting() then
         return false
     end
     pending = true
     C_Timer.After(RELEASE_DELAY, function()
-        local released = InstantRelease:Release()
+        local released = InstantRelease:Release(opts)
         if opts and opts.done then
             opts.done(released)
         end

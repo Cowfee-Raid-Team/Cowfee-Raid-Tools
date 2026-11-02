@@ -4,8 +4,8 @@ local ADDON, CRT = ...
 --   /crt dev autorelease          the same as status
 --   /crt dev autorelease status   one line per check the release makes, with its answer now, then the verdict
 --   /crt dev autorelease now      runs the real end-of-encounter path as a wipe (InstantRelease:OnEncounterEnd, with
---                                 its dev opts.done); says what it decided and, after the delay, whether RepopMe was
---                                 called
+--                                 its dev opts: done, and anyInstance past the raid check, so it works in town); says
+--                                 what it decided and, after the delay, whether RepopMe was called
 --   /crt dev autorelease arm      the next death (PLAYER_DEAD) within ARM_SECONDS does what now does, ARM_WAIT after it
 --   /crt dev autorelease off      disarms
 -- It never fakes being dead, and the setting must be on (Mech Alerts > Special): with it off nothing happens,
@@ -29,6 +29,7 @@ local TEXT = {
     offerNone = "Resurrection offer: none",
     selfRes = "Self-resurrect options: %s",
     repop = "RepopMe: %s",
+    raid = "Raid instance: %s (%s). A real wipe counts only in a raid; now and arm go past it.",
     armed = "Armed: %d s left",
     release = "Would release.",
     hold = "Would hold: %s.",
@@ -74,6 +75,21 @@ local function ask(fn, ...)
         return "<secret>"
     end
     return tostring(v), true, v
+end
+
+-- IsInInstance's instance type as text: "no API", "error", "<secret>" or the type ("raid", "party", "none", ...).
+local function instanceText()
+    if type(IsInInstance) ~= "function" then
+        return "no API"
+    end
+    local ok, _, instanceType = pcall(IsInInstance)
+    if not ok then
+        return "error"
+    end
+    if secret(instanceType) then
+        return "<secret>"
+    end
+    return tostring(instanceType)
 end
 
 local function enabled()
@@ -143,6 +159,7 @@ function Test:Status()
     say(left and TEXT.offerOpen:format(math.ceil(left)) or TEXT.offerNone)
     say(TEXT.selfRes:format(selfResText()))
     say(TEXT.repop:format(type(RepopMe) == "function" and "present" or "missing"))
+    say(TEXT.raid:format(AR.InRaid() and "yes" or "no", instanceText()))
     if armedUntil and GetTime() < armedUntil then
         say(TEXT.armed:format(math.ceil(armedUntil - GetTime())))
     end
@@ -162,6 +179,7 @@ function Test:Now()
         return false
     end
     local sent = CRT.InstantRelease:OnEncounterEnd(0, 0, {
+        anyInstance = true, -- in town too: the dev path past the raid check
         done = function(released)
             if released then
                 say(TEXT.called)
