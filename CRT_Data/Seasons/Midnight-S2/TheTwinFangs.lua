@@ -22,6 +22,9 @@ CRT.Bosses:Register({
     encounterID = 3421,
     name = "The Twin Fangs",
     season = "midnight-s2",
+    -- Release my spirit after a wipe (QoL/AutoRelease.lua) acts on this boss: with the Quality of Life setting ticked,
+    -- your spirit is released half a second after a wipe here. Alex's request, 2026-11-02.
+    autoRelease = true,
     references = {
         [[
 Boss: The Twin Fangs
