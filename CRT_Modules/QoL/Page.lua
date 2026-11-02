@@ -53,7 +53,7 @@ local TEXT = {
     breakPreviewTip = "Shows the break timer with a sample break so you can drag it into place. Other previews stay as they are.",
     -- Settings: Release my spirit after a wipe (QoL/AutoRelease.lua); %s is the bosses set up for it, from their boss files
     autoRelease = "Release my spirit after a wipe",
-    autoReleaseNote = "On bosses set up for it (%s), releases your spirit half a second after a wipe. Never after a kill.",
+    autoReleaseNote = "On bosses set up for it (%s), releases your spirit half a second after a wipe. Never after a kill, or while you can resurrect yourself.",
     autoReleaseNone = "no boss this season",
 }
 

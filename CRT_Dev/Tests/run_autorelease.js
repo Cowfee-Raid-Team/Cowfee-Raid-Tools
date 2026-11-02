@@ -42,6 +42,8 @@ local dead, ghost, incoming = true, false, false
 function UnitIsDead(u) if u == "player" then return dead end return false end
 function UnitIsGhost(u) if u == "player" then return ghost end return false end
 function UnitHasIncomingResurrection(u) if u == "player" then return incoming end return false end
+selfRes = nil -- what C_DeathInfo.GetSelfResurrectOptions gives; "error" makes it error
+C_DeathInfo = { GetSelfResurrectOptions = function() if selfRes == "error" then error("no") end return selfRes end }
 corpseDelay = nil -- what GetCorpseRecoveryDelay gives (nil: 0)
 function GetCorpseRecoveryDelay() return corpseDelay or 0 end
 local repops = 0
@@ -185,6 +187,34 @@ reset(true) fire("PLAYER_DEAD") fire("RESURRECT_REQUEST", "Healer") step(61) wip
 check("no corpse delay call counts as 0", repops == 1, repops)
 GetCorpseRecoveryDelay = keepDelay
 fire("PLAYER_DEAD")
+-- A self-resurrect (soulstone, Reincarnation): Alex, 2026-11-02, "Hold if I have one"
+local option = { name = "Use Soulstone", optionType = 1, id = 1, canUse = true, isLimited = false, priority = 1 }
+selfRes = { option }
+reset(true) wipeOn(fangs, 0) step(2)
+check("a self-resurrect at the end: not released", repops == 0)
+selfRes = {}
+reset(true) wipeOn(fangs, 0) step(0.2) selfRes = { option } step(2)
+check("a self-resurrect by the time the delay ends: not released", repops == 0)
+for _, case in ipairs({ { {}, "empty" }, { nil, "nil" } }) do
+  selfRes = case[1]
+  reset(true) wipeOn(fangs, 0) step(2)
+  check("self-resurrect options " .. case[2] .. ": released", repops == 1, repops)
+end
+selfRes = SECRET
+reset(true) wipeOn(fangs, 0) step(2)
+check("a secret self-resurrect answer holds, no error", repops == 0)
+selfRes = "error"
+reset(true) wipeOn(fangs, 0) step(2)
+check("a self-resurrect call that errors holds", repops == 0)
+selfRes = nil
+local keepDeath = C_DeathInfo
+C_DeathInfo = {}
+reset(true) wipeOn(fangs, 0) step(2)
+check("no GetSelfResurrectOptions on the client: released", repops == 1, repops)
+C_DeathInfo = nil
+reset(true) wipeOn(fangs, 0) step(2)
+check("no C_DeathInfo on the client: released", repops == 1, repops)
+C_DeathInfo = keepDeath
 reset(true) wipeOn(nil, 0) wipeOn(fangs, nil) wipeOn(SECRET, 0) wipeOn(fangs, SECRET) step(2)
 check("a nil or secret encounter or result: nothing, no error", repops == 0)
 reset(true) dead = SECRET wipeOn(fangs, 0) step(2)
@@ -227,7 +257,7 @@ local help
 for _, h in ipairs(helps) do if h.title == "Release my spirit after a wipe" then help = h end end
 check("the check box has its (?)", help ~= nil and rawget(help.target, "text") == "Release my spirit after a wipe")
 local function read() local t = help and (type(help.text) == "function" and help.text() or help.text) return type(t) == "string" and t or "" end
-check("its (?) says what it does", read() == "On bosses set up for it (Sample Release Boss), releases your spirit half a second after a wipe. Never after a kill.", read())
+check("its (?) says what it does", read() == "On bosses set up for it (Sample Release Boss), releases your spirit half a second after a wipe. Never after a kill, or while you can resurrect yourself.", read())
 local was = B.AutoReleaseNames
 B.AutoReleaseNames = function() return { "Boss A", "Boss B" } end
 check("the names come from the data", read():find("(Boss A, Boss B)", 1, true) ~= nil, read())

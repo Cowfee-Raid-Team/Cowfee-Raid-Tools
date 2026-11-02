@@ -6,7 +6,9 @@ local ADDON, CRT = ...
 -- yet a ghost, it waits RELEASE_DELAY seconds, checks again, then presses Release Spirit for you (RepopMe). Never after
 -- a kill, so a mass resurrection after it still works. It holds back while a resurrection is being cast on you
 -- (UnitHasIncomingResurrection) or was offered since your last death (RESURRECT_REQUEST), for as long as the game keeps
--- the offer open: the corpse delay (GetCorpseRecoveryDelay, read when the offer comes) plus OFFER_SECONDS. A death state the game keeps secret counts as unknown, and unknown never releases.
+-- the offer open: the corpse delay (GetCorpseRecoveryDelay, read when the offer comes) plus OFFER_SECONDS. It also holds
+-- while you can resurrect yourself (a soulstone, Reincarnation: C_DeathInfo.GetSelfResurrectOptions), so you release by
+-- hand; Alex, 2026-11-02: "Hold if I have one". A death state the game keeps secret counts as unknown, and unknown never releases.
 
 local RELEASE_DELAY = 0.5 -- seconds after the encounter ends
 local OFFER_SECONDS = 60 -- a resurrection offer holds the release back this long after the corpse delay (the game's popup)
@@ -48,6 +50,20 @@ function AutoRelease.CorpseDelay()
     return 0
 end
 
+-- Whether you have a self-resurrect (any entry in GetSelfResurrectOptions). An error or a secret answer is unknown and
+-- counts as one, so it holds. A client without the call counts as none, so the setting still works there.
+function AutoRelease.CanResurrectSelf()
+    local getOptions = C_DeathInfo and C_DeathInfo.GetSelfResurrectOptions
+    if type(getOptions) ~= "function" then
+        return false
+    end
+    local ok, options = pcall(getOptions)
+    if not ok or secret(options) then
+        return true
+    end
+    return type(options) == "table" and #options > 0
+end
+
 -- Dead, not a ghost, and no resurrection on the way: the only state a release is for.
 function AutoRelease.Waiting()
     local okDead, dead = read(UnitIsDead, "player")
@@ -62,7 +78,7 @@ function AutoRelease.Waiting()
     if offerUntil and GetTime() < offerUntil then
         return false
     end
-    return true
+    return not AutoRelease.CanResurrectSelf()
 end
 
 -- After the delay: the same checks again, then Release Spirit. True when RepopMe was called without an error.
