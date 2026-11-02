@@ -79,6 +79,7 @@ Profiles.SHARE = {
             customSounds = false, -- your own sound files, which a raider doesn't have
         },
         breakTimer = true,
+        autoRelease = false, -- releasing your spirit acts on your character: only you turn it on
     },
     loot = true, -- Loot History's settings only (the history is in CRTLootDB), Tooltip position and spot among them
     lootmaster = {
