@@ -2954,7 +2954,7 @@ end)
 check("mech special (" .. LOOK .. "): Instantly release after wipe sits under the toggle, on Special only, every boss", function()
   for _, withList in ipairs({ false, true }) do
     if withList then withSpecial(SPECIAL_LIST) else noSpecial() end
-    CRT.db.alerts.instantRelease = nil
+    CRT.db.alerts.instantReleaseBosses = {}
     local f = freshOpen()
     local s = f.special
     local box = s.release
@@ -2981,19 +2981,27 @@ check("mech special (" .. LOOK .. "): Instantly release after wipe sits under th
     local help
     for _, h in ipairs(helps) do if rawget(h, "helpTarget") == box.label then help = h end end
     assert(help and help.helpTitle == "Instantly release after wipe", "its (?), right of the label")
-    assert(help.helpText == "Releases your spirit half a second after a wipe on any raid boss. Never after a kill, while a resurrection is on its way, or while you can resurrect yourself.", tostring(help.helpText))
+    assert(help.helpText == "Releases your spirit half a second after a wipe on this boss, on every difficulty, in a raid. Never after a kill, while a resurrection is on its way, or while you can resurrect yourself.", tostring(help.helpText))
+    -- saved for the boss on show only, the same on every difficulty
     box.checked = true click(box)
-    assert(CRT.db.alerts.instantRelease == true, "ticking it saves alerts.instantRelease")
+    assert(CRT.db.alerts.instantReleaseBosses[ENC] == true and CRT.db.alerts.instantReleaseBosses[5555] == nil, "ticking it saves this boss only")
+    dropdowns["Boss"].opts.set(5555)
+    assert(box.checked == false and box:IsVisible(), "another boss shows its own tick, off")
+    dropdowns["Boss"].opts.set(ENC)
+    assert(box.checked == true, "back on the first boss: ticked")
+    dropdowns["Difficulty"].opts.set("nh")
+    assert(box.checked == true, "another difficulty: the same tick")
+    dropdowns["Difficulty"].opts.set("mythic")
     box.checked = false click(box)
-    assert(CRT.db.alerts.instantRelease == false, "unticking it saves false")
-    CRT.db.alerts.instantRelease = true
+    assert(CRT.db.alerts.instantReleaseBosses[ENC] == nil, "unticking it clears this boss")
+    CRT.db.alerts.instantReleaseBosses[ENC] = true
     CRT.NoteReminders.Refresh()
-    assert(box.checked == true, "it shows the saved setting")
+    assert(box.checked == true, "it shows the saved tick")
     click(s.mechBtn)
     assert(not box:IsVisible() and not box.label:IsVisible(), "not on Mechanics")
     click(s.specialBtn)
     assert(box:IsVisible(), "back on Special")
-    CRT.db.alerts.instantRelease = nil
+    CRT.db.alerts.instantReleaseBosses = {}
   end
   noSpecial()
   assert(#errors == 0, tostring(errors[1]))

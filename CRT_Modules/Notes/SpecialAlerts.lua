@@ -16,8 +16,9 @@ local ADDON, CRT = ...
 -- A debuff list (kind debuffList, Alerts/DebuffList.lua) is listed the same way, its icon its debuff's; selected, its
 -- panel hides When, Who, Sound and speech and Shield bar (SubTabs' SetHidden), its Looks are Notes/SpecialDebuffLooks.lua
 -- in place of the alert's, and Test shows its display with sample names (Alerts/DebuffListView.lua).
--- Under the toggle, while Special is on show, the Instantly release after wipe tick (CRTDB.alerts.instantRelease,
--- Alerts/InstantRelease.lua), the same on every boss, with the list below it.
+-- Under the toggle, while Special is on show, the Instantly release after wipe tick of the boss on show
+-- (CRTDB.alerts.instantReleaseBosses[encounterID], through Alerts/InstantRelease.lua's IsOn and Set): one tick per
+-- boss, the same on every difficulty; hidden with no boss picked. The list sits below it.
 
 local UI = CRT.UI
 
@@ -26,7 +27,7 @@ local TEXT = {
     mechanics = "Mechanics",
     special = "Special (%d)",
     instantRelease = "Instantly release after wipe",
-    instantReleaseHelp = "Releases your spirit half a second after a wipe on any raid boss. Never after a kill, while a resurrection is on its way, or while you can resurrect yourself.",
+    instantReleaseHelp = "Releases your spirit half a second after a wipe on this boss, on every difficulty, in a raid. Never after a kill, while a resurrection is on its way, or while you can resurrect yourself.",
     toggleHelp = "Special lists this tier's prepared alerts for the boss, such as soak rotations. Tick the ones you want. Mechanics is for your own reminders: an ability a special alert already covers is marked Special there.",
     empty = "No special alerts for this boss yet.",
     emptyHint = "Mechanics has every ability for your own reminders.",
@@ -276,12 +277,14 @@ end
 
 -- Instantly release after wipe: its label as wide as its words, cut with "..." when they and the (?) don't fit the
 -- list's width (a large text size). Measured on every draw, as the toggle is.
-local function layRelease()
+-- Its tick is the boss on show's (enc), so a boss change redraws it and a difficulty change keeps it.
+local function layRelease(enc)
     local label = ui.release.label
     label:SetWidth(0)
     local room = L.LIST_W - L.CHECK_SIZE - L.CHECK_LABEL_GAP - UI.HELP_GAP - UI.HELP_SIZE
     label:SetWidth(math.min(width(label), room))
-    ui.release:SetChecked(CRT.db.alerts.instantRelease == true)
+    local IR = CRT.InstantRelease
+    ui.release:SetChecked(IR ~= nil and IR.IsOn(enc))
 end
 
 -- The list ---------------------------------------------------------------------------------------
@@ -517,8 +520,8 @@ function M.Refresh()
     local special = view == "special"
     ui.list:SetShown(special)
     ui.panel:SetShown(special)
-    ui.releaseRow:SetShown(special)
     local list, enc = entries()
+    ui.releaseRow:SetShown(special and enc ~= nil and CRT.InstantRelease ~= nil)
     ui.specialBtn.text:SetText(string.format(TEXT.special, #list))
     layToggle()
     -- SetTabSelected skins the whole tab (UI:SkinTree), so only when the view changes; a plain redraw restyles
@@ -528,7 +531,7 @@ function M.Refresh()
     if not special then
         return
     end
-    layRelease()
+    layRelease(enc)
     local current = selected(list, enc)
     paintList(list, enc, current)
     drawPanel(enc, current)
@@ -989,7 +992,10 @@ local function build(f, g)
     ui.releaseRow = row
     -- the file's own tick (makeCheck), as Alert me; layRelease sizes its label on every draw
     ui.release = makeCheck(row, TEXT.instantRelease, 0, 0, function(on)
-        CRT.db.alerts.instantRelease = on
+        local enc = host.boss()
+        if not (CRT.InstantRelease and CRT.InstantRelease.Set(enc, on)) then
+            M.Refresh() -- nothing saved: the tick goes back to what is saved
+        end
     end)
     ui.releaseHelp = UI.HelpRight(ui.release.label, TEXT.instantRelease, TEXT.instantReleaseHelp)
     L.LIST_H = L.LIST_H - L.RELEASE_H - L.RELEASE_GAP

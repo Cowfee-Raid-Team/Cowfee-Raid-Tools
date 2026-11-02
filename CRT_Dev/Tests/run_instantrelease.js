@@ -1,4 +1,5 @@
-// CRT_Modules/Alerts/InstantRelease.lua: Instantly release after wipe (Mech Alerts > Special, CRTDB.alerts.instantRelease).
+// CRT_Modules/Alerts/InstantRelease.lua: Instantly release after wipe (Mech Alerts > Special), ticked per boss in
+// CRTDB.alerts.instantReleaseBosses[encounterID], the same on every difficulty.
 // With the setting on, a wipe (ENCOUNTER_END success 0) on any boss in a raid instance (never a dungeon), while you are dead and not a ghost, calls RepopMe
 // once, RELEASE_DELAY seconds later, after checking again. Never after a kill, with the setting off, alive, as a ghost,
 // with a resurrection on the way or offered, while you can resurrect yourself, or with a nil or secret encounter. Also:
@@ -98,11 +99,14 @@ end
 
 -- The default: off, with the other Mech Alerts settings ------------------------------------------------------------
 local alerts = coreText:match("\n    alerts = (%b{})")
-check("Core.lua's alerts defaults have instantRelease = false", alerts ~= nil and alerts:find("\n        instantRelease = false,", 1, true) ~= nil)
+check("Core.lua's alerts defaults have instantReleaseBosses = {}, and no old instantRelease", alerts ~= nil
+  and alerts:find("\n        instantReleaseBosses = {},", 1, true) ~= nil and not alerts:find("instantRelease =", 1, true))
 local qol = coreText:match("\n    qol = (%b{})")
 check("Core.lua's qol defaults have no autoRelease", qol ~= nil and not qol:find("autoRelease", 1, true))
-CRT.db.alerts.instantRelease = false
-local fangs, other = 3421, 3470 -- any two encounter IDs: no boss lookup is made
+local fangs, other = 3421, 3470 -- two encounter IDs: fangs ticked, other not
+-- the per-boss store is declared for the season purge (Bosses:DeclareField)
+local declared = {}
+CRT.Bosses = { DeclareField = function(_, label, area, field) declared[#declared + 1] = area .. "." .. field end }
 
 -- The behaviour ----------------------------------------------------------------------------------------------
 local ok, err = pcall(function() assert(load(releaseSrc, "@InstantRelease.lua"))("CowfeeRaidTools", CRT) end)
@@ -110,7 +114,27 @@ check("InstantRelease.lua loads", ok and CRT.InstantRelease ~= nil, err)
 if not (ok and CRT.InstantRelease) then print(passed .. " passed, " .. failed .. " failed") error("no module") end
 local AR = CRT.InstantRelease
 check("the delay is half a second", AR.RELEASE_DELAY == 0.5, AR.RELEASE_DELAY)
-local function reset(on) dead, ghost, incoming, repops, timers = true, false, false, 0, {} CRT.db.alerts.instantRelease = on end
+check("its per-boss ticks are declared for the season purge", table.concat(declared, ",") == "alerts.instantReleaseBosses", table.concat(declared, ","))
+-- on: fangs ticked; false: none ticked; nil: no table at all
+local function reset(on)
+  dead, ghost, incoming, repops, timers = true, false, false, 0, {}
+  if on == nil then CRT.db.alerts.instantReleaseBosses = nil else CRT.db.alerts.instantReleaseBosses = on and { [fangs] = true } or {} end
+end
+
+-- IsOn and Set, for the page and the dev tool
+reset(false)
+check("IsOn: no boss is ticked by default", AR.IsOn(fangs) == false and AR.IsOn(other) == false)
+check("Set ticks one boss only", AR.Set(fangs, true) == true and AR.IsOn(fangs) == true and AR.IsOn(other) == false
+  and CRT.db.alerts.instantReleaseBosses[fangs] == true)
+check("Set off clears it", AR.Set(fangs, false) == true and AR.IsOn(fangs) == false and CRT.db.alerts.instantReleaseBosses[fangs] == nil)
+check("a nil, secret or non-number ID is off and can't be set", AR.IsOn(nil) == false and AR.IsOn(SECRET) == false and AR.IsOn("3421") == false
+  and AR.Set(nil, true) == false and AR.Set(SECRET, true) == false and AR.Set("3421", true) == false)
+CRT.db.alerts.instantReleaseBosses = nil
+check("Set makes the table when there is none", AR.Set(other, true) == true and AR.IsOn(other) == true)
+CRT.db.alerts.instantReleaseBosses = true -- an old boolean in its place is never read as a table
+check("a non-table store is off, no error", AR.IsOn(fangs) == false)
+local ticked = (AR.Set(fangs, true) and AR.Ticked()) or {}
+check("Ticked lists the ticked IDs, sorted", table.concat(ticked, ",") == "3421", table.concat(ticked, ","))
 local function wipeOn(id, success) fire("ENCOUNTER_END", id, "Boss", 16, 20, success) end
 
 reset(true)
@@ -126,11 +150,11 @@ check("only once", repops == 1, repops)
 reset(true) wipeOn(fangs, 1) step(2)
 check("a kill: not released", repops == 0)
 reset(true) wipeOn(other, 0) step(2)
-check("a wipe on any other boss: released too", repops == 1, repops)
+check("a raid wipe on an unticked boss: not released", repops == 0, repops)
 reset(false) wipeOn(fangs, 0) step(2)
-check("the setting off: not released", repops == 0)
+check("no boss ticked: not released", repops == 0)
 reset(nil) wipeOn(fangs, 0) step(2)
-check("the setting unset: not released", repops == 0)
+check("no ticks saved at all: not released", repops == 0)
 reset(true) dead = false wipeOn(fangs, 0) step(2)
 check("alive at the end: not released", repops == 0)
 reset(true) dead, ghost = false, true wipeOn(fangs, 0) step(2)
@@ -139,8 +163,10 @@ reset(true) wipeOn(fangs, 0) step(0.2) dead = false step(2)
 check("alive again by the time the delay ends: not released", repops == 0)
 reset(true) wipeOn(fangs, 0) step(0.2) dead, ghost = false, true step(2)
 check("a ghost by the time the delay ends: not released", repops == 0)
-reset(true) wipeOn(fangs, 0) step(0.2) CRT.db.alerts.instantRelease = false step(2)
-check("turned off during the delay: not released", repops == 0)
+reset(true) wipeOn(fangs, 0) step(0.2) AR.Set(fangs, false) step(2)
+check("the boss unticked during the delay: not released", repops == 0)
+reset(true) wipeOn(fangs, 0) step(0.2) AR.Set(fangs, false) AR.Set(other, true) step(2)
+check("after the delay it asks about the same boss, not another ticked one", repops == 0)
 reset(true) incoming = true wipeOn(fangs, 0) step(2)
 check("a resurrection being cast on you: not released", repops == 0)
 reset(true) wipeOn(fangs, 0) step(0.2) incoming = true step(2)
@@ -233,7 +259,8 @@ local okErr, errErr = pcall(step, 2)
 check("RepopMe erroring: no error out", okErr, errErr)
 RepopMe = keep
 local code = releaseSrc:gsub("%-%-[^\n]*", "")
-check("the file names no boss and asks the boss library nothing", not code:find("Twin Fangs", 1, true) and not code:find("3421", 1, true) and not code:find("Bosses", 1, true))
+check("the file names no boss and reads no boss data (the ticks are the player's)", not code:find("Twin Fangs", 1, true) and not code:find("3421", 1, true)
+  and not code:find("Bosses:Get", 1, true) and not code:find("AutoRelease", 1, true))
 
 -- Quality of Life: its four tabs again, and no release box ----------------------------------------------------------
 local helps, tabs, build = {}, {}, nil

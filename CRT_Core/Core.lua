@@ -491,9 +491,11 @@ local defaults = {
         -- { on, show, speak, markers }. specialView ("mechanics" or "special") and specialViewPicked were Mech
         -- Alerts' last pick; kept for older saves, no longer read: the tab opens on Special every time.
         special = {},
-        -- Instantly release after wipe (Alerts/InstantRelease.lua, the tick on Mech Alerts > Special): off until the
-        -- player ticks it, as it acts on their character. Any boss's wipe, never a kill.
-        instantRelease = false,
+        -- Instantly release after wipe (Alerts/InstantRelease.lua, the tick on Mech Alerts > Special), per boss:
+        -- instantReleaseBosses[encounterID] = true for each boss the player ticked, the same on every difficulty; off
+        -- for every boss until ticked, as it acts on their character. A raid wipe only, never a kill. (A boolean
+        -- instantRelease from a test build is left unread.)
+        instantReleaseBosses = {},
         -- Debuff lists (Alerts/DebuffList.lua), the special alerts of kind debuffList: your looks per boss and entry,
         -- debuffLists[encounterID][key] = { groups = { [side] = { 1, 3 } }, colors = { [side] = { on, off } }, showAll,
         -- sortByRole, barHeight, barWidth, position }, each kept only while it differs from the boss file's; what a
