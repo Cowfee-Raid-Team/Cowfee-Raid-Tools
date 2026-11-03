@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.2 (2026-11-02)
+
+- **Instantly release after wipe:** a new tick on Mech Alerts > Special, saved for each boss and the same on every difficulty. On a ticked boss, a wipe in a raid releases your spirit half a second later. It never releases after a kill, while a resurrection is on its way, or while you can resurrect yourself (a soulstone, Reincarnation). Off for every boss until you tick it.
+- **Ready check window:** drag it anywhere during a ready check. Tick Lock the window in place (Window tab) to move it only in Previews, as before.
+- **Ready check window stays while hovered:** past its seconds it stays open while your mouse is over it and closes a second after you move away. Hovering also pauses a pull timer's fade, which starts again when you move away. Switch it off with Keep it open while my mouse is over it.
+
 ## 1.3.1 (2026-11-01)
 
 - **Count down:** one number each second, exactly on its second, then the text at 0: "5 ... 4 ... 3 ... 2 ... 1 ... Soak". It now speaks even with Read them out off; that switch only quiets raid note lines that have no speech setting of their own.
