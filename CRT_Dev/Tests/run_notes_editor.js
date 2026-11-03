@@ -948,6 +948,19 @@ do
   assert(keysOf(Model.Sources(PRESETS, nil, true)) == "group,7,roster1", "noInvite")
   assert(Editor.Open({ personal = true }) and keysOf(W.from.opts.options()) == "group,7,roster1" and W.playersFrom == "group", "the personal note's choices")
   W.window:Hide()
+  -- a note shared to you: its layout is the sender's ("<name> (from <sender>)", Notes:RosterLayout), listed first and
+  -- picked when solo; with none from them, none is linked
+  PRESETS[#PRESETS + 1] = { id = 9, from = "Kip-Sargeras", name = "Main (from Kip)", slots = { "Kip-Sargeras" } }
+  local rid = Notes:Import("EncounterID:3472;Difficulty:Heroic;Name:Shared One\\ninvitelist:Abu-Sargeras;\\nSoak: Abu", "Kip")
+  assert(Notes:Get(rid).presetId == nil, "a shared note: no invite-list layout")
+  assert(Editor.Open({ id = rid }) and W.playersFrom == 9, "a shared note solo: the sender's layout picked: " .. tostring(W.playersFrom))
+  assert(keysOf(W.from.opts.options()) == "group,invite,9,7,roster1", "the sender's layout listed first: " .. keysOf(W.from.opts.options()))
+  W.window:Hide()
+  table.remove(PRESETS)
+  W.picked[rid] = nil
+  assert(Editor.Open({ id = rid }) and W.playersFrom == "group", "no layout from the sender: the current group")
+  W.window:Hide()
+  W.picked[rid] = nil
 end
 print("ok Players from: the group, the invite list or a layout (linked one first and picked when solo), class colours, search, tokens, refresh")
 

@@ -10,9 +10,10 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
 local parseSrc, dataSrc, commSrc, settingsSrc, pageSrc, renderSrc = ...
-local edits, buttons, helps = {}, {}, {}
+local edits, buttons, helps, allMocks = {}, {}, {}, {}
 local function mock(kind)
   local m = { shown = false, kind = kind }
+  allMocks[#allMocks + 1] = m
   return setmetatable(m, { __index = function(t, k)
     if k == "CreateFontString" or k == "CreateTexture" then return function() return mock() end end
     if k == "SetText" then return function(self, s) rawset(self, "text", s) end end
@@ -444,37 +445,59 @@ print("ok Share to raid shares through the one share function, and sends the ros
 do
   -- A note's invite list makes a Raid Groups layout only when you paste or import the note yourself. A note shared to
   -- you makes none (the sender's roster comes with the share, Groups/Share.lua), so there are never two look-alikes.
-  local presets, active, selectedId = {}, nil, nil
+  local presets, nextPreset, active, selectedId = {}, 1, nil, nil
   local savedGroups = CRT.Groups
   CRT.Groups = { NUM_SLOTS = 40,
     Normalize = function(n) if n ~= "" and not n:find("-", 1, true) then n = n .. "-Sargeras" end return n end,
-    CreatePreset = function(_, name, slots) presets[#presets + 1] = { id = #presets + 1, name = name, slots = slots } return #presets end,
-    Find = function(_, id) return presets[id] end, Active = function() return active end,
+    CreatePreset = function(_, name, slots) local id = nextPreset nextPreset = nextPreset + 1 presets[id] = { id = id, name = name, slots = slots } return id end,
+    Presets = function() local out = {} for _, p in pairs(presets) do out[#out + 1] = p end return out end,
+    Find = function(_, id) return id and presets[id] end, Active = function() return active end,
     Select = function(_, id) selectedId = id end }
-  local text = "EncounterID:3460;Difficulty:Mythic;Name:Invite Boss\\ninvitelist:Abu,Kip,,Rixxy;\\ntime:5;ph:1;text:Go;"
-  local got, message = Notes:Import(text, "Solex", nil, "guild:Cowfee", "CRT")
-  assert(#presets == 0, "a received note with an invite list makes no layout")
-  assert(Notes:Get(got).presetId == nil, "and is linked to none")
-  assert(not message:find("layout", 1, true), "and says nothing about one: " .. message)
-  -- its Open roster in Raid Groups opens your active layout, the roster the share brought
-  active = 77
-  presets[77] = { id = 77, name = "Main (from Solex)", slots = {} }
+  local function count() local n = 0 for _ in pairs(presets) do n = n + 1 end return n end
+  local function detail() for _, m in ipairs(allMocks) do local t = rawget(m, "text") if type(t) == "string" and t:find("Last updated:", 1, true) then return t end end return "" end
   local openRoster
   for _, b in ipairs(buttons) do if rawget(b, "text") == "Open roster in Raid Groups" then openRoster = b end end
-  for _, b in ipairs(buttons) do if rawget(b, "id") == got and rawget(b, "OnClick") then b.OnClick(b) end end
+  local function pick(nid) for _, b in ipairs(buttons) do if rawget(b, "id") == nid and rawget(b, "OnClick") then b.OnClick(b) end end end
+  local text = "EncounterID:3460;Difficulty:Mythic;Name:Invite Boss\\ninvitelist:Abu,Kip,,Rixxy;\\ntime:5;ph:1;text:Go;"
+  local got, message = Notes:Import(text, "Solex", nil, "guild:Cowfee", "CRT")
+  assert(count() == 0, "a received note with an invite list makes no layout")
+  assert(Notes:Get(got).presetId == nil, "and is linked to none")
+  assert(not message:find("layout", 1, true), "and says nothing about one: " .. message)
+  -- no roster came with it (the sender had roster sending off): Open roster says so
+  pick(got)
   local p0 = #printed
   openRoster.OnClick(openRoster)
-  assert(selectedId == 77 and #printed == p0, "a received note: Open roster opens your active layout")
-  presets[77], active, selectedId = nil, nil, nil
-  -- pasted or imported by you: the layout is made, as before
+  assert(selectedId == nil and printed[#printed] == "No roster came with this note.", "no sender's layout: says so: " .. tostring(printed[#printed]))
+  assert(not detail():find("Roster:", 1, true), "no sender's layout: no roster detail line: " .. detail())
+  assert(Notes:RosterLayout(Notes:Get(got)) == nil, "no sender's layout: the note has no roster")
+  -- the sender's layout ("<name> (from Solex)") is the note's roster, even when you made your own layout active
+  local mineLayout = CRT.Groups:CreatePreset("My alts", {})
+  local theirs = CRT.Groups:CreatePreset("Main (from Solex)", {})
+  presets[theirs].from = "Solex-Sargeras"
+  active = mineLayout
+  assert(Notes:RosterLayout(Notes:Get(got)) == theirs, "the note's roster: the sender's layout")
+  Notes:Fire()
+  assert(detail():find("Roster: linked to a Raid Groups layout", 1, true), "the roster detail line shows: " .. detail())
+  p0 = #printed
+  openRoster.OnClick(openRoster)
+  assert(selectedId == theirs and #printed == p0, "Open roster opens the sender's layout, not your active one")
+  presets[mineLayout], presets[theirs], active, selectedId = nil, nil, nil, nil
+  -- pasted or imported by you: the layout is made, as before, and is the note's roster
   local mine, said = Notes:Import((text:gsub("Invite Boss", "Own Boss")), nil, nil, nil, "Imported")
-  assert(#presets == 1 and presets[1].name == "Own Boss Mythic roster", "a pasted note makes its layout: " .. tostring(presets[1] and presets[1].name))
-  assert(presets[1].slots[1] == "Abu-Sargeras" and presets[1].slots[3] == "" and presets[1].slots[4] == "Rixxy-Sargeras", "in its order, empty slots kept")
-  assert(Notes:Get(mine).presetId == 1 and said:find("Its invite list is now a layout in Raid Groups.", 1, true), "linked, and says so: " .. said)
+  local made = Notes:Get(mine).presetId
+  assert(count() == 1 and presets[made].name == "Own Boss Mythic roster", "a pasted note makes its layout")
+  assert(presets[made].slots[1] == "Abu-Sargeras" and presets[made].slots[3] == "" and presets[made].slots[4] == "Rixxy-Sargeras", "in its order, empty slots kept")
+  assert(said:find("Its invite list is now a layout in Raid Groups.", 1, true), "and says so: " .. said)
+  assert(Notes:RosterLayout(Notes:Get(mine)) == made, "a pasted note's roster: its own layout")
+  -- the same note shared to you later: the old link goes (the layout stays), so nothing points at the look-alike
+  local again = Notes:Import((text:gsub("Invite Boss", "Own Boss")), "Solex", nil, nil, "CRT")
+  assert(again == mine, "the shared note replaces the pasted one")
+  assert(Notes:Get(mine).presetId == nil and presets[made] ~= nil, "re-received: the link cleared, the layout kept")
+  assert(Notes:RosterLayout(Notes:Get(mine)) == nil, "re-received: no roster until the sender's comes")
   Notes:Delete(got) Notes:Delete(mine)
   CRT.Groups = savedGroups
 end
-print("ok a shared note's invite list makes no layout; a pasted one's does")
+print("ok a shared note's invite list makes no layout and its roster is the sender's layout; a pasted one's makes its own")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const f of process.argv.slice(2, 8)) {
