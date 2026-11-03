@@ -2,11 +2,12 @@
 // prefix through the shared send queue (CRT_Core/Comm.lua), and a raider taking it as their active layout. The real
 // Groups/Data.lua, Notes/Comm.lua (its sender check) and Late/Data.lua (the Late Tracker's expected names).
 //   Sending: the prefix, parts under 255 bytes, a 40-slot layout with empty slots and realm names round-trips in
-//   several parts, dedupe per channel, nothing sent with no active layout, an empty one, out of a group, not the
-//   leader or an assistant, or in combat.
+//   several parts, sent again on every share even unchanged, nothing sent with no active layout, an empty one, out
+//   of a group, not the leader or an assistant, or in combat.
 //   Receiving: only from the leader or an assistant, never your own; stored tagged from the sender, replaced by
-//   their next one, your own layouts untouched, made active with one chat line; malformed and incomplete (timed
-//   out) messages dropped without an error.
+//   their next one, your own layouts untouched, made active and opened on Raid Groups with one chat line, opened
+//   again when shared again; unsaved edits kept (only made active); malformed and incomplete (timed out) messages
+//   dropped without an error.
 // Usage: node run_roster_share.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -70,8 +71,8 @@ assert(load(shareSrc, "Share.lua"))("CowfeeRaidTools", CRT)
 assert(load(lateSrc, "Late/Data.lua"))("CowfeeRaidTools", CRT)
 local Groups, Share = CRT.Groups, CRT.RosterShare
 check(Share ~= nil, "CRT.RosterShare is made")
-local fired = 0
-Groups:OnChange(function() fired = fired + 1 end)
+local fired, firedSelected = 0, nil -- the page's listener: how often told, and the open layout when last told
+Groups:OnChange(function() fired = fired + 1 firedSelected = CRT.db.groups.selected end)
 
 -- the prefix
 eq(Share.PREFIX, "CRTRoster1", "prefix: CRTRoster1")
@@ -121,16 +122,17 @@ end
 local firstSent = {}
 for i, m in ipairs(sent) do firstSent[i] = m.text end
 
--- dedupe: unchanged is not sent again; a change is; another channel is its own
+-- every share sends it, changed or not, so a raider who opened their own layout is switched back
 ok, line = Share:Push()
-check(not ok and #sent == #messages, "dedupe: an unchanged layout isn't sent again")
-eq(line, "Roster 'Main; Mythic' not sent again: it hasn't changed.", "dedupe: the status line")
+check(ok and #sent == 2 * #messages, "again: an unchanged layout is sent again")
+eq(line, "Roster 'Main; Mythic' sent.", "again: the status line")
+eq(Share.TEXT.same, nil, "again: no 'not sent again' line")
 raid = false
 ok = Share:Push()
-check(ok and sent[#sent].channel == "PARTY", "dedupe: another channel gets it")
+check(ok and sent[#sent].channel == "PARTY", "a party: sent on its channel")
 raid = true
 
--- a send the game drops is not counted as sent: the next push of the same layout goes
+-- a send the game drops: the next push of the same layout goes
 local mainSlots = Groups:Find(mainId).slots
 mainSlots[2] = "Changed-Sargeras"
 local before = #sent
@@ -151,6 +153,20 @@ grouped, raid = true, true
 check(#sent == before, "throttled, then dropped: nothing went")
 ok = Share:Push()
 check(ok and #sent > before, "dropped after a wait: the next push sends it")
+-- the same roster still waiting in the send queue (throttled): not queued twice; once it has gone, it goes again
+mainSlots[2] = "Queued-Sargeras"
+local queuedParts = #Share.Pack("Main; Mythic", mainSlots)
+before = #sent
+results = { 3 }
+ok = Share:Push()
+check(ok and #sent == before, "queued: waiting on the throttle")
+ok, line = Share:Push()
+check(ok, "queued: a second share while it waits")
+eq(line, "Roster 'Main; Mythic' is already on its way.", "queued: the status line")
+runTimers()
+eq(#sent - before, queuedParts, "queued: it went once")
+before = #sent
+check(Share:Push() and #sent - before == queuedParts, "gone: the next share sends it again")
 mainSlots[2] = slots[2]
 check(Share:Push(), "back to the first slots: sent")
 
@@ -188,6 +204,8 @@ leaders.player = nil
 CRT.db.groups = freshGroups()
 local ownId = Groups:CreatePreset("My alts", { "Alt-Sargeras" })
 Groups:SetActive(ownId)
+Groups:Select(ownId)
+local gdb = function() return CRT.db.groups end
 local function deliver(list, from, channel) for _, m in ipairs(list) do Share.Receive("CRTRoster1", m, channel or "RAID", from) end end
 local function count() return #Groups:Presets() end
 
@@ -222,11 +240,83 @@ same = got ~= nil
 for i = 1, 40 do if not got or got.slots[i] ~= slots[i] then same = false end end
 check(same, "lead: the 40 slots as sent")
 eq(Groups:Active(), got and got.id, "lead: it is the active layout")
+eq(gdb().selected, got and got.id, "lead: opened on Raid Groups")
+same = true
+for i = 1, 40 do if Groups:Working()[i] ~= slots[i] then same = false end end
+check(same, "lead: the Raid Groups grid shows it")
 check(fired > firedBefore, "lead: Raid Groups and the Late Tracker told")
 eq(#printed, printedBefore + 1, "lead: one chat line")
-eq(printed[#printed], "Roster 'Main; Mythic' from Solex is now your active layout.", "lead: the chat line")
+eq(printed[#printed], "Roster 'Main; Mythic' from Solex is now your active group.", "lead: the chat line")
 local own = Groups:Find(ownId)
 check(own and own.name == "My alts" and own.slots[1] == "Alt-Sargeras" and own.from == nil, "lead: your own layout untouched")
+
+-- the raider opens their own layout again; the same roster shared again opens it again, with no second copy
+Groups:Select(ownId)
+local pAgain, fAgain = #printed, fired
+deliver(firstSent, "Solex-Sargeras")
+eq(gdb().selected, got.id, "shared again: opened again")
+check(fired > fAgain and firedSelected == got.id, "shared again: the page told, with the roster open")
+eq(Groups:Active(), got.id, "shared again: still active")
+eq(count(), 2, "shared again: no second copy")
+eq(#printed, pAgain + 1, "shared again: one chat line")
+eq(printed[#printed], "Roster 'Main; Mythic' from Solex is now your active group.", "shared again: the chat line")
+-- their own layout opened and made active (Use This Group): shared again, the roster is active and open again
+Groups:Select(ownId)
+Groups:SetActive(ownId)
+deliver(firstSent, "Solex-Sargeras")
+check(gdb().selected == got.id and Groups:Active() == got.id and count() == 2, "own layout active: switched back to the roster")
+-- open and active already: nothing happens, no chat line
+pAgain = #printed
+deliver(firstSent, "Solex-Sargeras")
+check(#printed == pAgain and gdb().selected == got.id and Groups:Active() == got.id, "open and active already: nothing happens")
+
+-- unsaved edits on the open layout (Keep changes off): kept, and the roster only made active
+gdb().keepChanges = false
+Groups:Select(ownId)
+Groups:SetActive(ownId)
+Groups:SetSlot(2, "Draft-Sargeras")
+check(Groups.dirty, "unsaved: the edit is unsaved")
+deliver(firstSent, "Solex-Sargeras")
+eq(Groups:Active(), got.id, "unsaved: the roster is active")
+eq(gdb().selected, ownId, "unsaved: your layout stays open")
+eq(Groups:Working()[2], "Draft-Sargeras", "unsaved: your edit kept")
+eq(Groups:Find(ownId).slots[2], "", "unsaved: your edit not saved for you")
+check(Groups.dirty, "unsaved: still unsaved")
+eq(printed[#printed], "Roster 'Main; Mythic' from Solex is now your active group. Your unsaved changes on 'My alts' are kept; pick it in Quick Load to see it.", "unsaved: the chat line")
+-- the same roster again, the edit still unsaved: nothing happens
+pAgain = #printed
+deliver(firstSent, "Solex-Sargeras")
+check(#printed == pAgain and gdb().selected == ownId and Groups:Working()[2] == "Draft-Sargeras", "unsaved, active already: nothing happens")
+-- after a /reload Groups.dirty is forgotten, but the grid still differs from the layout: still kept
+Groups.dirty = false
+Groups:SetActive(ownId)
+deliver(firstSent, "Solex-Sargeras")
+check(Groups:Active() == got.id and gdb().selected == ownId and Groups:Working()[2] == "Draft-Sargeras", "unsaved after a reload: kept")
+-- names in a grid with no layout open (Unsaved layout): kept too
+gdb().selected = nil
+Groups:SetActive(ownId)
+deliver(firstSent, "Solex-Sargeras")
+check(Groups:Active() == got.id and gdb().selected == nil and Groups:Working()[2] == "Draft-Sargeras", "unsaved layout: kept")
+eq(printed[#printed], "Roster 'Main; Mythic' from Solex is now your active group. Your unsaved layout is kept; pick the roster in Quick Load to see it.", "unsaved layout: the chat line")
+-- unsaved edits on the received copy itself: kept, and the chat line doesn't send them to Quick Load
+Groups:Select(got.id)
+Groups:SetSlot(3, "Mine2-Sargeras")
+Groups:SetActive(ownId)
+local otherSlots = {}
+for i = 1, 40 do otherSlots[i] = slots[i] end
+otherSlots[4] = "Other-Sargeras"
+deliver(Share.Pack("Main; Mythic", otherSlots), "Solex-Sargeras")
+check(Groups:Active() == got.id and gdb().selected == got.id and Groups:Working()[3] == "Mine2-Sargeras", "unsaved on the copy: edits kept")
+eq(got.slots[4], "Other-Sargeras", "unsaved on the copy: the copy has the new slots")
+eq(printed[#printed], "Roster 'Main; Mythic' from Solex is now your active group. Your unsaved changes on it are kept.", "unsaved on the copy: the chat line")
+Groups:Select(got.id)
+-- an empty grid with no layout open has nothing to keep: the roster opens
+gdb().selected = nil
+Groups:ReplaceWorking({})
+Groups:SetActive(ownId)
+deliver(firstSent, "Solex-Sargeras")
+check(Groups:Active() == got.id and gdb().selected == got.id, "an empty grid: the roster opens")
+gdb().keepChanges = true
 
 -- the Late Tracker expects the received layout's people
 check(CRT.Late:Start("button", 1790000000), "late: a night starts")
@@ -249,10 +339,12 @@ local changed = Share.Pack("Main; Mythic", copy)
 me = "Rixxy"
 leaders.player = nil
 leaders.Solex = "assist"
-local edited = got
-edited.slots[1] = "Mine-Sargeras" -- the raider's own edit, theirs until the next one arrives
+Groups:SetSlot(1, "Mine-Sargeras") -- the raider's own edit, saved by Keep changes, theirs until the next one arrives
+eq(got.slots[1], "Mine-Sargeras", "replace: the raider's edit saved")
 deliver(changed, "Solex-Sargeras")
 eq(count(), 2, "replace: still one copy from that sender")
+eq(gdb().selected, got.id, "replace: an assistant's roster opened")
+eq(Groups:Working()[7], "Newbie-Sargeras", "replace: the grid shows the new slots")
 local again
 for _, p in ipairs(Groups:Presets()) do if p.from then again = p end end
 eq(again and again.slots[7], "Newbie-Sargeras", "replace: the new slots")
@@ -330,10 +422,10 @@ eq(Groups:Active(), kip.id, "another prefix: ignored")
 -- the group's leader never takes a roster, not even an assistant's (Alex, 2026-10-31); everyone else still does
 leaders.Solex = "assist"
 leaders.player = "lead"
-local n2, p2 = count(), #printed
+local n2, p2, s2 = count(), #printed, gdb().selected
 deliver(Share.Pack("Main; Mythic", variant(8, "Sixth-Sargeras")), "Solex-Sargeras")
-check(count() == n2 and #printed == p2 and Groups:Active() == kip.id and got.slots[8] ~= "Sixth-Sargeras",
-  "leader: an assistant's roster is ignored")
+check(count() == n2 and #printed == p2 and Groups:Active() == kip.id and got.slots[8] ~= "Sixth-Sargeras"
+  and gdb().selected == s2, "leader: an assistant's roster is ignored")
 leaders.player = "assist"
 deliver(Share.Pack("Main; Mythic", variant(8, "Seventh-Sargeras")), "Solex-Sargeras")
 check(Groups:Active() == got.id and got.slots[8] == "Seventh-Sargeras", "an assistant: takes another assistant's roster")
@@ -344,7 +436,7 @@ check(Groups:Active() == got.id and got.slots[8] == "Eighth-Sargeras", "a former
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
-print("ok roster share: sent with its prefix in parts, deduped, taken only from the leader or an assistant, made active")
+print("ok roster share: sent with its prefix in parts on every share, taken only from the leader or an assistant, made active and opened")
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

@@ -196,7 +196,9 @@ end
 
 -- Shares a note with the group. It always becomes your own active note first, so the Raid Notes
 -- page and the alerts show what you meant to share even when it can't be sent (no group, not the
--- leader or an assistant, or a share still running); the chat then says why it wasn't sent.
+-- leader or an assistant, or a share still running); the chat then says why it wasn't sent. Returns true while its
+-- parts are going or once all went, false when it wasn't sent or the game refused a part at once (the roster follows
+-- only a note under way, Notes/Page.lua).
 function Comm:Share(id)
     local record = Notes:Get(id)
     -- No note, or one with no text: share the Empty note, which clears everyone's note (and still shows
@@ -206,7 +208,7 @@ function Comm:Share(id)
         record = Notes:Get(id)
         if not record then
             CRT:Print("Couldn't make the Empty note.")
-            return
+            return false
         end
     end
     if Notes:Active() ~= id then
@@ -220,12 +222,12 @@ function Comm:Share(id)
     local ok, why = self:CanShare()
     if not ok then
         CRT:Print(format("%s is now your active note, but it wasn't sent to the group: %s", record.name or "The note", why))
-        return
+        return false
     end
     local text = record.raw or ""
     if text == "" then
         CRT:Print("That note is empty.")
-        return
+        return false
     end
     -- what you put out to the raid is your guild's note, labelled "- <your guild>" and shared by you
     Notes:ClaimForGuild(id, true)
@@ -247,7 +249,7 @@ function Comm:Share(id)
     end
     if #parts > MAX_PARTS then
         CRT:Print("That note is too long to share.")
-        return
+        return false
     end
 
     -- It is already the active note here (above); everyone who receives it makes it theirs too.
@@ -263,7 +265,10 @@ function Comm:Share(id)
         CRT:Print(format("Sharing %s in %d parts. The game allows 10 at once and then 1 a second, so this takes about %d seconds.", outgoing.name, #parts, #parts - 10))
     end
     Notes:Fire()
+    local share = outgoing
     sendParts()
+    -- under way: still sending (throttled), or every part went; a part the game refused stopped it (finish)
+    local underWay = outgoing == share or share.index > #share.parts
     -- the boss's Healer CDs order goes with its note, on its own prefix (Timeline/HealerOrderShare.lua); an error there
     -- never stops the note
     local OrderShare = CRT.HealerOrderShare
@@ -273,6 +278,7 @@ function Comm:Share(id)
             geterrorhandler()(err)
         end
     end
+    return underWay
 end
 
 -- Receiving ---------------------------------------------------------------------------------------

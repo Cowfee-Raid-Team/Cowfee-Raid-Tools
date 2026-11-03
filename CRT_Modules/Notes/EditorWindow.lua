@@ -56,10 +56,11 @@ local TEXT = {
     pushGone = "This note was deleted, so there is nothing to share.",
     roster = "Send my roster with the note",
     rosterHelpTitle = "Send my roster",
-    rosterHelp = "Push note also sends your active Raid Groups layout, so everyone's Late Tracker expects the same "
-        .. "people. Raiders get it as their active layout, named \"<layout> (from <you>)\".\n\n"
-        .. "It goes only when it changed since you last sent it. Someone who joins later gets it on your next push "
-        .. "after a change, or after you /reload.\n\n"
+    rosterHelp = "Push note and Share to raid also send your active Raid Groups layout, so everyone runs with the same "
+        .. "group and their Late Tracker expects the same people. Raiders get it as their active group, named "
+        .. "\"<layout> (from <you>)\", and it opens on their Raid Groups page.\n\n"
+        .. "It goes on every share, even unchanged, so a raider who opened another layout is switched back. A raider "
+        .. "with unsaved changes in their grid keeps them; it only becomes their active group.\n\n"
         .. "While you lead the group, your own roster is never replaced: you take no roster from anyone, assistants "
         .. "included.",
     close = CLOSE or "Close",
@@ -733,8 +734,8 @@ end
 
 -- Push note: unsaved changes saved first (Save; a refused save stops it, its notice or the reason on the status
 -- line), then the note shared the way Notes > Share to raid shares it (CRT.NotesPage.ShareNote). Asked again at the
--- click, as Save is. Then, with Send my roster on, the active Raid Groups layout goes too (Groups/Share.lua); the status
--- line says whether it went. Returns whether the note was shared.
+-- click, as Save is. With Send my roster on, that share sends the active Raid Groups layout too (Groups/Share.lua);
+-- the status line says whether it went. Returns whether the note was shared.
 function Editor.Push()
     local ok, why = canPush()
     if not (ok and W.session) then
@@ -752,12 +753,8 @@ function Editor.Push()
             return false
         end
     end
-    CRT.NotesPage.ShareNote(W.source.id)
-    W.rosterStatus = nil
-    if rosterOn() and CRT.RosterShare then
-        local sent, line = CRT.RosterShare:Push()
-        W.rosterStatus = line and (sent and UI.GoodText(line) or UI.WarnText(line)) or nil
-    end
+    local sent, line = CRT.NotesPage.ShareNote(W.source.id)
+    W.rosterStatus = line and (sent and UI.GoodText(line) or UI.WarnText(line)) or nil
     Editor.Refresh()
     return true
 end

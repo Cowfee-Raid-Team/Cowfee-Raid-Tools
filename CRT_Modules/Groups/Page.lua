@@ -33,7 +33,7 @@ local TEXT = {
     gameRole = "Use the game's role",
     unsaved = "Unsaved layout",
     fromTitle = "from %s",
-    fromBody = "%s sent this roster with a note, and it became your active layout. You can edit it. The next roster they send replaces it.",
+    fromBody = "%s sent this roster with a note, and it became your active group. Each note they share sends it again and opens it here, unless your grid has unsaved changes. You can edit it. The next roster they send replaces it.",
     editHelp = "Click a slot to choose a name, drag to move or swap. Right-click a name to invite that player, clear the slot or set their role. A role you set shows a small dot on its icon and wins over the game's role.",
 }
 
@@ -244,10 +244,11 @@ local function candidates(text)
     return out
 end
 
+-- Only into the grid it was opened on: a roster that opened another layout meanwhile (Groups:StoreFrom) gets no pick.
 local function pickName(key)
     local index = picker.slotIndex
     picker:Hide()
-    if index then
+    if index and picker.grid == Groups:Working() then
         Groups:SetSlot(index, key)
     end
 end
@@ -372,6 +373,7 @@ local function openPicker(slotButton)
         C_GuildInfo.GuildRoster()
     end
     p.slotIndex = slotButton.index
+    p.grid = Groups:Working()
     p:ClearAllPoints()
     p:SetPoint("TOPLEFT", slotButton, "BOTTOMLEFT", 0, -2)
     p.edit:SetText("")
@@ -613,13 +615,15 @@ end
 
 -- A filled slot's right-click menu: invite the player (greyed while they are in your group or you
 -- can't invite), clear the slot, or Set role (Tank, Healer, Damage, or back to the game's role;
--- Groups.HandRole, which the Timeline's Healer CDs reads).
+-- Groups.HandRole, which the Timeline's Healer CDs reads). Clear slot acts only on the grid it was opened on.
+local slotMenu -- the open slot menu, closed when another layout opens under it (closeOnSwap)
 local function openSlotMenu(slot)
-    local key = Groups:Working()[slot.index]
+    local grid = Groups:Working()
+    local key = grid[slot.index]
     if not key or key == "" then
         return
     end
-    UI.ContextMenu(slot, function(root)
+    slotMenu = UI.ContextMenu(slot, function(root)
         root:CreateTitle(Groups.Display(key))
         local canInvite, why = CRT.Invite.CanInvite()
         local inGroup = Groups.MakeLookup(Groups:ReadRoster())(key) ~= nil
@@ -633,7 +637,9 @@ local function openSlotMenu(slot)
             end)
         end
         root:CreateButton(TEXT.clearSlot, function()
-            Groups:SetSlot(slot.index, "")
+            if Groups:Working() == grid then
+                Groups:SetSlot(slot.index, "")
+            end
         end)
         -- Set role: one of the three, or back to the game's role; it wins over the game's (Groups.HandRole)
         local roles = root:CreateButton(TEXT.setRole)
@@ -648,6 +654,36 @@ local function openSlotMenu(slot)
         end
         roles:CreateRadio(TEXT.gameRole, picked, pick, false)
     end)
+end
+
+-- Another layout opened in the grid (a new grid table: Groups:Select, a roster opened by Groups:StoreFrom): the name
+-- picker, the slot menu and a drag in progress belong to the old one, so they close.
+local shownGrid
+local function closeOnSwap()
+    local grid = gdb().working
+    if grid == shownGrid then
+        return
+    end
+    shownGrid = grid
+    if picker then
+        picker:Hide()
+    end
+    if slotMenu then
+        if slotMenu.Close then
+            pcall(slotMenu.Close, slotMenu)
+        end
+        slotMenu = nil
+    end
+    if drag.from or drag.key then
+        local b = drag.from and slotButtons[drag.from]
+        drag.from, drag.key = nil, nil
+        if ghost then
+            ghost:Hide()
+        end
+        if b then
+            b:SetAlpha(1)
+        end
+    end
 end
 
 -- The Invite missing button beside anchor (Use This Group's (?)), and the status line above that row.
@@ -1155,7 +1191,11 @@ local function buildPage(pf)
         end
     end)
 
-    Groups:OnChange(refresh)
+    shownGrid = Groups:Working()
+    Groups:OnChange(function()
+        closeOnSwap()
+        refresh()
+    end)
 end
 
 UI:RegisterPage("groups", "Raid Groups", buildPage)

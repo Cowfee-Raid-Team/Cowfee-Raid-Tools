@@ -12,6 +12,7 @@ local ADDON, CRT = ...
 --     what names the thing in the chat lines ("the pace plan"), or is { what = "the pace plan", locked =
 --     "Pace plans" } for a lockdown line of its own, and with dropped = function() end, told once when its messages are
 --     dropped (now or after a throttle wait). Returns false when the messages were dropped.
+--   CRT.Comm:Queued(prefix, text)   true while that message still waits in the queue
 -- A throttled message waits a second and goes again, the ones behind it waiting with it. During an encounter
 -- the game holds addon messages (AddOnMessageLockdown): the queue is dropped with one line, so share before the
 -- pull. A raised error or any other result drops the queue too, with its line.
@@ -148,6 +149,16 @@ local function pump()
         table.remove(queue, 1)
     end
     return true
+end
+
+-- Whether this message is still waiting in the queue (throttled), not sent yet.
+function Comm:Queued(prefix, text)
+    for _, m in ipairs(queue) do
+        if m.prefix == prefix and m.text == text then
+            return true
+        end
+    end
+    return false
 end
 
 function Comm:Send(prefix, messages, what)

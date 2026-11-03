@@ -1773,7 +1773,7 @@ do
   local shares, pushes = {}, 0
   local comm = { Share = CRT.NoteComm.Share, CanShare = CRT.NoteComm.CanShare }
   CRT.NoteComm.CanShare = function() return true end
-  CRT.NoteComm.Share = function(_, nid) shares[#shares + 1] = nid end
+  CRT.NoteComm.Share = function(_, nid) shares[#shares + 1] = nid return true end -- started, so the roster follows
   local result = { true, "Roster 'Main' sent." }
   CRT.RosterShare = { Push = function()
     pushes = pushes + 1
@@ -1795,6 +1795,14 @@ do
   push.scripts.OnClick(push)
   assert(#shares == 2 and pushes == 2, "no layout: the note still goes")
   assert(W.status:GetText():find("no Raid Groups layout is active", 1, true), "the status says why: " .. W.status:GetText())
+  -- the roster goes from the one share function (CRT.NotesPage.ShareNote), never a second time from Push note
+  local realShare = CRT.NotesPage.ShareNote
+  CRT.NotesPage.ShareNote = function(nid) shares[#shares + 1] = nid return true, "Roster 'Shared' sent." end
+  push.scripts.OnClick(push)
+  assert(#shares == 3 and pushes == 2, "Push note sends no roster of its own")
+  assert(W.status:GetText():find("Roster 'Shared' sent.", 1, true), "the status shows the share's roster line: " .. W.status:GetText())
+  CRT.NotesPage.ShareNote = realShare
+  shares[#shares] = nil
   -- an edit after it: Unsaved changes shows over it
   drag(paletteChip("Rixxy"), rowOf(W.session, "label", 1))
   assert(W.status:GetText():find("Unsaved", 1, true), "an edit shows unsaved: " .. W.status:GetText())

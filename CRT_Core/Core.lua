@@ -172,7 +172,7 @@ local defaults = {
         personalShifts = {},
         autoAcceptCooldowns = false,
         shareTarget = "crt", -- Share's Send to: "crt", a note target's key (Integrations/), or "all"
-        pushRoster = true, -- the note editor's Push note also sends the active Raid Groups layout (Groups/Share.lua)
+        pushRoster = true, -- every note share (Share to raid, Push note) also sends the active Raid Groups layout (Groups/Share.lua)
         -- keepEmpty keeps a window up, blank at its own transparency, while it has nothing to show, so a
         -- note being cleared or shared doesn't make it vanish (Notes/Window.lua).
         window = { -- the timers
