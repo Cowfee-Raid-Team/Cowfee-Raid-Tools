@@ -6,7 +6,8 @@ local ADDON, CRT = ...
 -- (Alex, 2026-10-31; on every share, 2026-11-02).
 -- Sending (Share:Push): the active layout's name and 40 slots, empty ones kept, as Groups:Export writes them, cut
 -- into parts and sent through CRT.Comm:Send on the group channel. Sent on every share, changed or not, so a raider who
--- opened their own layout since is switched back. Never in combat or a boss fight (Notes.Busy, as Push note), and only
+-- opened their own layout since is switched back; only not queued again while the same roster still waits in the
+-- send queue (CRT.Comm:Queued). It follows only a note CRT's own sharing sent. Never in combat or a boss fight (Notes.Busy, as Push note), and only
 -- by the leader or an assistant.
 -- Receiving (Share.Receive): never while you lead the group; else only from the leader or an assistant, never your
 -- own (CRT.NoteComm.Sender, the check shared notes use). Kept as one layout per sender (preset.from, their
@@ -48,7 +49,9 @@ local TEXT = {
     unnamed = "Roster",
     received = "Roster '%s' from %s is now your active group.",
     receivedKept = "Roster '%s' from %s is now your active group. Your unsaved changes on '%s' are kept; pick it in Quick Load to see it.",
-    receivedDraft = "Roster '%s' from %s is now your active group. Your unsaved grid is kept; pick the roster in Quick Load to see it.",
+    receivedOwn = "Roster '%s' from %s is now your active group. Your unsaved changes on it are kept.",
+    receivedDraft = "Roster '%s' from %s is now your active group. Your unsaved layout is kept; pick the roster in Quick Load to see it.",
+    queued = "Roster '%s' is already on its way.",
 }
 Share.TEXT = TEXT
 
@@ -126,6 +129,10 @@ function Share:Push()
         return false, string.format(TEXT.empty, preset.name)
     end
     local messages = Share.Pack(preset.name, preset.slots)
+    -- the same roster still waiting in the send queue (throttled): not queued twice; once it has gone, it goes again
+    if Shared.Queued and Shared:Queued(PREFIX, messages[#messages]) then
+        return true, string.format(TEXT.queued, preset.name)
+    end
     if not Shared:Send(PREFIX, messages, WHAT) then
         return false, string.format(TEXT.failed, preset.name)
     end
@@ -200,13 +207,16 @@ local function store(sender, short, text)
         end
         return
     end
-    local _, opened = Groups:StoreFrom(Groups.Normalize(sender), full, slots)
+    local id, opened = Groups:StoreFrom(Groups.Normalize(sender), full, slots)
     if opened then
         CRT:Print(string.format(TEXT.received, base, short))
         return
     end
     local open = Groups:Find(Groups:Selected())
-    if open then
+    if open and open.id == id then
+        -- the edits are on this copy: picking it in Quick Load would throw them away, so it isn't suggested
+        CRT:Print(string.format(TEXT.receivedOwn, base, short))
+    elseif open then
         CRT:Print(string.format(TEXT.receivedKept, base, short, open.name))
     else
         CRT:Print(string.format(TEXT.receivedDraft, base, short))

@@ -196,7 +196,8 @@ end
 
 -- Shares a note with the group. It always becomes your own active note first, so the Raid Notes
 -- page and the alerts show what you meant to share even when it can't be sent (no group, not the
--- leader or an assistant, or a share still running); the chat then says why it wasn't sent.
+-- leader or an assistant, or a share still running); the chat then says why it wasn't sent. Returns true once its
+-- parts have started going, false when it wasn't sent (the roster follows only a sent note, Notes/Page.lua).
 function Comm:Share(id)
     local record = Notes:Get(id)
     -- No note, or one with no text: share the Empty note, which clears everyone's note (and still shows
@@ -206,7 +207,7 @@ function Comm:Share(id)
         record = Notes:Get(id)
         if not record then
             CRT:Print("Couldn't make the Empty note.")
-            return
+            return false
         end
     end
     if Notes:Active() ~= id then
@@ -220,12 +221,12 @@ function Comm:Share(id)
     local ok, why = self:CanShare()
     if not ok then
         CRT:Print(format("%s is now your active note, but it wasn't sent to the group: %s", record.name or "The note", why))
-        return
+        return false
     end
     local text = record.raw or ""
     if text == "" then
         CRT:Print("That note is empty.")
-        return
+        return false
     end
     -- what you put out to the raid is your guild's note, labelled "- <your guild>" and shared by you
     Notes:ClaimForGuild(id, true)
@@ -247,7 +248,7 @@ function Comm:Share(id)
     end
     if #parts > MAX_PARTS then
         CRT:Print("That note is too long to share.")
-        return
+        return false
     end
 
     -- It is already the active note here (above); everyone who receives it makes it theirs too.
@@ -273,6 +274,7 @@ function Comm:Share(id)
             geterrorhandler()(err)
         end
     end
+    return true
 end
 
 -- Receiving ---------------------------------------------------------------------------------------
