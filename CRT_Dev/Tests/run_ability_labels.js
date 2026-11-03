@@ -83,7 +83,7 @@ CRT.Dev = {} -- a developer build: skipped entries are said in chat
 B:Register({ encounterID = 3470, name = "Nek'zali the Soulcoiler", season = "sample", abilities = {
   [5001] = { type = "raid", name = "Big Hit", row = true, tags = { "tank", "magic" } },
   [5002] = { type = "nonsense", name = "Odd" },
-  [5003] = { type = "soak", also = { "spread" } },
+  [5003] = { type = "soak", also = { "spread", "soak", "nonsense", "spread", "dispel" } },
   [5004] = { tags = { "tank", "sparkly" } },
   ["5005"] = { type = "raid" },
   [5006] = { name = 42, row = "yes", type = "raid" },
@@ -94,11 +94,12 @@ B:Build()
 local a = B:Abilities(3470)
 check("the field is read by spell ID", a and a[5001] and a[5001].type == "raid" and a[5001].name == "Big Hit" and a[5001].row == true and list(a[5001].tags) == "tank,magic")
 check("an unknown type is left out, the rest of its label kept", a[5002] and a[5002].type == nil and a[5002].name == "Odd")
-check("one type only: also is not part of the format", a[5003] and a[5003].type == "soak" and a[5003].also == nil)
+check("also: the further types, the main one and doubles left out", a[5003] and a[5003].type == "soak" and list(a[5003].also) == "spread,dispel")
 check("an unknown tag is left out", list(a[5004].tags) == "tank")
 check("a spell ID written as text is left out", a["5005"] == nil and a[5005] == nil)
 local said = table.concat(printed, "\n")
-check("a developer build says what was left out", said:find("type nonsense of spell 5002", 1, true) ~= nil and said:find("field also of spell 5003", 1, true) ~= nil
+check("a developer build says what was left out", said:find("type nonsense of spell 5002", 1, true) ~= nil and said:find("also nonsense of spell 5003", 1, true) ~= nil
+  and said:find("field also", 1, true) == nil
   and said:find("tag sparkly of spell 5004", 1, true) ~= nil and said:find("entry 5005", 1, true) ~= nil)
 check("a name that isn't text and a row that isn't true are left out, and said", a[5006] and a[5006].type == "raid" and a[5006].name == nil and a[5006].row == nil
   and said:find("name 42 of spell 5006", 1, true) ~= nil and said:find("row yes of spell 5006", 1, true) ~= nil)
@@ -144,6 +145,40 @@ check("Ability lays both, OwnAbility only yours", T:Ability(3470, 5001).name == 
 check("Ability is nil for an ability with no label", T:Ability(3470, 4242) == nil and T:Ability("Some Boss", 5001) == nil)
 T:SetAbility(3445, 8001, "type", "spread")
 check("your own label alone, on a boss with none shipped", list(byKey(T:ApplyAbilities({ { key = "s", kind = "spell", label = "S", spellID = 8001 } }, 3445, {})).s.types) == "spread")
+
+-- Also: the further types, yours over the boss file's, after the main type
+local function alsoLanes()
+  return { { key = "ref:S", kind = "reference", label = "S", spellID = 5003, types = { "dodge" } },
+    { key = "ref:R", kind = "reference", label = "R", spellID = 5007, types = { "dodge", "raid" } },
+    { key = "sp", kind = "spell", label = "Sp", spellID = 5008 } }
+end
+s = byKey(T:ApplyAbilities(alsoLanes(), 3470, {}))
+check("also from the boss file: the main type, then its further types", list(s["ref:S"].types) == "soak,spread,dispel" and s["ref:S"].color == Rd.TYPES.soak.color)
+T:SetAbility(3470, 5003, "also", { "mythic" })
+check("your also wins over the boss file's", list(T:Ability(3470, 5003).also) == "mythic" and list(byKey(T:ApplyAbilities(alsoLanes(), 3470, {}))["ref:S"].types) == "soak,mythic")
+T:SetAbility(3470, 5003, "also", {})
+check("an empty also of yours: no further types", list(byKey(T:ApplyAbilities(alsoLanes(), 3470, {}))["ref:S"].types) == "soak")
+T:SetAbility(3470, 5003, "also", nil)
+check("cleared: the boss file's again", list(T:Ability(3470, 5003).also) == "spread,dispel")
+T:SetAbility(3470, 5003, "type", "spread")
+check("a main type picked from Also leaves Also", T:Ability(3470, 5003).type == "spread" and list(T:Ability(3470, 5003).also) == "dispel" and list(T:OwnAbility(3470, 5003).also) == "dispel")
+T:SetAbility(3470, 5003, "type", nil) T:SetAbility(3470, 5003, "also", nil)
+T:SetAbility(3470, 5003, "also", { "soak", "raid" })
+check("also never holds the main type", list(T:OwnAbility(3470, 5003).also) == "raid")
+T:SetAbility(3470, 5003, "also", nil)
+T:SetAbility(3470, 5007, "also", { "spread" })
+s = byKey(T:ApplyAbilities(alsoLanes(), 3470, {}))
+check("also with no type of the label: the ability timeline's main type, then yours", list(s["ref:R"].types) == "dodge,spread" and s["ref:R"].color == nil)
+T:SetAbility(3470, 5008, "also", { "spread" })
+s = byKey(T:ApplyAbilities(alsoLanes(), 3470, {}))
+check("also with no main type anywhere changes nothing", s.sp.types == nil)
+T:SetAbility(3470, 5008, "type", "soak")
+s = byKey(T:ApplyAbilities(alsoLanes(), 3470, {}))
+check("a lane that isn't a reference row gets them too", list(s.sp.types) == "soak,spread" and s.sp.color == Rd.TYPES.soak.color)
+T:ClearAbilities(3470)
+T:SetAbility(3470, 5001, "name", "Mine")
+T:SetAbility(3470, 5001, "tags", { "healer" })
+T:SetAbility(3445, 8001, "type", "spread")
 
 CRT.Dev = nil -- a packaged build: yours are left out, the boss file's still apply
 s = byKey(T:ApplyAbilities(lanes(), 3470, {}))
@@ -199,6 +234,7 @@ for block in (text .. "\n\n"):gmatch("(.-)\n\n") do blocks[#blocks + 1] = block 
 check("Export writes one block per ticked boss", #blocks == 2 and shownText.title:find("Ctrl+C", 1, true) ~= nil)
 check("each block is headed by the boss, its encounter ID and the day", blocks[1]:find("-- Nek'zali the Soulcoiler (encounter 3470): ability labels, exported " .. os.date("%Y-%m-%d"), 1, true) ~= nil
   and blocks[2]:find("-- Entombed Sentinels (encounter 3445)", 1, true) ~= nil)
+check("also is exported after the type", blocks[1]:find('[5003] = { type = "soak", also = { "spread", "dispel" } },', 1, true) ~= nil)
 check("the block is the shipped labels with yours over them", blocks[1]:find('[5001] = { type = "raid", name = "Mine", row = true, tags = { "healer" } },', 1, true) ~= nil
   and blocks[1]:find('[6001] = { name = "Brand New", row = true },', 1, true) ~= nil and blocks[1]:find("[5002]", 1, true) ~= nil)
 for _, block in ipairs(blocks) do
@@ -213,6 +249,14 @@ T:ClearAbilities(3470) T:ClearAbilities(3445)
 local after = snapshot()
 check("round trip: exported, registered and cleared, the same lanes", after == before)
 if after ~= before then print(before) print("--") print(after) end
+
+-- One boss's export (the Timeline's Export labels button and the right-click entry): the same block
+shownText = nil
+D.ShowBoss(3470)
+check("one boss's export is its block", shownText and shownText.text == D.Block(3470, os.date("%Y-%m-%d")) and shownText.title:find("Ctrl+C", 1, true) ~= nil)
+shownText, printed = nil, {}
+D.ShowBoss(3420)
+check("a boss with no labels says so instead", shownText == nil and #printed == 1 and printed[1]:find("no ability labels", 1, true) ~= nil)
 
 -- Clear touches only the ticked bosses, and lists what isn't shipped yet ----------------------------------
 T:SetAbility(3470, 5001, "name", "Mine") -- the same as the boss file now

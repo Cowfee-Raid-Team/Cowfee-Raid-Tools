@@ -281,7 +281,12 @@ check("colors: every type of an ability, main first, the boss read once", functi
   assert(reads == 1, "the boss read once: " .. reads)
   T:SetAbility(3001, 5001, "type", "raid")
   assert(table.concat(C.Types(3001, NEK, "Mythic")(5001, "Grasping Depths"), " ") == "raid", "your label is the one type")
+  T:SetAbility(3001, 5001, "also", { "spread", "soak" })
+  assert(table.concat(C.Types(3001, NEK, "Mythic")(5001, "Grasping Depths"), " ") == "raid spread soak", "your label's Also after its type")
   T:SetAbility(3001, 5001, "type", nil)
+  assert(table.concat(C.Types(3001, NEK, "Mythic")(5001, "Grasping Depths"), " ") == "mythic spread soak", "Also alone: the timeline's main type, then Also")
+  assert(C.TypeOf(3001, 5001, "Grasping Depths", NEK, "Mythic") == "mythic", "Also never changes the main type")
+  T:SetAbility(3001, 5001, "also", nil)
   assert(#C.Types(3001, NEK)(SECRET, SECRET) == 0 and #errors == 0, "secret values give none")
   Ref.ForBoss = forBoss
 end)

@@ -4,7 +4,8 @@ local ADDON, CRT = ...
 -- ability's type, the Timeline's ability types (the one table, Reference.ABILITY_TYPES in Timeline/Reference.lua:
 -- dispel blue, soak pink, Mythic only orange, ...). The type is found from the boss data the Timeline already has,
 -- in this order:
---   1. the ability's label (yours, then the boss file's) on the Timeline (Timeline:Ability(boss, spell).type)
+--   1. the ability's label (yours, then the boss file's) on the Timeline (Timeline:Ability(boss, spell).type); its
+--      Also types follow the main one where every type is read (Colors.Types, Timeline.LabelTypes)
 --   2. the boss's ability timeline: the row of the alert's spell (by spell ID, else by the spell's name or the
 --      alert's text, as reminders find their times) and its first, main type. The difficulty's own ability
 --      timelines are asked first, then the boss's others.
@@ -115,14 +116,19 @@ local function referenceRow(ctx, spellID, text)
     return nil
 end
 
--- The type of the ability's label (yours, then the boss file's) for a spell of the boss.
-local function labelType(encounterID, spellID)
+-- Every type of the ability's label (yours, then the boss file's) for a spell of the boss, over base, the types it
+-- has without the label (Timeline.LabelTypes), or nil when the label changes none.
+local function labelTypes(encounterID, spellID, base)
     local T = CRT.Timeline
-    if not (spellID and T and T.Ability) then
+    if not (spellID and T and T.Ability and T.LabelTypes) then
         return nil
     end
     local ok, a = pcall(T.Ability, T, encounterID, spellID)
-    return ok and type(a) == "table" and known(a.type) and a.type or nil
+    if not (ok and type(a) == "table") then
+        return nil
+    end
+    local okT, list = pcall(T.LabelTypes, a, base)
+    return okT and type(list) == "table" and list or nil
 end
 
 -- The types the Journal's icons give a spell of the boss, in its icons' order, each once, from the rows the
@@ -164,8 +170,9 @@ local function tagsIn(ctx, row, spell)
     return nil
 end
 
--- Every type of an ability, its main one first: the ability's label's (yours, then the boss file's; the one type), else the ability timeline row's
--- known types, else the Journal icons'. An empty list when none is known. Second value: its Journal icons (tagsIn).
+-- Every type of an ability, its main one first: the ability timeline row's known types, else the Journal icons',
+-- with the ability's label (yours, then the boss file's: its type and Also) laid over them as the Timeline lays it
+-- (labelTypes). An empty list when none is known. Second value: its Journal icons (tagsIn).
 local function typesIn(ctx, spellID, text)
     if not (readable(spellID) and type(spellID) == "number" and spellID > 0) then
         spellID = nil
@@ -176,20 +183,16 @@ local function typesIn(ctx, spellID, text)
     local row, rowSpell = referenceRow(ctx, spellID, text)
     local spell = spellID or rowSpell
     local tags = tagsIn(ctx, row, spell)
-    local t = labelType(ctx.encounterID, spell)
-    if t then
-        return { t }, tags
-    end
-    local out = {}
+    local base = {}
     for _, key in ipairs(row and type(row.types) == "table" and row.types or {}) do
         if known(key) then
-            out[#out + 1] = key
+            base[#base + 1] = key
         end
     end
-    if out[1] then
-        return out, tags
+    if not base[1] then
+        base = journalTypes(ctx, spell)
     end
-    return journalTypes(ctx, spell), tags
+    return labelTypes(ctx.encounterID, spell, base) or base, tags
 end
 
 -- The ability's main type and its Journal icons.
