@@ -196,8 +196,9 @@ end
 
 -- Shares a note with the group. It always becomes your own active note first, so the Raid Notes
 -- page and the alerts show what you meant to share even when it can't be sent (no group, not the
--- leader or an assistant, or a share still running); the chat then says why it wasn't sent. Returns true once its
--- parts have started going, false when it wasn't sent (the roster follows only a sent note, Notes/Page.lua).
+-- leader or an assistant, or a share still running); the chat then says why it wasn't sent. Returns true while its
+-- parts are going or once all went, false when it wasn't sent or the game refused a part at once (the roster follows
+-- only a note under way, Notes/Page.lua).
 function Comm:Share(id)
     local record = Notes:Get(id)
     -- No note, or one with no text: share the Empty note, which clears everyone's note (and still shows
@@ -264,7 +265,10 @@ function Comm:Share(id)
         CRT:Print(format("Sharing %s in %d parts. The game allows 10 at once and then 1 a second, so this takes about %d seconds.", outgoing.name, #parts, #parts - 10))
     end
     Notes:Fire()
+    local share = outgoing
     sendParts()
+    -- under way: still sending (throttled), or every part went; a part the game refused stopped it (finish)
+    local underWay = outgoing == share or share.index > #share.parts
     -- the boss's Healer CDs order goes with its note, on its own prefix (Timeline/HealerOrderShare.lua); an error there
     -- never stops the note
     local OrderShare = CRT.HealerOrderShare
@@ -274,7 +278,7 @@ function Comm:Share(id)
             geterrorhandler()(err)
         end
     end
-    return true
+    return underWay
 end
 
 -- Receiving ---------------------------------------------------------------------------------------

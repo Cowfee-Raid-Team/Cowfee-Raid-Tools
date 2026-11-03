@@ -7,8 +7,8 @@ local ADDON, CRT = ...
 -- Sending (Share:Push): the active layout's name and 40 slots, empty ones kept, as Groups:Export writes them, cut
 -- into parts and sent through CRT.Comm:Send on the group channel. Sent on every share, changed or not, so a raider who
 -- opened their own layout since is switched back; only not queued again while the same roster still waits in the
--- send queue (CRT.Comm:Queued). It follows only a note CRT's own sharing sent. Never in combat or a boss fight (Notes.Busy, as Push note), and only
--- by the leader or an assistant.
+-- send queue (CRT.Comm:Queued). It follows only a note CRT's own sharing has under way. Never in combat or a boss
+-- fight (Notes.Busy, as Push note), and only by the leader or an assistant.
 -- Receiving (Share.Receive): never while you lead the group; else only from the leader or an assistant, never your
 -- own (CRT.NoteComm.Sender, the check shared notes use). Kept as one layout per sender (preset.from, their
 -- Name-Realm), named "<layout> (from <sender>)", replaced by the next one they send, made the active layout and opened
