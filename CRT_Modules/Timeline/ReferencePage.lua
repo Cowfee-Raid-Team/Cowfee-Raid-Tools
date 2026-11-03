@@ -196,6 +196,7 @@ local TEXT_MENU = {
     fromFile = " (boss file)",
     noTypeFromFile = "No type (edit the boss file to remove its type)",
     also = "Also",
+    alsoNeedsType = " (set a type first)",
     alsoClear = "Clear",
     alsoFile = "Use the boss file's",
     exportLabels = "Export labels (dev)",
@@ -401,7 +402,7 @@ end
 -- (Timeline:SetAbility: a row, a type, its Also types, the Journal's icons, a name) and Make a Mech Alert, which
 -- opens the Mech Alerts tab on it; in DevMode, Hide from the timeline (Timeline:SetHidden), which ships, and
 -- Export labels, the boss's labels in the boss-file format (Dev/AbilityLabels.lua). The one place an ability is
--- tagged. row: { name, spellID, tags } with the Journal's name and icons; hideName: the name it is hidden by (nil
+-- tagged. row: { name, spellID, tags, types } with the Journal's name and icons and the row's types; hideName: the name it is hidden by (nil
 -- for no Hide); opts: { noAlert = true } leaves out Make a Mech Alert (the Mech Alerts list's own menu).
 local AbilityMenu = {}
 CRT.TimelineAbilityMenu = AbilityMenu
@@ -423,16 +424,26 @@ local function has(list, key)
 end
 
 -- The Also submenu: a tick box per type but the main one (the further types, dots on the row), the boss file's
--- marked; ticking one sets yours to what shows with it added or taken out. Clear drops yours.
-local function fillAlso(root, boss, spellID, shipped, get, mine)
+-- marked; ticking one sets yours to what shows with it added or taken out. Clear drops yours. The main type is the
+-- label's, else the row's own first (rowTypes: an ability timeline's (type ...)); with none, Also is greyed, as
+-- Timeline.LabelTypes applies no Also without a main type.
+local function fillAlso(root, boss, spellID, shipped, get, mine, rowTypes)
     local Timeline = CRT.Timeline
+    local main = get("type") or (type(rowTypes) == "table" and rowTypes[1]) or nil
+    if not (main and Reference.TYPES[main]) then
+        local off = root:CreateButton(TEXT_MENU.also .. TEXT_MENU.alsoNeedsType)
+        if off and off.SetEnabled then
+            off:SetEnabled(false)
+        end
+        return
+    end
     local also = root:CreateButton(TEXT_MENU.also)
     local function shown()
         local a = get("also")
         return type(a) == "table" and a or {}
     end
     for _, key in ipairs(Reference.TYPE_ORDER) do
-        if key ~= get("type") then
+        if key ~= main then
             local t = Reference.TYPES[key]
             also:CreateCheckbox("|cff" .. t.hex .. t.label .. "|r  " .. t.desc .. (has(shipped.also, key) and TEXT_MENU.fromFile or ""), function()
                 return has(shown(), key)
@@ -498,7 +509,7 @@ function AbilityMenu.Fill(root, boss, row, hideName, opts)
                 Timeline:SetAbility(boss, spellID, "type", key)
             end)
         end
-        fillAlso(root, boss, spellID, shipped, get, mine)
+        fillAlso(root, boss, spellID, shipped, get, mine, row.types)
         -- the Journal's icons for it: ticked ones are yours (they start as the Journal's own)
         local tags = root:CreateButton(TEXT_MENU.tags)
         local function current()

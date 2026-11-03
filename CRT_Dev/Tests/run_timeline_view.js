@@ -684,6 +684,7 @@ do
   assert(opens == 0, "label menu: only the right button")
   lbl.OnClick(lbl, "RightButton")
   assert(opens == 1 and filled and filled.boss == v.encounterID and filled.hide == CRT.Timeline.IgnoreName(lbl.lane) and filled.row.name == filled.hide, "label menu: the ability menu with Hide, in dev")
+  assert(filled.row.types == lbl.lane.types and filled.row.tags == lbl.lane.tags, "label menu: the row's types (Also's main type) and icons")
   CRT.UI, CRT.TimelineAbilityMenu, MenuUtil = savedUI, savedFill, savedMenu
   print("ok label menu: right-click a row name in dev only")
 end

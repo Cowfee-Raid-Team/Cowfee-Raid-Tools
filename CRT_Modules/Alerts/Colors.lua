@@ -170,9 +170,10 @@ local function tagsIn(ctx, row, spell)
     return nil
 end
 
--- Every type of an ability, its main one first: the ability timeline row's known types, else the Journal icons',
--- with the ability's label (yours, then the boss file's: its type and Also) laid over them as the Timeline lays it
--- (labelTypes). An empty list when none is known. Second value: its Journal icons (tagsIn).
+-- Every type of an ability, its main one first: the ability's label (yours, then the boss file's: its type and Also)
+-- laid over the ability timeline row's known types as the Timeline lays it (labelTypes), else the row's types, else
+-- the Journal icons'. The label goes over the row's types only: on the Timeline a Journal icon gives no type, so it
+-- is no main type for Also there either. An empty list when none is known. Second value: its Journal icons (tagsIn).
 local function typesIn(ctx, spellID, text)
     if not (readable(spellID) and type(spellID) == "number" and spellID > 0) then
         spellID = nil
@@ -189,10 +190,11 @@ local function typesIn(ctx, spellID, text)
             base[#base + 1] = key
         end
     end
-    if not base[1] then
-        base = journalTypes(ctx, spell)
+    local labelled = labelTypes(ctx.encounterID, spell, base)
+    if labelled then
+        return labelled, tags
     end
-    return labelTypes(ctx.encounterID, spell, base) or base, tags
+    return base[1] and base or journalTypes(ctx, spell), tags
 end
 
 -- The ability's main type and its Journal icons.

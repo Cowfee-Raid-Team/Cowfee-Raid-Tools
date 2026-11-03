@@ -4072,7 +4072,7 @@ function Methods:LabelMenu(l)
     end
     local name = Timeline.IgnoreName(lane)
     View.OpenMenu(l, function(root)
-        Menu.Fill(root, self.encounterID, { name = name, spellID = lane.spellID, tags = lane.tags }, name)
+        Menu.Fill(root, self.encounterID, { name = name, spellID = lane.spellID, tags = lane.tags, types = lane.types }, name)
     end)
 end
 
