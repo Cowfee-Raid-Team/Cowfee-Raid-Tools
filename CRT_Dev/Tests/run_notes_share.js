@@ -419,6 +419,15 @@ do
   C_ChatInfo.SendAddonMessage, C_Timer.After = realSend, realAfter
   if later then later() end
   assert(Comm:CanShare(), "the running share finished")
+  -- a first part the game refuses (the encounter lockdown, an unknown result, an error): not under way, no roster
+  for _, refuse in ipairs({ function() return 11 end, function() return 99 end, function() error("boom") end }) do
+    C_ChatInfo.SendAddonMessage = refuse
+    assert(Comm:Share(sentinels) == false, "a share stopped on its first part returns false")
+    shareButton.OnClick(shareButton)
+    assert(pushes == 5, "a share stopped on its first part: no roster")
+    assert(Comm:CanShare(), "and nothing left running")
+  end
+  C_ChatInfo.SendAddonMessage = realSend
   -- Send to another addon only: its note goes, no CRT roster
   CRT.db.notes.shareTarget = "other"
   shareButton.OnClick(shareButton)
