@@ -346,13 +346,13 @@ end
 -- The palette ------------------------------------------------------------------------------------------------------
 -- The note editor's own palette, drawn by Notes/Palette.lua (shared with the Mech Alerts Assign tab).
 
--- The layout the open note is linked to (its invite list became it on import), if it still exists.
+-- The layout that is the open note's roster (Notes:RosterLayout: the sender's for a shared note, else the one its
+-- invite list became on import), if it still exists.
 local function linkedLayout()
     if not W.source or W.source.personal then
         return nil
     end
-    local record = Notes:Get(W.source.id)
-    local id = record and record.presetId
+    local id = Notes:RosterLayout(Notes:Get(W.source.id))
     return Palette.FindLayout(id) and id or nil
 end
 

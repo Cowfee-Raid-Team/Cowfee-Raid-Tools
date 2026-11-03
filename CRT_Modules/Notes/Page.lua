@@ -543,7 +543,7 @@ refresh = function()
     -- The note's text, as saved, shown rendered (Notes/Render.lua) until clicked. The raw box follows the
     -- saved text whenever it holds no unsaved typing, so a line moved, copied or deleted on the Timeline
     -- shows here at once. Unsaved typing stays, raw, until it is saved or another note is picked.
-    local rosterLinked = record and record.presetId and CRT.Groups:Find(record.presetId) and true or false
+    local rosterLinked = Notes:RosterLayout(record) ~= nil
     textBox:Update(record and record.raw or "", id, rosterLinked)
 
     local lines = {}
@@ -556,7 +556,7 @@ refresh = function()
             lines[#lines + 1] = "Shared by: " .. Notes.ShortName(record.from) .. ", " .. (record.sharedAt or record.updated or "?")
                 .. (via and (" (" .. via .. ")") or "")
         end
-        if record.presetId and CRT.Groups:Find(record.presetId) then
+        if rosterLinked then
             lines[#lines + 1] = "Roster: linked to a Raid Groups layout"
         end
     end
@@ -733,14 +733,13 @@ local function buildNotes(pf)
     roster:SetPoint("TOPLEFT", active, "BOTTOMLEFT", 0, -4)
     roster:SetScript("OnClick", function()
         local record = selected and Notes:Get(selected)
-        -- a note shared to you has no layout of its own (Notes:Import): its roster is your active one, the share's
-        local id = record and record.presetId
-        if not (id and CRT.Groups:Find(id)) then
-            id = record and record.from and CRT.Groups.Active and CRT.Groups:Active() or nil
-        end
-        if id and CRT.Groups:Find(id) then
+        -- a note shared to you: the sender's layout; one you imported: its invite list's (Notes:RosterLayout)
+        local id = Notes:RosterLayout(record)
+        if id then
             CRT.Groups:Select(id)
             UI:Show("groups")
+        elseif record and record.from then
+            CRT:Print("No roster came with this note.")
         else
             CRT:Print("This note has no invite list, so there is no roster for it.")
         end
