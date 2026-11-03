@@ -33,7 +33,7 @@ local TEXT = {
     gameRole = "Use the game's role",
     unsaved = "Unsaved layout",
     fromTitle = "from %s",
-    fromBody = "%s sent this roster with a note, and it became your active layout. You can edit it. The next roster they send replaces it.",
+    fromBody = "%s sent this roster with a note, and it became your active group. Each note they share sends it again and opens it here, unless your grid has unsaved changes. You can edit it. The next roster they send replaces it.",
     editHelp = "Click a slot to choose a name, drag to move or swap. Right-click a name to invite that player, clear the slot or set their role. A role you set shows a small dot on its icon and wins over the game's role.",
 }
 

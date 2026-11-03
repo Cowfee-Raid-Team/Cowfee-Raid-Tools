@@ -76,6 +76,8 @@ end
 -- Shares a note to the Send to choice: CRT's own sharing, a note target, or all of them (a target that isn't available
 -- is skipped, and the chat says why). With no note, CRT sends the Empty note (Notes/Comm.lua) and the other addons clear
 -- theirs. Notes > Share to raid and the note editor's Push note both share through it (CRT.NotesPage.ShareNote).
+-- Then, with Send my roster with the note on (CRTDB.notes.pushRoster, the default), the active Raid Groups layout goes
+-- after it on every share (Groups/Share.lua). Returns whether the roster went and its status line, nil when it is off.
 local function shareNote(id)
     local key = shareTarget()
     local record = id and Notes:Get(id)
@@ -94,6 +96,10 @@ local function shareNote(id)
     elseif key ~= "crt" then
         Targets:Share(key, record)
     end
+    if CRT.db.notes.pushRoster ~= false and CRT.RosterShare then
+        return CRT.RosterShare:Push()
+    end
+    return nil
 end
 
 local function shareHelp()
@@ -713,8 +719,12 @@ local function buildNotes(pf)
     shareButton = share
     share:SetPoint("LEFT", active, "RIGHT", 6, 0)
     share:SetScript("OnClick", function()
-        -- through the table, so it is the one function the note editor's Push note calls too
-        CRT.NotesPage.ShareNote(selected)
+        -- through the table, so it is the one function the note editor's Push note calls too; the page's share
+        -- results go to chat, the roster's line with them
+        local _, rosterLine = CRT.NotesPage.ShareNote(selected)
+        if rosterLine then
+            CRT:Print(rosterLine)
+        end
         refresh()
     end)
     local roster = makeButton(pf, "Open roster in Raid Groups", LIST_W)

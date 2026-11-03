@@ -1,14 +1,18 @@
 local ADDON, CRT = ...
 
--- The roster sent with a pushed note: the note editor's "Send my roster with the note" sends the active Raid Groups
--- layout, so every raider's Late Tracker expects the same people (Alex, 2026-10-31).
+-- The roster sent with a shared note: every share of a note (Notes > Share to raid and the note editor's Push note,
+-- through CRT.NotesPage.ShareNote) sends the active Raid Groups layout too while "Send my roster with the note" is on
+-- (CRTDB.notes.pushRoster), so every raider runs with the same group and their Late Tracker expects the same people
+-- (Alex, 2026-10-31; on every share, 2026-11-02).
 -- Sending (Share:Push): the active layout's name and 40 slots, empty ones kept, as Groups:Export writes them, cut
--- into parts and sent through CRT.Comm:Send on the group channel. Not sent again when it is the one last sent to that
--- channel this session, so a raider who joins later gets it on the next changed push, or after the sender's /reload.
--- Never in combat or a boss fight (Notes.Busy, as Push note), and only by the leader or an assistant.
+-- into parts and sent through CRT.Comm:Send on the group channel. Sent on every share, changed or not, so a raider who
+-- opened their own layout since is switched back. Never in combat or a boss fight (Notes.Busy, as Push note), and only
+-- by the leader or an assistant.
 -- Receiving (Share.Receive): never while you lead the group; else only from the leader or an assistant, never your
--- own (CRT.NoteComm.Sender, the check shared notes use). Kept as one layout per sender (preset.from, their Name-Realm), named "<layout> (from
--- <sender>)", replaced by the next one they send, and made the active layout (Groups:StoreFrom); your own layouts are
+-- own (CRT.NoteComm.Sender, the check shared notes use). Kept as one layout per sender (preset.from, their
+-- Name-Realm), named "<layout> (from <sender>)", replaced by the next one they send, made the active layout and opened
+-- on Raid Groups (Groups:StoreFrom); unsaved changes in the grid are kept, and then it is only made active. The same
+-- people in the same slots as your active layout make no copy; that layout is only opened again. Your own layouts are
 -- never touched. Parts that don't all arrive within TIMEOUT seconds, or don't add up to their hash, are dropped.
 --
 -- Message under the prefix CRTRoster1: "<hash>|<part>|<total>|<data>". hash is the fingerprint of the whole text
@@ -34,7 +38,6 @@ Share.PREFIX = PREFIX
 
 local TEXT = {
     sent = "Roster '%s' sent.",
-    same = "Roster '%s' not sent again: it hasn't changed.",
     failed = "Roster '%s' not sent: the game refused it.",
     noLayout = "Roster not sent: no Raid Groups layout is active.",
     empty = "Roster not sent: the layout '%s' has no names.",
@@ -43,7 +46,9 @@ local TEXT = {
     busy = "Roster not sent: not in combat or a boss fight.",
     stored = "%s (from %s)",
     unnamed = "Roster",
-    received = "Roster '%s' from %s is now your active layout.",
+    received = "Roster '%s' from %s is now your active group.",
+    receivedKept = "Roster '%s' from %s is now your active group. Your unsaved changes on '%s' are kept; pick it in Quick Load to see it.",
+    receivedDraft = "Roster '%s' from %s is now your active group. Your unsaved grid is kept; pick the roster in Quick Load to see it.",
 }
 Share.TEXT = TEXT
 
@@ -51,12 +56,8 @@ if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
     C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
 end
 
-local lastSent = {} -- channel -> hash of the roster last sent there this session
--- how CRT.Comm names a roster in its chat lines; a roster it drops (a lockdown, a left group) is forgotten as sent,
--- so the next push sends it again even unchanged
-local WHAT = { what = "the roster", locked = "Rosters", dropped = function()
-    wipe(lastSent)
-end }
+-- how CRT.Comm names a roster in its chat lines
+local WHAT = { what = "the roster", locked = "Rosters" }
 local incoming = {} -- sender -> { hash, total, parts, count, started }, one roster arriving per sender
 
 -- The messages for a layout, in order, and the hash of its text.
@@ -124,14 +125,8 @@ function Share:Push()
     if not hasNames(preset.slots or {}) then
         return false, string.format(TEXT.empty, preset.name)
     end
-    local messages, hash = Share.Pack(preset.name, preset.slots)
-    if lastSent[channel] == hash then
-        return false, string.format(TEXT.same, preset.name)
-    end
-    -- marked sent first: a drop while it waits on the throttle (WHAT.dropped) clears it again
-    lastSent[channel] = hash
+    local messages = Share.Pack(preset.name, preset.slots)
     if not Shared:Send(PREFIX, messages, WHAT) then
-        lastSent[channel] = nil
         return false, string.format(TEXT.failed, preset.name)
     end
     return true, string.format(TEXT.sent, preset.name)
@@ -194,13 +189,28 @@ local function store(sender, short, text)
     if not (name and hasNames(slots)) then
         return
     end
-    -- the same people in the same slots as your active layout: nothing to add or switch
+    local base, full = storedName(name, short)
+    -- the same people in the same slots as your active layout: no copy and no switch; only opened again when you
+    -- have another layout open with nothing unsaved
     if isActive(slots) then
+        local id = Groups:Active()
+        if Groups:Selected() ~= id and not Groups:HasUnsaved() then
+            Groups:Select(id)
+            CRT:Print(string.format(TEXT.received, base, short))
+        end
         return
     end
-    local base, full = storedName(name, short)
-    Groups:StoreFrom(Groups.Normalize(sender), full, slots)
-    CRT:Print(string.format(TEXT.received, base, short))
+    local _, opened = Groups:StoreFrom(Groups.Normalize(sender), full, slots)
+    if opened then
+        CRT:Print(string.format(TEXT.received, base, short))
+        return
+    end
+    local open = Groups:Find(Groups:Selected())
+    if open then
+        CRT:Print(string.format(TEXT.receivedKept, base, short, open.name))
+    else
+        CRT:Print(string.format(TEXT.receivedDraft, base, short))
+    end
 end
 
 function Share.Receive(prefix, message, channel, sender)

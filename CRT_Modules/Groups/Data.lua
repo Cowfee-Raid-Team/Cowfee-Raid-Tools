@@ -531,6 +531,40 @@ function Groups:Select(id)
     self:Fire()
 end
 
+-- The open layout's id (the one the Raid Groups grid edits), or nil when none is open or it was deleted.
+function Groups:Selected()
+    local id = gdb().selected
+    if id and self:Find(id) then
+        return id
+    end
+    return nil
+end
+
+-- Whether the grid holds changes no layout has: edits to the open layout not saved yet (Groups.dirty, or a grid
+-- that no longer matches it, as after a /reload with Keep changes off), or names in a grid with no layout open.
+function Groups:HasUnsaved()
+    local preset = self:Find(self:Selected())
+    local w = self:Working()
+    if not preset then
+        for i = 1, NUM_SLOTS do
+            if w[i] ~= "" then
+                return true
+            end
+        end
+        return false
+    end
+    if self.dirty then
+        return true
+    end
+    local slots = type(preset.slots) == "table" and preset.slots or {}
+    for i = 1, NUM_SLOTS do
+        if (slots[i] or "") ~= w[i] then
+            return true
+        end
+    end
+    return false
+end
+
 function Groups:CommitSelected()
     local g = gdb()
     local preset = g.selected and self:Find(g.selected)
@@ -578,11 +612,13 @@ end
 
 -- A layout the leader or an assistant sent with a note (Groups/Share.lua): one per sender, found by its from (their
 -- Name-Realm, a field only these layouts have), its name and slots replaced by each new one, and made the active
--- layout. It can be edited like any other until the next one replaces it. The player's own layouts are never
--- touched. Returns its id.
+-- layout. It is also opened in the Raid Groups grid, unless the grid holds unsaved changes (Groups:HasUnsaved), which
+-- are kept. It can be edited like any other until the next one replaces it. The player's own layouts are never
+-- touched. Returns its id, and whether it was opened.
 Groups.FROM_NAME_MAX = 80 -- a received layout's name, "(from <sender>)" included
 function Groups:StoreFrom(from, name, slots)
     local g = gdb()
+    local keep = self:HasUnsaved() -- asked before the slots change, as the open layout may be this one
     local lower = from:lower()
     local preset
     for _, p in ipairs(g.presets) do
@@ -600,7 +636,8 @@ function Groups:StoreFrom(from, name, slots)
     end
     preset.name = uniqueName(name, Groups.FROM_NAME_MAX)
     preset.slots = copySlots(slots)
-    if g.selected == preset.id then
+    if not keep then
+        g.selected = preset.id
         g.working = copySlots(slots)
         self.dirty = false
     end
@@ -609,7 +646,7 @@ function Groups:StoreFrom(from, name, slots)
     end)
     g.active = preset.id
     self:Fire()
-    return preset.id
+    return preset.id, not keep
 end
 
 -- Export / import ----------------------------------------------------------
