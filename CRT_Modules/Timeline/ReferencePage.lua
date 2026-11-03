@@ -652,7 +652,11 @@ function ReferencePage.Build(f, ctx)
         if typedErrors then
             errors = typedErrors
         elseif editing then
-            ok, errors = Reference:Update(editing, text)
+            -- text moved to another boss or group you have a copy of goes into that copy (Update says which)
+            local was, kept = editing, nil
+            ok, errors, kept = Reference:Update(editing, text)
+            editing = kept or editing
+            replaced = ok and kept ~= was
         else
             local key, more = Reference:Add(text)
             ok = key ~= nil
@@ -915,12 +919,18 @@ function ReferencePage.Build(f, ctx)
         local entry = editing and Reference:Find(editing)
         local ok, errors
         if entry and entry.own then
-            ok, errors = Reference:Update(editing, text)
+            local kept
+            ok, errors, kept = Reference:Update(editing, text)
+            editing = kept or editing
         else
             local key, more = Reference:Add(text)
             ok = key ~= nil
             errors = not ok and more or nil
             editing = key or editing
+            if ok then
+                -- shown on the Timeline in place of the shipped one, as a moved phase line is
+                CRT.Timeline:PickCopy(ctx.selectedBoss(), ctx.difficulty(), key)
+            end
         end
         if ok then
             fill(text, editing)
@@ -1166,9 +1176,9 @@ function ReferencePage.Build(f, ctx)
         end
     end)
 
-    -- Puts text in the box: as new text (Save saves it as your copy for its boss and difficulty, replacing
-    -- the one you have), or as your reference key when given (the
-    -- Journal's Send to Timeline saves first, then opens it here).
+    -- Puts text in the box: as new text (Save saves it as your copy for its boss and difficulty,
+    -- replacing the one you have), or as your reference key when given (the Journal's Send to
+    -- Timeline saves first, then opens it here).
     function tab:Fill(text, key)
         fill(text or "", key)
     end

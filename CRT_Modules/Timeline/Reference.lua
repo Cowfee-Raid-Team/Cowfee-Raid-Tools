@@ -3,14 +3,15 @@ local ADDON, CRT = ...
 -- Timeline: reference timelines. A reference is a boss's known cast schedule written as plain text,
 -- either shipped with the addon (CRT.TimelineDB.references, a list of text blocks) or pasted in
 -- game and saved in CRTDB.timeline.references as { id, text, saved } (saved: when the text last
--- changed, from time(); optional, older copies have none). You keep one copy per boss and difficulty
--- group ("mythic", or "nh": Normal and Heroic share one copy): Add saves into the copy you have
--- (OwnFor), and older duplicates are folded once into timeline.droppedReferences (foldDuplicates).
--- droppedReferences also keeps the text an Add writes over; it holds the newest 200 entries overall
--- (DROPPED_MAX), the oldest dropped first.
--- This file reads that text (Parse),
+-- changed, from time(); optional, older copies have none). This file reads that text (Parse),
 -- keeps the player's own references (Add, Update, Delete) and answers which references exist and
--- which belong to a boss (List, Find, ForBoss, BossKey). The text is one line per thing:
+-- which belong to a boss (List, Find, ForBoss, BossKey).
+-- You keep one copy per boss and difficulty group ("mythic", or "nh": Normal and Heroic share one
+-- copy). Add saves into the copy you have (OwnFor), an Update that moves a copy to another boss or
+-- group you have a copy of folds it into that one, and older duplicates are folded once
+-- (foldDuplicates). Every text written over or folded away goes to timeline.droppedReferences, which
+-- holds the newest 200 entries overall (DROPPED_MAX), the oldest dropped first.
+-- The text is one line per thing:
 --   Boss: Name            (required)   Difficulty: Mythic   Length: 9:48   Encounter: 3001
 --   Phase: [label] time   a phase line, the time is the last word
 --   Name [spell N] (type raid soak, lead N, color rrggbb): time, time+bar, ...   an ability row (its color shows
@@ -24,6 +25,11 @@ local ADDON, CRT = ...
 
 local Reference = {}
 CRT.TimelineReference = Reference
+
+local TEXT = {
+    folded = "Your ability timelines now keep one copy per boss and difficulty. %d older copies were kept aside in your saved data.",
+    foldedOne = "Your ability timelines now keep one copy per boss and difficulty. 1 older copy was kept aside in your saved data.",
+}
 
 -- Ability types ----------------------------------------------------------------------------------------
 -- What an ability is, written (type raid) or (type mythic soak) in an ability timeline. The first type is
@@ -939,14 +945,23 @@ local function stamp()
 end
 
 -- One copy of yours per boss and difficulty group. Two references are of one boss as ForBoss matches
--- them: by encounter ID when both have one, else by name. The group is Reference.Group's, so a Normal
--- and a Heroic copy of a boss are the same copy (the Timeline shows one ability timeline for both).
+-- them: by encounter ID when both have one, by name when neither has; when only one has, the other is
+-- that boss only when the boss library gives its name that encounter ID (BossID). The group is
+-- Reference.Group's, so a Normal and a Heroic copy of a boss are the same copy (the Timeline shows one
+-- ability timeline for both).
 local function sameBoss(a, b)
     if a.encounterID and b.encounterID then
         return a.encounterID == b.encounterID
     end
-    local name = norm(a.boss)
-    return name ~= nil and name == norm(b.boss)
+    if not a.encounterID and not b.encounterID then
+        local name = norm(a.boss)
+        return name ~= nil and name == norm(b.boss)
+    end
+    local withID, named = a, b
+    if not a.encounterID then
+        withID, named = b, a
+    end
+    return bossIDOf(nil, named.boss) == withID.encounterID
 end
 
 local function ownParsed(text)
@@ -957,17 +972,34 @@ local function ownParsed(text)
     return ref or nil
 end
 
--- Your copy for a parsed reference's boss and group: its "own:N" key and saved entry { id, text, saved },
--- or nil when you have none.
-function Reference:OwnFor(ref)
+-- Your copy for a parsed reference's boss and group, other than except (a saved entry): its "own:N" key
+-- and saved entry { id, text, saved }, or nil when you have none.
+local function ownFor(ref, except)
     if type(ref) ~= "table" then
         return nil
     end
     local group = Reference.Group(ref)
     for _, r in ipairs(saved()) do
-        local mine = type(r.text) == "string" and ownParsed(r.text)
+        local mine = r ~= except and type(r.text) == "string" and ownParsed(r.text)
         if mine and Reference.Group(mine) == group and sameBoss(mine, ref) then
             return "own:" .. r.id, r
+        end
+    end
+end
+
+function Reference:OwnFor(ref)
+    return ownFor(ref)
+end
+
+-- Moves every In use pick (timeline.reviewRefs) of a key in moved ({ [old key] = new key }) to its new key.
+local function repoint(db, moved)
+    for _, picks in pairs(db.reviewRefs or {}) do
+        if type(picks) == "table" then
+            for group, key in pairs(picks) do
+                if moved[key] then
+                    picks[group] = moved[key]
+                end
+            end
         end
     end
 end
@@ -988,22 +1020,24 @@ end
 -- goes into that copy, which keeps its key (so the In use pick and an open editor stay on it), and the
 -- date changes only on a real change, as Update does. Its old text is kept first (keepDropped), so a
 -- shipped block saved over your copy (a line edit on the Advanced tab, a phase move) loses nothing.
--- Update, which saves your own copy in place, keeps nothing. Returns the key and whether it replaced your
--- copy (true) or added one (false); nil and the errors when the text doesn't read (nothing is saved).
+-- Update, which saves your own copy in place, keeps nothing. Returns the key and true when it wrote new
+-- text over your copy (false when it added one, or the text was already the same); nil and the errors
+-- when the text doesn't read (nothing is saved).
 function Reference:Add(text)
     local ref, errors = Reference.Parse(text)
     if not ref then
         return nil, errors
     end
-    local key, r = self:OwnFor(ref)
+    local key, r = ownFor(ref)
     if r then
-        if r.text ~= text then
+        local changed = r.text ~= text
+        if changed then
             keepDropped(settings(), r, stamp())
             r.text = text
             r.saved = stamp()
         end
         CRT.Timeline:Fire()
-        return key, true
+        return key, changed
     end
     local list = saved()
     local db = settings()
@@ -1026,15 +1060,20 @@ foldDuplicates = function(db)
         if ref then
             local group, bucket = Reference.Group(ref), nil
             for _, b in ipairs(buckets) do
-                if b.group == group and sameBoss(b.ref, ref) then
+                local fits = b.group == group
+                for _, other in ipairs(b.refs) do
+                    fits = fits and sameBoss(other, ref)
+                end
+                if fits then
                     bucket = b
                     break
                 end
             end
             if not bucket then
-                bucket = { group = group, ref = ref, members = {} }
+                bucket = { group = group, refs = {}, members = {} }
                 buckets[#buckets + 1] = bucket
             end
+            bucket.refs[#bucket.refs + 1] = ref
             bucket.members[#bucket.members + 1] = r
             if not bucket.best or (r.saved or 0) >= (bucket.best.saved or 0) then
                 bucket.best = r
@@ -1070,24 +1109,19 @@ foldDuplicates = function(db)
     for i, r in ipairs(kept) do
         list[i] = r
     end
-    for _, picks in pairs(db.reviewRefs or {}) do
-        if type(picks) == "table" then
-            for group, key in pairs(picks) do
-                if moved[key] then
-                    picks[group] = moved[key]
-                end
-            end
-        end
-    end
+    repoint(db, moved)
     if CRT.Print then
-        CRT:Print(string.format("Your ability timelines now keep one copy per boss and difficulty. %d older cop%s set aside in your saved data (timeline.droppedReferences).",
-            count, count == 1 and "y was" or "ies were"))
+        CRT:Print(count == 1 and TEXT.foldedOne or string.format(TEXT.folded, count))
     end
 end
 
--- Replaces the text of one of your references. Shipped ones cannot be changed.
+-- Replaces the text of one of your references. Shipped ones cannot be changed. When the new text is
+-- for another boss or group you already have a copy of (a retyped Boss line, another difficulty
+-- stamped on it), it goes into that copy instead and this one is removed: both old texts are kept
+-- (keepDropped) and an In use pick of this one moves to that one. Returns true, nil and the key now
+-- holding the text (key itself, or that copy's), so an editor stays on it; false and the errors.
 function Reference:Update(key, text)
-    local r = findOwn(key)
+    local r, i = findOwn(key)
     if not r then
         return false, { "No such ability timeline" }
     end
@@ -1095,13 +1129,27 @@ function Reference:Update(key, text)
     if not ref then
         return false, errors
     end
+    local otherKey, other = ownFor(ref, r)
+    if other then
+        local db, now = settings(), stamp()
+        if other.text ~= text then
+            keepDropped(db, other, now)
+            other.text = text
+            other.saved = now
+        end
+        keepDropped(db, r, now)
+        table.remove(saved(), i)
+        repoint(db, { [key] = otherKey })
+        CRT.Timeline:Fire()
+        return true, nil, otherKey
+    end
     if r.text ~= text then
         -- only a real change gets a new date: a save with no change (or the same rewrite) adds no undo step
         r.text = text
         r.saved = stamp()
     end
     CRT.Timeline:Fire()
-    return true
+    return true, nil, key
 end
 
 -- Deletes one of your references. Shipped ones cannot be deleted.
@@ -1207,8 +1255,8 @@ function Reference:MovePhase(key, index, t)
         return nil
     end
     if entry.own then
-        local ok = self:Update(key, text)
-        return ok and key or nil, false
+        local ok, _, kept = self:Update(key, text)
+        return ok and kept or nil, false
     end
     local newKey, replaced = self:Add(text)
     return newKey, newKey ~= nil, newKey ~= nil and replaced == true

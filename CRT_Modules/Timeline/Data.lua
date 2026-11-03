@@ -569,6 +569,17 @@ function Timeline:ChosenReference(encounterID, group)
     return mine and mine[group == "mythic" and "mythic" or "nh"] or nil
 end
 
+-- After an edit of a shipped ability timeline was saved into your copy (key): when an ability timeline
+-- is picked In use for the boss and group, the pick moves to your copy, so the Timeline shows the edit
+-- (a moved phase line, a line edited on the Advanced tab). With no pick yours is shown first anyway.
+function Timeline:PickCopy(encounterID, group, key)
+    local Reference = CRT.TimelineReference
+    local entry = Reference and key and Reference:Find(key)
+    if entry and self:ChosenReference(encounterID, group) then
+        self:SetChosenReference(encounterID, group, Reference.ChoiceKey(entry))
+    end
+end
+
 function Timeline:SetChosenReference(encounterID, group, key)
     if encounterID == nil then
         return

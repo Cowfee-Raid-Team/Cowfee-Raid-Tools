@@ -557,14 +557,15 @@ end
 
 -- Save as my copy of an entry (as Reference:List gives it): yours is updated; a shipped one goes into your
 -- copy for its boss and difficulty (Reference:Add: the one you have, else a new one). Returns the key that
--- now holds the text and true when it replaced your copy; nil and the errors when it doesn't read.
+-- now holds the text and true when it wrote over your copy (or, for yours, moved into another copy of
+-- yours: Reference:Update); nil and the errors when it doesn't read.
 function Editor.SaveAsCopy(entry, text)
     if entry.own then
-        local ok, errors = Reference:Update(entry.key, text)
+        local ok, errors, kept = Reference:Update(entry.key, text)
         if not ok then
             return nil, errors
         end
-        return entry.key, false
+        return kept or entry.key, kept ~= nil and kept ~= entry.key
     end
     local key, more = Reference:Add(text)
     if not key then

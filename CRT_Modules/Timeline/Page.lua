@@ -413,9 +413,7 @@ local function buildReview(f)
             end
             local key, copied, replaced = Reference:MovePhase(entry.key, index, seconds)
             if key and copied then
-                if Timeline:ChosenReference(selectedBoss, selectedGroup) then
-                    Timeline:SetChosenReference(selectedBoss, selectedGroup, Reference.ChoiceKey(Reference:Find(key)))
-                end
+                Timeline:PickCopy(selectedBoss, selectedGroup, key)
                 CRT:Print(replaced and TEXT.phaseReplace or TEXT.phaseCopy)
             end
             refresh()

@@ -79,6 +79,11 @@ do
   local k3, r3 = E.SaveAsCopy(R:Find(k1), R:Find(k1).text .. "\\n# kept")
   check("save as my copy: your copy is updated", k3 == k1 and r3 == false and R:Find(k1).text:find("# kept", 1, true) ~= nil)
   check("save as my copy: text that doesn't read saves nothing", E.SaveAsCopy(shippedEntry, "nonsense") == nil)
+  local k4, r4 = E.SaveAsCopy(shippedEntry, R:Find(k1).text)
+  check("save as my copy: the same text again replaces nothing", k4 == k1 and r4 == false)
+  local other = R:Add("Boss: Other\\nDifficulty: Mythic\\nEncounter: 9\\nX: 0:10")
+  local k5, r5 = E.SaveAsCopy(R:Find(other), R:Find(k1).text .. "\\n# moved")
+  check("save as my copy: yours moved to a boss you have a copy of goes into that copy", k5 == k1 and r5 == true and R:Find(other) == nil)
   CRT.db.timeline.references = {}
 end
 -- /crt dev mechhidden: the mechHidden line to paste into each changed boss file
