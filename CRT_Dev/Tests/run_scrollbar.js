@@ -403,7 +403,6 @@ const KNOWN = [
   ['CRT_Modules/Consumables/Tools.lua', 'CowfeeRaidToolsTextWindowScroll'],
   ['CRT_Modules/Pace/Page.lua', 'CowfeeRaidToolsPaceTextScroll'],
   ['CRT_Dev/Dev/ReferenceTypes.lua', 'CowfeeRaidToolsReferenceManageScroll'],
-  ['CRT_Dev/Dev/ReferenceTypes.lua', 'CowfeeRaidToolsReferenceTypesScroll'],
   ['CRT_Modules/Pace/Page.lua', 'Slider'], // the Pace list's hand-made vertical Slider
 ];
 // Scroll bars the skin leaves alone on purpose: [file, text on the CreateFrame line, reason].

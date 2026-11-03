@@ -1,4 +1,5 @@
-// CRT_Dev/Dev/ReferenceTypes.lua: ApplyTypes rewrites only the (type ...) option; the result parses.
+// CRT_Dev/Dev/ReferenceTypes.lua, the Manage ability timelines window: its removal lines, /crt dev mechhidden, and no type
+// editing (an ability's types are its right-click label, Timeline:SetAbility). The sample ability timelines parse.
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const A = process.argv[2];
@@ -24,27 +25,6 @@ check("Sszorak encounter 3420", s.encounterID == 3420)
 check("Sszorak casts", #s.rows[1].casts == 6 and s.rows[1].casts[1].dur == 19 and #s.rows[7].casts == 3)
 check("Sszorak length 6:32", s.length == 392)
 
--- Setting types: main first, then the others; the rest of each line is kept.
-local out = E.ApplyTypes(shipped.Sszorak, { { "raid" }, {}, { "soak", "spread" }, {}, { "dispel" }, {}, { "raid", "mythic" } })
-local p = assert(R.Parse(out))
-check("Mutilate raid", p.rows[1].types and p.rows[1].types[1] == "raid" and p.rows[1].casts[1].dur == 19)
-check("Ravage untyped", p.rows[2].types == nil)
-check("Tempest soak spread", p.rows[3].types[1] == "soak" and p.rows[3].types[2] == "spread")
-check("Dig In raid mythic, bars kept", p.rows[7].types[2] == "mythic" and p.rows[7].casts[1].dur == 27)
-check("comments kept", out:find("# Left out", 1, true) ~= nil)
-check("line written", out:find("Tempest (type soak spread): 0:12", 1, true) ~= nil)
-
--- Nek'zali round trip: its own types back give the same text; leads with m:ss survive.
-local n = assert(R.Parse(shipped["Nek'zali the Soulcoiler"]))
-local list = {}
-for i, row in ipairs(n.rows) do list[i] = row.types or {} end
-check("Nek'zali round trip identical", E.ApplyTypes(shipped["Nek'zali the Soulcoiler"], list) == shipped["Nek'zali the Soulcoiler"])
-list[9] = {}
-local cleared = E.ApplyTypes(shipped["Nek'zali the Soulcoiler"], list)
-check("clearing a type keeps the lead", cleared:find("Possession Barrage (type falloff, lead 7)", 1, true) and cleared:find("Ritual of Awakening (type generic)", 1, true) and cleared:find("Soul Transfer (type generic, lead 26)", 1, true) and cleared:find("Hungering Pyre (lead 6):", 1, true) ~= nil)
--- spell IDs and a lead written as m:ss
-local t = E.ApplyTypes("Boss: X\\nFoo [spell 123] (lead 0:07, type raid): 0:10\\n", { { "soak" } })
-check("spell and m:ss lead kept", t == "Boss: X\\nFoo [spell 123] (type soak, lead 0:07): 0:10\\n")
 local d = R.Parse("Boss: X\\nFoo (type dodge heavydot): 0:10\\n")
 check("dodge and heavydot read", d and d.rows[1].types[1] == "dodge" and d.rows[1].types[2] == "heavydot")
 check("Sszorak types shipped", s.rows[1].types[1] == "raid" and s.rows[2].types[1] == "soak" and s.rows[5].types[1] == "raid")
@@ -66,26 +46,6 @@ local lines = E.RemovalLines()
 check("removal lines sorted by boss", #lines == 2 and lines[1] == "CRT_Data/Seasons/Sample/Kithix.lua; encounter 3513; Mythic; Boss: Kith'ix / Difficulty: Mythic / Length: 7:00" and lines[2] == "Sszorak.lua; encounter 3420; Heroic; Boss: Sszorak / Difficulty: Heroic / Length: 6:32; already gone")
 CRT.db.dev.removedReferences = nil
 check("no removals, no lines", #E.RemovalLines() == 0)
--- Save as my copy on a shipped entry lands in the copy you have for its boss and difficulty
-do
-  local shippedEntry = R:List()[1]
-  local k1, r1 = E.SaveAsCopy(shippedEntry, shippedEntry.text)
-  local k2, r2 = E.SaveAsCopy(R:Find("ship:1"), (shippedEntry.text:gsub("X: 0:10", "X (type raid): 0:10")))
-  local mine = 0
-  for _, e in ipairs(R:List()) do if e.own then mine = mine + 1 end end
-  check("save as my copy: the first save makes your copy", k1 == "own:1" and r1 == false)
-  check("save as my copy: a second save on the shipped entry replaces it", k2 == k1 and r2 == true and mine == 1
-    and R:Find(k1).ref.rows[1].types[1] == "raid")
-  local k3, r3 = E.SaveAsCopy(R:Find(k1), R:Find(k1).text .. "\\n# kept")
-  check("save as my copy: your copy is updated", k3 == k1 and r3 == false and R:Find(k1).text:find("# kept", 1, true) ~= nil)
-  check("save as my copy: text that doesn't read saves nothing", E.SaveAsCopy(shippedEntry, "nonsense") == nil)
-  local k4, r4 = E.SaveAsCopy(shippedEntry, R:Find(k1).text)
-  check("save as my copy: the same text again replaces nothing", k4 == k1 and r4 == false)
-  local other = R:Add("Boss: Other\\nDifficulty: Mythic\\nEncounter: 9\\nX: 0:10")
-  local k5, r5 = E.SaveAsCopy(R:Find(other), R:Find(k1).text .. "\\n# moved")
-  check("save as my copy: yours moved to a boss you have a copy of goes into that copy", k5 == k1 and r5 == true and R:Find(other) == nil)
-  CRT.db.timeline.references = {}
-end
 -- /crt dev mechhidden: the mechHidden line to paste into each changed boss file
 local printed = {}
 CRT.Print = function(_, m) printed[#printed + 1] = m end
@@ -101,6 +61,55 @@ CRT.db.dev.mechHidden = { ["3513"] = { ["latent cultist"] = false } }
 CRT.Timeline.MechHiddenNames = function() return {} end
 E:PrintMechHidden()
 check("mech hidden: all shown again prints an empty list", #printed == 1 and printed[1] == "Kith'ix (3513): mechHidden = {  },")
+-- No type editing: the Main and Also rows, Save as my copy and Export are gone; Manage ability timelines is the window
+check("no type editing left", E.ApplyTypes == nil and E.SaveAsCopy == nil)
+do
+  local made, dropdowns, buttons, texts = {}, {}, {}, {}
+  local function frame()
+    local f = { shown = false, points = {} }
+    return setmetatable(f, { __index = function(t, k)
+      if k == "Show" then return function(self) self.shown = true if rawget(self, "onShow") then self.onShow(self) end end end
+      if k == "Hide" then return function(self) self.shown = false end end
+      if k == "IsShown" then return function(self) return self.shown end end
+      if k == "SetShown" then return function(self, v) if v then self:Show() else self:Hide() end end end
+      if k == "SetText" then return function(self, v) self.text = v end end
+      if k == "SetEnabled" then return function(self, v) self.enabled = v end end
+      if k == "HookScript" then return function(self, n, fn) if n == "OnShow" then self.onShow = fn end end end
+      if k == "SetScript" then return function(self, n, fn) rawset(self, n, fn) end end
+      if k == "GetWidth" then return function() return 400 end end
+      if k == "GetFontString" then return function() return { GetStringWidth = function() return 50 end } end end
+      if k == "CreateFontString" then return function() local x = frame() texts[#texts + 1] = x return x end end
+      return function() end
+    end })
+  end
+  CreateFrame = function(kind) local f = frame() if kind == "Button" then buttons[#buttons + 1] = f end return f end
+  CRTFontButtonSmall, CRTFontButtonSmallHighlight, CRTFontButtonSmallDisable = {}, {}, {}
+  CRT.UI.Window = function(name, o) local w = frame() w.name, w.opts = name, o made[#made + 1] = w return w end
+  CRT.UI.Dropdown = function(_, label, o) local d = frame() d.label, d.opts = label, o d.refresh = function() end dropdowns[#dropdowns + 1] = d return d end
+  CRT.UI.HelpRight = function() return frame() end
+  CRT.UI.SkinScrollBar = function() end
+  CRT.UI.SkinTree = function() end
+  CRT.Bosses.Options = function() return { { key = "raid:x", label = "Sample Raid", title = true }, { key = 3513, label = "Kith'ix" }, { key = 3420, label = "Sszorak" } } end
+  CRT.TimelineDB.references = { "Boss: Kith'ix\\nDifficulty: Mythic\\nLength: 7:00\\nEncounter: 3513\\nX: 0:10" }
+  CRT.db.timeline.references = { { id = 1, text = "Boss: Kith'ix\\nDifficulty: Heroic\\nEncounter: 3513\\nY: 0:20" } }
+  E:Toggle()
+  local w = made[1]
+  check("one window: Manage ability timelines", #made == 1 and w.shown and w.opts.title == "Manage ability timelines (dev)")
+  local pick = dropdowns[1]
+  check("a Boss picker, the boss file's bosses under their raid", #dropdowns == 1 and pick.label == "Boss" and #pick.opts.options() == 3)
+  check("it opens on the first boss with ability timelines", pick.opts.get() == 3513)
+  local function shownText(t) for _, x in ipairs(texts) do if x.text and x.text:find(t, 1, true) then return x end end end
+  local labels = {}
+  for _, b in ipairs(buttons) do if b.text then labels[#labels + 1] = b.text end end
+  local all = table.concat(labels, ",")
+  check("no Save as my copy, Export or Main type: " .. all, not all:find("Save as my copy", 1, true) and not all:find("Delete my copy", 1, true)
+    and all:find("Delete all my copies", 1, true) and all:find("Export removals", 1, true))
+  for _, x in ipairs(texts) do check("no type headers", x.text ~= "Main type" and x.text ~= "Also") end
+  check("your copy and the shipped one are listed", shownText("Heroic") ~= nil and shownText("Mythic") ~= nil and all:find("Delete", 1, true) and all:find("Remove from addon", 1, true))
+  pick.opts.set(3420)
+  check("another boss: its ability timelines", pick.opts.get() == 3420 and shownText("No ability timelines").shown)
+  CRT.db.timeline.references = {}
+end
 print(fails == 0 and "all passed" or (fails .. " failed"))
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

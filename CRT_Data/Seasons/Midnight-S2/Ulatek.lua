@@ -4,11 +4,11 @@ local ADDON, CRT = ...
 --
 -- encounterID 3492 comes from the boss's Warcraft Logs rankings link (boss=3492), not from a pull
 --             yet; /crt dev seasons ids checks it against the saved pulls.
--- references  The Mythic reference timeline, in the Timeline's text format (see Timeline/Database.lua
---             for the format), transcribed from a planner screenshot on 2026-10-17 (the vault note
---             "Cowfee Raid Tools - Boss Reference Transcriptions"). The rows have no types yet: Alex
---             sets them in game with the Logged Timeline Ref tool on the Development page, and its export
---             replaces this block.
+-- references  The Mythic reference timeline, in the Timeline's text format (see Timeline/Database.lua for
+--             the format), transcribed from a planner screenshot on 2026-10-17 (the vault note "Cowfee Raid
+--             Tools - Boss Reference Transcriptions"). The rows have no types yet: Alex sets them in game as
+--             ability labels (right-click an ability on the Timeline: Type, Also, icons), and Export labels
+--             there gives the abilities field for this file.
 -- special     The boss's special alerts on Raid Notes > Mech Alerts > Special (the format is at the top of
 --             Alerts/Special.lua). Each one but Pre-Pot names a row of the ability timeline (when.row), so its
 --             times are that row's casts and move when the reference changes. Pre-Pot is typed at 5 s before

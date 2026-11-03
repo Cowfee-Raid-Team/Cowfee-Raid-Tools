@@ -4,11 +4,11 @@ local ADDON, CRT = ...
 --
 -- encounterID 3421 comes from the EncounterID line of Alex's raid note for this boss, not from a pull
 --             yet; /crt dev seasons ids checks it against the saved pulls.
--- references  The Mythic reference timeline, in the Timeline's text format (see Timeline/Database.lua
---             for the format), transcribed from a planner screenshot on 2026-10-17 (the vault note
---             "Cowfee Raid Tools - Boss Reference Transcriptions"). The rows have no types yet: Alex
---             sets them in game with the Logged Timeline Ref tool on the Development page, and its export
---             replaces this block.
+-- references  The Mythic reference timeline, in the Timeline's text format (see Timeline/Database.lua for
+--             the format), transcribed from a planner screenshot on 2026-10-17 (the vault note "Cowfee Raid
+--             Tools - Boss Reference Transcriptions"). The rows have no types yet: Alex sets them in game as
+--             ability labels (right-click an ability on the Timeline: Type, Also, icons), and Export labels
+--             there gives the abilities field for this file.
 -- interrupts  Mythic only: the Broodlings' kick setup (Interrupts/Setup.lua reads the block, Lattice.lua its timing):
 --             Left and Right groups of five, no raid markers (the adds can't be told apart). Each wave starts
 --             at the 5th cast of boss2's 7-cast cycle (casts 5, 12, 19, ...); add 1's first cast is 4.5 s after it,

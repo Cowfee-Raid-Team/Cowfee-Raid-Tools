@@ -11,8 +11,8 @@ local ADDON, CRT = ...
 --   Windows    Windows: reset every movable window and the main panel; Window log: prints every move of
 --              the main window, to find what makes it jump; Layers, each window: every window's layer on
 --              its own (General Settings shows groups)
---   Boss data  Logged Timeline Ref: set each ability's types on an ability timeline, manage and remove
---              them; Marker displays: the marker display editor; Season packs: which seasons load, and
+--   Boss data  Ability timelines: Manage ability timelines, delete your copies and mark shipped ones for
+--              removal (Dev/ReferenceTypes.lua); Marker displays: the marker display editor; Season packs: which seasons load, and
 --              purging one
 --   Probes     Timeline probe: arm it for the next raid boss pull, show what it found; Diagnostics: the
 --              debuff panel's; Boss debug: log every boss pull, one log per boss, a row per boss with
@@ -171,8 +171,8 @@ local function buildLayers(f, x, y)
 end
 
 local function buildRefTypes(f, x, y)
-    heading(f, x, y, "Logged Timeline Ref", "Set each ability's types on a boss's ability timeline with dropdowns: a Main type that colors the row, and any others as dots. Save as my copy shows the colors on the Timeline; Export gives the text to paste to Claude, who ships it in the boss's file.\n\nManage ability timelines deletes your copies, and marks shipped ability timelines for removal: they're hidden on this computer at once, and Export removals (or /crt dev removed) lists them for Claude to delete from the boss files.")
-    action(f, x, row(y, 1), "Open Logged Timeline Ref", L.wide, function()
+    heading(f, x, y, "Ability timelines", "Manage ability timelines lists every ability timeline of a boss. It deletes your copies, and marks shipped ones for removal: they're hidden on this computer at once, and Export removals (or /crt dev removed) lists them for Claude to delete from the boss files.\n\nAn ability's types and icons are set by right-clicking it on the Timeline. Export labels on the Timeline gives them to paste to Claude.")
+    action(f, x, row(y, 1), "Manage ability timelines", L.wide, function()
         CRT.ReferenceTypes:Toggle()
     end)
 end
@@ -278,7 +278,7 @@ local function build(pf)
     local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText("Development")
-    UI.HelpRight(title, "Development", "Developer tools. This page is only in a developer build of the addon (from Git); release zips leave it out, along with every tool on it.\n\nThe same tools have slash commands: /crt dev (this page), /crt dev edit, /crt dev reset, /crt dev clear, /crt dev debuffs, /crt dev probe, /crt dev probe show, /crt dev clearprobe, /crt dev absorbprobe (on, off, show: can a boss's absorb be read in a pull), /crt dev aura (<spellID>, on [spellID], off, show: can a debuff on the group be read), /crt dev lowhp (on, off, show: what an addon sees of your health under the low-health threshold), /crt dev autorelease (status, now [encounterID], arm [encounterID], off: test Instantly release after wipe outside a raid, on the boss on show or the one given), /crt dev shieldbar (on, off: the shield bar on your own absorb, against a target dummy), /crt dev bossdebug (on, off, show, show <boss>: every boss pull logged, one log per boss, to copy; emotes [boss]: only its boss emotes and yells, with phase triggers), /crt dev markerprobe, /crt dev special (a sample special alert on Mech Alerts), /crt dev alerts (export and import alerts), /crt dev markers, /crt dev types, /crt dev removed, /crt dev winlog, /crt dev seasons and /crt dev seasons ids.")
+    UI.HelpRight(title, "Development", "Developer tools. This page is only in a developer build of the addon (from Git); release zips leave it out, along with every tool on it.\n\nThe same tools have slash commands: /crt dev (this page), /crt dev edit, /crt dev reset, /crt dev clear, /crt dev debuffs, /crt dev probe, /crt dev probe show, /crt dev clearprobe, /crt dev absorbprobe (on, off, show: can a boss's absorb be read in a pull), /crt dev aura (<spellID>, on [spellID], off, show: can a debuff on the group be read), /crt dev lowhp (on, off, show: what an addon sees of your health under the low-health threshold), /crt dev autorelease (status, now [encounterID], arm [encounterID], off: test Instantly release after wipe outside a raid, on the boss on show or the one given), /crt dev shieldbar (on, off: the shield bar on your own absorb, against a target dummy), /crt dev bossdebug (on, off, show, show <boss>: every boss pull logged, one log per boss, to copy; emotes [boss]: only its boss emotes and yells, with phase triggers), /crt dev markerprobe, /crt dev special (a sample special alert on Mech Alerts), /crt dev alerts (export and import alerts), /crt dev markers, /crt dev types (manage ability timelines), /crt dev labels, /crt dev removed, /crt dev winlog, /crt dev seasons and /crt dev seasons ids.")
 
     strip = CRT.AlertSubTabs.Build(pf, {
         owner = "dev",

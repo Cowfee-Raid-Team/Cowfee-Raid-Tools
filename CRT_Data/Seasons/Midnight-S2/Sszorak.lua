@@ -4,10 +4,10 @@ local ADDON, CRT = ...
 --
 -- encounterID 3420 comes from the Timeline's saved Mythic pulls of this boss (the game's own ID);
 --             /crt dev seasons ids checks it against the saved pulls.
--- references  The Mythic reference timeline, in the Timeline's text format (see Timeline/Database.lua
---             for the format), transcribed from a planner screenshot, with each ability's type set
---             by Alex in the Logged Timeline Ref tool (Development page). Serpent's Fury (Mythic) waits
---             for its cast times.
+-- references  The Mythic reference timeline, in the Timeline's text format (see Timeline/Database.lua for
+--             the format), transcribed from a planner screenshot, with each ability's type set by Alex in
+--             game. Types are now set as ability labels (right-click an ability on the Timeline), which win
+--             over a row's (type ...). Serpent's Fury (Mythic) waits for its cast times.
 
 CRT.Bosses:Register({
     encounterID = 3420,
