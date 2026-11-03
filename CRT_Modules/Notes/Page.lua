@@ -543,7 +543,7 @@ refresh = function()
     -- The note's text, as saved, shown rendered (Notes/Render.lua) until clicked. The raw box follows the
     -- saved text whenever it holds no unsaved typing, so a line moved, copied or deleted on the Timeline
     -- shows here at once. Unsaved typing stays, raw, until it is saved or another note is picked.
-    local rosterLinked = Notes:RosterLayout(record) ~= nil
+    local rosterLinked = Notes.RosterLayout ~= nil and Notes:RosterLayout(record) ~= nil
     textBox:Update(record and record.raw or "", id, rosterLinked)
 
     local lines = {}
@@ -734,7 +734,7 @@ local function buildNotes(pf)
     roster:SetScript("OnClick", function()
         local record = selected and Notes:Get(selected)
         -- a note shared to you: the sender's layout; one you imported: its invite list's (Notes:RosterLayout)
-        local id = Notes:RosterLayout(record)
+        local id = Notes.RosterLayout and Notes:RosterLayout(record) or nil
         if id then
             CRT.Groups:Select(id)
             UI:Show("groups")

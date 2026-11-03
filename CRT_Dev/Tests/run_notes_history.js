@@ -383,10 +383,11 @@ do
   assert(pick(fresh), "picked back")
   -- everything at once: shared by someone, a roster, a share going out and a run: still at most STATUS_LINES lines
   local got = Notes:Import("EncounterID:3495;Name:Busy\\nA", "Rixxy", nil, "pug:Rixxy", "CRT")
-  Notes:Get(got).presetId = "r1"
+  -- a shared note's roster is the sender's layout (Notes:RosterLayout), stored "(from Rixxy)" by the roster share
   Notes:UpdateRaw(got, "EncounterID:3495;Name:Busy\\nB")
   local find, sharing, phase = CRT.Groups.Find, CRT.NoteComm.Sharing, CRT.NoteEngine.CurrentPhase
   CRT.Groups.Find = function(_, key) return key == "r1" and {} or nil end
+  CRT.Groups.Presets = function() return { { id = "r1", from = "Rixxy", name = "Main (from Rixxy)" } } end
   assert(pick(got), "picked")
   text = statusText()
   local function count(t) local n = 0 for _ in (t .. "\\n"):gmatch("(.-)\\n") do n = n + 1 end return n end
@@ -400,6 +401,7 @@ do
   text = statusText()
   assert(count(text) == 4 and text:find("Sharing: 1 of 3 parts sent; Running: phase 1", 1, true), "a share and a run share a line: " .. text)
   CRT.Groups.Find, CRT.NoteComm.Sharing, CRT.NoteEngine.CurrentPhase, CRT.NoteEngine.running = find, sharing, phase, false
+  CRT.Groups.Presets = nil
   Notes:Delete(got)
   assert(pick(fresh), "picked back")
   ok("the footer line under Last updated, hidden with no earlier version; never more than the lines under the box")

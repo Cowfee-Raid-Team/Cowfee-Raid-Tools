@@ -352,7 +352,7 @@ local function linkedLayout()
     if not W.source or W.source.personal then
         return nil
     end
-    local id = Notes:RosterLayout(Notes:Get(W.source.id))
+    local id = Notes.RosterLayout and Notes:RosterLayout(Notes:Get(W.source.id)) or nil
     return Palette.FindLayout(id) and id or nil
 end
 
