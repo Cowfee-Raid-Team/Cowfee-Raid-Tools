@@ -1818,6 +1818,45 @@ do
   CRT.TimelineImportWindow = nil
 end
 print("ok Import reminders sits with the Review tab's buttons and opens its window")
+-- Export labels (#1255): the boss on show's ability labels, with /crt dev open only; at the end of the first row on
+-- the main window, on the third after Order when narrow; nothing reaches past the page
+do
+  local ex
+  for i = #buttons, 1, -1 do if buttons[i].text == "Export labels" then ex = buttons[i] break end end
+  assert(ex, "an Export labels button")
+  assert(helps["Export labels"] and helpTargets["Export labels"] == ex, "with its (?) after it")
+  local exported = {}
+  CRT.AbilityLabelsDev = { ShowBoss = function(id) exported[#exported + 1] = id end }
+  diffDD.opts.set("mythic")
+  bossDD.opts.set(3470)
+  assert(ex.shown, "shown with /crt dev open")
+  ex.OnClick(ex)
+  assert(#exported == 1 and exported[1] == 3470, "it exports the boss on show")
+  setDev(false)
+  T:Fire()
+  assert(not ex.shown, "hidden without /crt dev")
+  setDev(true)
+  CRT.AbilityLabelsDev = nil
+  T:Fire()
+  assert(not ex.shown, "hidden in a build without the developer files")
+  CRT.AbilityLabelsDev = { ShowBoss = function(id) exported[#exported + 1] = id end }
+  local f, orderDD
+  for _, d in ipairs(dropdowns) do if d.text == "Order" then f, orderDD = d.parent, d end end
+  rawset(f, "GetWidth", function() return CRT.UI.PAGE_W end)
+  T:Fire()
+  local w = ex:GetWidth()
+  assert(ex.pt[1] == "TOPRIGHT" and ex.pt[5] == -4 - 2 and ex.pt[4] == -(8 + 4 + 20), "wide: the end of the first row, its (?) inside the page")
+  assert(CRT.UI.PAGE_W - (8 + 4 + 20) - w > 412 + 220 + 16 + 185 + 4 + 20, "wide: clear of Order and its (?)")
+  assert(w == CRT.UI.PanelButtonWidth(#"Export labels" * 5), "as wide as its label in the small font")
+  rawset(f, "GetWidth", function() return 760 end)
+  T:Fire()
+  assert(ex.pt[1] == "TOPLEFT" and ex.pt[5] == -64 - 2, "narrow: on the third row")
+  rawset(f, "GetWidth", nil)
+  T:Fire()
+  CRT.AbilityLabelsDev = nil
+  T:Fire()
+end
+print("ok Export labels on the Review tab, dev only")
 do
   -- Send to Timeline saves the Journal's export at once and opens it; the middle list is that reference
   local text = table.concat({ "Boss: Nek'zali the Soulcoiler", "Difficulty: Mythic", "Encounter: 3470", "# Stage One",
