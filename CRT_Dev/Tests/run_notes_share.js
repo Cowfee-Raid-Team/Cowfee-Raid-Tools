@@ -441,6 +441,40 @@ do
   inRaid, leader = false, false
 end
 print("ok Share to raid shares through the one share function, and sends the roster with it")
+do
+  -- A note's invite list makes a Raid Groups layout only when you paste or import the note yourself. A note shared to
+  -- you makes none (the sender's roster comes with the share, Groups/Share.lua), so there are never two look-alikes.
+  local presets, active, selectedId = {}, nil, nil
+  local savedGroups = CRT.Groups
+  CRT.Groups = { NUM_SLOTS = 40,
+    Normalize = function(n) if n ~= "" and not n:find("-", 1, true) then n = n .. "-Sargeras" end return n end,
+    CreatePreset = function(_, name, slots) presets[#presets + 1] = { id = #presets + 1, name = name, slots = slots } return #presets end,
+    Find = function(_, id) return presets[id] end, Active = function() return active end,
+    Select = function(_, id) selectedId = id end }
+  local text = "EncounterID:3460;Difficulty:Mythic;Name:Invite Boss\\ninvitelist:Abu,Kip,,Rixxy;\\ntime:5;ph:1;text:Go;"
+  local got, message = Notes:Import(text, "Solex", nil, "guild:Cowfee", "CRT")
+  assert(#presets == 0, "a received note with an invite list makes no layout")
+  assert(Notes:Get(got).presetId == nil, "and is linked to none")
+  assert(not message:find("layout", 1, true), "and says nothing about one: " .. message)
+  -- its Open roster in Raid Groups opens your active layout, the roster the share brought
+  active = 77
+  presets[77] = { id = 77, name = "Main (from Solex)", slots = {} }
+  local openRoster
+  for _, b in ipairs(buttons) do if rawget(b, "text") == "Open roster in Raid Groups" then openRoster = b end end
+  for _, b in ipairs(buttons) do if rawget(b, "id") == got and rawget(b, "OnClick") then b.OnClick(b) end end
+  local p0 = #printed
+  openRoster.OnClick(openRoster)
+  assert(selectedId == 77 and #printed == p0, "a received note: Open roster opens your active layout")
+  presets[77], active, selectedId = nil, nil, nil
+  -- pasted or imported by you: the layout is made, as before
+  local mine, said = Notes:Import((text:gsub("Invite Boss", "Own Boss")), nil, nil, nil, "Imported")
+  assert(#presets == 1 and presets[1].name == "Own Boss Mythic roster", "a pasted note makes its layout: " .. tostring(presets[1] and presets[1].name))
+  assert(presets[1].slots[1] == "Abu-Sargeras" and presets[1].slots[3] == "" and presets[1].slots[4] == "Rixxy-Sargeras", "in its order, empty slots kept")
+  assert(Notes:Get(mine).presetId == 1 and said:find("Its invite list is now a layout in Raid Groups.", 1, true), "linked, and says so: " .. said)
+  Notes:Delete(got) Notes:Delete(mine)
+  CRT.Groups = savedGroups
+end
+print("ok a shared note's invite list makes no layout; a pasted one's does")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const f of process.argv.slice(2, 8)) {
