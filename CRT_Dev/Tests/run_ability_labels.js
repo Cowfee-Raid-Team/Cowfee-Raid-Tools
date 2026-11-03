@@ -263,6 +263,22 @@ shownText, printed = nil, {}
 D.ShowBoss(3420)
 check("a boss with no labels says so instead", shownText == nil and #printed == 1 and printed[1]:find("no ability labels", 1, true) ~= nil)
 
+-- What shows is what exports: an Also of yours with no type takes the ability timeline row's main type into the
+-- block; an Also with no main type anywhere stays out, and a label with nothing left to write is left out
+do
+  local rk = Rd:Add("Boss: Nek'zali the Soulcoiler\nEncounter: 3470\nRended [spell 5011] (type dodge raid): 0:10\nPlain [spell 5012]: 0:20")
+  assert(rk, "the ability timeline saved")
+  T:SetAbility(3470, 5011, "also", { "spread" })
+  T:SetAbility(3470, 5012, "also", { "spread" })
+  local blk = D.Block(3470, "d")
+  check("Also with the row's main type exports that type: " .. blk, blk:find('[5011] = { type = "dodge", also = { "spread" } },', 1, true) ~= nil)
+  check("Also with no main type anywhere stays out, and so does its empty entry", blk:find("[5012]", 1, true) == nil)
+  T:SetAbility(3470, 5011, "type", "soak")
+  check("your own type wins over the row's", D.Block(3470, "d"):find('[5011] = { type = "soak", also = { "spread" } },', 1, true) ~= nil)
+  Rd:Delete(rk)
+  T:ClearAbilities(3470)
+end
+
 -- Clear touches only the ticked bosses, and lists what isn't shipped yet ----------------------------------
 T:SetAbility(3470, 5001, "name", "Mine") -- the same as the boss file now
 T:SetAbility(3470, 7001, "type", "dispel") -- not in the boss file
