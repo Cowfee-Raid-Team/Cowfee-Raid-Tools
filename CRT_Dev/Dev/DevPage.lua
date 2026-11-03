@@ -12,8 +12,8 @@ local ADDON, CRT = ...
 --              the main window, to find what makes it jump; Layers, each window: every window's layer on
 --              its own (General Settings shows groups)
 --   Boss data  Ability timelines: Manage ability timelines, delete your copies and mark shipped ones for
---              removal (Dev/ReferenceTypes.lua); Marker displays: the marker display editor; Season packs: which seasons load, and
---              purging one
+--              removal (Dev/ReferenceTypes.lua); Marker displays: the marker display editor; Season
+--              packs: which seasons load, and purging one
 --   Probes     Timeline probe: arm it for the next raid boss pull, show what it found; Diagnostics: the
 --              debuff panel's; Boss debug: log every boss pull, one log per boss, a row per boss with
 --              Copy (Dev/BossDebugPanel.lua)
