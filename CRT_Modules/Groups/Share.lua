@@ -12,9 +12,11 @@ local ADDON, CRT = ...
 -- Receiving (Share.Receive): never while you lead the group; else only from the leader or an assistant, never your
 -- own (CRT.NoteComm.Sender, the check shared notes use). Kept as one layout per sender (preset.from, their
 -- Name-Realm), named "<layout> (from <sender>)", replaced by the next one they send, made the active layout and opened
--- on Raid Groups (Groups:StoreFrom); unsaved changes in the grid are kept, and then it is only made active. The same
--- people in the same slots as your active layout make no copy; that layout is only opened again. Your own layouts are
--- never touched. Parts that don't all arrive within TIMEOUT seconds, or don't add up to their hash, are dropped.
+-- on Raid Groups (Groups:StoreFrom), replacing an Unsaved layout; unsaved edits to an open saved layout are kept, and
+-- then it is only made active (Groups:HasUnsavedEdits). The same people in the same slots as your active layout make
+-- no copy; that layout is only opened again. A shared note's invite list makes no layout of its own (Notes:Import),
+-- so this is the one layout a share makes. Your own layouts are never touched. Parts that don't all arrive within
+-- TIMEOUT seconds, or don't add up to their hash, are dropped.
 --
 -- Message under the prefix CRTRoster1: "<hash>|<part>|<total>|<data>". hash is the fingerprint of the whole text
 -- (CRT.Comm.Fingerprint) and so its id; data is a part of the text, at most CHUNK bytes.
@@ -50,7 +52,6 @@ local TEXT = {
     received = "Roster '%s' from %s is now your active group.",
     receivedKept = "Roster '%s' from %s is now your active group. Your unsaved changes on '%s' are kept; pick it in Quick Load to see it.",
     receivedOwn = "Roster '%s' from %s is now your active group. Your unsaved changes on it are kept.",
-    receivedDraft = "Roster '%s' from %s is now your active group. Your unsaved layout is kept; pick the roster in Quick Load to see it.",
     queued = "Roster '%s' is already on its way.",
 }
 Share.TEXT = TEXT
@@ -197,11 +198,11 @@ local function store(sender, short, text)
         return
     end
     local base, full = storedName(name, short)
-    -- the same people in the same slots as your active layout: no copy and no switch; only opened again when you
-    -- have another layout open with nothing unsaved
+    -- the same people in the same slots as your active layout: no copy and no switch; only opened again when another
+    -- layout or an Unsaved layout is open, with no unsaved edits to a saved one
     if isActive(slots) then
         local id = Groups:Active()
-        if Groups:Selected() ~= id and not Groups:HasUnsaved() then
+        if Groups:Selected() ~= id and not Groups:HasUnsavedEdits() then
             Groups:Select(id)
             CRT:Print(string.format(TEXT.received, base, short))
         end
@@ -212,14 +213,13 @@ local function store(sender, short, text)
         CRT:Print(string.format(TEXT.received, base, short))
         return
     end
+    -- not opened: a saved layout is open with unsaved edits (Groups:HasUnsavedEdits)
     local open = Groups:Find(Groups:Selected())
     if open and open.id == id then
         -- the edits are on this copy: picking it in Quick Load would throw them away, so it isn't suggested
         CRT:Print(string.format(TEXT.receivedOwn, base, short))
-    elseif open then
-        CRT:Print(string.format(TEXT.receivedKept, base, short, open.name))
     else
-        CRT:Print(string.format(TEXT.receivedDraft, base, short))
+        CRT:Print(string.format(TEXT.receivedKept, base, short, open and open.name or ""))
     end
 end
 

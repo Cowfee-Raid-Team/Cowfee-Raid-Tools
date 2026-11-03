@@ -20,7 +20,8 @@ local ADDON, CRT = ...
 --   window = note window settings, alert = personal alert settings, trustedOnly
 --   history[id] = the note's earlier texts, newest first (see "History" below)
 --   links[id] = which timer lines follow which assignment line, for the note editor (Notes/Links.lua)
--- A note's invite list becomes a Raid Groups layout when it is imported (presetId links them).
+-- A note's invite list becomes a Raid Groups layout when you import it yourself (presetId links them); a note shared
+-- to you makes none, as the sender's roster comes with the share (Groups/Share.lua).
 
 local TEXT = {
     notAdmin = "Only the raid leader or assistants can change the raid note.",
@@ -678,12 +679,14 @@ function Notes:Import(text, from, personal, source, via, anyText, asNew)
     record.via = via or record.via
     db.list[id] = record
 
-    -- The invite list becomes a Raid Groups layout the first time, which can then be adjusted there.
+    -- The invite list becomes a Raid Groups layout the first time, which can then be adjusted there; only for a note
+    -- you paste or import yourself. A note shared to you (from set) makes none: the sender's roster comes with the
+    -- share (Groups/Share.lua), so one share never makes two look-alike layouts (Alex, 2026-11-02).
     local message = "Imported " .. record.name .. (record.difficulty and (" (" .. record.difficulty .. ")") or "") .. "."
     if plain then
         message = "Saved as a new note: " .. record.name .. "."
     end
-    if note.invite and not (record.presetId and CRT.Groups and CRT.Groups:Find(record.presetId)) then
+    if note.invite and not from and not (record.presetId and CRT.Groups and CRT.Groups:Find(record.presetId)) then
         local presetId = rosterFromInvite(note, record.name .. " " .. (record.difficulty or "") .. " roster")
         if presetId then
             record.presetId = presetId

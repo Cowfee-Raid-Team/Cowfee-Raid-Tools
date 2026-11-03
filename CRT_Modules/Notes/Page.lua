@@ -733,8 +733,13 @@ local function buildNotes(pf)
     roster:SetPoint("TOPLEFT", active, "BOTTOMLEFT", 0, -4)
     roster:SetScript("OnClick", function()
         local record = selected and Notes:Get(selected)
-        if record and record.presetId and CRT.Groups:Find(record.presetId) then
-            CRT.Groups:Select(record.presetId)
+        -- a note shared to you has no layout of its own (Notes:Import): its roster is your active one, the share's
+        local id = record and record.presetId
+        if not (id and CRT.Groups:Find(id)) then
+            id = record and record.from and CRT.Groups.Active and CRT.Groups:Active() or nil
+        end
+        if id and CRT.Groups:Find(id) then
+            CRT.Groups:Select(id)
             UI:Show("groups")
         else
             CRT:Print("This note has no invite list, so there is no roster for it.")

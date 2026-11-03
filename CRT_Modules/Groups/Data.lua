@@ -540,19 +540,15 @@ function Groups:Selected()
     return nil
 end
 
--- Whether the grid holds changes no layout has: edits to the open layout not saved yet (Groups.dirty, or a grid
--- that no longer matches it, as after a /reload with Keep changes off), or names in a grid with no layout open.
-function Groups:HasUnsaved()
+-- Whether the open saved layout has edits not saved yet: Groups.dirty, or a grid that no longer matches it (as after
+-- a /reload with Keep changes off). A grid with no layout open (Unsaved layout) is a draft, not edits: false. A
+-- roster sent with a note (Groups:StoreFrom) replaces a draft but keeps edits (Alex, 2026-11-02).
+function Groups:HasUnsavedEdits()
     local preset = self:Find(self:Selected())
-    local w = self:Working()
     if not preset then
-        for i = 1, NUM_SLOTS do
-            if w[i] ~= "" then
-                return true
-            end
-        end
         return false
     end
+    local w = self:Working()
     if self.dirty then
         return true
     end
@@ -612,13 +608,13 @@ end
 
 -- A layout the leader or an assistant sent with a note (Groups/Share.lua): one per sender, found by its from (their
 -- Name-Realm, a field only these layouts have), its name and slots replaced by each new one, and made the active
--- layout. It is also opened in the Raid Groups grid, unless the grid holds unsaved changes (Groups:HasUnsaved), which
--- are kept. It can be edited like any other until the next one replaces it. The player's own layouts are never
--- touched. Returns its id, and whether it was opened.
+-- layout. It is also opened in the Raid Groups grid, replacing an Unsaved layout, unless the open saved layout has
+-- unsaved edits (Groups:HasUnsavedEdits), which are kept. It can be edited like any other until the next one replaces
+-- it. The player's own layouts are never touched. Returns its id, and whether it was opened.
 Groups.FROM_NAME_MAX = 80 -- a received layout's name, "(from <sender>)" included
 function Groups:StoreFrom(from, name, slots)
     local g = gdb()
-    local keep = self:HasUnsaved() -- asked before the slots change, as the open layout may be this one
+    local keep = self:HasUnsavedEdits() -- asked before the slots change, as the open layout may be this one
     local lower = from:lower()
     local preset
     for _, p in ipairs(g.presets) do
