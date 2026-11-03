@@ -60,7 +60,7 @@ local CRT = { db = { groups = { presets = {}, nextId = 1, keepChanges = false, s
 function CRT:Print(m) print("  [chat] " .. m) end
 local pages = {}
 CRT.UI = { SkinScrollBar = function() end, SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title) local m = mock("help") rawset(m, "helpTitle", title) groupHelps[#groupHelps + 1] = m return m end, RegisterPage = function(_, k, t, fn) pages[k] = fn end,
-  PanelButtonWidth = function(w) return w + 28 end, ContextMenu = function(owner, fill) menus[#menus + 1] = { owner = owner, fill = fill } end }
+  PanelButtonWidth = function(w) return w + 28 end, ContextMenu = function(owner, fill) local m = { owner = owner, fill = fill, Close = function(self) self.closed = true end } menus[#menus + 1] = m return m end }
 CRT_THEME(CRT, CRT.UI)
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
 assert(load(applySrc, "Apply.lua"))("CowfeeRaidTools", CRT)
@@ -226,6 +226,46 @@ do
   tip = {}
   mine.OnEnter(mine)
   check(#tip == 0, "your own layout: no tooltip")
+  G:Delete(id)
+end
+
+-- A roster that opens in the grid while the name picker, a slot menu or a drag is open on your layout: they close,
+-- and nothing from them lands on the roster.
+do
+  local mineId = CRT.db.groups.selected
+  G:Select(mineId) -- nothing unsaved, so the roster will open
+  local mineSlots = {}
+  for i = 1, 40 do mineSlots[i] = G:Working()[i] end
+  gridRef.slots[2].OnClick(gridRef.slots[2], "LeftButton")
+  local picker
+  for _, f in ipairs(frames) do if rawget(f, "slotIndex") == 2 then picker = f end end
+  check(picker and picker.shown, "the name picker is open on slot 2")
+  local items = openMenu(6)
+  local menu = menus[1]
+  check(items and items[3].label == "Clear slot", "and slot 6's menu")
+  gridRef.slots[1].OnDragStart(gridRef.slots[1])
+  local id, opened = G:StoreFrom("Kip-Area52", "Heroic (from Kip)", { "Kip-Area52", "Zed-Area52", "", "", "", "Abu-KelThuzad" })
+  check(opened and CRT.db.groups.selected == id, "the roster opened in the grid")
+  check(not picker.shown, "the name picker closed")
+  check(menu.closed == true, "the slot menu closed")
+  picker.edit:SetText("Balevolence")
+  picker.edit.OnEnterPressed(picker.edit)
+  items[3].fn()
+  for _, b in ipairs(gridRef.slots) do rawset(b, "over", b.index == 3) end
+  gridRef.slots[1].OnDragStop(gridRef.slots[1])
+  for _, b in ipairs(gridRef.slots) do rawset(b, "over", false) end
+  local w2 = G:Working()
+  check(w2[2] == "Zed-Area52" and w2[6] == "Abu-KelThuzad" and w2[1] == "Kip-Area52" and w2[3] == "",
+    "no pick, clear or drag from them landed on the roster: " .. table.concat({ w2[1], w2[2], w2[3], w2[6] }, ","))
+  local same = true
+  for i = 1, 40 do if (G:Find(mineId).slots[i] or "") ~= mineSlots[i] then same = false end end
+  check(same, "and your layout is unchanged")
+  -- on your own layout's grid the picker still works
+  G:Select(mineId)
+  gridRef.slots[3].OnClick(gridRef.slots[3], "LeftButton")
+  picker.edit:SetText("Balevolence")
+  picker.edit.OnEnterPressed(picker.edit)
+  check(G:Working()[3] == "Balevolence-Area52", "the picker fills a slot on the open grid: " .. tostring(G:Working()[3]))
   G:Delete(id)
 end
 if fails > 0 then error(fails .. " groups invite checks failed") end

@@ -1773,7 +1773,7 @@ do
   local shares, pushes = {}, 0
   local comm = { Share = CRT.NoteComm.Share, CanShare = CRT.NoteComm.CanShare }
   CRT.NoteComm.CanShare = function() return true end
-  CRT.NoteComm.Share = function(_, nid) shares[#shares + 1] = nid end
+  CRT.NoteComm.Share = function(_, nid) shares[#shares + 1] = nid return true end -- started, so the roster follows
   local result = { true, "Roster 'Main' sent." }
   CRT.RosterShare = { Push = function()
     pushes = pushes + 1

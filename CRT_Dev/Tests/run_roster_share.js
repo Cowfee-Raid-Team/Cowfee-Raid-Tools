@@ -71,8 +71,8 @@ assert(load(shareSrc, "Share.lua"))("CowfeeRaidTools", CRT)
 assert(load(lateSrc, "Late/Data.lua"))("CowfeeRaidTools", CRT)
 local Groups, Share = CRT.Groups, CRT.RosterShare
 check(Share ~= nil, "CRT.RosterShare is made")
-local fired = 0
-Groups:OnChange(function() fired = fired + 1 end)
+local fired, firedSelected = 0, nil -- the page's listener: how often told, and the open layout when last told
+Groups:OnChange(function() fired = fired + 1 firedSelected = CRT.db.groups.selected end)
 
 -- the prefix
 eq(Share.PREFIX, "CRTRoster1", "prefix: CRTRoster1")
@@ -153,6 +153,20 @@ grouped, raid = true, true
 check(#sent == before, "throttled, then dropped: nothing went")
 ok = Share:Push()
 check(ok and #sent > before, "dropped after a wait: the next push sends it")
+-- the same roster still waiting in the send queue (throttled): not queued twice; once it has gone, it goes again
+mainSlots[2] = "Queued-Sargeras"
+local queuedParts = #Share.Pack("Main; Mythic", mainSlots)
+before = #sent
+results = { 3 }
+ok = Share:Push()
+check(ok and #sent == before, "queued: waiting on the throttle")
+ok, line = Share:Push()
+check(ok, "queued: a second share while it waits")
+eq(line, "Roster 'Main; Mythic' is already on its way.", "queued: the status line")
+runTimers()
+eq(#sent - before, queuedParts, "queued: it went once")
+before = #sent
+check(Share:Push() and #sent - before == queuedParts, "gone: the next share sends it again")
 mainSlots[2] = slots[2]
 check(Share:Push(), "back to the first slots: sent")
 
@@ -238,9 +252,10 @@ check(own and own.name == "My alts" and own.slots[1] == "Alt-Sargeras" and own.f
 
 -- the raider opens their own layout again; the same roster shared again opens it again, with no second copy
 Groups:Select(ownId)
-local pAgain = #printed
+local pAgain, fAgain = #printed, fired
 deliver(firstSent, "Solex-Sargeras")
 eq(gdb().selected, got.id, "shared again: opened again")
+check(fired > fAgain and firedSelected == got.id, "shared again: the page told, with the roster open")
 eq(Groups:Active(), got.id, "shared again: still active")
 eq(count(), 2, "shared again: no second copy")
 eq(#printed, pAgain + 1, "shared again: one chat line")
@@ -282,8 +297,21 @@ gdb().selected = nil
 Groups:SetActive(ownId)
 deliver(firstSent, "Solex-Sargeras")
 check(Groups:Active() == got.id and gdb().selected == nil and Groups:Working()[2] == "Draft-Sargeras", "unsaved layout: kept")
-eq(printed[#printed], "Roster 'Main; Mythic' from Solex is now your active group. Your unsaved grid is kept; pick the roster in Quick Load to see it.", "unsaved layout: the chat line")
+eq(printed[#printed], "Roster 'Main; Mythic' from Solex is now your active group. Your unsaved layout is kept; pick the roster in Quick Load to see it.", "unsaved layout: the chat line")
+-- unsaved edits on the received copy itself: kept, and the chat line doesn't send them to Quick Load
+Groups:Select(got.id)
+Groups:SetSlot(3, "Mine2-Sargeras")
+Groups:SetActive(ownId)
+local otherSlots = {}
+for i = 1, 40 do otherSlots[i] = slots[i] end
+otherSlots[4] = "Other-Sargeras"
+deliver(Share.Pack("Main; Mythic", otherSlots), "Solex-Sargeras")
+check(Groups:Active() == got.id and gdb().selected == got.id and Groups:Working()[3] == "Mine2-Sargeras", "unsaved on the copy: edits kept")
+eq(got.slots[4], "Other-Sargeras", "unsaved on the copy: the copy has the new slots")
+eq(printed[#printed], "Roster 'Main; Mythic' from Solex is now your active group. Your unsaved changes on it are kept.", "unsaved on the copy: the chat line")
+Groups:Select(got.id)
 -- an empty grid with no layout open has nothing to keep: the roster opens
+gdb().selected = nil
 Groups:ReplaceWorking({})
 Groups:SetActive(ownId)
 deliver(firstSent, "Solex-Sargeras")

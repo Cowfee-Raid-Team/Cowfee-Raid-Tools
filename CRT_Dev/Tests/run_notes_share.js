@@ -69,6 +69,10 @@ local CRT = {
   NoteWindow = { FONTS = { { name = "Friz Quadrata" } }, flashes = 0, Flash = function(self) self.flashes = self.flashes + 1 end },
   Groups = { Find = function() return nil end },
 }
+-- one other addon's note to send to (CRT_Core/Integrations/NoteTargets.lua), never in the All list here
+local targetShares = {}
+CRT.NoteTargets = { List = function() return {} end, Get = function(_, k) if k == "other" then return { key = "other" } end end,
+  Share = function(_, k) targetShares[#targetShares + 1] = k end }
 function CRT:Print(m) printed[#printed + 1] = m end
 CRT_THEME(CRT, CRT.UI)
 assert(load(parseSrc, "Parse.lua"))("CowfeeRaidTools", CRT)
@@ -392,6 +396,38 @@ do
   assert(pushes == 4 and #sent > before, "Send my roster off: the note goes, no roster")
   assert(lastPrint():find("Shared Sentinels with the group", 1, true), "off: no roster line: " .. lastPrint())
   CRT.db.notes.pushRoster = nil
+  -- the roster follows only a note CRT's own sharing started (NoteComm:Share returns true)
+  answer = { true, "Roster 'Main' sent." }
+  assert(Comm:Share(sentinels) == true, "a started share returns true")
+  leader = false
+  local p0 = #printed
+  assert(Comm:Share(sentinels) == false, "a refused share returns false")
+  shareButton.OnClick(shareButton)
+  assert(pushes == 4, "not the leader or an assistant: no roster")
+  assert(#printed == p0 + 2 and lastPrint():find("wasn't sent to the group", 1, true), "not lead: one line, the reason: " .. lastPrint())
+  leader = true
+  -- a share still running: no roster and no sent line
+  local realSend, realAfter, later = C_ChatInfo.SendAddonMessage, C_Timer.After, nil
+  C_ChatInfo.SendAddonMessage = function(_, _, ch) sent[#sent + 1] = ch return 3 end -- throttled: it waits
+  C_Timer.After = function(_, fn) later = fn end
+  shareButton.OnClick(shareButton)
+  assert(pushes == 5, "a share that started, though throttled: the roster follows")
+  p0 = #printed
+  shareButton.OnClick(shareButton)
+  assert(pushes == 5, "a share already running: no roster")
+  assert(#printed == p0 + 1 and lastPrint():find("already being shared", 1, true), "running: one line, no sent line: " .. lastPrint())
+  C_ChatInfo.SendAddonMessage, C_Timer.After = realSend, realAfter
+  if later then later() end
+  assert(Comm:CanShare(), "the running share finished")
+  -- Send to another addon only: its note goes, no CRT roster
+  CRT.db.notes.shareTarget = "other"
+  shareButton.OnClick(shareButton)
+  assert(pushes == 5 and targetShares[#targetShares] == "other", "another addon only: no roster")
+  -- All available: CRT's note goes, so the roster follows it
+  CRT.db.notes.shareTarget = "all"
+  shareButton.OnClick(shareButton)
+  assert(pushes == 6, "All available: the roster follows CRT's note")
+  CRT.db.notes.shareTarget = nil
   CRT.RosterShare = nil
   inRaid, leader = false, false
 end
