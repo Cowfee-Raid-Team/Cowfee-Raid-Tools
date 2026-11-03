@@ -414,10 +414,11 @@ do
   print("ok copy to mythic keeps all")
 
   local before = #CRT.db.timeline.references
+  local had = R:OwnFor(R.Parse((R.CopyTo(nek, "nh")))) -- the name-only Nek'zali copy saved above, when it is still there
   local k1, k2 = R:Add((R.CopyTo(nek, "nh"))), R:Add((R.CopyTo(nek, "nh")))
-  assert(k1 and k2 and k1 ~= k2 and #CRT.db.timeline.references == before + 2, "copy twice makes two")
-  R:Delete(k1) R:Delete(k2)
-  print("ok copy twice makes two")
+  assert(k1 and k2 and k1 == k2 and #CRT.db.timeline.references == before + (had and 0 or 1), "copy twice keeps one copy")
+  R:Delete(k1)
+  print("ok copy twice keeps one copy")
 
   assert(R.MythicOnly({ types = { "mythic", "soak" } }) == true and R.MythicOnly({ types = { "heroic", "raid" } }) == false
     and R.MythicOnly(nil) == false and R.MythicOnly({}) == false, "mythic only")
@@ -569,11 +570,12 @@ do
 
   -- Delete all my copies for a boss leaves the shipped references (and other bosses' copies) alone.
   local other = R:Add("Boss: Someone Else\\nX: 0:10")
-  R:Add(NEKZALI)
+  assert(R:Add(NEKZALI) == own, "delete all: a second Add saves into your copy")
+  R:Add((R.CopyTo(NEKZALI, "nh")))
   R:SetRemoved(shippedEntry, true)
   local before2 = fired
   local count = R:DeleteOwn(nil, NAME)
-  assert(count == 2, "delete all: two copies deleted, got " .. tostring(count))
+  assert(count == 2, "delete all: both copies deleted (Mythic and Normal/Heroic), got " .. tostring(count))
   assert(fired == before2 + 1, "delete all: one redraw")
   local left = R:List(true)
   assert(#left == 2, "delete all: the other boss's copy and the shipped one are left")
@@ -631,6 +633,88 @@ do
   assert(R.ChoiceKey(moved) == ka, "choice key: the same block in another list place keeps its key")
   assert(R.ChoiceKey({ own = true, key = "own:3", ref = ea.ref, text = a }) == "own:3", "choice key: yours by its own key")
   print("ok the In use key keeps same-header shipped blocks apart")
+end
+do
+  -- one copy of yours per boss and difficulty group: Add saves into the copy you have
+  CRT.db.timeline.references = {}
+  CRT.db.timeline.nextRef = 1
+  CRT.TimelineDB = nil
+  local now = 100
+  time = function() return now end
+  local M = "Boss: Kix\\nDifficulty: Mythic\\nEncounter: 3001\\nA: 0:10"
+  local k1, r1 = R:Add(M)
+  assert(k1 == "own:1" and r1 == false, "one copy: the first Add makes a copy: " .. tostring(k1) .. " " .. tostring(r1))
+  now = 200
+  local f = fired
+  local k2, r2 = R:Add(M .. "\\nB: 0:20")
+  local list = CRT.db.timeline.references
+  assert(k2 == k1 and r2 == true and #list == 1 and list[1].text:find("B: 0:20", 1, true) and list[1].saved == 200 and fired == f + 1,
+    "one copy: an Add for the same boss and group saves into your copy: " .. tostring(k2) .. " " .. #list)
+  now = 300
+  R:Add(M .. "\\nB: 0:20")
+  assert(list[1].saved == 200, "one copy: an Add with no change keeps the date")
+  local kh = R:Add("Boss: Kix\\nDifficulty: Heroic\\nEncounter: 3001\\nA: 0:10")
+  assert(kh ~= k1 and #list == 2, "one copy: Mythic and Heroic stay separate")
+  local kn, rn = R:Add("Boss: Kix\\nDifficulty: Normal\\nEncounter: 3001\\nA: 0:30")
+  assert(kn == kh and rn == true and #list == 2 and R:Find(kh).ref.difficulty == "Normal", "one copy: Normal and Heroic share one copy")
+  local ko = R:Add("Boss: Other\\nDifficulty: Mythic\\nEncounter: 3002\\nA: 0:10")
+  assert(ko ~= k1 and #list == 3, "one copy: another boss adds")
+  local kid = R:Add("Boss: Kix\\nDifficulty: Mythic\\nEncounter: 3003\\nA: 0:10")
+  assert(kid ~= k1 and #list == 4, "one copy: another encounter ID with the same name is another boss")
+  local kname = R:Add("Boss: kix\\nDifficulty: Mythic\\nA: 0:40")
+  assert(kname == k1 and #list == 4, "one copy: a copy with no Encounter line matches by name")
+  local own = R:OwnFor(R.Parse(M))
+  assert(own == k1 and R:OwnFor(R.Parse("Boss: Nobody\\nA: 1")) == nil, "one copy: OwnFor finds your copy")
+  -- a phase move on a shipped block lands in your copy
+  CRT.TimelineDB = { references = { "Boss: Kix\\nDifficulty: Mythic\\nEncounter: 3001\\nPhase: P2 1:00\\nA: 0:10" } }
+  local mk, copied, replaced = R:MovePhase("ship:1", 1, 70)
+  assert(mk == k1 and copied == true and replaced == true and #list == 4 and R:Find(k1).text:find("(planned 1:00)", 1, true),
+    "one copy: a phase move on a shipped block lands in your copy: " .. tostring(mk))
+  CRT.TimelineDB = nil
+  time = nil
+  print("ok one copy of yours per boss and difficulty")
+end
+do
+  -- the duplicates saved before are folded once: the newest is kept, the rest set aside
+  local printed = {}
+  CRT.Print = function(_, m) printed[#printed + 1] = m end
+  local M = "Boss: Kix\\nDifficulty: Mythic\\nEncounter: 3001\\nA: 0:"
+  CRT.db.timeline.reviewRefs = { [3001] = { mythic = "own:1", nh = "own:5" }, [3002] = { mythic = "own:7" } }
+  CRT.db.timeline.droppedReferences = nil
+  local now = 5000
+  time = function() return now end
+  CRT.db.timeline.references = {
+    { id = 1, text = M .. "11", saved = 100 },
+    { id = 2, text = M .. "12", saved = 300 },
+    { id = 3, text = M .. "13", saved = 200 },
+    { id = 4, text = "broken" },
+    { id = 5, text = "Boss: Kix\\nDifficulty: Heroic\\nEncounter: 3001\\nA: 1" },
+    { id = 6, text = "Boss: Kix\\nDifficulty: Normal\\nEncounter: 3001\\nA: 2" },
+    { id = 7, text = "Boss: Other\\nDifficulty: Mythic\\nEncounter: 3002\\nA: 1" },
+    { id = 8, text = "Boss: Dated\\nA: 1", saved = 50 },
+    { id = 9, text = "Boss: Dated\\nA: 2" },
+    { id = 10, text = "broken too" },
+  }
+  CRT.db.timeline.nextRef = 11
+  local list = CRT.db.timeline.references
+  R:List()
+  local ids = {}
+  for _, r in ipairs(list) do ids[#ids + 1] = r.id end
+  assert(CRT.db.timeline.references == list and table.concat(ids, ",") == "2,4,6,7,8,10",
+    "fold: the newest copy per boss and group is kept, text that doesn't read stays: " .. table.concat(ids, ","))
+  local dropped = CRT.db.timeline.droppedReferences
+  assert(dropped and #dropped == 4 and dropped[1].id == 1 and dropped[1].text == M .. "11" and dropped[1].saved == 100 and dropped[1].dropped == 5000
+    and dropped[2].id == 3 and dropped[3].id == 5 and dropped[4].id == 9, "fold: the others go to droppedReferences, kept whole")
+  local picks = CRT.db.timeline.reviewRefs
+  assert(picks[3001].mythic == "own:2" and picks[3001].nh == "own:6" and picks[3002].mythic == "own:7", "fold: an In use pick of a folded copy moves to the kept one")
+  assert(#printed == 1 and printed[1]:find("4", 1, true), "fold: chat says how many once: " .. tostring(printed[1]))
+  R:List() R:Add(M .. "50")
+  assert(#printed == 1 and #CRT.db.timeline.droppedReferences == 4 and #list == 6, "fold: runs once")
+  CRT.Print = nil
+  time = nil
+  CRT.db.timeline.reviewRefs = nil
+  CRT.db.timeline.droppedReferences = nil
+  print("ok duplicate copies are folded once")
 end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }

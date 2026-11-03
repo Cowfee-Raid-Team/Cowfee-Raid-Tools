@@ -5,7 +5,9 @@ local ADDON, CRT = ...
 -- for each ability a Main type (which colors the row) and any other types (Also, shown as dots). The
 -- abilities scroll in a fixed-size window.
 --   Save as my copy     writes the text as your own copy (or updates it), so the Timeline shows the
---                       colors straight away; your copy is listed before the shipped one
+--                       colors straight away; your copy is listed before the shipped one. You have one
+--                       copy per boss and difficulty (Normal and Heroic share one): saving a shipped
+--                       entry replaces the copy you have, and the picker then shows that copy
 --   Export              the text, to paste to Claude and ship in the boss's file
 --   Delete my copy      drops your copy, so the shipped one shows again
 --   Manage ability timelines   every ability timeline of the picked boss: delete your copies (one or all), and
@@ -553,6 +555,24 @@ local function openManage()
     refreshManage()
 end
 
+-- Save as my copy of an entry (as Reference:List gives it): yours is updated; a shipped one goes into your
+-- copy for its boss and difficulty (Reference:Add: the one you have, else a new one). Returns the key that
+-- now holds the text and true when it replaced your copy; nil and the errors when it doesn't read.
+function Editor.SaveAsCopy(entry, text)
+    if entry.own then
+        local ok, errors = Reference:Update(entry.key, text)
+        if not ok then
+            return nil, errors
+        end
+        return entry.key, false
+    end
+    local key, more = Reference:Add(text)
+    if not key then
+        return nil, more
+    end
+    return key, more == true
+end
+
 local function onSave()
     local entry = entryKey and Reference:Find(entryKey)
     local text = currentText()
@@ -560,21 +580,14 @@ local function onSave()
         CRT:Print("Pick an ability timeline first.")
         return
     end
-    local ok, errors
-    if entry.own then
-        ok, errors = Reference:Update(entryKey, text)
-    else
-        ok, errors = Reference:Add(text)
-        if ok then
-            entryKey = ok
-        end
-    end
-    if not ok then
-        CRT:Print("Couldn't save: " .. table.concat(errors or {}, "; "))
+    local key, replaced = Editor.SaveAsCopy(entry, text)
+    if not key then
+        CRT:Print("Couldn't save: " .. table.concat(replaced or {}, "; "))
         return
     end
+    entryKey = key -- your copy, new or replaced, is the one the picker shows now
     baseText = text
-    CRT:Print("Saved your copy of the " .. (entry.ref.boss or "boss") .. " ability timeline.")
+    CRT:Print((replaced and "Replaced your copy of the " or "Saved your copy of the ") .. (entry.ref.boss or "boss") .. " ability timeline.")
     refresh()
 end
 

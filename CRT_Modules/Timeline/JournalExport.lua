@@ -25,6 +25,7 @@ local TEXT = {
         "# A Phase line with no time yet is the stage's start to fill in: Phase: P1.5 3:17 (Intermission: ...)",
     },
     saved = "Saved the abilities for %s. Add their times on the Timeline's Advanced tab.", -- /crt dev only
+    replaced = "Saved the abilities for %s: they replaced your copy. Add their times on the Timeline's Advanced tab.", -- /crt dev only
 }
 
 -- The Journal's icons that are reference types too: a dispellable debuff, a Heroic or a Mythic mechanic.
@@ -154,8 +155,9 @@ local function show(text, name)
         send = {
             label = TEXT.send,
             onClick = function(t)
-                if CRT.Timeline:SaveReferenceText(t) then
-                    CRT:Print(string.format(TEXT.saved, name))
+                local key, replaced = CRT.Timeline:SaveReferenceText(t)
+                if key then
+                    CRT:Print(string.format(replaced and TEXT.replaced or TEXT.saved, name))
                 end
             end,
         }

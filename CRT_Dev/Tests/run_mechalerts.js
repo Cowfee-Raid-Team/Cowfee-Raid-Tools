@@ -2662,8 +2662,14 @@ check("mech: the list follows the ability timeline", function()
   CRT.Bosses = setmetatable({ Get = function(_, id) if id == ENC then return { encounterID = ENC, name = "Test Boss",
     hidden = { "Timeline Hidden" } } end end }, { __index = library })
   journalRows[3] = { spellID = 999, name = "Third Thing", icon = "tex999" } -- in the Journal, not on the timeline
-  local normal = assert(Ref:Add("Boss: Test Boss\\nDifficulty: Normal\\nEncounter: 9001\\nLength: 3:00\\nPhase: P2 2:00\\n"
-    .. "Real Name: 0:20\\nExtra Add: 0:50\\nIgnored Thing: 1:00\\nTimeline Hidden: 1:10\\nMythic Bit (type mythic): 1:30\\nOther Spell: 2:00+30"))
+  -- a shipped Normal timeline beside your Heroic copy (you keep one copy for Normal and Heroic together)
+  CRT.TimelineDB = CRT.TimelineDB or {}
+  CRT.TimelineDB.references = CRT.TimelineDB.references or {}
+  local shipped = CRT.TimelineDB.references
+  shipped[#shipped + 1] = ("Boss: Test Boss\\nDifficulty: Normal\\nEncounter: 9001\\nLength: 3:00\\nPhase: P2 2:00\\n"
+    .. "Real Name: 0:20\\nExtra Add: 0:50\\nIgnored Thing: 1:00\\nTimeline Hidden: 1:10\\nMythic Bit (type mythic): 1:30\\nOther Spell: 2:00+30")
+  local normal = "ship:" .. #shipped
+  assert(Ref:Find(normal), "the shipped Normal timeline reads")
   T:SetIgnored(ENC, "Ignored Thing", true)
   local function names(f)
     local out = {}
@@ -2704,7 +2710,7 @@ check("mech: the list follows the ability timeline", function()
   assert(names(f) == "Real Name,Extra Add,Other Spell", "unticked, off the timeline: " .. names(f))
   dropdowns["Difficulty"].opts.set("mythic")
   T:SetIgnored(ENC, "Ignored Thing", false)
-  Ref:Delete(normal)
+  table.remove(shipped)
   journalRows[3] = nil
   CRT.Bosses = library
   reset()

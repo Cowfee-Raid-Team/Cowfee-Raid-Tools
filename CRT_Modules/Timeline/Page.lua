@@ -36,6 +36,7 @@ local TEXT = {
     noNote = "This boss has no encounter ID yet, so no raid note can be made for it.",
     made = "Made a raid note for %s. It is on Raid Notes.",
     phaseCopy = "Moved the phase line in an ability timeline of your own (shipped ability timelines never change). It is listed as yours.",
+    phaseReplace = "Moved the phase line in your copy of this ability timeline (shipped ability timelines never change). It replaced your copy's text.",
     rehearse = "Rehearse",
     importReminders = "Import reminders",
     importHelp = "Opens a window to paste an export of timed reminders. Each line for you becomes one of your own reminders on the Personal notes row, never a raid note line. It can't import during combat.",
@@ -402,19 +403,20 @@ local function buildReview(f)
         end,
         togglePull = togglePull,
         -- A phase line moved (or put back) on the timeline is written into the shown ability timeline. A
-        -- shipped one is never changed: the move makes one of your own, which is then shown (and picked
-        -- In use when another was picked there).
+        -- shipped one is never changed: the move goes into your copy for the boss and difficulty (a new
+        -- one, or the one you have, its text replaced), which is then shown (and picked In use when
+        -- another was picked there).
         movePhase = function(index, seconds)
             local entry = shownRef()
             if not entry then
                 return
             end
-            local key, copied = Reference:MovePhase(entry.key, index, seconds)
+            local key, copied, replaced = Reference:MovePhase(entry.key, index, seconds)
             if key and copied then
                 if Timeline:ChosenReference(selectedBoss, selectedGroup) then
                     Timeline:SetChosenReference(selectedBoss, selectedGroup, Reference.ChoiceKey(Reference:Find(key)))
                 end
-                CRT:Print(TEXT.phaseCopy)
+                CRT:Print(replaced and TEXT.phaseReplace or TEXT.phaseCopy)
             end
             refresh()
         end,
@@ -1082,16 +1084,17 @@ function Timeline:OpenReferenceText(text)
     end
 end
 
--- Saves text as one of your references at once and opens it on the Advanced tab, the boss and difficulty
--- it names picked (the Journal's Send to Timeline). Text that doesn't read yet goes in the box with what
--- is wrong. Without /crt dev the tab is hidden and nothing could manage the reference, so it saves nothing
--- and says so. Returns the new reference's key, or nil.
+-- Saves text as your copy at once (Reference:Add: into the copy you have for its boss and difficulty,
+-- else a new one) and opens it on the Advanced tab, the boss and difficulty it names picked (the Journal's
+-- Send to Timeline). Text that doesn't read yet goes in the box with what is wrong. Without /crt dev the
+-- tab is hidden and nothing could manage the reference, so it saves nothing and says so. Returns the
+-- copy's key and true when it replaced your copy, or nil.
 function Timeline:SaveReferenceText(text)
     if not Timeline.DevMode() then
         CRT:Print(TEXT.needsDev)
         return nil
     end
-    local key = Reference:Add(text)
+    local key, replaced = Reference:Add(text)
     local ref = key and Reference.Parse(text)
     if not ref then
         self:OpenReferenceText(text)
@@ -1109,7 +1112,7 @@ function Timeline:SaveReferenceText(text)
         refTab:Fill(text, key)
     end
     refresh()
-    return key
+    return key, replaced == true
 end
 
 local function build(pf)

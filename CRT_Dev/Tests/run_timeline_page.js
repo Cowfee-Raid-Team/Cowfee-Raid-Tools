@@ -949,14 +949,16 @@ do
   view.onPhaseMoved(1, 197)
   assert(not R:Find(key).text:find("planned", 1, true), "phase move: putting it back removes the planned note")
   R:Delete(key)
-  -- with the shipped one picked In use over one of yours, the copy is picked in its place
+  -- with the shipped one picked In use over one of yours, the move lands in your copy, which is picked in its place
   local other = R:Add("Boss: Nek'zali the Soulcoiler\\nDifficulty: Mythic\\nA: 0:10")
   T:SetChosenReference(3470, "mythic", R.ChoiceKey(R:Find("ship:1")))
   assert(view.pull.reference.length == 588, "phase move: the shipped one picked")
+  count, before = #CRT.db.timeline.references, #printed
   view.onPhaseMoved(1, 187)
-  local copy = "own:" .. (CRT.db.timeline.nextRef - 1)
-  assert(copy ~= other and T:ReferenceFor(3470, "mythic").key == copy and view.pull.reference.phases[1].t == 187, "phase move: the copy is picked in the shipped one's place, and shown")
-  R:Delete(copy) R:Delete(other)
+  assert(#CRT.db.timeline.references == count and T:ReferenceFor(3470, "mythic").key == other and view.pull.reference.phases[1].t == 187,
+    "phase move: the move lands in your copy, which is picked in the shipped one's place, and shown")
+  assert(table.concat(printed, "|", before + 1):find("replaced your copy", 1, true), "phase move: says your copy was replaced")
+  R:Delete(other)
   T:SetChosenReference(3470, "mythic", nil)
 end
 print("ok a moved phase line is saved into the reference")
@@ -1055,6 +1057,13 @@ do
   paste:SetText("Boss: Nek'zali the Soulcoiler\\nPhase: P2 2:53 (planned 3:03)\\nSmash: 0:10")
   btn("Save").OnClick(btn("Save"))
   assert(R:Find(key).text:find("Phase: P2 2:53 (planned 3:03)", 1, true) and R:Find(key).text:find("Difficulty: Heroic", 1, true), "save stamps the difficulty: phase lines kept")
+  -- Save with nothing open, for a boss and difficulty you have a copy of, saves into that copy
+  btn("Clear").OnClick(btn("Clear"))
+  local count = #CRT.db.timeline.references
+  paste:SetText("Boss: Nek'zali the Soulcoiler\\nSmash: 0:20")
+  btn("Save").OnClick(btn("Save"))
+  assert(#CRT.db.timeline.references == count and R:Find(key).text:find("Smash: 0:20", 1, true), "save with nothing open: your copy is replaced, none added")
+  assert(statusIs("Saved for Normal/Heroic, replaced your copy"), "save with nothing open: status " .. tostring((statusIs("Saved"))))
   R:Delete(key)
   btn("Clear").OnClick(btn("Clear"))
 end
@@ -1073,6 +1082,10 @@ do
   assert(statusIs("Copied to Normal/Heroic (2 Mythic-only rows left out)"), "copy to normal/heroic: status " .. tostring((statusIs("Copied"))))
   assert(not copyBtn("Copy to Mythic", "ship:1"), "copy to normal/heroic: no Copy to Mythic on a Mythic reference")
   local key = "own:" .. (CRT.db.timeline.nextRef - 1)
+  c = copyBtn("Copy to Normal/Heroic", "ship:1")
+  c.OnClick(c)
+  assert(#CRT.db.timeline.references == count + 1 and statusIs("Copied to Normal/Heroic, replaced your copy (2 Mythic-only rows left out)"),
+    "copy to normal/heroic again: your copy is replaced, none added: " .. tostring((statusIs("Copied"))))
   assert(labelText() == "Abilities " .. DOT .. " Mythic " .. DOT .. " 9:48", "copy to normal/heroic: not shown under Mythic")
   diffDD.opts.set("nh")
   assert(view.pull.reference == R:Find(key).ref and labelText():find("yours$"), "copy to normal/heroic: switching to Normal/Heroic shows it")
@@ -1541,13 +1554,15 @@ do
   bossDD.opts.set(3470)
   s = T:RehearsalSource()
   assert(s and s.group == "nh" and s.difficultyName == "Heroic", "source: a Heroic reference plays as Heroic")
+  -- Normal and Heroic share your one copy: each Add below saves into it
   local nkey = R:Add("Boss: Nek'zali the Soulcoiler\\nDifficulty: Normal\\nA: 0:10")
+  assert(nkey == key, "source: a Normal copy is your Heroic copy (one per Normal/Heroic)")
   T:SetChosenReference(3470, "nh", R.ChoiceKey(R:Find(nkey)))
   assert(T:RehearsalSource().difficultyName == "Normal", "source: a reference's own Difficulty line: " .. tostring(T:RehearsalSource().difficultyName))
   local bkey = R:Add("Boss: Nek'zali the Soulcoiler\\nA: 0:10")
-  T:SetChosenReference(3470, "nh", R.ChoiceKey(R:Find(bkey)))
+  assert(bkey == key, "source: a copy with no Difficulty line is your Normal/Heroic copy")
   assert(T:RehearsalSource().difficultyName == "Heroic", "source: a reference with no Difficulty line plays as its group")
-  R:Delete(nkey) R:Delete(bkey)
+  T:SetChosenReference(3470, "nh", "own:999")
   T:Fire()
   assert(T:RehearsalSource().base.reference == R:Find(key).ref, "a picked ability timeline that is deleted falls back to the first")
   T:SetChosenReference(3470, "nh", nil)
@@ -1710,6 +1725,11 @@ do
   assert(shown("Intermission: Ritual of Awakening") and not shown("P1.5  Intermission: Ritual of Awakening"), "a phase waiting for its start, as a heading by its name, not its number")
   assert(shown("no start yet") and shown("no times"), "says what still needs a time")
   assert(statusIs("Abilities"), "titled as the reference's abilities")
+  -- a second Send for the same boss and difficulty lands in your copy, its text replaced
+  local count = #CRT.db.timeline.references
+  local again, replaced = T:SaveReferenceText(text .. "\\nGrasping Depths:")
+  assert(again == key and replaced == true and #CRT.db.timeline.references == count and R:Find(key).text:find("Grasping Depths", 1, true),
+    "a second Send to Timeline replaces your copy: " .. tostring(again))
   -- text that doesn't read yet goes to the box instead
   assert(T:SaveReferenceText("Boss: X") == nil, "nothing saved when it doesn't read")
   R:Delete(key)

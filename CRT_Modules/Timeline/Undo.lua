@@ -78,7 +78,14 @@ local function live()
     end
     local tl = CRT.Timeline and CRT.Timeline:Settings()
     if tl then
-        tl.references = tl.references or {}
+        -- read through Reference when it is there: its first read folds duplicate copies of yours, so a
+        -- fold is never taken for a change on the Timeline (and never undone)
+        local R = CRT.TimelineReference
+        if R and R.Own then
+            R:Own()
+        else
+            tl.references = tl.references or {}
+        end
     end
     return { notes = db.notes.list, reminders = db.alerts.reminders, references = tl and tl.references,
         shifts = db.notes.personalShifts }
