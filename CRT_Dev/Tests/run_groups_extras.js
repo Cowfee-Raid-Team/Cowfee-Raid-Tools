@@ -210,12 +210,13 @@ end
 -- A roster sent with a note (Groups:StoreFrom): in the layouts list as active, and its tooltip says who from; your own
 -- layouts have no such tooltip.
 do
+  local mineId = CRT.db.groups.selected
   local id = G:StoreFrom("Kip-Area52", "Mythic (from Kip)", { "Abu-KelThuzad", "", "Solex-Area52" })
   check(G:Active() == id, "a received roster is the active layout")
   local mine, theirs
   for _, b in ipairs(buttons) do
     if rawget(b, "presetId") == id and b.shown then theirs = b end
-    if rawget(b, "presetId") == CRT.db.groups.selected and b.shown then mine = b end
+    if rawget(b, "presetId") == mineId and b.shown then mine = b end
   end
   check(theirs and theirs.text.text == "Mythic (from Kip)" and theirs.active.shown, "in the list, marked active")
   tip = {}

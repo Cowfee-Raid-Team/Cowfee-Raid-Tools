@@ -370,9 +370,32 @@ do
   shareButton.OnClick(shareButton)
   assert(#sent > before and sent[#sent] == "RAID" and Notes:Active() == sentinels, "Share to raid sends the selected note to the raid")
   assert(lastPrint():find("Shared Sentinels with the group", 1, true), "and says so: " .. lastPrint())
+  -- Send my roster on (the default): the active Raid Groups layout goes after the note on every share, changed or
+  -- not (CRT.RosterShare:Push), and the chat says how it went; off, the note goes alone
+  local pushes, notesAt = 0, {}
+  local answer = { true, "Roster 'Main' sent." }
+  CRT.RosterShare = { Push = function() pushes = pushes + 1 notesAt[pushes] = #sent return answer[1], answer[2] end }
+  before = #sent
+  shareButton.OnClick(shareButton)
+  assert(pushes == 1 and notesAt[1] > before, "Share to raid sends the roster after the note")
+  assert(lastPrint() == "Roster 'Main' sent.", "and says so in chat: " .. lastPrint())
+  shareButton.OnClick(shareButton)
+  assert(pushes == 2, "shared again: the roster goes again")
+  answer = { false, "Roster not sent: no Raid Groups layout is active." }
+  shareButton.OnClick(shareButton)
+  assert(pushes == 3 and lastPrint() == "Roster not sent: no Raid Groups layout is active.", "not sent: chat says why: " .. lastPrint())
+  local okShare, line = CRT.NotesPage.ShareNote(sentinels)
+  assert(pushes == 4 and okShare == false and line == answer[2], "ShareNote returns how the roster went, for the note editor")
+  CRT.db.notes.pushRoster = false
+  before = #sent
+  shareButton.OnClick(shareButton)
+  assert(pushes == 4 and #sent > before, "Send my roster off: the note goes, no roster")
+  assert(lastPrint():find("Shared Sentinels with the group", 1, true), "off: no roster line: " .. lastPrint())
+  CRT.db.notes.pushRoster = nil
+  CRT.RosterShare = nil
   inRaid, leader = false, false
 end
-print("ok Share to raid shares through the one share function")
+print("ok Share to raid shares through the one share function, and sends the roster with it")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const f of process.argv.slice(2, 8)) {
