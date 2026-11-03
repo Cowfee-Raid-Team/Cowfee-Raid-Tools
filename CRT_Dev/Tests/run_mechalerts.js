@@ -2879,6 +2879,14 @@ check("mech: hidden from the list for everyone, set in /crt dev", function()
 
   -- no bulk Hide all with no timer: abilities with no casts are never listed
   for _, it in ipairs(rightClick(f.rows[1]).items) do assert(it.text ~= "Hide all with no timer", "no bulk hide") end
+  -- the ability's labels: the Timeline's right-click menu (its Type, Also, icons and Export labels), without Make a Mech Alert
+  local filled
+  CRT.TimelineAbilityMenu = { Fill = function(root, boss, row, hideName, o)
+    filled = { boss = boss, row = row, hide = hideName, opts = o } root:CreateTitle(row.name) root:CreateButton("Set type") end }
+  local lm = rightClick(f.rows[1])
+  assert(filled and filled.boss == ENC and filled.row.name == "Real Name" and filled.hide == nil and filled.opts and filled.opts.noAlert, "the ability menu filled for the row's ability")
+  assert(lm.items[1].title == "Real Name" and pick(lm, "Set type") and pick(lm, "Hide from Mech Alerts for everyone"), "its labels, then Hide")
+  CRT.TimelineAbilityMenu = nil
   pick(rightClick(f.rows[2]), "Hide from Mech Alerts for everyone").fn()
   local list = T:MechHiddenNames(ENC)
   assert(#list == 1 and list[1] == "Other Spell" and CRT.db.dev.mechHidden[tostring(ENC)] == nil, "back to the shipped list: " .. table.concat(list, ","))

@@ -902,6 +902,73 @@ do
 end
 print("ok the ability menu marks the boss file's values")
 
+-- the ability menu's Also: a tick box per type but the main one, marked from the boss file, Clear for yours; picking a
+-- main type that is in Also takes it out; Export labels in dev mode only
+do
+  local function root()
+    local r = { items = {} }
+    local function add(kind, text, a, b) local el = { kind = kind, text = text, get = a, set = b, enabled = true, items = {} }
+      function el:SetEnabled(v) self.enabled = v end
+      function el:CreateRadio(t, x, y) local c = add("radio", t, x, y) table.insert(self.items, c) return c end
+      function el:CreateCheckbox(t, x, y) local c = add("check", t, x, y) table.insert(self.items, c) return c end
+      function el:CreateButton(t, fn) local c = add("button", t, fn) table.insert(self.items, c) return c end
+      function el:CreateTitle() end function el:CreateDivider() end
+      return el end
+    return add("root", "")
+  end
+  local function find(items, text) for _, el in ipairs(items) do if el.text:find(text, 1, true) then return el end end end
+  local function fill() local r = root() CRT.TimelineAbilityMenu.Fill(r, 3470, { name = "Soulcoil Rite", spellID = 1286873 }) return r end
+  local function list(t) return table.concat(t or {}, ",") end
+  local savedAbilities = CRT.Bosses.abilities[3470]
+  CRT.Bosses.abilities[3470] = { [1286873] = { also = { "dispel" } } }
+  local r = fill()
+  local also = find(r.items, "Also")
+  assert(also and also.kind == "button", "an Also submenu")
+  local order = {} for i, el in ipairs(r.items) do order[i] = el.text end
+  local iType, iAlso = 0, 0 for i, el in ipairs(r.items) do if el.text == "Set type" then iType = i elseif el == also then iAlso = i end end
+  assert(iAlso == iType + 1, "Also right after Set type: " .. table.concat(order, " | "))
+  assert(#also.items == #CRT.TimelineReference.TYPE_ORDER, "every type when there is no main one")
+  assert(find(also.items, "Dispel").text:find("(boss file)", 1, true) and find(also.items, "Dispel").get() == true, "the boss file's Also is marked and ticked")
+  assert(find(also.items, "Use the boss file's") == nil and find(also.items, "Clear") == nil, "no Clear with none of yours")
+  find(find(r.items, "Set type").items, "Soak").set()
+  r = fill() also = find(r.items, "Also")
+  assert(find(also.items, "Soak") == nil and #also.items == #CRT.TimelineReference.TYPE_ORDER - 1, "every type but the main one")
+  find(also.items, "Spread").set()
+  assert(list(T:OwnAbility(3470, 1286873).also) == "dispel,spread", "ticking adds to the shown ones: " .. list(T:OwnAbility(3470, 1286873).also))
+  r = fill() also = find(r.items, "Also")
+  assert(find(also.items, "Spread").get() == true, "ticked")
+  find(also.items, "Dispel").set()
+  assert(list(T:OwnAbility(3470, 1286873).also) == "spread", "unticking takes it out")
+  find(find(fill().items, "Set type").items, "Spread").set()
+  assert(T:Ability(3470, 1286873).type == "spread" and list(T:Ability(3470, 1286873).also) == "", "a main type picked from Also leaves Also")
+  r = fill() also = find(r.items, "Also")
+  local clear = find(also.items, "Use the boss file's")
+  assert(clear and clear.kind == "button", "back to the boss file's with yours set")
+  clear.get()
+  assert(T:OwnAbility(3470, 1286873).also == nil and list(T:Ability(3470, 1286873).also) == "dispel", "the boss file's again")
+  CRT.Bosses.abilities[3470] = nil
+  T:SetAbility(3470, 1286873, "also", { "raid" })
+  clear = find(find(fill().items, "Also").items, "Clear")
+  assert(clear and clear.kind == "button", "Clear with yours set and none in the boss file")
+  clear.get()
+  assert(T:OwnAbility(3470, 1286873).also == nil, "Clear drops yours")
+  -- Export labels: dev mode only, the boss's export
+  local exported = {}
+  CRT.AbilityLabelsDev = { ShowBoss = function(id) exported[#exported + 1] = id end }
+  r = fill()
+  local ex = find(r.items, "Export labels")
+  assert(ex, "Export labels in dev mode")
+  ex.get()
+  assert(exported[1] == 3470, "it exports the menu's boss")
+  setDev(false)
+  assert(find(fill().items, "Export labels") == nil, "no Export labels without /crt dev")
+  setDev(true)
+  CRT.AbilityLabelsDev = nil
+  T:ClearAbilities(3470)
+  CRT.Bosses.abilities[3470] = savedAbilities
+end
+print("ok the ability menu's Also and Export labels")
+
 -- Share note on the Review tab: makes the boss's raid note when it has none, then shares it
 do
   local function shareBtn() for _, b in ipairs(buttons) do if b.text == "Share note" then return b end end end

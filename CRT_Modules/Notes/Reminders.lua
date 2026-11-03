@@ -1373,10 +1373,12 @@ local function makeEdit(parent, x, y, width, onChange)
     return edit
 end
 
--- A row's right-click menu, only while /crt dev is open (developer builds) and only on an ability: hide it
--- from Mech Alerts for everyone or show it again. Saved on this computer until /crt dev mechhidden prints
--- the list for the boss file. Every change redraws the tab through the Timeline's listeners. Abilities
--- with no casts on the ability timeline are never listed, so they need no hiding.
+-- A row's right-click menu, only while /crt dev is open (developer builds) and only on an ability: the
+-- ability's labels, the Timeline's own right-click menu (CRT.TimelineAbilityMenu: Type, Also, icons, name,
+-- Export labels), so an ability is tagged in one place; then hide it from Mech Alerts for everyone or show it
+-- again. Saved on this computer until /crt dev mechhidden prints the list for the boss file. Every change
+-- redraws the tab through the Timeline's listeners. Abilities with no casts on the ability timeline are never
+-- listed, so they need no hiding.
 local function openRowMenu(owner, item)
     local T = CRT.Timeline
     local open = rawget(UI, "ContextMenu")
@@ -1386,7 +1388,13 @@ local function openRowMenu(owner, item)
         return
     end
     open(owner, function(root)
-        root:CreateTitle(ability.name)
+        local Menu = rawget(CRT, "TimelineAbilityMenu")
+        if Menu then
+            Menu.Fill(root, enc, ability, nil, { noAlert = true })
+            root:CreateDivider()
+        else
+            root:CreateTitle(ability.name)
+        end
         local hidden = T:MechHidden(enc, ability.name)
         root:CreateButton(hidden and TEXT.showMech or TEXT.hideMech, function()
             T:SetMechHidden(enc, ability.name, not hidden)
