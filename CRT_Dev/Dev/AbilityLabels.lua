@@ -117,13 +117,13 @@ local function listText(list)
 end
 
 -- One label as Lua: { type = "soak", also = { "spread" }, name = "Adds", row = true, tags = { "tank", "magic" } }.
--- An empty also is written only with no type, the one case it changes what shows (Timeline.LabelTypes).
+-- also only with a type (the boss file reads no also without one), and only when it lists a type.
 function Labels.EntryText(label)
     local parts = {}
     if label.type then
         parts[#parts + 1] = string.format("type = %q", label.type)
     end
-    if type(label.also) == "table" and (#label.also > 0 or not label.type) then
+    if type(label.also) == "table" and label.type and #label.also > 0 then
         parts[#parts + 1] = "also = " .. listText(label.also)
     end
     if label.name then

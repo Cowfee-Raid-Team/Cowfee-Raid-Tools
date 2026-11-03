@@ -13,8 +13,8 @@ local ADDON, CRT = ...
 --                  abilities = { [spellID] = { type = "soak", also = { "spread" }, name = "Adds", row = true,
 --                  tags = { "tank", "magic" } } }: by spell ID (a number), every field optional. type is an ability
 --                  type's key (Reference.TYPES in Timeline/Reference.lua) and colors the row and its alerts; also
---                  lists its further types (shown as dots, listed in the tooltip; the main type and doubles are left
---                  out); name shows instead of the Journal's; row = true gives the ability a row even with no time;
+--                  lists its further types, read only with a type (shown as dots, listed in the tooltip; the main
+--                  type and doubles are left out); name shows instead of the Journal's; row = true gives the ability a row even with no time;
 --                  tags are the Journal icons it shows (Reference.TAGS). A player's own labels win field by field
 --                  (Timeline:ApplyAbilities); /crt dev labels and the Timeline's Export labels export them in this
 --                  format. An entry, type, tag or field that doesn't read is left out, with a chat line in developer
@@ -409,7 +409,9 @@ local function readLabel(spellID, def, say)
             say(string.format("type %s of spell %d (not an ability type)", tostring(def.type), spellID))
         end
     end
-    if type(def.also) == "table" then
+    if def.also ~= nil and not label.type then
+        say(string.format("also of spell %d (no type to go with it)", spellID))
+    elseif type(def.also) == "table" then
         label.also = readAlso(spellID, def, label.type, say)
     elseif def.also ~= nil then
         say(string.format("also %s of spell %d (also is a list of types)", tostring(def.also), spellID))

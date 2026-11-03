@@ -87,6 +87,7 @@ B:Register({ encounterID = 3470, name = "Nek'zali the Soulcoiler", season = "sam
   [5004] = { tags = { "tank", "sparkly" } },
   ["5005"] = { type = "raid" },
   [5006] = { name = 42, row = "yes", type = "raid" },
+  [5010] = { also = { "spread" }, name = "No Main" },
 } })
 B:Register({ encounterID = 3445, name = "Entombed Sentinels", season = "sample" })
 B:Register({ encounterID = 3420, name = "Sszorak", season = "sample" })
@@ -101,6 +102,10 @@ local said = table.concat(printed, "\n")
 check("a developer build says what was left out", said:find("type nonsense of spell 5002", 1, true) ~= nil and said:find("also nonsense of spell 5003", 1, true) ~= nil
   and said:find("field also", 1, true) == nil
   and said:find("tag sparkly of spell 5004", 1, true) ~= nil and said:find("entry 5005", 1, true) ~= nil)
+check("also without a type is left out, and said", a[5010] and a[5010].also == nil and a[5010].name == "No Main"
+  and said:find("also of spell 5010 (no type to go with it)", 1, true) ~= nil)
+check("an export leaves out also without a type", D.EntryText({ also = { "spread" }, name = "X" }) == '{ name = "X" }'
+  and D.EntryText({ type = "soak", also = { "spread" } }) == '{ type = "soak", also = { "spread" } }')
 check("a name that isn't text and a row that isn't true are left out, and said", a[5006] and a[5006].type == "raid" and a[5006].name == nil and a[5006].row == nil
   and said:find("name 42 of spell 5006", 1, true) ~= nil and said:find("row yes of spell 5006", 1, true) ~= nil)
 check("a boss with no field has none", B:Abilities(3445) == nil and B:Abilities(9999) == nil)

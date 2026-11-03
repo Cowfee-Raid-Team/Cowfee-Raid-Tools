@@ -931,6 +931,13 @@ do
   local iType, iAlso = 0, 0 for i, el in ipairs(r.items) do if el.text == "Set type" then iType = i elseif el == also then iAlso = i end end
   assert(iAlso == iType + 1, "Also right after Set type: " .. table.concat(order, " | "))
   assert(also.enabled == false and #also.items == 0 and also.text:find("set a type first", 1, true), "no main type: Also is greyed and says why: " .. also.text)
+  -- an Also of yours with no main type can still be cleared: the submenu holds only Use the boss file's / Clear
+  T:SetAbility(3470, 1286873, "also", { "raid" })
+  also = find(fill().items, "Also")
+  assert(also.enabled ~= false and #also.items == 1 and also.items[1].kind == "button" and also.items[1].text == "Use the boss file's"
+    and also.text:find("set a type first", 1, true), "no main type, yours set: only the way back")
+  also.items[1].get()
+  assert(T:OwnAbility(3470, 1286873) == nil, "cleared")
   -- the main type from the row's own (an ability timeline's (type ...)): Also opens, without it
   also = find(fill({ "dodge", "raid" }).items, "Also")
   assert(also.enabled and find(also.items, "Dodge") == nil and #also.items == #CRT.TimelineReference.TYPE_ORDER - 1, "the row's main type: every type but it")

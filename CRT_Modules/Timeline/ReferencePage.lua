@@ -426,13 +426,22 @@ end
 -- The Also submenu: a tick box per type but the main one (the further types, dots on the row), the boss file's
 -- marked; ticking one sets yours to what shows with it added or taken out. Clear drops yours. The main type is the
 -- label's, else the row's own first (rowTypes: an ability timeline's (type ...)); with none, Also is greyed, as
--- Timeline.LabelTypes applies no Also without a main type.
+-- Timeline.LabelTypes applies no Also without a main type, unless an Also of yours is left: then it holds only Clear.
 local function fillAlso(root, boss, spellID, shipped, get, mine, rowTypes)
     local Timeline = CRT.Timeline
     local main = get("type") or (type(rowTypes) == "table" and rowTypes[1]) or nil
+    local function clearEntry(menu)
+        if type(mine("also")) == "table" then
+            menu:CreateButton(shipped.also and TEXT_MENU.alsoFile or TEXT_MENU.alsoClear, function()
+                Timeline:SetAbility(boss, spellID, "also", nil)
+            end)
+            return true
+        end
+    end
     if not (main and Reference.TYPES[main]) then
+        -- greyed, unless an Also of yours is left to clear
         local off = root:CreateButton(TEXT_MENU.also .. TEXT_MENU.alsoNeedsType)
-        if off and off.SetEnabled then
+        if not clearEntry(off) and off and off.SetEnabled then
             off:SetEnabled(false)
         end
         return
@@ -461,11 +470,7 @@ local function fillAlso(root, boss, spellID, shipped, get, mine, rowTypes)
             end)
         end
     end
-    if type(mine("also")) == "table" then
-        also:CreateButton(shipped.also and TEXT_MENU.alsoFile or TEXT_MENU.alsoClear, function()
-            Timeline:SetAbility(boss, spellID, "also", nil)
-        end)
-    end
+    clearEntry(also)
 end
 
 function AbilityMenu.Fill(root, boss, row, hideName, opts)
