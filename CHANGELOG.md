@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.4 (2026-11-03)
+
+- **One copy of your ability timeline per boss and difficulty:** edits you make on the Timeline now show everywhere, since there's only one copy to change. Normal and Heroic share a copy, Mythic has its own. On your first `/reload`, any extra copies are folded into the newest one and the older ones are kept aside in your saved data, and chat says how many.
+- **Saving over your copy keeps the old text:** Send to Timeline, Copy to Normal/Heroic and the Advanced tab's Save now update your existing copy and say so, and the text they replace is kept aside too.
+
 ## 1.3.2 (2026-11-02)
 
 - **Instantly release after wipe:** a new tick on Mech Alerts > Special, saved for each boss and the same on every difficulty. On a ticked boss, a wipe in a raid releases your spirit half a second later. It never releases after a kill, while a resurrection is on its way, or while you can resurrect yourself (a soulstone, Reincarnation). Off for every boss until you tick it.
