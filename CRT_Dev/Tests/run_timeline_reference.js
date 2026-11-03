@@ -667,7 +667,25 @@ do
   assert(own == k1 and R:OwnFor(R.Parse("Boss: Nobody\\nA: 1")) == nil, "one copy: OwnFor finds your copy")
   -- a phase move on a shipped block lands in your copy
   CRT.TimelineDB = { references = { "Boss: Kix\\nDifficulty: Mythic\\nEncounter: 3001\\nPhase: P2 1:00\\nA: 0:10" } }
+  -- the text Add writes over is kept in droppedReferences; the same text keeps nothing
+  CRT.db.timeline.droppedReferences = nil
+  now = 400
+  local was = R:Find(k1).text
+  local wasSaved = R:Find(k1).saved
+  R:Add(was)
+  assert(CRT.db.timeline.droppedReferences == nil or #CRT.db.timeline.droppedReferences == 0, "keep: an Add with the same text keeps nothing")
+  R:Add(was .. "\\nC: 0:50")
+  local kept = CRT.db.timeline.droppedReferences
+  assert(kept and #kept == 1 and kept[1].id == 1 and kept[1].text == was and kept[1].saved == wasSaved and kept[1].dropped == 400,
+    "keep: an Add over your copy keeps the old text in droppedReferences")
+  R:Update(k1, was .. "\\nC: 0:55")
+  assert(#kept == 1, "keep: an Update keeps nothing")
+  for i = 1, 205 do R:Add(was .. "\\nD: " .. i) end
+  assert(#kept == 200 and kept[200].text == was .. "\\nD: 204" and kept[1].text == was .. "\\nD: 5", "keep: the newest 200 are kept: " .. #kept)
+  R:Update(k1, was)
+  CRT.db.timeline.droppedReferences = nil
   local mk, copied, replaced = R:MovePhase("ship:1", 1, 70)
+  assert(CRT.db.timeline.droppedReferences and CRT.db.timeline.droppedReferences[1].text == was, "keep: a phase move on a shipped block keeps the copy it writes over")
   assert(mk == k1 and copied == true and replaced == true and #list == 4 and R:Find(k1).text:find("(planned 1:00)", 1, true),
     "one copy: a phase move on a shipped block lands in your copy: " .. tostring(mk))
   CRT.TimelineDB = nil
@@ -709,7 +727,8 @@ do
   assert(picks[3001].mythic == "own:2" and picks[3001].nh == "own:6" and picks[3002].mythic == "own:7", "fold: an In use pick of a folded copy moves to the kept one")
   assert(#printed == 1 and printed[1]:find("4", 1, true), "fold: chat says how many once: " .. tostring(printed[1]))
   R:List() R:Add(M .. "50")
-  assert(#printed == 1 and #CRT.db.timeline.droppedReferences == 4 and #list == 6, "fold: runs once")
+  local d = CRT.db.timeline.droppedReferences
+  assert(#printed == 1 and #d == 5 and d[5].id == 2 and d[5].text == M .. "12" and #list == 6, "fold: runs once (the Add after it keeps only the text it writes over)")
   CRT.Print = nil
   time = nil
   CRT.db.timeline.reviewRefs = nil

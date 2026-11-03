@@ -6,6 +6,8 @@ local ADDON, CRT = ...
 -- changed, from time(); optional, older copies have none). You keep one copy per boss and difficulty
 -- group ("mythic", or "nh": Normal and Heroic share one copy): Add saves into the copy you have
 -- (OwnFor), and older duplicates are folded once into timeline.droppedReferences (foldDuplicates).
+-- droppedReferences also keeps the text an Add writes over; it holds the newest 200 entries overall
+-- (DROPPED_MAX), the oldest dropped first.
 -- This file reads that text (Parse),
 -- keeps the player's own references (Add, Update, Delete) and answers which references exist and
 -- which belong to a boss (List, Find, ForBoss, BossKey). The text is one line per thing:
@@ -970,9 +972,23 @@ function Reference:OwnFor(ref)
     end
 end
 
+-- The text a copy of yours had before it was written over or folded away, kept in timeline.droppedReferences
+-- as { id, text, saved, dropped } so nothing is lost. Only the newest DROPPED_MAX are kept, the oldest go first.
+local DROPPED_MAX = 200
+local function keepDropped(db, r, now)
+    db.droppedReferences = db.droppedReferences or {}
+    local dropped = db.droppedReferences
+    dropped[#dropped + 1] = { id = r.id, text = r.text, saved = r.saved, dropped = now }
+    while #dropped > DROPPED_MAX do
+        table.remove(dropped, 1)
+    end
+end
+
 -- Saves text as your reference. When you already have a copy for its boss and group (OwnFor) the text
 -- goes into that copy, which keeps its key (so the In use pick and an open editor stay on it), and the
--- date changes only on a real change, as Update does. Returns the key and whether it replaced your
+-- date changes only on a real change, as Update does. Its old text is kept first (keepDropped), so a
+-- shipped block saved over your copy (a line edit on the Advanced tab, a phase move) loses nothing.
+-- Update, which saves your own copy in place, keeps nothing. Returns the key and whether it replaced your
 -- copy (true) or added one (false); nil and the errors when the text doesn't read (nothing is saved).
 function Reference:Add(text)
     local ref, errors = Reference.Parse(text)
@@ -982,6 +998,7 @@ function Reference:Add(text)
     local key, r = self:OwnFor(ref)
     if r then
         if r.text ~= text then
+            keepDropped(settings(), r, stamp())
             r.text = text
             r.saved = stamp()
         end
@@ -1036,12 +1053,10 @@ foldDuplicates = function(db)
         return
     end
     local kept, moved, now = {}, {}, stamp()
-    db.droppedReferences = db.droppedReferences or {}
     for _, r in ipairs(list) do
         local into = keptFor[r]
         if into then
-            local dropped = db.droppedReferences
-            dropped[#dropped + 1] = { id = r.id, text = r.text, saved = r.saved, dropped = now }
+            keepDropped(db, r, now)
             moved["own:" .. tostring(r.id)] = "own:" .. tostring(into.id)
         else
             kept[#kept + 1] = r

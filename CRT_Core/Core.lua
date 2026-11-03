@@ -389,8 +389,9 @@ local defaults = {
         -- the pop-out's view (its title strip's toggle): "abilities" (the ability timeline) or "healers" (Healer CDs)
         popView = "abilities",
         references = {}, -- the player's own reference timelines, { id, text, saved } (saved: time() of the last change, optional; Timeline/Reference.lua)
-        -- the extra copies folded away when references became one per boss and difficulty group, never read again:
-        -- { id, text, saved, dropped } (dropped: time() of the fold; Timeline/Reference.lua, foldDuplicates)
+        -- your ability timelines' old texts, never read again: the extra copies folded away when references became
+        -- one per boss and difficulty group, and the text a save wrote over (Reference:Add). { id, text, saved,
+        -- dropped } (dropped: time() it was set aside), the newest 200 kept (Timeline/Reference.lua, keepDropped)
         droppedReferences = {},
         nextRef = 1,
         nextId = 1,
