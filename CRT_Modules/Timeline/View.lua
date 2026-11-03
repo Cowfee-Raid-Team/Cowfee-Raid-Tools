@@ -4072,7 +4072,7 @@ function Methods:LabelMenu(l)
     end
     local name = Timeline.IgnoreName(lane)
     View.OpenMenu(l, function(root)
-        Menu.Fill(root, self.encounterID, { name = name, spellID = lane.spellID, tags = lane.tags }, name)
+        Menu.Fill(root, self.encounterID, { name = name, spellID = lane.spellID, tags = lane.tags, types = lane.types }, name)
     end)
 end
 
@@ -4541,8 +4541,9 @@ function Methods:Refresh(relayout)
             l.stripe:SetColorTexture(rgba("text", 0.04))
         end
         l.stripe:SetShown(tint and true or i % 2 == 0)
-        -- the extra types (after the first, which colors the row) as dots: types 2 up to MAX_DOTS + 1 in reading order, the leftmost dot being type 2
-        local extras = lane.kind == "reference" and lane.types or {}
+        -- the extra types (after the first, which colors the row) as dots: types 2 up to MAX_DOTS + 1 in reading order, the leftmost dot being type 2.
+        -- A reference row's own, or any row's from its ability label's Also (Timeline:ApplyAbilities)
+        local extras = lane.types or {}
         local dotCount = math.min(MAX_DOTS, math.max(0, #extras - 1))
         local Reference = CRT.TimelineReference
         for d = 1, MAX_DOTS do

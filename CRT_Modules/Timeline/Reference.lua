@@ -594,7 +594,7 @@ local function parseCached(text, keep)
 end
 
 -- Shipped references marked for removal (developer builds). The game can't change the addon's files,
--- so taking a shipped reference out is two steps: the Logged Timeline Ref window (Dev/ReferenceTypes.lua)
+-- so taking a shipped reference out is two steps: the Manage ability timelines window (Dev/ReferenceTypes.lua)
 -- marks it, which leaves it out of every list on this computer at once, saved as
 -- dev.removedReferences[RemovalKey] = { boss, encounterID, difficulty, header }; then /crt dev removed
 -- prints the marks to paste to Claude, who deletes those blocks from the boss files. Keep undoes a mark.

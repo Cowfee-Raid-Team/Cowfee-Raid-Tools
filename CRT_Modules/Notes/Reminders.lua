@@ -388,7 +388,7 @@ local function timelineRows(enc)
         if lane.kind == "reference" and type(lane.marks) == "table" and #lane.marks > 0 then
             local id = lane.spellID
             out[#out + 1] = { name = T.IgnoreName(lane), spellID = type(id) == "number" and id > 0 and id or nil, icon = lane.icon,
-                sectionID = lane.sectionID }
+                sectionID = lane.sectionID, tags = lane.tags, types = lane.types }
         end
     end
     return out
@@ -455,7 +455,7 @@ local function buildItems(enc)
     end
     for _, jrow in ipairs(journalRows(enc)) do
         if jrow.spellID and not listed[jrow.spellID] and not listed[lower(jrow.name)] then
-            add({ name = jrow.name, spellID = jrow.spellID, icon = jrow.icon, sectionID = jrow.sectionID }, true)
+            add({ name = jrow.name, spellID = jrow.spellID, icon = jrow.icon, sectionID = jrow.sectionID, tags = jrow.tags }, true)
         end
     end
     for _, e in ipairs(saved) do
@@ -1373,10 +1373,26 @@ local function makeEdit(parent, x, y, width, onChange)
     return edit
 end
 
--- A row's right-click menu, only while /crt dev is open (developer builds) and only on an ability: hide it
--- from Mech Alerts for everyone or show it again. Saved on this computer until /crt dev mechhidden prints
--- the list for the boss file. Every change redraws the tab through the Timeline's listeners. Abilities
--- with no casts on the ability timeline are never listed, so they need no hiding.
+-- The encounter ID a boss's ability labels are kept by (Timeline:SetAbility): the list's key when it is one, else
+-- the boss of that name in the boss library (Reference.BossID); nil when there is none.
+local function labelBoss(enc)
+    if type(enc) == "number" then
+        return enc
+    end
+    local Ref = CRT.TimelineReference
+    local ok, id = false, nil
+    if Ref and Ref.BossID then
+        ok, id = pcall(Ref.BossID, nil, enc)
+    end
+    return ok and type(id) == "number" and id or nil
+end
+
+-- A row's right-click menu, only while /crt dev is open (developer builds) and only on an ability: the
+-- ability's labels, the Timeline's own right-click menu (CRT.TimelineAbilityMenu: Type, Also, icons, name,
+-- Export labels), so an ability is tagged in one place; then hide it from Mech Alerts for everyone or show it
+-- again. Saved on this computer until /crt dev mechhidden prints the list for the boss file. Every change
+-- redraws the tab through the Timeline's listeners. Abilities with no casts on the ability timeline are never
+-- listed, so they need no hiding.
 local function openRowMenu(owner, item)
     local T = CRT.Timeline
     local open = rawget(UI, "ContextMenu")
@@ -1386,7 +1402,13 @@ local function openRowMenu(owner, item)
         return
     end
     open(owner, function(root)
-        root:CreateTitle(ability.name)
+        local Menu, boss = rawget(CRT, "TimelineAbilityMenu"), labelBoss(enc)
+        if Menu and boss then
+            Menu.Fill(root, boss, { name = ability.name, spellID = ability.spellID, tags = ability.tags, types = ability.types }, nil, { noAlert = true })
+            root:CreateDivider()
+        else
+            root:CreateTitle(ability.name)
+        end
         local hidden = T:MechHidden(enc, ability.name)
         root:CreateButton(hidden and TEXT.showMech or TEXT.hideMech, function()
             T:SetMechHidden(enc, ability.name, not hidden)
@@ -2333,6 +2355,7 @@ end
 
 CRT.NoteReminders = {
     Build = build,
+    LabelBoss = labelBoss, -- the encounter ID a boss's ability labels are kept by (tests)
     -- the header icon's hover frame (tests)
     IconHit = function()
         return panel.iconHit

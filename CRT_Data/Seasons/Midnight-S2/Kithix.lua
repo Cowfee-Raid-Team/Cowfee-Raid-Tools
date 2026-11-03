@@ -4,10 +4,10 @@ local ADDON, CRT = ...
 --
 -- encounterID 3513 comes from the boss's Warcraft Logs rankings link (boss=3513), not from a pull
 --             yet; /crt dev seasons ids checks it against the saved pulls.
--- references  The Mythic reference timeline, in the Timeline's text format (see Timeline/Database.lua
---             for the format), transcribed from two planner screenshots on 2026-10-19. The rows have
---             no types yet: Alex sets them in game with the Logged Timeline Ref tool on the Development
---             page, and its export replaces this block.
+-- references  The Mythic reference timeline, in the Timeline's text format (see Timeline/Database.lua for
+--             the format), transcribed from two planner screenshots on 2026-10-19. The rows have no types
+--             yet: Alex sets them in game as ability labels (right-click an ability on the Timeline: Type,
+--             Also, icons), and Export labels there gives the abilities field for this file.
 
 CRT.Bosses:Register({
     encounterID = 3513,

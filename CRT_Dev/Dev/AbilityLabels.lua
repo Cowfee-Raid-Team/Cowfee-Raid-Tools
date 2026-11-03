@@ -1,14 +1,19 @@
 local ADDON, CRT = ...
 
 -- DEVELOPER ONLY. /crt dev labels: the Ability labels window, to ship your own ability labels (the right-click
--- Type, Name, Row and icons of an ability, Timeline:SetAbility) in the boss files, many bosses at a time. A pop-out
+-- Type, Also, Name, Row and icons of an ability, Timeline:SetAbility) in the boss files, many bosses at a time. A pop-out
 -- (UI.Window: its place and size kept in CRTDB.dev.labelsWindow) with a tick box per boss of the route, under its
 -- raid's heading, "Ula'tek (16)" for 16 labels of yours; a boss with none is greyed out. All and None tick them.
 --   Export        one Lua block per ticked boss in the boss-file format (abilities = { ... }, Registry.lua's header),
 --                 under a comment naming the boss, its encounter ID and the day, in the copyable text window. Each
 --                 block is the boss file's labels with yours laid over them, so it replaces the boss's field whole.
+--                 What shows is what exports: an Also with no type of its own goes out with the ability timeline
+--                 row's main type, and one with no main type anywhere is left out.
 --   Clear my labels for ticked bosses   asks first, listing each label of yours that the boss file doesn't
 --                 have yet, then drops yours (Timeline:ClearAbilities), so you see what raiders see.
+-- The same export of one boss, Labels.ShowBoss(encounterID), is the Timeline's Export labels button (Review tab,
+-- Timeline/ReviewTab.lua) and the right-click menu's Export labels entry (Timeline/ReferencePage.lua's AbilityMenu),
+-- both shown only with /crt dev open.
 -- Which bosses are ticked lasts the session. This file never ships: its .toc line is inside the do-not-package block.
 
 local Labels = {}
@@ -18,7 +23,7 @@ local UI = CRT.UI
 
 local TEXT = {
     title = "Ability labels (dev)",
-    help = "Each boss with how many ability labels you set: the right-click Type, Name, Row and icons of an ability.\n\nExport writes a block per ticked boss to paste to Claude, who ships it in the boss's file. Players then see the labels too.\n\nOnce they ship, Clear my labels drops yours, so you see what raiders see.",
+    help = "Each boss with how many ability labels you set: the right-click Type, Also, Name, Row and icons of an ability.\n\nExport writes a block per ticked boss to paste to Claude, who ships it in the boss's file. Players then see the labels too.\n\nOnce they ship, Clear my labels drops yours, so you see what raiders see.",
     all = "All",
     none = "None",
     export = "Export",
@@ -35,6 +40,7 @@ local TEXT = {
     clearAccept = "Clear",
     cleared = "Cleared your ability labels for %s.",
     noBosses = "No bosses are loaded.",
+    noLabels = "%s has no ability labels yet. Right-click an ability to set one.",
     spell = "spell %d",
 }
 Labels.TEXT = TEXT
@@ -47,7 +53,7 @@ local LAYOUT = {
     listed = 12, -- labels named in Clear's question; the rest are counted
 }
 
-local FIELDS = { "type", "name", "row", "tags" }
+local FIELDS = { "type", "also", "name", "row", "tags" }
 
 local ticked = {} -- encounterID = true: the ticked bosses, this session only
 
@@ -103,11 +109,24 @@ function Labels.Ticked()
     return out
 end
 
--- One label as Lua: { type = "raid", name = "Adds", row = true, tags = { "tank", "magic" } }.
+-- A list of words as Lua: { "tank", "magic" }, or {} for none.
+local function listText(list)
+    local words = {}
+    for i, word in ipairs(list) do
+        words[i] = string.format("%q", word)
+    end
+    return #words > 0 and ("{ " .. table.concat(words, ", ") .. " }") or "{}"
+end
+
+-- One label as Lua: { type = "soak", also = { "spread" }, name = "Adds", row = true, tags = { "tank", "magic" } }.
+-- also only with a type (the boss file reads no also without one), and only when it lists a type.
 function Labels.EntryText(label)
     local parts = {}
     if label.type then
         parts[#parts + 1] = string.format("type = %q", label.type)
+    end
+    if type(label.also) == "table" and label.type and #label.also > 0 then
+        parts[#parts + 1] = "also = " .. listText(label.also)
     end
     if label.name then
         parts[#parts + 1] = string.format("name = %q", label.name)
@@ -116,11 +135,7 @@ function Labels.EntryText(label)
         parts[#parts + 1] = "row = true"
     end
     if type(label.tags) == "table" then
-        local tags = {}
-        for i, tag in ipairs(label.tags) do
-            tags[i] = string.format("%q", tag)
-        end
-        parts[#parts + 1] = #tags > 0 and ("tags = { " .. table.concat(tags, ", ") .. " }") or "tags = {}"
+        parts[#parts + 1] = "tags = " .. listText(label.tags)
     end
     return "{ " .. table.concat(parts, ", ") .. " }"
 end
@@ -134,8 +149,46 @@ local function sortedIDs(list)
     return ids
 end
 
+-- The main type an ability timeline row of the boss gives a spell (its first type), from the boss's ability
+-- timelines in the Timeline's order (yours first), or nil. A row is the spell's by its [spell], else by the Journal
+-- ability of its name (Lanes.RowSpell).
+local function rowMainType(encounterID, spellID)
+    local Reference, Lanes = CRT.TimelineReference, CRT.TimelineLanes
+    local def = CRT.Bosses:Get(encounterID)
+    local ok, entries = pcall(Reference.ForBoss, Reference, encounterID, def and def.name)
+    for _, entry in ipairs(ok and type(entries) == "table" and entries or {}) do
+        for _, row in ipairs(entry.ref and entry.ref.rows or {}) do
+            local id = row.spellID
+            if not (id and id ~= 0) and Lanes and Lanes.RowSpell and CRT.TimelineJournal then
+                local okS, s = pcall(Lanes.RowSpell, row, encounterID)
+                id = okS and s or nil
+            end
+            local main = id == spellID and type(row.types) == "table" and row.types[1]
+            if main and Reference.TYPES[main] then
+                return main
+            end
+        end
+    end
+    return nil
+end
+
+-- A label as it ships, what the Timeline shows: an Also with no type of its own takes the ability timeline row's
+-- main type (the boss file reads no Also without a type); with no main type anywhere, the Also stays out.
+local function shipped(encounterID, spellID, label)
+    if label.type or type(label.also) ~= "table" or #label.also == 0 then
+        return label
+    end
+    local out = {}
+    for k, v in pairs(label) do
+        out[k] = v
+    end
+    out.type = rowMainType(encounterID, spellID)
+    return out
+end
+
 -- A boss's block for its boss file: the boss file's labels with yours over them, as one abilities field, indented
--- to sit inside its Bosses:Register({ ... }). day: the date in its comment.
+-- to sit inside its Bosses:Register({ ... }), each as it shows (shipped). day: the date in its comment. A label with
+-- nothing left to write is left out.
 function Labels.Block(encounterID, day)
     local def = CRT.Bosses:Get(encounterID)
     local list = CRT.Timeline:Labels(encounterID)
@@ -144,7 +197,10 @@ function Labels.Block(encounterID, day)
         "    abilities = {",
     }
     for _, spellID in ipairs(sortedIDs(list)) do
-        lines[#lines + 1] = string.format("        [%d] = %s,", spellID, Labels.EntryText(list[spellID]))
+        local text = Labels.EntryText(shipped(encounterID, spellID, list[spellID]))
+        if text ~= "{  }" then
+            lines[#lines + 1] = string.format("        [%d] = %s,", spellID, text)
+        end
     end
     lines[#lines + 1] = "    },"
     return table.concat(lines, "\n")
@@ -314,13 +370,28 @@ Labels.Refresh = function()
     refresh()
 end
 
+-- The export of the bosses given, in the copyable text window.
+function Labels.Show(ids)
+    CRT.ConsumablesTools:ShowText(TEXT.exportTitle, Labels.Export(ids, date("%Y-%m-%d")))
+end
+
+-- One boss's export (the Timeline's Export labels), or a chat line when it has no labels.
+function Labels.ShowBoss(encounterID)
+    if next(CRT.Timeline:Labels(encounterID)) == nil then
+        local def = CRT.Bosses:Get(encounterID)
+        CRT:Print(string.format(TEXT.noLabels, def and def.name or tostring(encounterID)))
+        return
+    end
+    Labels.Show({ encounterID })
+end
+
 local function onExport()
     local ids = Labels.Ticked()
     if #ids == 0 then
         CRT:Print(TEXT.noneTicked)
         return
     end
-    CRT.ConsumablesTools:ShowText(TEXT.exportTitle, Labels.Export(ids, date("%Y-%m-%d")))
+    Labels.Show(ids)
 end
 
 local function onClear()

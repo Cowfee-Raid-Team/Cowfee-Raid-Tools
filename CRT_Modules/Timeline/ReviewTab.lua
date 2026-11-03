@@ -11,6 +11,9 @@ local ADDON, CRT = ...
 -- togglePull(pullID) and movePhase(index, seconds), plus bossOptions, orderOptions, order(), hasOrder(),
 -- shownLabel(), hasPull(), pullLabel, showingReference(), groups (the label of each difficulty group) and
 -- placeShare(wide) (puts the page's Share note on the second row or the third; true when it shows).
+-- With /crt dev open (Timeline.DevMode) in a developer build, Export labels shows the boss's ability labels in the
+-- boss-file format (CRT.AbilityLabelsDev.ShowBoss, Dev/AbilityLabels.lua): the one export of what the right-click
+-- menu tags.
 
 local Timeline = CRT.Timeline
 local View = CRT.TimelineView
@@ -30,6 +33,8 @@ local TEXT = {
     overlayPulls = "pulls",
     overlayTitle = "Deaths from recent pulls",
     overlayHelp = "With no pull picked on the right, draws the deaths of this boss's recent pulls on the ability timeline, faded by how old they are, so deaths that repeat stand out. Pick a pull on the right to see only that pull's deaths; click it again to go back to all of them. How many pulls it covers: the number, or Overlay pulls on the Settings tab.",
+    export = "Export labels",
+    exportHelp = "Developer only. Shows this boss's ability labels (the right-click Type, Also, icons, name and row) in the boss file's format. Copy it and paste it to Claude to ship them.",
 }
 
 -- The rows: the dropdowns and the label; the checkboxes (Import reminders, Rehearse, Pop out and Share note
@@ -44,6 +49,11 @@ local PILL_GAP = 4 -- between the pill and the words on each side of it
 -- the second row holds Share note too (Page.lua) from this width: the checkboxes end near 400, then
 -- Import reminders, Rehearse, Pop out and Share note with their (?) icons
 local WIDE_W = 930
+-- Export labels (dev): at the end of the first row at every width, its (?) in from the right edge; the ability
+-- timeline's label is cut shorter to leave room (for it, and Order when Order is on the first row), so no other
+-- control changes row. h: its height; dy: down from its row's top, to sit level with the dropdowns; gap: before
+-- it, from the label or Order's (?)
+local EXPORT = { h = 20, dy = 2, gap = 12 }
 
 local function settings()
     return Timeline:Settings()
@@ -100,6 +110,7 @@ function ReviewTab.Build(f, ctx)
     -- The ability timeline shown (Timeline:ReferenceFor picks it; the Advanced tab's In use picks
     -- another): read-only, where a Pull dropdown once was. The pulls are picked on Recent pulls.
     local LABEL_X, LABEL_MAX = 412, 220
+    local labelMax = LABEL_MAX -- less while Export labels needs the room (placeOrder)
     local shown = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     shown:SetPoint("TOPLEFT", f, "TOPLEFT", LABEL_X, -9)
     shown:SetWidth(LABEL_MAX)
@@ -120,7 +131,7 @@ function ReviewTab.Build(f, ctx)
     -- How far the label's text reaches, (?) included when it shows: where Order starts.
     local function labelEnd()
         local w = shown.GetStringWidth and shown:GetStringWidth() or nil
-        w = math.min(LABEL_MAX, type(w) == "number" and w > 0 and w or LABEL_MAX)
+        w = math.min(labelMax, type(w) == "number" and w > 0 and w or labelMax)
         local help = tab.unnamedHelp and tab.unnamedHelp:IsShown()
         return LABEL_X + w + (help and (UI.HELP_GAP + UI.HELP_SIZE) or 0) + 16
     end
@@ -138,15 +149,54 @@ function ReviewTab.Build(f, ctx)
     local orderHelp = UI.HelpRight(order, "Order", "The order your raid takes this boss's parts in, such as which turtle empowers first. Each part's abilities move to the time it now has. The choice is kept for this boss and difficulty.")
     local ORDER_W, NARROW_X = 40 + 5 + 140, 8
     ReviewTab.ORDER_W = ORDER_W
-    -- Order beside the label and Share note on the second row, or both on a third row; the timeline and
-    -- Recent pulls start under the last row shown.
+    local HELP_W = UI.HELP_GAP + UI.HELP_SIZE
+    -- Export labels, only in a build with the developer files (Dev/AbilityLabels.lua): as wide as its label in the
+    -- small button font
+    local export, exportHelp
+    if rawget(CRT, "AbilityLabelsDev") then
+        export = UI.PanelButton(f, TEXT.export, EXPORT.h, function()
+            local Labels = rawget(CRT, "AbilityLabelsDev")
+            if Labels and ctx.boss() then
+                Labels.ShowBoss(ctx.boss())
+            end
+        end)
+        export:SetNormalFontObject(CRTFontButtonSmall)
+        export:SetHighlightFontObject(CRTFontButtonSmallHighlight)
+        export:SetDisabledFontObject(CRTFontButtonSmallDisable)
+        local exportText = export:GetFontString()
+        export:SetWidth(UI.PanelButtonWidth(exportText and exportText:GetStringWidth() or 0))
+        exportHelp = UI.HelpRight(export, TEXT.export, TEXT.exportHelp)
+        tab.exportButton = export
+    end
+    -- Export labels at the end of the first row, shown with /crt dev open for a boss of the library; the label is
+    -- cut to end before it, and before Order when Order sits beside the label.
+    local function placeExport(width, wide, on)
+        local ex = export and Timeline.DevMode() and type(ctx.boss()) == "number" or false
+        labelMax = LABEL_MAX
+        if export then
+            export:SetShown(ex)
+            exportHelp:SetShown(ex)
+            export:ClearAllPoints()
+            export:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8 - HELP_W, ROW1_Y - EXPORT.dy)
+        end
+        if ex then
+            local room = width - 8 - HELP_W - export:GetWidth() - EXPORT.gap
+            local help = tab.unnamedHelp and tab.unnamedHelp:IsShown() and HELP_W or 0
+            local need = (wide and on) and (ORDER_W + HELP_W) or 0
+            labelMax = math.max(0, math.min(LABEL_MAX, room - need - LABEL_X - 16 - help))
+        end
+        shown:SetWidth(labelMax)
+    end
+    -- Order beside the label and Share note on the second row, or both on a third row; the timeline and Recent
+    -- pulls start under the last row shown. Export labels never changes which.
     local function placeOrder()
-        local x = labelEnd()
+        labelMax = LABEL_MAX
         local width = f:GetWidth() or 0
-        local wide = width >= WIDE_W and width >= x + ORDER_W + UI.HELP_GAP + UI.HELP_SIZE + 8
-        order:ClearAllPoints()
-        order:SetPoint("TOPLEFT", f, "TOPLEFT", wide and x or NARROW_X, wide and ROW1_Y or ROW3_Y)
+        local wide = width >= WIDE_W and width >= labelEnd() + ORDER_W + HELP_W + 8
         local on = ctx.hasOrder()
+        placeExport(width, wide, on)
+        order:ClearAllPoints()
+        order:SetPoint("TOPLEFT", f, "TOPLEFT", wide and labelEnd() or NARROW_X, wide and ROW1_Y or ROW3_Y)
         order:SetShown(on)
         orderHelp:SetShown(on)
         local share = ctx.placeShare and ctx.placeShare(wide)

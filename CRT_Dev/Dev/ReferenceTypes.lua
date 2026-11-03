@@ -1,21 +1,17 @@
 local ADDON, CRT = ...
 
--- DEVELOPER ONLY. The Logged Timeline Ref window (Development page): set each ability's types on an
--- ability timeline with dropdowns, instead of writing (type ...) by hand. Pick an ability timeline, then
--- for each ability a Main type (which colors the row) and any other types (Also, shown as dots). The
--- abilities scroll in a fixed-size window.
---   Save as my copy     writes the text as your own copy (or updates it), so the Timeline shows the
---                       colors straight away; your copy is listed before the shipped one. You have one
---                       copy per boss and difficulty (Normal and Heroic share one): saving a shipped
---                       entry replaces the copy you have, and the picker then shows that copy
---   Export              the text, to paste to Claude and ship in the boss's file
---   Delete my copy      drops your copy, so the shipped one shows again
---   Manage ability timelines   every ability timeline of the picked boss: delete your copies (one or all), and
---                       mark shipped ones for removal (hidden on this computer at once, Keep undoes it);
---                       Export removals and /crt dev removed list the marks for Claude to delete from
---                       the boss files (Reference:SetRemoved in Timeline/Reference.lua)
--- Only the (type ...) option of each ability line changes; times, bars, leads, spell IDs, colors and
--- comments are kept. This file never ships: its .toc line is inside the do-not-package block.
+-- DEVELOPER ONLY. The Manage ability timelines window (Development page, Boss data tab): every ability timeline
+-- of the boss picked, yours and shipped.
+--   Delete                    one of your copies; Delete all my copies, every copy of yours for the boss. The
+--                             shipped ones stay.
+--   Remove from addon / Keep  marks a shipped one for removal (hidden on this computer at once, Keep undoes it);
+--                             Export removals and /crt dev removed list the marks for Claude to delete from the
+--                             boss files (Reference:SetRemoved in Timeline/Reference.lua). Showing the window
+--                             clears marks whose blocks are already gone.
+-- An ability's types are not set here: they are its ability label, set from the right-click menu of the ability
+-- (Type, Also, icons; Timeline/ReferencePage.lua's AbilityMenu) and exported with Export labels
+-- (Dev/AbilityLabels.lua). The file also prints /crt dev hidden and /crt dev mechhidden. It never ships: its .toc
+-- line is inside the do-not-package block.
 
 local Editor = {}
 CRT.ReferenceTypes = Editor
@@ -23,223 +19,28 @@ CRT.ReferenceTypes = Editor
 local UI = CRT.UI
 local Reference = CRT.TimelineReference
 
-local WIDTH, HEIGHT = 600, 480 -- about 10 ability rows show; the rest scroll
-local ROW_H = 30
-local LIST_TOP = 90 -- where the ability list starts, from the window's top
-local LIST_BOTTOM = 64 -- room under the list for the status line and the buttons
-local HEADERS = { boss = true, difficulty = true, length = true, encounter = true, phase = true, order = true }
+-- Every number the window is placed with, in px.
+local LAYOUT = {
+    width = 470, height = 380,
+    x = 14, -- the left inset
+    pickY = -34, -- the Boss picker, under the title
+    pickLabel = 40, pickW = 220,
+    listTop = -66, listBottom = 46, -- the scrolling list, between the picker and the buttons
+    scrollBar = 32, -- room at the right for the scroll bar
+    noneY = -70, -- "No ability timelines" in place of the list
+    lineH = 28, -- one ability timeline
+    buttonH = 22, buttonMinW = 60, buttonPad = 24, gap = 6, textGap = 8,
+    bottom = 14, -- the buttons, from the bottom
+}
 
-local win, manage
-local entryKey -- the reference being edited
-local baseText -- its text when loaded
-local rows = {} -- { name, main, also = { [type] = true } } per ability, in text order
-local widgets = {} -- one row of controls per ability
+local TEXT = {
+    title = "Manage ability timelines (dev)",
+    boss = "Boss",
+    help = "Every ability timeline of this boss, yours and shipped.\n\nDelete removes one of your copies; Delete all my copies removes every copy of yours for this boss. The shipped ones stay.\n\nThe game can't change the addon's files, so a shipped one is removed in two steps. Remove from addon hides it on this computer at once and marks it for removal; Keep undoes that. Export removals (or /crt dev removed) lists the marks: paste them to Claude, who deletes those blocks from the boss files. Opening this window clears marks whose blocks are already gone.\n\nA marked one also leaves the alerts and notes on this computer, as a preview of the deletion.\n\nAn ability's types are set by right-clicking it on the Timeline.",
+    none = "No ability timelines for this boss.",
+}
 
-local function trim(s)
-    return (s:gsub("^%s+", ""):gsub("%s+$", ""))
-end
-
--- The ability lines of reference text, the same lines Reference.Parse reads as abilities.
-local function isAbility(line)
-    line = trim((line:gsub("\r", "")))
-    if line == "" or line:sub(1, 1) == "#" then
-        return false
-    end
-    local key = line:match("^(%a+)%s*:")
-    return not (key and HEADERS[key:lower()])
-end
-
--- Where the times start: the first ':' outside round and square brackets (a lead can be 0:07).
-local function timesColon(line)
-    local depth = 0
-    for i = 1, #line do
-        local c = line:sub(i, i)
-        if c == "(" or c == "[" then
-            depth = depth + 1
-        elseif c == ")" or c == "]" then
-            depth = math.max(0, depth - 1)
-        elseif c == ":" and depth == 0 then
-            return i
-        end
-    end
-end
-
--- One ability line with its type option replaced by types (a list, main first; empty for none).
-local function setLineTypes(line, types)
-    local cr = line:sub(-1) == "\r" and "\r" or ""
-    line = cr == "" and line or line:sub(1, -2)
-    local at = timesColon(line)
-    if not at then
-        return line .. cr
-    end
-    local head, times = line:sub(1, at - 1), line:sub(at)
-    local indent = head:match("^(%s*)")
-    local name = trim(head:match("^%s*([^%[%(]+)") or "")
-    local spell = head:match("%[[^%]]*%]")
-    local opts = {}
-    if #types > 0 then
-        opts[1] = "type " .. table.concat(types, " ")
-    end
-    for group in head:gmatch("%((.-)%)") do
-        for opt in (group .. ","):gmatch("([^,]*),") do
-            opt = trim(opt)
-            if opt ~= "" and not opt:lower():match("^type%s") then
-                opts[#opts + 1] = opt
-            end
-        end
-    end
-    local out = indent .. name
-    if spell then
-        out = out .. " " .. spell
-    end
-    if #opts > 0 then
-        out = out .. " (" .. table.concat(opts, ", ") .. ")"
-    end
-    return out .. times .. cr
-end
-
--- The text with every ability line's types set from list (one entry per ability, in text order).
-function Editor.ApplyTypes(text, list)
-    local out, i = {}, 0
-    for raw in (text .. "\n"):gmatch("([^\n]*)\n") do
-        if isAbility(raw) then
-            i = i + 1
-            raw = setLineTypes(raw, list[i] or {})
-        end
-        out[#out + 1] = raw
-    end
-    return table.concat(out, "\n")
-end
-
-local function typesOf(row)
-    local list = {}
-    if row.main then
-        list[1] = row.main
-    end
-    for _, key in ipairs(Reference.TYPE_ORDER) do
-        if row.also[key] and key ~= row.main then
-            list[#list + 1] = key
-        end
-    end
-    return list
-end
-
-local function currentText()
-    if not baseText then
-        return nil
-    end
-    local list = {}
-    for i, row in ipairs(rows) do
-        list[i] = typesOf(row)
-    end
-    return Editor.ApplyTypes(baseText, list)
-end
-
-local function load(key)
-    entryKey, baseText = key, nil
-    wipe(rows)
-    local entry = key and Reference:Find(key)
-    if not entry then
-        return
-    end
-    baseText = entry.text
-    for _, r in ipairs(entry.ref.rows) do
-        local row = { name = r.name, also = {} }
-        for i, t in ipairs(r.types or {}) do
-            if i == 1 then
-                row.main = t
-            else
-                row.also[t] = true
-            end
-        end
-        rows[#rows + 1] = row
-    end
-end
-
-
-local function referenceOptions()
-    local list = {}
-    for _, entry in ipairs(Reference:List()) do
-        local ref = entry.ref
-        list[#list + 1] = {
-            key = entry.key,
-            label = ref.boss .. (ref.difficulty and (" \194\183 " .. ref.difficulty) or "") .. (entry.own and " (your copy)" or " (shipped)"),
-        }
-    end
-    return list
-end
-
--- Loads the first ability timeline when the one shown is gone (deleted, or marked for removal).
-local function loadFirstIfGone()
-    if entryKey and Reference:Find(entryKey) then
-        return
-    end
-    local list = referenceOptions()
-    load(list[1] and list[1].key or nil)
-end
-
-local MAIN_OPTIONS = { { key = "none", label = "None" } }
-for _, key in ipairs(Reference.TYPE_ORDER) do
-    MAIN_OPTIONS[#MAIN_OPTIONS + 1] = { key = key, label = "|cff" .. Reference.TYPES[key].hex .. key .. "|r" }
-end
-
-local function colored(key)
-    return "|cff" .. Reference.TYPES[key].hex .. key .. "|r"
-end
-
-local refresh
-
--- One ability's controls, in the scrolling list: its name (in its main type's color) with the Main
--- dropdown, and Also. Made once per index and reused, so any number of abilities works.
-local function widgetRow(i)
-    if widgets[i] then
-        return widgets[i]
-    end
-    local list = win.list
-    local w = {}
-    w.main = UI.Dropdown(list, "", {
-        options = MAIN_OPTIONS,
-        labelWidth = 170,
-        width = 110,
-        get = function()
-            return rows[i] and rows[i].main or "none"
-        end,
-        set = function(key)
-            if rows[i] then
-                rows[i].main = key ~= "none" and key or nil
-                rows[i].also[key] = nil
-                refresh()
-            end
-        end,
-    })
-    w.main:SetPoint("TOPLEFT", list, "TOPLEFT", 0, -(i - 1) * ROW_H)
-    w.also = CreateFrame("DropdownButton", nil, list, "WowStyle1DropdownTemplate")
-    w.also:SetWidth(110)
-    w.also:SetPoint("LEFT", w.main, "RIGHT", 10, 0)
-    w.also:SetupMenu(function(_, root)
-        UI.MenuOnTop(root)
-        for _, key in ipairs(Reference.TYPE_ORDER) do
-            if not (rows[i] and rows[i].main == key) then
-                root:CreateCheckbox(colored(key), function()
-                    return rows[i] and rows[i].also[key] or false
-                end, function()
-                    if rows[i] then
-                        rows[i].also[key] = not rows[i].also[key] or nil
-                        refresh()
-                    end
-                end, key)
-            end
-        end
-    end)
-    UI:SkinDropdown(w.also)
-    w.alsoText = list:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    w.alsoText:SetPoint("LEFT", w.also, "RIGHT", 8, 0)
-    w.alsoText:SetWidth(110)
-    w.alsoText:SetJustifyH("LEFT")
-    w.alsoText:SetWordWrap(false)
-    widgets[i] = w
-    return w
-end
+local win
 
 -- A button as wide as its label.
 local function button(parent, text)
@@ -247,79 +48,14 @@ local function button(parent, text)
     b:SetNormalFontObject(CRTFontButtonSmall)
     b:SetHighlightFontObject(CRTFontButtonSmallHighlight)
     b:SetDisabledFontObject(CRTFontButtonSmallDisable)
-    b:SetHeight(22)
+    b:SetHeight(LAYOUT.buttonH)
     function b:SetLabel(label)
         self:SetText(label)
         local fs = self:GetFontString()
-        self:SetWidth(math.max(60, math.ceil((fs and fs:GetStringWidth() or 80) + 24)))
+        self:SetWidth(math.max(LAYOUT.buttonMinW, math.ceil((fs and fs:GetStringWidth() or 80) + LAYOUT.buttonPad)))
     end
     b:SetLabel(text)
     return b
-end
-
--- Back to the top of the list (a different ability timeline was picked).
-local function scrollTop()
-    local scroll = win and win.scroll
-    if not scroll then
-        return
-    end
-    if scroll.ScrollBar then
-        scroll.ScrollBar:SetValue(0)
-    end
-    scroll:SetVerticalScroll(0)
-end
-
-local function refreshRows()
-    for i = 1, math.max(#rows, #widgets) do
-        local row = rows[i]
-        if row then
-            local w = widgetRow(i)
-            w.main.Label:SetText(row.name)
-            local c = row.main and Reference.TYPES[row.main].color
-            if c then
-                w.main.Label:SetTextColor(c[1], c[2], c[3])
-            else
-                w.main.Label:SetTextColor(1, 1, 1)
-            end
-            w.main.refresh()
-            w.also:GenerateMenu()
-            local extra = {}
-            for _, key in ipairs(typesOf(row)) do
-                if key ~= row.main then
-                    extra[#extra + 1] = colored(key)
-                end
-            end
-            w.alsoText:SetText(#extra > 0 and ("+ " .. table.concat(extra, ", ")) or "")
-            w.main:Show()
-            w.also:Show()
-            w.alsoText:Show()
-        elseif widgets[i] then
-            widgets[i].main:Hide()
-            widgets[i].also:Hide()
-            widgets[i].alsoText:Hide()
-        end
-    end
-    win.list:SetHeight(math.max(#rows, 1) * ROW_H)
-end
-
-refresh = function()
-    if not win then
-        return
-    end
-    win.pick.refresh()
-    refreshRows()
-    local entry = entryKey and Reference:Find(entryKey)
-    win.delete:SetEnabled(entry and entry.own or false)
-    win.manage:SetEnabled(entry ~= nil)
-    win.status:SetText(not entry and "Pick an ability timeline." or entry.own and "Your copy: the Timeline shows it before the shipped one." or "The shipped ability timeline. Save as my copy to see the colors on the Timeline.")
-    if manage and manage:IsShown() then
-        manage.refresh()
-    end
-end
-
--- The encounter ID of a reference's boss: its Encounter line, else the boss file of the same name.
-local function bossID(ref)
-    return Reference.BossID(ref.encounterID, ref.boss)
 end
 
 -- midnight-s2 -> Midnight-S2: each part of a season key capitalized, as its folder is named.
@@ -380,7 +116,7 @@ end
 function Editor:PrintRemoved()
     local lines = Editor.RemovalLines()
     if #lines == 0 then
-        CRT:Print("No shipped ability timelines are marked for removal. Mark them in Logged Timeline Ref > Manage ability timelines.")
+        CRT:Print("No shipped ability timelines are marked for removal. Mark them in Development > Boss data > Manage ability timelines.")
         return
     end
     CRT:Print("Marked for removal (paste to Claude):")
@@ -400,20 +136,43 @@ local function confirm(text, arg, acceptText, accept)
     }), "GENERIC_CONFIRMATION"))
 end
 
--- After a delete or a mark: a new ability timeline loads if the shown one is gone, from the top.
-local function afterChange()
-    local before = entryKey
-    loadFirstIfGone()
-    refresh()
-    if entryKey ~= before then
-        scrollTop()
-    end
+-- The boss's name as the boss file has it.
+local function bossName(id)
+    local def = CRT.Bosses and CRT.Bosses.Get and CRT.Bosses:Get(id)
+    return def and def.name or tostring(id)
 end
 
--- Manage ability timelines --------------------------------------------------------------------------
--- A panel beside the window with every ability timeline of the picked boss, yours and shipped.
+-- The boss file's bosses under their raid (Bosses:Options).
+local function bossOptions()
+    return CRT.Bosses and CRT.Bosses.Options and CRT.Bosses:Options() or {}
+end
 
-local MANAGE_W, MANAGE_H, LINE_H = 470, 340, 28
+-- Every ability timeline of a boss (encounter ID), yours and shipped, marked ones too.
+local function entriesOf(id)
+    return id and Reference:ForBoss(id, bossName(id), true) or {}
+end
+
+-- The boss the window opens on: the Timeline's shown one, else the first with ability timelines, else the first.
+local function firstBoss()
+    local T = CRT.Timeline
+    local ok, s = pcall(T.Settings, T)
+    local shown = ok and type(s) == "table" and type(s.lastView) == "table" and s.lastView.boss
+    local first
+    for _, o in ipairs(bossOptions()) do
+        if not o.title then
+            if o.key == shown then
+                return shown
+            end
+            first = first or o.key
+        end
+    end
+    for _, o in ipairs(bossOptions()) do
+        if not o.title and entriesOf(o.key)[1] then
+            return o.key
+        end
+    end
+    return first
+end
 
 local function entryLabel(entry)
     local parts = { entry.ref.difficulty or "Any difficulty", entry.own and "your copy" or "shipped" }
@@ -426,32 +185,34 @@ local function entryLabel(entry)
     return table.concat(parts, " \194\183 ")
 end
 
+local refresh
+
 local function lineAction(entry)
     if entry.own then
         confirm("Delete your %s copy?", entry.ref.difficulty or entry.ref.boss, "Delete", function()
             Reference:Delete(entry.key)
             CRT:Print("Deleted your copy of the " .. entry.ref.boss .. " ability timeline.")
-            afterChange()
+            refresh()
         end)
     elseif entry.removed then
         Reference:SetRemoved(entry, false)
         CRT:Print("Kept the shipped " .. entry.ref.boss .. " ability timeline; it shows again.")
-        afterChange()
+        refresh()
     else
         Reference:SetRemoved(entry, true)
         CRT:Print("Marked the shipped " .. entry.ref.boss .. " ability timeline for removal; it's hidden on this computer. Export removals lists it for Claude.")
-        afterChange()
+        refresh()
     end
 end
 
-local function manageLine(i)
-    local l = manage.lines[i]
+local function lineAt(i)
+    local l = win.lines[i]
     if l then
         return l
     end
-    l = CreateFrame("Frame", nil, manage.list)
-    l:SetSize(MANAGE_W - 50, LINE_H)
-    l:SetPoint("TOPLEFT", manage.list, "TOPLEFT", 0, -(i - 1) * LINE_H)
+    l = CreateFrame("Frame", nil, win.list)
+    l:SetSize(LAYOUT.width - 2 * LAYOUT.x - LAYOUT.scrollBar, LAYOUT.lineH)
+    l:SetPoint("TOPLEFT", win.list, "TOPLEFT", 0, -(i - 1) * LAYOUT.lineH)
     l.text = l:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     l.text:SetPoint("LEFT", 0, 0)
     l.text:SetJustifyH("LEFT")
@@ -463,231 +224,110 @@ local function manageLine(i)
             lineAction(l.entry)
         end
     end)
-    manage.lines[i] = l
+    win.lines[i] = l
     return l
 end
 
-local function refreshManage()
-    local boss = manage.boss
-    local entries = boss and Reference:ForBoss(boss.id, boss.name, true) or {}
-    manage.heading:SetText(boss and boss.name or "No boss picked")
+refresh = function()
+    if not (win and win:IsShown()) then
+        return
+    end
+    win.pick.refresh()
+    local entries = entriesOf(win.boss)
     local own = 0
     for i, entry in ipairs(entries) do
-        local l = manageLine(i)
+        local l = lineAt(i)
         l.entry = entry
         l.action:SetLabel(entry.own and "Delete" or entry.removed and "Keep" or "Remove from addon")
-        l.text:SetWidth(l:GetWidth() - l.action:GetWidth() - 8)
+        l.text:SetWidth(l:GetWidth() - l.action:GetWidth() - LAYOUT.textGap)
         l.text:SetText(entryLabel(entry))
         l:Show()
         if entry.own then
             own = own + 1
         end
     end
-    for i = #entries + 1, #manage.lines do
-        manage.lines[i].entry = nil
-        manage.lines[i]:Hide()
+    for i = #entries + 1, #win.lines do
+        win.lines[i].entry = nil
+        win.lines[i]:Hide()
     end
-    manage.list:SetHeight(math.max(#entries, 1) * LINE_H)
-    manage.none:SetShown(#entries == 0)
-    manage.own = own
-    manage.deleteAll:SetEnabled(own > 0)
+    win.list:SetHeight(math.max(#entries, 1) * LAYOUT.lineH)
+    win.none:SetShown(#entries == 0)
+    win.own = own
+    win.deleteAll:SetEnabled(own > 0)
 end
 
-local function buildManage()
-    manage = UI.Window("CowfeeRaidToolsReferenceManage", { kind = "dialog", title = "Manage ability timelines", width = MANAGE_W, height = MANAGE_H })
-    manage:SetToplevel(true)
-    manage.lines = {}
-    manage.refresh = refreshManage
-
-    manage.heading = manage:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    manage.heading:SetPoint("TOPLEFT", 14, -34)
-    UI.HelpRight(manage.heading, "Manage ability timelines", "Every ability timeline of this boss, yours and shipped.\n\nDelete removes one of your copies; Delete all my copies removes every copy of yours for this boss. The shipped ones stay.\n\nThe game can't change the addon's files, so a shipped one is removed in two steps. Remove from addon hides it on this computer at once and marks it for removal; Keep undoes that. Export removals (or /crt dev removed) lists the marks: paste them to Claude, who deletes those blocks from the boss files. Opening this panel clears marks whose blocks are already gone.\n\nA marked one also leaves the alerts and notes on this computer, as a preview of the deletion.")
-
-    local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsReferenceManageScroll", manage, "UIPanelScrollFrameTemplate")
-    UI:SkinScrollBar(scroll.ScrollBar)
-    scroll:SetPoint("TOPLEFT", 14, -60)
-    scroll:SetPoint("BOTTOMRIGHT", -32, 46)
-    manage.list = CreateFrame("Frame", nil, scroll)
-    manage.list:SetSize(MANAGE_W - 50, 1)
-    scroll:SetScrollChild(manage.list)
-    manage.none = manage:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    manage.none:SetPoint("TOPLEFT", 14, -64)
-    manage.none:SetText("No ability timelines for this boss.")
-
-    manage.deleteAll = button(manage, "Delete all my copies")
-    manage.deleteAll:SetPoint("BOTTOMLEFT", 14, 14)
-    manage.deleteAll:SetScript("OnClick", function()
-        local boss, n = manage.boss, manage.own or 0
-        if not boss or n == 0 then
-            return
-        end
-        confirm("Delete %s?", n == 1 and ("your copy of " .. boss.name) or (n .. " copies of " .. boss.name), "Delete all", function()
-            local count = Reference:DeleteOwn(boss.id, boss.name)
-            CRT:Print(string.format("Deleted %d of your copies of %s; the shipped ability timelines stay.", count, boss.name))
-            afterChange()
-        end)
-    end)
-    local export = button(manage, "Export removals")
-    export:SetPoint("LEFT", manage.deleteAll, "RIGHT", 6, 0)
-    export:SetScript("OnClick", exportRemovals)
-    manage:HookScript("OnShow", refreshManage)
-end
-
--- Opens the panel for the boss of the picked ability timeline, beside the window.
-local function openManage()
-    local entry = entryKey and Reference:Find(entryKey)
-    if not entry then
-        CRT:Print("Pick an ability timeline first.")
+local function deleteAll()
+    local id, n = win.boss, win.own or 0
+    if not id or n == 0 then
         return
     end
-    if not manage then
-        buildManage()
-    end
-    manage.boss = { id = bossID(entry.ref), name = entry.ref.boss }
+    local name = bossName(id)
+    confirm("Delete %s?", n == 1 and ("your copy of " .. name) or (n .. " copies of " .. name), "Delete all", function()
+        local count = Reference:DeleteOwn(id, name)
+        CRT:Print(string.format("Deleted %d of your copies of %s; the shipped ability timelines stay.", count, name))
+        refresh()
+    end)
+end
+
+-- Clears the marks whose blocks are already gone, and says how many.
+local function prune()
     local pruned = Reference:PruneRemoved()
     if pruned > 0 then
         CRT:Print(string.format("Cleared %d removal mark%s: those ability timelines are already gone from the boss files.", pruned, pruned == 1 and "" or "s"))
     end
-    manage:ClearAllPoints()
-    manage:SetPoint("TOPLEFT", win, "TOPRIGHT", 4, 0)
-    manage:Show()
-    manage:Raise()
-    refreshManage()
-end
-
--- Save as my copy of an entry (as Reference:List gives it): yours is updated; a shipped one goes into your
--- copy for its boss and difficulty (Reference:Add: the one you have, else a new one). Returns the key that
--- now holds the text and true when it wrote over your copy (or, for yours, moved into another copy of
--- yours: Reference:Update); nil and the errors when it doesn't read.
-function Editor.SaveAsCopy(entry, text)
-    if entry.own then
-        local ok, errors, kept = Reference:Update(entry.key, text)
-        if not ok then
-            return nil, errors
-        end
-        return kept or entry.key, kept ~= nil and kept ~= entry.key
-    end
-    local key, more = Reference:Add(text)
-    if not key then
-        return nil, more
-    end
-    return key, more == true
-end
-
-local function onSave()
-    local entry = entryKey and Reference:Find(entryKey)
-    local text = currentText()
-    if not entry or not text then
-        CRT:Print("Pick an ability timeline first.")
-        return
-    end
-    local key, replaced = Editor.SaveAsCopy(entry, text)
-    if not key then
-        CRT:Print("Couldn't save: " .. table.concat(replaced or {}, "; "))
-        return
-    end
-    entryKey = key -- your copy, new or replaced, is the one the picker shows now
-    baseText = text
-    CRT:Print((replaced and "Replaced your copy of the " or "Saved your copy of the ") .. (entry.ref.boss or "boss") .. " ability timeline.")
-    refresh()
-end
-
-local function buildButtons()
-    local save = button(win, "Save as my copy")
-    save:SetPoint("BOTTOMLEFT", 14, 14)
-    save:SetScript("OnClick", onSave)
-    local export = button(win, "Export")
-    export:SetPoint("LEFT", save, "RIGHT", 6, 0)
-    export:SetScript("OnClick", function()
-        local text = currentText()
-        if not text then
-            CRT:Print("Pick an ability timeline first.")
-            return
-        end
-        CRT.ConsumablesTools:ShowText("Ability timeline with types (Ctrl+C to copy, paste to Claude)", text)
-    end)
-    win.delete = button(win, "Delete my copy")
-    win.delete:SetPoint("LEFT", export, "RIGHT", 6, 0)
-    win.delete:SetScript("OnClick", function()
-        local entry = entryKey and Reference:Find(entryKey)
-        if entry and entry.own then
-            Reference:Delete(entryKey)
-            CRT:Print("Deleted your copy; the shipped ability timeline shows again.")
-            afterChange()
-        end
-    end)
-    win.manage = button(win, "Manage ability timelines\226\128\166")
-    win.manage:SetPoint("LEFT", win.delete, "RIGHT", 6, 0)
-    win.manage:SetScript("OnClick", openManage)
 end
 
 local function build()
-    local height = math.min(HEIGHT, math.floor((UIParent:GetHeight() or HEIGHT) - 40))
-    win = UI.Window("CowfeeRaidToolsReferenceTypes", { kind = "dialog", title = "Logged Timeline Ref (dev)", width = WIDTH, height = height })
+    win = UI.Window("CowfeeRaidToolsReferenceManage", { kind = "dialog", title = TEXT.title, width = LAYOUT.width, height = LAYOUT.height })
     win:SetToplevel(true)
+    win.lines = {}
+    win.boss = firstBoss()
 
-    win.pick = UI.Dropdown(win, "Reference", {
-        options = referenceOptions,
-        labelWidth = 70,
-        width = 320,
+    win.pick = UI.Dropdown(win, TEXT.boss, {
+        options = bossOptions,
+        labelWidth = LAYOUT.pickLabel,
+        width = LAYOUT.pickW,
         get = function()
-            return entryKey
+            return win.boss
         end,
         set = function(key)
-            load(key)
-            local entry = manage and manage:IsShown() and Reference:Find(key)
-            if entry then
-                manage.boss = { id = bossID(entry.ref), name = entry.ref.boss }
-            end
+            win.boss = key
             refresh()
-            scrollTop()
         end,
     })
-    win.pick:SetPoint("TOPLEFT", 14, -34)
-    UI.HelpRight(win.pick, "Logged Timeline Ref", "Main colors the ability's row on the Timeline; Also adds a dot per type, and the tooltip lists them all. No type is a plain white row.\n\nSave as my copy to see it on the Timeline, then Export and paste the text to Claude, who ships it in the boss's file.\n\nManage ability timelines lists every ability timeline of this boss: delete your copies, or mark a shipped one for removal.\n\n" .. Reference.Legend())
+    win.pick:SetPoint("TOPLEFT", LAYOUT.x, LAYOUT.pickY)
+    UI.HelpRight(win.pick, TEXT.title, TEXT.help)
 
-    local head = win:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    head:SetPoint("TOPLEFT", 14, -72)
-    head:SetText("Ability")
-    local headMain = win:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    headMain:SetPoint("TOPLEFT", 189, -72)
-    headMain:SetText("Main type")
-    local headAlso = win:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    headAlso:SetPoint("TOPLEFT", 309, -72)
-    headAlso:SetText("Also")
+    local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsReferenceManageScroll", win, "UIPanelScrollFrameTemplate")
+    UI:SkinScrollBar(scroll.ScrollBar)
+    scroll:SetPoint("TOPLEFT", LAYOUT.x, LAYOUT.listTop)
+    scroll:SetPoint("BOTTOMRIGHT", -LAYOUT.scrollBar, LAYOUT.listBottom)
+    win.list = CreateFrame("Frame", nil, scroll)
+    win.list:SetSize(LAYOUT.width - 2 * LAYOUT.x - LAYOUT.scrollBar, 1)
+    scroll:SetScrollChild(win.list)
+    win.none = win:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
+    win.none:SetPoint("TOPLEFT", LAYOUT.x, LAYOUT.noneY)
+    win.none:SetText(TEXT.none)
 
-    -- Only the abilities scroll; the picker, headers, status line and buttons stay put.
-    win.scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsReferenceTypesScroll", win, "UIPanelScrollFrameTemplate")
-    UI:SkinScrollBar(win.scroll.ScrollBar)
-    win.scroll:SetPoint("TOPLEFT", 14, -LIST_TOP)
-    win.scroll:SetPoint("BOTTOMRIGHT", -32, LIST_BOTTOM)
-    win.list = CreateFrame("Frame", nil, win.scroll)
-    win.list:SetSize(WIDTH - 46, ROW_H)
-    win.scroll:SetScrollChild(win.list)
-
-    win.status = win:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
-    win.status:SetPoint("BOTTOMLEFT", 14, 44)
-    win.status:SetWidth(WIDTH - 28)
-    win.status:SetJustifyH("LEFT")
-
-    buildButtons()
-    win:HookScript("OnShow", refresh)
-    win:HookScript("OnHide", function()
-        if manage then
-            manage:Hide()
-        end
+    win.deleteAll = button(win, "Delete all my copies")
+    win.deleteAll:SetPoint("BOTTOMLEFT", LAYOUT.x, LAYOUT.bottom)
+    win.deleteAll:SetScript("OnClick", deleteAll)
+    local export = button(win, "Export removals")
+    export:SetPoint("LEFT", win.deleteAll, "RIGHT", LAYOUT.gap, 0)
+    export:SetScript("OnClick", exportRemovals)
+    win:HookScript("OnShow", function()
+        prune()
+        refresh()
     end)
     UI:SkinTree(win)
 end
 
+-- The Development page's Manage ability timelines button.
 function Editor:Toggle()
     if not win then
         build()
-        local list = referenceOptions()
-        load(list[1] and list[1].key or nil)
     end
     win:SetShown(not win:IsShown())
-    refresh()
 end
 
 -- Each boss's list of hidden names as it should ship (namesOf(id)), as the line to paste into its boss

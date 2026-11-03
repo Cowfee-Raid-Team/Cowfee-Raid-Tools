@@ -132,7 +132,7 @@ local wantSections = {
   probes = { "probe", "diagnostics", "bossdebug" },
 }
 local headingOf = { layout = "Layout editor", windows = "Windows", windowlog = "Window log", layers = "Layers, each window",
-  reftypes = "Logged Timeline Ref", markers = "Marker displays", seasons = "Season packs", probe = "Timeline probe",
+  reftypes = "Ability timelines", markers = "Marker displays", seasons = "Season packs", probe = "Timeline probe",
   diagnostics = "Diagnostics", bossdebug = "Boss debug" }
 local lay = Page.Layout()
 for _, tab in ipairs(want) do
@@ -236,7 +236,7 @@ end
 calls = {}
 clickText("layout", "Open the layout editor")
 clickText("windows", "Reset all positions")
-clickText("bossdata", "Open Logged Timeline Ref")
+clickText("bossdata", "Manage ability timelines")
 clickText("probes", "Show what it found")
 check(table.concat(calls, ",") == "Dev:Toggle,Dev:ResetAllPositions,ReferenceTypes:Toggle,TimelineProbe:Show", "a button on each tab works: " .. table.concat(calls, ","))
 

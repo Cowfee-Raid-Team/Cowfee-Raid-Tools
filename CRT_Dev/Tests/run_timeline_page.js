@@ -199,6 +199,9 @@ assert(load(rehWinSrc, "RehearsalWindow.lua"))("CowfeeRaidTools", CRT)
 SlashCmdList = {}
 strtrim = function(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 assert(load(slashSrc, "CRT_Core/Slash.lua"))("CowfeeRaidTools", CRT)
+-- Dev/AbilityLabels.lua as the Review tab's Export labels reads it: there when the tab is built (a developer build)
+labelsExported = {}
+CRT.AbilityLabelsDev = { ShowBoss = function(id) labelsExported[#labelsExported + 1] = id end, Command = function() return false end }
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
 local pf = mock()
 assert(pages.timeline, "page registered") print("ok page registered")
@@ -901,6 +904,86 @@ do
   CRT.Bosses.abilities[3470] = savedAbilities
 end
 print("ok the ability menu marks the boss file's values")
+
+-- the ability menu's Also: a tick box per type but the main one, marked from the boss file, Clear for yours; picking a
+-- main type that is in Also takes it out; Export labels in dev mode only
+do
+  local function root()
+    local r = { items = {} }
+    local function add(kind, text, a, b) local el = { kind = kind, text = text, get = a, set = b, enabled = true, items = {} }
+      function el:SetEnabled(v) self.enabled = v end
+      function el:CreateRadio(t, x, y) local c = add("radio", t, x, y) table.insert(self.items, c) return c end
+      function el:CreateCheckbox(t, x, y) local c = add("check", t, x, y) table.insert(self.items, c) return c end
+      function el:CreateButton(t, fn) local c = add("button", t, fn) table.insert(self.items, c) return c end
+      function el:CreateTitle() end function el:CreateDivider() end
+      return el end
+    return add("root", "")
+  end
+  local function find(items, text) for _, el in ipairs(items) do if el.text:find(text, 1, true) then return el end end end
+  local function fill(types, tags) local r = root() CRT.TimelineAbilityMenu.Fill(r, 3470, { name = "Soulcoil Rite", spellID = 1286873, types = types, tags = tags }) return r end
+  local function list(t) return table.concat(t or {}, ",") end
+  local savedAbilities = CRT.Bosses.abilities[3470]
+  CRT.Bosses.abilities[3470] = { [1286873] = { also = { "dispel" } } }
+  local r = fill()
+  local also = find(r.items, "Also")
+  assert(also and also.kind == "button", "an Also submenu")
+  local order = {} for i, el in ipairs(r.items) do order[i] = el.text end
+  local iType, iAlso = 0, 0 for i, el in ipairs(r.items) do if el.text == "Set type" then iType = i elseif el == also then iAlso = i end end
+  assert(iAlso == iType + 1, "Also right after Set type: " .. table.concat(order, " | "))
+  assert(also.enabled == false and #also.items == 0 and also.text:find("set a type first", 1, true), "no main type: Also is greyed and says why: " .. also.text)
+  -- an Also of yours with no main type can still be cleared: the submenu holds only Use the boss file's / Clear
+  T:SetAbility(3470, 1286873, "also", { "raid" })
+  also = find(fill().items, "Also")
+  assert(also.enabled ~= false and #also.items == 1 and also.items[1].kind == "button" and also.items[1].text == "Use the boss file's"
+    and also.text:find("set a type first", 1, true), "no main type, yours set: only the way back")
+  also.items[1].get()
+  assert(T:OwnAbility(3470, 1286873) == nil, "cleared")
+  -- the main type from the row's own (an ability timeline's (type ...)): Also opens, without it
+  also = find(fill({ "dodge", "raid" }).items, "Also")
+  assert(also.enabled and find(also.items, "Dodge") == nil and #also.items == #CRT.TimelineReference.TYPE_ORDER - 1, "the row's main type: every type but it")
+  assert(find(also.items, "Dispel").text:find("(boss file)", 1, true) and find(also.items, "Dispel").get() == true, "the boss file's Also is marked and ticked")
+  assert(find(also.items, "Use the boss file's") == nil and find(also.items, "Clear") == nil, "no Clear with none of yours")
+  find(find(r.items, "Set type").items, "Soak").set()
+  r = fill({ "dodge" }) also = find(r.items, "Also")
+  assert(find(also.items, "Soak") == nil and find(also.items, "Dodge") ~= nil and #also.items == #CRT.TimelineReference.TYPE_ORDER - 1, "the label's type wins: every type but it")
+  find(also.items, "Spread").set()
+  assert(list(T:OwnAbility(3470, 1286873).also) == "dispel,spread", "ticking adds to the shown ones: " .. list(T:OwnAbility(3470, 1286873).also))
+  r = fill() also = find(r.items, "Also")
+  assert(find(also.items, "Spread").get() == true, "ticked")
+  find(also.items, "Dispel").set()
+  assert(list(T:OwnAbility(3470, 1286873).also) == "spread", "unticking takes it out")
+  find(find(fill().items, "Set type").items, "Spread").set()
+  assert(T:Ability(3470, 1286873).type == "spread" and list(T:Ability(3470, 1286873).also) == "", "a main type picked from Also leaves Also")
+  r = fill() also = find(r.items, "Also")
+  local clear = find(also.items, "Use the boss file's")
+  assert(clear and clear.kind == "button", "back to the boss file's with yours set")
+  clear.get()
+  assert(T:OwnAbility(3470, 1286873).also == nil and list(T:Ability(3470, 1286873).also) == "dispel", "the boss file's again")
+  CRT.Bosses.abilities[3470] = nil
+  T:SetAbility(3470, 1286873, "also", { "raid" })
+  clear = find(find(fill().items, "Also").items, "Clear")
+  assert(clear and clear.kind == "button", "Clear with yours set and none in the boss file")
+  clear.get()
+  assert(T:OwnAbility(3470, 1286873).also == nil, "Clear drops yours")
+  -- Tags: ticking an icon keeps the row's own (the Journal's), as the Mech Alerts list's rows now carry them
+  find(find(fill(nil, { "tank", "magic" }).items, "Tags").items, "Healer").set()
+  assert(list(T:OwnAbility(3470, 1286873).tags) == "tank,magic,healer", "Healer added to the Journal's icons: " .. list(T:OwnAbility(3470, 1286873).tags))
+  -- Export labels: dev mode only, the boss's export
+  local exported, labelsDev = {}, CRT.AbilityLabelsDev
+  CRT.AbilityLabelsDev = { ShowBoss = function(id) exported[#exported + 1] = id end }
+  r = fill()
+  local ex = find(r.items, "Export labels")
+  assert(ex, "Export labels in dev mode")
+  ex.get()
+  assert(exported[1] == 3470, "it exports the menu's boss")
+  setDev(false)
+  assert(find(fill().items, "Export labels") == nil, "no Export labels without /crt dev")
+  setDev(true)
+  CRT.AbilityLabelsDev = labelsDev
+  T:ClearAbilities(3470)
+  CRT.Bosses.abilities[3470] = savedAbilities
+end
+print("ok the ability menu's Also and Export labels")
 
 -- Share note on the Review tab: makes the boss's raid note when it has none, then shares it
 do
@@ -1751,6 +1834,59 @@ do
   CRT.TimelineImportWindow = nil
 end
 print("ok Import reminders sits with the Review tab's buttons and opens its window")
+-- Export labels (#1255): the boss on show's ability labels, with /crt dev open only; at the end of the first row at
+-- every width, the ability timeline's label cut shorter to make room, so Order and Share note keep their rows
+do
+  local ex
+  for i = #buttons, 1, -1 do if buttons[i].text == "Export labels" then ex = buttons[i] break end end
+  assert(ex, "an Export labels button")
+  assert(helps["Export labels"] and helpTargets["Export labels"] == ex, "with its (?) after it")
+  labelsExported = {}
+  diffDD.opts.set("mythic")
+  bossDD.opts.set(3470)
+  assert(ex.shown, "shown with /crt dev open")
+  ex.OnClick(ex)
+  assert(#labelsExported == 1 and labelsExported[1] == 3470, "it exports the boss on show")
+  setDev(false)
+  T:Fire()
+  assert(not ex.shown, "hidden without /crt dev")
+  setDev(true)
+  T:Fire()
+  local w = ex:GetWidth()
+  assert(w == CRT.UI.PanelButtonWidth(#"Export labels" * 5), "as wide as its label in the small font")
+  -- an ability timeline with an Order line, so Order shows on the first row
+  local key = R:Add("Boss: Delta\\nDifficulty: Mythic\\nEncounter: 5001\\nPhase: E1 1:00\\nPhase: E2 2:00\\nOrder: E1, E2 = Gebbo, Nama\\nToss (part Gebbo): 1:10\\nThud (part Nama): 2:10")
+  bossDD.opts.set(5001)
+  local f, orderDD
+  for _, d in ipairs(dropdowns) do if d.text == "Order" then f, orderDD = d.parent, d end end
+  local label = shownLabel()
+  rawset(label, "SetWidth", function(self, v) self.w = v end)
+  local share = helpTargets["Share note"]
+  local function layout(width, dev)
+    setDev(dev)
+    rawset(f, "GetWidth", function() return width end)
+    T:Fire()
+    return { orderX = orderDD.pt[4], orderY = orderDD.pt[5], shareY = share.pt[5], shareP = share.pt[1] }
+  end
+  for _, width in ipairs({ CRT.UI.PAGE_W, 940, 760 }) do
+    local off, on = layout(width, false), layout(width, true)
+    assert(on.orderY == off.orderY and on.shareY == off.shareY and on.shareP == off.shareP, width .. ": Order and Share note keep their rows with Export labels shown")
+    local exLeft = width - (8 + 4 + 20) - w
+    assert(ex.shown and ex.pt[1] == "TOPRIGHT" and ex.pt[5] == -4 - 2 and ex.pt[4] == -(8 + 4 + 20), width .. ": the end of the first row, its (?) inside")
+    if on.orderY == -4 then
+      assert(on.orderX + 185 + 4 + 20 + 12 <= exLeft, width .. ": clear of Order and its (?): " .. on.orderX)
+    end
+    assert(412 + (rawget(label, "w") or 220) + 12 <= exLeft, width .. ": the label ends before it: " .. tostring(rawget(label, "w")))
+  end
+  local wide = layout(CRT.UI.PAGE_W, true)
+  assert(wide.orderX == 412 + 220 + 16 and (rawget(label, "w") or 220) == 220, "the main window: nothing cut, Order where it was")
+  rawset(f, "GetWidth", nil)
+  setDev(true)
+  R:Delete(key)
+  bossDD.opts.set(3470)
+  diffDD.opts.set("nh")
+end
+print("ok Export labels on the Review tab, dev only")
 do
   -- Send to Timeline saves the Journal's export at once and opens it; the middle list is that reference
   local text = table.concat({ "Boss: Nek'zali the Soulcoiler", "Difficulty: Mythic", "Encounter: 3470", "# Stage One",
@@ -1795,6 +1931,17 @@ do
   b2 = recentRow(2) b2.OnClick(b2)
 end
 print("ok rehearsal source for a boss and difficulty")
+do
+  -- a build without the developer files: the tab is built with no Export labels and no (?) for it
+  CRT.AbilityLabelsDev = nil
+  local before, helpBefore = 0, helpTargets["Export labels"]
+  for _, b in ipairs(buttons) do if b.text == "Export labels" then before = before + 1 end end
+  pages.timeline.build(mock())
+  local after = 0
+  for _, b in ipairs(buttons) do if b.text == "Export labels" then after = after + 1 end end
+  assert(after == before and helpTargets["Export labels"] == helpBefore, "no Export labels without the developer files")
+end
+print("ok no Export labels in a packaged build")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const p of process.argv.slice(2, 17)) {

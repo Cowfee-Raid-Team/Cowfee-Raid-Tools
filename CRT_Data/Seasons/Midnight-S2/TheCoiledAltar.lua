@@ -4,12 +4,13 @@ local ADDON, CRT = ...
 --
 -- encounterID 3429 comes from the boss's Warcraft Logs rankings link (boss=3429), not from a pull
 --             yet; /crt dev seasons ids checks it against the saved pulls.
--- references  The ability timelines, in the Timeline's text format (see Timeline/Database.lua for the format):
---             Mythic, transcribed from a planner screenshot on 2026-10-17 (the vault note "Cowfee Raid Tools -
---             Boss Reference Transcriptions"), and Heroic, transcribed from Alex's Heroic planner screenshot on
---             2026-10-27 (its phase lines and bar lengths are estimates from the axis; see its last line). The
---             rows have no types yet: Alex sets them in game with the Logged Timeline Ref tool on the Development
---             page, and its export replaces these blocks.
+-- references  The ability timelines, in the Timeline's text format (see Timeline/Database.lua for the
+--             format): Mythic, transcribed from a planner screenshot on 2026-10-17 (the vault note "Cowfee
+--             Raid Tools - Boss Reference Transcriptions"), and Heroic, transcribed from Alex's Heroic
+--             planner screenshot on 2026-10-27 (its phase lines and bar lengths are estimates from the axis;
+--             see its last line). The rows have no types yet: Alex sets them in game as ability labels
+--             (right-click an ability on the Timeline: Type, Also, icons), and Export labels there gives the
+--             abilities field for this file.
 -- special     The boss's special alerts on Raid Notes > Mech Alerts > Special (the format is at the top of
 --             Alerts/Special.lua). Each one names a row of the ability timeline (when.row), so its times are that
 --             row's casts and move when the reference changes. A row that runs through several phases (Venom

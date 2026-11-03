@@ -281,18 +281,20 @@ function Timeline:WithoutHidden(lanes, encounterID)
 end
 
 -- Ability labels: what a boss's Encounter Journal abilities show as on the Timeline, per spell ID, { row = true,
--- type = "raid", name = "Tank buster", tags = { "tank", "magic" } }. row gives the ability a row of its own on
--- the timeline even when nothing has a time for it, type colors its row (and its alerts) as a reference type
--- does, name shows instead of the Journal's, and tags are the Journal's icons it shows. Two layers, read field
--- by field: your own first, then the boss file's, then (on a reference row) the ability timeline's own (type ...).
---   Your own: set from the right-click menu of an ability (Advanced tab; Review and the pop-out with /crt dev
---     open), saved per boss as timeline.abilities[boss][spellID]. Only what you see, like ignored mechanics,
---     and read in a developer build only (Timeline.DevBuild). /crt dev labels (Dev/AbilityLabels.lua) exports
---     them in the boss-file format and clears them once they ship.
+-- type = "soak", also = { "spread" }, name = "Tank buster", tags = { "tank", "magic" } }. row gives the ability a
+-- row of its own on the timeline even when nothing has a time for it, type colors its row (and its alerts) as a
+-- reference type does, also lists its further types (dots on the row, lines in the tooltip, the Mech Alerts list's
+-- types: LabelTypes), name shows instead of the Journal's, and tags are the Journal's icons it shows. Two layers,
+-- read field by field: your own first, then the boss file's, then (on a reference row) the ability timeline's own
+-- (type ...).
+--   Your own: set from the right-click menu of an ability (Advanced tab; Review, the pop-out and the Mech Alerts
+--     list with /crt dev open), saved per boss as timeline.abilities[boss][spellID]. Only what you see, like
+--     ignored mechanics, and read in a developer build only (Timeline.DevBuild). /crt dev labels and the Timeline's
+--     Export labels (Dev/AbilityLabels.lua) export them in the boss-file format; the window clears them once they ship.
 --   The boss file's: its abilities field (Bosses:Abilities, Registry.lua), shipped to everyone, every build.
 -- Ability gives both laid together; OwnAbility and OwnAbilities only yours.
 
-local LABEL_FIELDS = { "row", "type", "name", "tags" }
+local LABEL_FIELDS = { "row", "type", "also", "name", "tags" }
 
 -- Your labels for a boss (a developer build only), by spell ID, or nil.
 local function ownLabels(encounterID)
@@ -368,11 +370,27 @@ function Timeline:ClearAbilities(encounterID)
     self:Fire()
 end
 
--- Sets one field of your own label. field: "row", "type", "name" or "tags"; nil (or "") clears it.
+-- list without key (a new list), and whether key was in it.
+local function without(list, key)
+    local out, had = {}, false
+    for _, k in ipairs(list) do
+        if k == key then
+            had = true
+        else
+            out[#out + 1] = k
+        end
+    end
+    return out, had
+end
+
+-- Sets one field of your own label. field: "row", "type", "also", "name" or "tags"; nil (or "") clears it. A main
+-- type that is among the ability's further types leaves them (yours then hold the rest), and also never holds the
+-- main type; an empty also is kept (no further types, over the boss file's).
 function Timeline:SetAbility(encounterID, spellID, field, value)
     if encounterID == nil or type(spellID) ~= "number" then
         return
     end
+    local shown = self:Ability(encounterID, spellID)
     local db = tdb()
     db.abilities = db.abilities or {}
     local boss = tostring(encounterID)
@@ -380,6 +398,14 @@ function Timeline:SetAbility(encounterID, spellID, field, value)
     local a = db.abilities[boss][spellID] or {}
     if value == "" or value == false then
         value = nil
+    end
+    if field == "type" and value ~= nil and shown and type(shown.also) == "table" then
+        local rest, had = without(shown.also, value)
+        if had then
+            a.also = rest
+        end
+    elseif field == "also" and type(value) == "table" then
+        value = without(value, shown and shown.type)
     end
     a[field] = value
     db.abilities[boss][spellID] = next(a) and a or nil
@@ -389,10 +415,49 @@ function Timeline:SetAbility(encounterID, spellID, field, value)
     self:Fire()
 end
 
+-- Every type a labelled ability shows with, main first, over base (the types it has without the label: an ability
+-- timeline row's, or the Journal icons'): the label's type, else base's first; then the label's also, else (the
+-- label giving no type) base's further types. Known types only, each once. Nil when the label changes no type, or
+-- when there is no main type to go with its also. The Timeline's lanes (ApplyAbilities) and the alerts' colours and
+-- the Mech Alerts list (Alerts/Colors.lua) read it, so they agree.
+function Timeline.LabelTypes(a, base)
+    local Reference = CRT.TimelineReference
+    if type(a) ~= "table" or not Reference then
+        return nil
+    end
+    local main = type(a.type) == "string" and Reference.TYPES[a.type] and a.type or nil
+    local also = type(a.also) == "table" and a.also or nil
+    if not (main or also) then
+        return nil
+    end
+    base = type(base) == "table" and base or {}
+    local out, seen = {}, {}
+    local function add(key)
+        if type(key) == "string" and Reference.TYPES[key] and not seen[key] then
+            seen[key] = true
+            out[#out + 1] = key
+        end
+    end
+    add(main or base[1])
+    if not out[1] then
+        return nil
+    end
+    if also then
+        for _, key in ipairs(also) do
+            add(key)
+        end
+    elseif not main then
+        for i = 2, #base do
+            add(base[i])
+        end
+    end
+    return out
+end
+
 -- lanes with the ability labels laid on (Labels: yours, then the boss file's, field by field): each lane of a
--- labelled ability takes its name, type and icons over the lane's own (an ability timeline's (type ...)), and
--- each ability given a row that has no lane yet gets an empty one (after the boss's rows, kind "journal").
--- rows are the boss's Journal rows (Journal:Rows). Returns the new list.
+-- labelled ability takes its name, types (LabelTypes) and icons over the lane's own (an ability timeline's
+-- (type ...)), and each ability given a row that has no lane yet gets an empty one (after the boss's rows, kind
+-- "journal"). rows are the boss's Journal rows (Journal:Rows). Returns the new list.
 function Timeline:ApplyAbilities(lanes, encounterID, rows)
     local list = self:Labels(encounterID)
     if next(list) == nil then
@@ -404,9 +469,12 @@ function Timeline:ApplyAbilities(lanes, encounterID, rows)
             lane.baseLabel = lane.baseLabel or lane.label
             lane.label = a.name
         end
+        local types = Timeline.LabelTypes(a, lane.types)
+        if types then
+            lane.types = types
+        end
         local t = a.type and Reference and Reference.TYPES[a.type]
         if t then
-            lane.types = { a.type }
             lane.color = t.color
         end
         if type(a.tags) == "table" then

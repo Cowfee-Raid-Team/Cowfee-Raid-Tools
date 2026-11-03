@@ -195,6 +195,11 @@ local TEXT_MENU = {
     -- a value from the boss file (Bosses:Abilities): yours can't take it away, so the menu says where it comes from
     fromFile = " (boss file)",
     noTypeFromFile = "No type (edit the boss file to remove its type)",
+    also = "Also",
+    alsoNeedsType = " (set a type first)",
+    alsoClear = "Clear",
+    alsoFile = "Use the boss file's",
+    exportLabels = "Export labels (dev)",
     tags = "Tags",
     journalTags = "Use the Journal's icons",
     addPhase = "Add phase here...",
@@ -393,10 +398,12 @@ local function askAbilityName(boss, row, current)
 end
 
 -- One ability's menu, shared by the Advanced tab's lists and (developer builds, /crt dev open) the Review
--- tab's and the pop-out's row names: with its spell, your own labels for it (Timeline:SetAbility: a row,
--- a type, the Journal's icons, a name) and Make a Mech Alert, which opens the Mech Alerts tab on it; in
--- DevMode, Hide from the timeline (Timeline:SetHidden), which ships. row: { name, spellID, tags } with the
--- Journal's name and icons; hideName: the name it is hidden by (nil for no Hide).
+-- tab's, the pop-out's and the Mech Alerts list's row names: with its spell, your own labels for it
+-- (Timeline:SetAbility: a row, a type, its Also types, the Journal's icons, a name) and Make a Mech Alert, which
+-- opens the Mech Alerts tab on it; in DevMode, Hide from the timeline (Timeline:SetHidden), which ships, and
+-- Export labels, the boss's labels in the boss-file format (Dev/AbilityLabels.lua). The one place an ability is
+-- tagged. row: { name, spellID, tags, types } with the Journal's name and icons and the row's types; hideName: the name it is hidden by (nil
+-- for no Hide); opts: { noAlert = true } leaves out Make a Mech Alert (the Mech Alerts list's own menu).
 local AbilityMenu = {}
 CRT.TimelineAbilityMenu = AbilityMenu
 
@@ -407,7 +414,66 @@ local function shippedLabel(boss, spellID)
     return list and list[spellID] or {}
 end
 
-function AbilityMenu.Fill(root, boss, row, hideName)
+local function has(list, key)
+    for _, k in ipairs(type(list) == "table" and list or {}) do
+        if k == key then
+            return true
+        end
+    end
+    return false
+end
+
+-- The Also submenu: a tick box per type but the main one (the further types, dots on the row), the boss file's
+-- marked; ticking one sets yours to what shows with it added or taken out. Clear drops yours. The main type is the
+-- label's, else the row's own first (rowTypes: an ability timeline's (type ...)); with none, Also is greyed, as
+-- Timeline.LabelTypes applies no Also without a main type, unless an Also of yours is left: then it holds only Clear.
+local function fillAlso(root, boss, spellID, shipped, get, mine, rowTypes)
+    local Timeline = CRT.Timeline
+    local main = get("type") or (type(rowTypes) == "table" and rowTypes[1]) or nil
+    local function clearEntry(menu)
+        if type(mine("also")) == "table" then
+            menu:CreateButton(shipped.also and TEXT_MENU.alsoFile or TEXT_MENU.alsoClear, function()
+                Timeline:SetAbility(boss, spellID, "also", nil)
+            end)
+            return true
+        end
+    end
+    if not (main and Reference.TYPES[main]) then
+        -- greyed, unless an Also of yours is left to clear
+        local off = root:CreateButton(TEXT_MENU.also .. TEXT_MENU.alsoNeedsType)
+        if not clearEntry(off) and off and off.SetEnabled then
+            off:SetEnabled(false)
+        end
+        return
+    end
+    local also = root:CreateButton(TEXT_MENU.also)
+    local function shown()
+        local a = get("also")
+        return type(a) == "table" and a or {}
+    end
+    for _, key in ipairs(Reference.TYPE_ORDER) do
+        if key ~= main then
+            local t = Reference.TYPES[key]
+            also:CreateCheckbox("|cff" .. t.hex .. t.label .. "|r  " .. t.desc .. (has(shipped.also, key) and TEXT_MENU.fromFile or ""), function()
+                return has(shown(), key)
+            end, function()
+                local out = {}
+                for _, k in ipairs(shown()) do
+                    if k ~= key then
+                        out[#out + 1] = k
+                    end
+                end
+                if not has(shown(), key) then
+                    out[#out + 1] = key
+                end
+                Timeline:SetAbility(boss, spellID, "also", out)
+            end)
+        end
+    end
+    clearEntry(also)
+end
+
+function AbilityMenu.Fill(root, boss, row, hideName, opts)
     local spellID = boss and row.spellID and row.spellID ~= 0 and row.spellID or nil
     local Timeline = CRT.Timeline
     -- what the ability shows with (yours over the boss file's); mine is only yours, for the buttons that clear it
@@ -448,6 +514,7 @@ function AbilityMenu.Fill(root, boss, row, hideName)
                 Timeline:SetAbility(boss, spellID, "type", key)
             end)
         end
+        fillAlso(root, boss, spellID, shipped, get, mine, row.types)
         -- the Journal's icons for it: ticked ones are yours (they start as the Journal's own)
         local tags = root:CreateButton(TEXT_MENU.tags)
         local function current()
@@ -495,19 +562,30 @@ function AbilityMenu.Fill(root, boss, row, hideName)
                 Timeline:SetAbility(boss, spellID, "name", nil)
             end)
         end
-        root:CreateButton(TEXT_MENU.alert, function()
-            if CRT.NoteReminders and CRT.NoteReminders.Open then
-                CRT.NoteReminders.Open(boss, spellID)
-            end
-        end)
+        if not (opts and opts.noAlert) then
+            root:CreateButton(TEXT_MENU.alert, function()
+                if CRT.NoteReminders and CRT.NoteReminders.Open then
+                    CRT.NoteReminders.Open(boss, spellID)
+                end
+            end)
+        end
     end
-    if hideName and boss and Timeline.DevMode() then
+    local Labels = rawget(CRT, "AbilityLabelsDev") -- Dev/AbilityLabels.lua, developer builds only
+    local export = Labels and tonumber(boss)
+    if boss and (hideName or export) and Timeline.DevMode() then
         root:CreateDivider()
-        root:CreateCheckbox(TEXT_MENU.hide, function()
-            return Timeline:Hidden(boss, hideName)
-        end, function()
-            Timeline:SetHidden(boss, hideName, not Timeline:Hidden(boss, hideName))
-        end)
+        if hideName then
+            root:CreateCheckbox(TEXT_MENU.hide, function()
+                return Timeline:Hidden(boss, hideName)
+            end, function()
+                Timeline:SetHidden(boss, hideName, not Timeline:Hidden(boss, hideName))
+            end)
+        end
+        if export then
+            root:CreateButton(TEXT_MENU.exportLabels, function()
+                Labels.ShowBoss(export)
+            end)
+        end
     end
 end
 

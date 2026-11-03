@@ -684,6 +684,7 @@ do
   assert(opens == 0, "label menu: only the right button")
   lbl.OnClick(lbl, "RightButton")
   assert(opens == 1 and filled and filled.boss == v.encounterID and filled.hide == CRT.Timeline.IgnoreName(lbl.lane) and filled.row.name == filled.hide, "label menu: the ability menu with Hide, in dev")
+  assert(filled.row.types == lbl.lane.types and filled.row.tags == lbl.lane.tags, "label menu: the row's types (Also's main type) and icons")
   CRT.UI, CRT.TimelineAbilityMenu, MenuUtil = savedUI, savedFill, savedMenu
   print("ok label menu: right-click a row name in dev only")
 end
@@ -889,6 +890,15 @@ do
   v:Refresh()
   for _, lane in ipairs(v.lanes) do if lane.kind == "journal" then row = lane end end
   assert(row.label == "Adds" and row.baseLabel == "Latent Cultist" and row.types[1] == "soak" and row.color == CRT.TimelineReference.TYPES.soak.color, "named and typed")
+  -- Also: dots on the row (not an ability timeline's), as a reference row's further types
+  T:SetAbility(3470, 1287198, "also", { "spread" })
+  v:Refresh()
+  local lbl
+  for _, l in ipairs(v.labels) do if l.lane and l.lane.kind == "journal" and l:IsShown() then lbl = l end end
+  assert(lbl and table.concat(lbl.lane.types, ",") == "soak,spread", "Also after the type: " .. tostring(lbl and table.concat(lbl.lane.types, ",")))
+  local function near(c, w) return c and math.abs(c[1] - w[1]) < 0.01 and math.abs(c[2] - w[2]) < 0.01 and math.abs(c[3] - w[3]) < 0.01 end
+  assert(lbl.dots[1]:IsShown() and near(lbl.dots[1].vcolor, CRT.TimelineReference.TYPES.spread.color) and not lbl.dots[2]:IsShown(), "one dot for Also")
+  T:SetAbility(3470, 1287198, "also", nil)
   T:SetIgnored(3470, T.IgnoreName(row), true)
   v:Refresh()
   assert(#v.ignoredLanes == 1 and v.ignoredLanes[1].label == "Adds" and T:Ignored(3470, "Latent Cultist"), "ignored by its own name")

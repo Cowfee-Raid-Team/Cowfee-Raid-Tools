@@ -10,13 +10,15 @@ local ADDON, CRT = ...
 --   markerHelp  -> CRT.MarkerDisplayDB.help      (how the marker calls work on the boss, one string)
 --   pace        -> CRT.PaceDB.bosses             (pace plans)
 --   abilities   -> Bosses:Abilities(encounterID) (the Timeline's ability labels for everyone, below Build)
---                  abilities = { [spellID] = { type = "raid", name = "Adds", row = true, tags = { "tank", "magic" } } }:
---                  by spell ID (a number), every field optional. type is an ability type's key (Reference.TYPES in
---                  Timeline/Reference.lua) and colors the row and its alerts; name shows instead of the Journal's;
---                  row = true gives the ability a row even with no time; tags are the Journal icons it shows
---                  (Reference.TAGS). One type only: a label has no second type. A player's own labels win field by
---                  field (Timeline:ApplyAbilities); /crt dev labels exports them in this format. An entry, type, tag
---                  or field that doesn't read is left out, with a chat line in developer builds.
+--                  abilities = { [spellID] = { type = "soak", also = { "spread" }, name = "Adds", row = true,
+--                  tags = { "tank", "magic" } } }: by spell ID (a number), every field optional. type is an ability
+--                  type's key (Reference.TYPES in Timeline/Reference.lua) and colors the row and its alerts; also
+--                  lists its further types, read only with a type (shown as dots, listed in the tooltip; the main
+--                  type and doubles are left out); name shows instead of the Journal's; row = true gives the ability a row even with no time;
+--                  tags are the Journal icons it shows (Reference.TAGS). A player's own labels win field by field
+--                  (Timeline:ApplyAbilities); /crt dev labels and the Timeline's Export labels export them in this
+--                  format. An entry, type, tag or field that doesn't read is left out, with a chat line in developer
+--                  builds.
 -- Two fields are read where they are used, through Bosses:Get, not copied here:
 --   special     -> CRT.AlertSpecial (Alerts/Special.lua: the boss's scripted special alerts, on Mech Alerts'
 --                  Special list), a list of { key, label, help, type, difficulty, default, when = { row |
@@ -374,7 +376,22 @@ local function devWarn(msg)
     end
 end
 
-local LABEL_KEYS = { type = true, name = true, row = true, tags = true }
+local LABEL_KEYS = { type = true, also = true, name = true, row = true, tags = true }
+
+-- The further types of a label as written: known type keys, each once, never the main type.
+local function readAlso(spellID, def, main, say)
+    local Reference = CRT.TimelineReference
+    local out, seen = {}, { [main or false] = true }
+    for _, key in ipairs(def.also) do
+        if not (type(key) == "string" and (not Reference or Reference.TYPES[key])) then
+            say(string.format("also %s of spell %d (not an ability type)", tostring(key), spellID))
+        elseif not seen[key] then
+            seen[key] = true
+            out[#out + 1] = key
+        end
+    end
+    return out
+end
 
 -- One ability's label as written, or nil when nothing in it reads. say(what) reports a part left out.
 local function readLabel(spellID, def, say)
@@ -391,6 +408,13 @@ local function readLabel(spellID, def, say)
         else
             say(string.format("type %s of spell %d (not an ability type)", tostring(def.type), spellID))
         end
+    end
+    if def.also ~= nil and not label.type then
+        say(string.format("also of spell %d (no type to go with it)", spellID))
+    elseif type(def.also) == "table" then
+        label.also = readAlso(spellID, def, label.type, say)
+    elseif def.also ~= nil then
+        say(string.format("also %s of spell %d (also is a list of types)", tostring(def.also), spellID))
     end
     if type(def.name) == "string" and def.name ~= "" then
         label.name = def.name
@@ -415,7 +439,7 @@ local function readLabel(spellID, def, say)
     return next(label) and label or nil
 end
 
--- A boss file's abilities field read into { [spellID] = { type, name, row, tags } }, or nil for none. What doesn't
+-- A boss file's abilities field read into { [spellID] = { type, also, name, row, tags } }, or nil for none. What doesn't
 -- read is left out, never an error.
 function Bosses.ReadAbilities(raw, encounterID)
     if type(raw) ~= "table" then
