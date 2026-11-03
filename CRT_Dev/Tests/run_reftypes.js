@@ -66,6 +66,26 @@ local lines = E.RemovalLines()
 check("removal lines sorted by boss", #lines == 2 and lines[1] == "CRT_Data/Seasons/Sample/Kithix.lua; encounter 3513; Mythic; Boss: Kith'ix / Difficulty: Mythic / Length: 7:00" and lines[2] == "Sszorak.lua; encounter 3420; Heroic; Boss: Sszorak / Difficulty: Heroic / Length: 6:32; already gone")
 CRT.db.dev.removedReferences = nil
 check("no removals, no lines", #E.RemovalLines() == 0)
+-- Save as my copy on a shipped entry lands in the copy you have for its boss and difficulty
+do
+  local shippedEntry = R:List()[1]
+  local k1, r1 = E.SaveAsCopy(shippedEntry, shippedEntry.text)
+  local k2, r2 = E.SaveAsCopy(R:Find("ship:1"), (shippedEntry.text:gsub("X: 0:10", "X (type raid): 0:10")))
+  local mine = 0
+  for _, e in ipairs(R:List()) do if e.own then mine = mine + 1 end end
+  check("save as my copy: the first save makes your copy", k1 == "own:1" and r1 == false)
+  check("save as my copy: a second save on the shipped entry replaces it", k2 == k1 and r2 == true and mine == 1
+    and R:Find(k1).ref.rows[1].types[1] == "raid")
+  local k3, r3 = E.SaveAsCopy(R:Find(k1), R:Find(k1).text .. "\\n# kept")
+  check("save as my copy: your copy is updated", k3 == k1 and r3 == false and R:Find(k1).text:find("# kept", 1, true) ~= nil)
+  check("save as my copy: text that doesn't read saves nothing", E.SaveAsCopy(shippedEntry, "nonsense") == nil)
+  local k4, r4 = E.SaveAsCopy(shippedEntry, R:Find(k1).text)
+  check("save as my copy: the same text again replaces nothing", k4 == k1 and r4 == false)
+  local other = R:Add("Boss: Other\\nDifficulty: Mythic\\nEncounter: 9\\nX: 0:10")
+  local k5, r5 = E.SaveAsCopy(R:Find(other), R:Find(k1).text .. "\\n# moved")
+  check("save as my copy: yours moved to a boss you have a copy of goes into that copy", k5 == k1 and r5 == true and R:Find(other) == nil)
+  CRT.db.timeline.references = {}
+end
 -- /crt dev mechhidden: the mechHidden line to paste into each changed boss file
 local printed = {}
 CRT.Print = function(_, m) printed[#printed + 1] = m end

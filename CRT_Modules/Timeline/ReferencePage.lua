@@ -626,7 +626,8 @@ function ReferencePage.Build(f, ctx)
 
     local refreshAbilities -- set below, with the abilities list; fill uses it
 
-    -- Fills the box. key is your reference being edited, nil for text to save as a new one.
+    -- Fills the box. key is your reference being edited, nil for text to save as your copy (Reference:Add:
+    -- into the copy you have for its boss and difficulty, else a new one).
     local function fill(text, key)
         editing = key
         edit:SetText(text or "")
@@ -646,16 +647,21 @@ function ReferencePage.Build(f, ctx)
         -- stamped with the difficulty the page shows, and the box then shows it as saved.
         local typed = edit:GetText()
         local text = Reference.StampDifficulty(typed, ctx.difficulty())
-        local ok, errors
+        local ok, errors, replaced
         local _, typedErrors = Reference.Parse(typed)
         if typedErrors then
             errors = typedErrors
         elseif editing then
-            ok, errors = Reference:Update(editing, text)
+            -- text moved to another boss or group you have a copy of goes into that copy (Update says which)
+            local was, kept = editing, nil
+            ok, errors, kept = Reference:Update(editing, text)
+            editing = kept or editing
+            replaced = ok and kept ~= was
         else
-            local key
-            key, errors = Reference:Add(text)
+            local key, more = Reference:Add(text)
             ok = key ~= nil
+            errors = not ok and more or nil
+            replaced = ok and more == true
             editing = key or nil -- a second Save changes this one instead of adding another
         end
         if ok then
@@ -668,6 +674,7 @@ function ReferencePage.Build(f, ctx)
             end
             local sameName = saved and ctx.bossName() and saved.boss:lower() == ctx.bossName():lower()
             local where = (here or sameName) and GROUP_NAMES[ctx.difficulty()] or saved.boss
+            where = where .. (replaced and ", replaced your copy" or "")
             if saved and saved.warnings then
                 status:SetText("Saved for " .. where .. "\n" .. saved.warnings[1])
                 status:SetTextColor(UI.Color("warn")) -- saved, with something to look at: in between
@@ -691,18 +698,19 @@ function ReferencePage.Build(f, ctx)
         fill("", nil)
     end)
 
-    -- Adds a copy of a reference for the other difficulty group. Mythic-only rows are left out of a
-    -- Normal/Heroic copy; a reference that is nothing but those rows has nothing to copy.
+    -- Copies a reference to the other difficulty group as your copy there (into the one you have, else
+    -- a new one). Mythic-only rows are left out of a Normal/Heroic copy; a reference that is nothing but
+    -- those rows has nothing to copy.
     local function copyTo(entry)
         local group = OTHER_GROUP[ctx.difficulty()]
         local text, removed = Reference.CopyTo(entry.text, group)
-        local key = Reference:Add(text)
+        local key, replaced = Reference:Add(text)
         if not key then
             status:SetText("Nothing to copy: every row is Mythic-only")
             status:SetTextColor(UI.Color("bad"))
             return
         end
-        status:SetText("Copied to " .. GROUP_NAMES[group]
+        status:SetText("Copied to " .. GROUP_NAMES[group] .. (replaced == true and ", replaced your copy" or "")
             .. (removed > 0 and (" (" .. removed .. " Mythic-only row" .. (removed == 1 and "" or "s") .. " left out)") or ""))
         status:SetTextColor(UI.Color("good"))
     end
@@ -905,18 +913,24 @@ function ReferencePage.Build(f, ctx)
     end
 
     -- Edits the reference open in the box (editing) through its text, one line at a time: yours is
-    -- updated; a shipped one is saved as a new one of yours (shipped references can't change). The box,
-    -- the list and the Timeline follow.
+    -- updated; a shipped one is saved as your copy (Reference:Add: into the copy you have for its boss and
+    -- difficulty, else a new one; shipped references can't change). The box, the list and the Timeline follow.
     local function applyText(text)
         local entry = editing and Reference:Find(editing)
         local ok, errors
         if entry and entry.own then
-            ok, errors = Reference:Update(editing, text)
+            local kept
+            ok, errors, kept = Reference:Update(editing, text)
+            editing = kept or editing
         else
-            local key
-            key, errors = Reference:Add(text)
+            local key, more = Reference:Add(text)
             ok = key ~= nil
+            errors = not ok and more or nil
             editing = key or editing
+            if ok then
+                -- shown on the Timeline in place of the shipped one, as a moved phase line is
+                CRT.Timeline:PickCopy(ctx.selectedBoss(), ctx.difficulty(), key)
+            end
         end
         if ok then
             fill(text, editing)
@@ -1162,8 +1176,9 @@ function ReferencePage.Build(f, ctx)
         end
     end)
 
-    -- Puts text in the box: as a new reference (Save adds it), or as your reference key when given (the
-    -- Journal's Send to Timeline saves first, then opens it here).
+    -- Puts text in the box: as new text (Save saves it as your copy for its boss and difficulty,
+    -- replacing the one you have), or as your reference key when given (the Journal's Send to
+    -- Timeline saves first, then opens it here).
     function tab:Fill(text, key)
         fill(text or "", key)
     end

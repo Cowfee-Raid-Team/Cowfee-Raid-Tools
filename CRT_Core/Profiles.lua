@@ -101,7 +101,7 @@ Profiles.SHARE = {
         record = true, minPull = true, keep = true, span = true, grid = true, iconSize = true, personalNoteSize = true, deathRows = true, roles = true,
         firstDeaths = true, overlay = true, overlayOn = true, hideEmpty = true, popout = true, tooltipMode = true, tooltipSpot = true,
         popView = false, -- the pop-out's view: page state
-        bosses = false, rows = false, references = false, nextRef = false, nextId = false,
+        bosses = false, rows = false, references = false, droppedReferences = false, nextRef = false, nextId = false,
         reviewRefs = false, -- which ability timeline is in use: your own ones' keys mean nothing on another computer
         healerRows = false, -- the Healer CDs rows you picked per player stay on this computer
         healerSlots = false, -- the healer slots you planned per boss are boss data, not settings

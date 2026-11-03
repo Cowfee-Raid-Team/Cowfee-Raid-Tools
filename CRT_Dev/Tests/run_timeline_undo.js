@@ -122,6 +122,29 @@ CRT.Timeline:Fire()
 U:Undo()
 check("a deleted reference back between its neighbours", #tl.references == 3 and tl.references[2].id == 2 and tl.references[3].id == 3)
 
+-- your references are read through Reference:Own, whose first read folds duplicate copies (Timeline/Reference.lua):
+-- the fold happens before the copy is taken, so it is never an undo step
+do
+  local tl2 = { references = { { id = 1, text = "Boss: A" }, { id = 2, text = "Boss: A, older" } } }
+  local C = { db = { notes = { list = {} }, alerts = { reminders = {} } } }
+  C.Notes, C.Alerts, C.Timeline = owner(), owner(), owner()
+  function C.Timeline:Settings() return tl2 end
+  function C:Print() end
+  local folds = 0
+  C.TimelineReference = { Own = function()
+    if tl2.references[2] then table.remove(tl2.references, 2) folds = folds + 1 end
+    return tl2.references
+  end }
+  assert(load(src, "Undo.lua"))("CowfeeRaidTools", C)
+  local U2 = C.TimelineUndo
+  U2:Watch({ IsVisible = function() return true end })
+  now = 130 C.Timeline:Fire()
+  now = 131 C.db.notes.list[1] = { raw = "x" } C.Notes:Fire()
+  local refItem = false
+  for _, step in ipairs(U2.past) do for _, item in ipairs(step) do refItem = refItem or item.g == "references" end end
+  check("a fold of duplicate copies on the first read is not an undo step", folds == 1 and #U2.past == 1 and not refItem)
+end
+
 -- at most 30 kept
 U.past = {}
 for i = 1, 35 do now = 200 + i notes[1].raw = "v" .. i CRT.Notes:Fire() end

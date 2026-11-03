@@ -24,6 +24,7 @@ CRT.version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetad
 --   tattle.history, tattle.current, tattle.custom (Tattlebot's nights, with each night's season name and team stamp)
 --   late.history (the Late Tracker's nights, team stamped), notes.list and notes.history (raid notes and their
 --   earlier texts), CRTLootDB (Loot History, its own saved variable), timeline.references (your own ability timelines)
+--   and timeline.droppedReferences (the extra copies of them folded away, kept so nothing is lost)
 --   notes.personalShifts (your own Healer CDs times, by note id: they follow the notes and go with a deleted note)
 --   timeline.healerRows (the spell rows you showed or hid per player on Healer CDs, Timeline/HealerRows.lua)
 --   timeline.healerSpellOrder (the order of each healer's spell rows on Healer CDs, Timeline/HealerOrder.lua)
@@ -388,6 +389,10 @@ local defaults = {
         -- the pop-out's view (its title strip's toggle): "abilities" (the ability timeline) or "healers" (Healer CDs)
         popView = "abilities",
         references = {}, -- the player's own reference timelines, { id, text, saved } (saved: time() of the last change, optional; Timeline/Reference.lua)
+        -- your ability timelines' old texts, never read again: the extra copies folded away when references became
+        -- one per boss and difficulty group, and the text a save wrote over (Reference:Add). { id, text, saved,
+        -- dropped } (dropped: time() it was set aside), the newest 200 kept (Timeline/Reference.lua, keepDropped)
+        droppedReferences = {},
         nextRef = 1,
         nextId = 1,
         -- the ability timeline In use per boss and difficulty, picked on the Advanced tab:
