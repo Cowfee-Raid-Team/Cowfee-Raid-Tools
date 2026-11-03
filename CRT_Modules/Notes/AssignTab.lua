@@ -247,9 +247,11 @@ local function inviteNames()
     return record and Model.New(record.raw or ""):InviteNames() or {}
 end
 
+-- the note's roster layout (Notes:RosterLayout: the sender's for a shared note, else its invite list's)
 local function linkedLayout()
     local record = noteRecord(current())
-    local id = record and record.presetId
+    local Notes = CRT.Notes
+    local id = record and Notes and Notes.RosterLayout and Notes:RosterLayout(record) or nil
     return Palette.FindLayout(id) and id or nil
 end
 

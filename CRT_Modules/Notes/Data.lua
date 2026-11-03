@@ -20,7 +20,8 @@ local ADDON, CRT = ...
 --   window = note window settings, alert = personal alert settings, trustedOnly
 --   history[id] = the note's earlier texts, newest first (see "History" below)
 --   links[id] = which timer lines follow which assignment line, for the note editor (Notes/Links.lua)
--- A note's invite list becomes a Raid Groups layout when it is imported (presetId links them).
+-- A note's invite list becomes a Raid Groups layout when you import it yourself (presetId links them); a note shared
+-- to you makes none, as the sender's roster comes with the share (Groups/Share.lua).
 
 local TEXT = {
     notAdmin = "Only the raid leader or assistants can change the raid note.",
@@ -610,6 +611,31 @@ local function rosterFromInvite(note, title)
     return Groups:CreatePreset(title, slots)
 end
 
+-- The Raid Groups layout that is a note's roster, its id, or nil when there is none. A note shared to you: the
+-- sender's layout, the one the roster share stored as "<name> (from <sender>)" (preset.from, Groups:StoreFrom). A
+-- note you pasted or imported: the layout its invite list became (presetId). Open roster, the note's Roster line and
+-- the palettes' Players from all ask this.
+function Notes:RosterLayout(record)
+    local Groups = CRT.Groups
+    if not (record and Groups and Groups.Find) then
+        return nil
+    end
+    if record.from then
+        if not (Groups.Presets and Groups.Normalize) then
+            return nil
+        end
+        local key = Groups.Normalize(record.from):lower()
+        for _, p in ipairs(Groups:Presets()) do
+            if type(p.from) == "string" and p.from:lower() == key then
+                return p.id
+            end
+        end
+        return nil
+    end
+    local id = record.presetId
+    return (id ~= nil and Groups:Find(id)) and id or nil
+end
+
 -- A note's name from its text's first line that isn't blank: trimmed and cut to 40 characters. Nil when the
 -- text has none. Import names a plain note by it; the Import/New dialog a note for its picked boss.
 function Notes.FirstLineName(text)
@@ -678,12 +704,17 @@ function Notes:Import(text, from, personal, source, via, anyText, asNew)
     record.via = via or record.via
     db.list[id] = record
 
-    -- The invite list becomes a Raid Groups layout the first time, which can then be adjusted there.
+    -- The invite list becomes a Raid Groups layout the first time, which can then be adjusted there; only for a note
+    -- you paste or import yourself. A note shared to you (from set) makes none: the sender's roster comes with the
+    -- share (Groups/Share.lua), so one share never makes two look-alike layouts (Alex, 2026-11-02).
     local message = "Imported " .. record.name .. (record.difficulty and (" (" .. record.difficulty .. ")") or "") .. "."
     if plain then
         message = "Saved as a new note: " .. record.name .. "."
     end
-    if note.invite and not (record.presetId and CRT.Groups and CRT.Groups:Find(record.presetId)) then
+    if from then
+        -- only the link goes, the layout stays: its roster is the sender's layout now (Notes:RosterLayout)
+        record.presetId = nil
+    elseif note.invite and not (record.presetId and CRT.Groups and CRT.Groups:Find(record.presetId)) then
         local presetId = rosterFromInvite(note, record.name .. " " .. (record.difficulty or "") .. " roster")
         if presetId then
             record.presetId = presetId

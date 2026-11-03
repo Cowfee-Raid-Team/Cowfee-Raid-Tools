@@ -292,12 +292,19 @@ Groups.dirty = false
 Groups:SetActive(ownId)
 deliver(firstSent, "Solex-Sargeras")
 check(Groups:Active() == got.id and gdb().selected == ownId and Groups:Working()[2] == "Draft-Sargeras", "unsaved after a reload: kept")
--- names in a grid with no layout open (Unsaved layout): kept too
+-- names in a grid with no layout open (Unsaved layout): a draft, replaced; the roster opens and is active (Alex,
+-- 2026-11-02)
 gdb().selected = nil
 Groups:SetActive(ownId)
 deliver(firstSent, "Solex-Sargeras")
-check(Groups:Active() == got.id and gdb().selected == nil and Groups:Working()[2] == "Draft-Sargeras", "unsaved layout: kept")
-eq(printed[#printed], "Roster 'Main; Mythic' from Solex is now your active group. Your unsaved layout is kept; pick the roster in Quick Load to see it.", "unsaved layout: the chat line")
+check(Groups:Active() == got.id and gdb().selected == got.id and Groups:Working()[2] == slots[2], "unsaved layout: replaced, the roster open")
+eq(printed[#printed], "Roster 'Main; Mythic' from Solex is now your active group.", "unsaved layout: the chat line")
+eq(Share.TEXT.receivedDraft, nil, "unsaved layout: no line about keeping it")
+-- the same roster again onto an Unsaved layout, the roster active already: it opens again
+gdb().selected = nil
+Groups:SetSlot(5, "Draft2-Sargeras")
+deliver(firstSent, "Solex-Sargeras")
+check(Groups:Active() == got.id and gdb().selected == got.id and Groups:Working()[5] == slots[5], "unsaved layout, roster active already: opened again")
 -- unsaved edits on the received copy itself: kept, and the chat line doesn't send them to Quick Load
 Groups:Select(got.id)
 Groups:SetSlot(3, "Mine2-Sargeras")
@@ -316,6 +323,13 @@ Groups:ReplaceWorking({})
 Groups:SetActive(ownId)
 deliver(firstSent, "Solex-Sargeras")
 check(Groups:Active() == got.id and gdb().selected == got.id, "an empty grid: the roster opens")
+-- Groups:HasUnsavedEdits: only edits to an open saved layout count
+check(not Groups:HasUnsavedEdits(), "edits: none on the open roster")
+Groups:SetSlot(6, "Edit-Sargeras")
+check(Groups:HasUnsavedEdits(), "edits: an edit to the open layout")
+gdb().selected = nil
+check(not Groups:HasUnsavedEdits(), "edits: a grid with no layout open is a draft, not edits")
+Groups:Select(got.id)
 gdb().keepChanges = true
 
 -- the Late Tracker expects the received layout's people
