@@ -6,8 +6,10 @@ local ADDON, CRT = ...
 -- kick number, then the name in class colour, your own outlined, x to take it off. Players are dragged in from the
 -- palette on the right (Interrupts/PagePalette.lua), along a row to change the order (a chip dropped on another takes
 -- its place), or onto another group's row to move there; a row takes at most its group's slots, so a drop on a full
--- row is refused. "Add name" at a row's end takes a typed name. The order is the kick order and empty slots close up;
--- every change is saved slot by slot (Interrupts:SetName). In a group, the rows are read-only for anyone who can't
+-- row is refused. A General, Group or Class chip from the palette adds every player of the chosen roster it matches
+-- (Page.MatchingPlayers), in its order, skipping names the row has, as many as the row has room for. "Add name" at a
+-- row's end takes a typed name. The order is the kick order and empty slots close up; each drop is saved as one change
+-- (Interrupts:SetOwn), however many names it adds. In a group, the rows are read-only for anyone who can't
 -- edit (Page.CanEdit): no drag, no x, no Add name. Past LAYOUT.gridMaxH the rows scroll. The rows are pooled per
 -- group, made the first time a setup needs them: Page.rows[g] (row.add, row.hint: its Add name field).
 
@@ -101,19 +103,59 @@ function Page.MoveKick(names, slots, source, target)
     return out
 end
 
--- Saves the changed groups' names into your own list, slot by slot, the rest of each row emptied.
+-- A drop of palette chips on the rows: list the names it carries (a player's, or every player a General, Group or Class
+-- chip matches, Page.MatchingPlayers), names and slots as MoveKick's, target { g, at } (at: the chip dropped on, which
+-- the names take the place of, in order). A name the row has already (case and realm left out) is skipped, and the row
+-- takes no more than its slots. Returns { [g] = its new names }, or nil when nothing was added.
+function Page.AddKicks(names, slots, list, target)
+    local tg = target and target.g
+    if not (tg and names[tg]) then
+        return nil
+    end
+    local into, have = copy(names[tg]), {}
+    for _, name in ipairs(into) do
+        have[Interrupts.CleanName(name):lower()] = true
+    end
+    local at = target.at and math.min(target.at, #into + 1) or (#into + 1)
+    local added = 0
+    for _, name in ipairs(list or {}) do
+        if #into >= (slots[tg] or 0) then
+            break -- the row is full
+        end
+        local key = type(name) == "string" and Interrupts.CleanName(name):lower() or ""
+        if key ~= "" and not have[key] then
+            have[key] = true
+            table.insert(into, at + added, name)
+            added = added + 1
+        end
+    end
+    return added > 0 and { [tg] = into } or nil
+end
+
+-- The names a palette chip carries ({ token, kind }, Notes/Palette.lua's Palette.Draw): a player's own, without realm,
+-- or the players of the chosen roster a General, Group or Class chip matches.
+local function chipNames(source)
+    if source.kind == nil or source.kind == "player" then
+        local name = type(source.token) == "string" and Interrupts.CleanName(source.token) or ""
+        return name ~= "" and { name } or {}
+    end
+    return Page.MatchingPlayers(source.token, source.kind)
+end
+
+-- Saves the changed groups' names into your own list, the rest of each row emptied: one change however many names
+-- (Interrupts:SetOwn fires once).
 local function save(changed)
     local key = Page.Boss()
     local def = key and Interrupts:Def(key)
-    if not (def and changed) then
+    local own = def and Interrupts:Own(key)
+    if not (own and changed) then
         return false
     end
-    for g, names in pairs(changed) do
-        local grp = def.groups[g]
-        for s = 1, grp and grp.slots or 0 do
-            Interrupts:SetName(key, g, s, names[s] or "")
-        end
+    local list = {}
+    for g in ipairs(def.groups) do
+        list[g] = changed[g] or Page.RowNames(own[g])
     end
+    Interrupts:SetOwn(key, list)
     return true
 end
 
@@ -131,13 +173,20 @@ local function rowsNow()
     return names, slots
 end
 
--- Drops a source on a target; true when it was saved.
+-- Drops a source on a target: a palette chip ({ token, kind }), a name ({ name }, Add name) or a row's chip ({ g, k });
+-- true when it was saved.
 function Page.DropKick(source, target)
     if not Page.CanEdit() then
         return false
     end
     local names, slots = rowsNow()
-    return names and save(Page.MoveKick(names, slots, source, target)) or false
+    if not names then
+        return false
+    end
+    if source.token ~= nil then
+        return save(Page.AddKicks(names, slots, chipNames(source), target))
+    end
+    return save(Page.MoveKick(names, slots, source, target))
 end
 
 -- Takes a group's kick k off its row.
@@ -176,7 +225,7 @@ local function dragOpts()
             return not (Page.Boss() and Page.CanEdit())
         end,
         begin = function(source)
-            return Page.Boss() ~= nil and Page.CanEdit() and (source.name ~= nil or source.g ~= nil)
+            return Page.Boss() ~= nil and Page.CanEdit() and (source.token ~= nil or source.name ~= nil or source.g ~= nil)
         end,
         target = target,
         highlight = highlight,
