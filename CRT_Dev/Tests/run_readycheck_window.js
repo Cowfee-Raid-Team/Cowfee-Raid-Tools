@@ -82,7 +82,7 @@ local function mock(kind, parent, template, name)
     HookScript = function(self, k, fn) local old = self.scripts[k] self.scripts[k] = function(...) if old then old(...) end fn(...) end end,
     RegisterEvent = function(self, e) self.events = self.events or {} self.events[e] = true end,
     CreateTexture = function(self) return mock("Texture", self) end,
-    CreateFontString = function(self) return mock("FontString", self) end,
+    CreateFontString = function(self, _, _, tpl) local fs = mock("FontString", self) fs.font = tpl return fs end,
     SetText = function(self, t) self.text = t end, GetText = function(self) return self.text end,
     GetStringWidth = function(self) return #(self.text or "") * 6 end,
     SetAlpha = function(self, a) self.alpha = a end, GetAlpha = function(self) return self.alpha end,
@@ -659,6 +659,60 @@ if slider and borderBox then
   local by = orderButton and orderButton.pts[1].y
   check(by and by <= sampleTop - sample.h * sample:GetScale() - 4, "the buttons are below the sample: " .. tostring(by))
   check(by and by - 24 >= -(UI.PAGE_H - 66), "and inside the page's height")
+end
+
+-- the title is centred; a Player heading sits over the names ----------------------------------------------------
+do
+  -- where a TOPLEFT-anchored title starts, from its anchor (the sample copy has no screen place)
+  local function startX(f) return f.title.pts[1].x end
+  local TIMER_TEXT, TITLE_TEXT = "30s, right-click to close", "Ready check  3/4 ready"
+  for _, case in ipairs({ { "the window", live }, { "the Window tab's copy", sample } }) do
+    local name, f = case[1], case[2]
+    if f == live then W:Show(60, true) end
+    -- a wide window and a short timer: centred, on the same line as before
+    local oldW = f.w
+    f.w = 600
+    f.title:SetText(TITLE_TEXT)
+    f.timer:SetText("preview")
+    W.FitTitle(f)
+    check(f.title.pts[1].point == "TOPLEFT" and f.title.pts[1].y == -6, name .. ": the title stays on its line")
+    check(math.abs(startX(f) + f.title.w / 2 - 300) < 1, name .. ": the title is centred: " .. tostring(startX(f) + f.title.w / 2))
+    -- the narrowest window with the longest timer and title: it ends before the timer and the X (or gear and Reset)
+    f.w = 12 + 46 + 100 + 3 * 46
+    f.title:SetText("Group check  40 players")
+    f.timer:SetText(TIMER_TEXT)
+    W.FitTitle(f)
+    local close = (f.close and f.close:IsShown()) and 28 or 0
+    local timerLeft = f.w - 8 - #TIMER_TEXT * 6 - close
+    check(startX(f) >= 8 and startX(f) + f.title.w <= timerLeft, name .. ": a long title ends before the timer: " .. tostring(startX(f) + f.title.w) .. " vs " .. timerLeft)
+    f.w = oldW
+  end
+  -- the Player heading: the same font, left of the first column, over the names, no clicks
+  local heads = {}
+  for _, f in ipairs(frames) do
+    if f.kind == "FontString" and f.text == "Player" then heads[#heads + 1] = f end
+  end
+  check(#heads == 2, "a Player heading on the window and on the Window tab's copy: " .. #heads)
+  for _, h in ipairs(heads) do
+    check(h.font == "CRTFontDisableSmall", "the Player heading has the column headings' font: " .. tostring(h.font))
+    local first
+    for _, f in ipairs(frames) do
+      if f.kind == "Button" and f.parent == h.parent and f.index == 1 and f.key then first = f end
+    end
+    local p, fp = h.pts[1], first and first.pts[1]
+    check(fp and p.x < fp.x and p.y == fp.y + 10, "the Player heading is left of the first column, on the headings' line")
+    check(p.x == 6 + 26 + 20, "it starts where the names start, after the ready mark and role icon: " .. tostring(p.x))
+    check(not h.click and not h.scripts.OnClick and not h.scripts.OnDragStart, "the Player heading takes no clicks or drags")
+  end
+  -- not a column: not in the column order, and no heading button of its own
+  for _, col in ipairs(W:OrderedColumns()) do
+    check(col.short ~= "Player" and col.label ~= "Player" and col.key ~= "player", "Player isn't in the column order")
+  end
+  for _, f in ipairs(frames) do
+    if f.kind == "FontString" and f.text == "Player" then
+      check(f.parent.key == nil, "the Player heading isn't a column heading button")
+    end
+  end
 end
 
 print(passes .. " passed, " .. fails .. " failed")

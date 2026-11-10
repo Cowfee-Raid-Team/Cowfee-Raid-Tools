@@ -33,6 +33,9 @@ local ROLE_COORDS = {
     DAMAGER = { 20 / 64, 39 / 64, 22 / 64, 41 / 64 },
 }
 local COL_W = 46
+local PLAYER_HEADING = "Player" -- over the names; not a column, so it has no click, drag, order or show/hide
+local TITLE_MARGIN = 8 -- the title's room from the window edge and from the timer text
+local TITLE_GAP = 4
 local ROW_H = 20
 local TOP_H = 50 -- title and column headings
 local ICON = 16
@@ -366,6 +369,34 @@ function Window.Dress(f)
     f.timer:SetPoint("TOPRIGHT", -8, -8)
 end
 
+-- Centres the title on the frame, on its line, unless that would run into the timer text and whatever sits right of
+-- it (the X, or the gear and Reset). Then it moves left to end before them, and is cut short if it still does not
+-- fit. Call it after the title and timer texts are set; sizes are in the frame's own units, so scale does not matter.
+function Window.FitTitle(f)
+    local title = f.title
+    title:SetWordWrap(false)
+    title:SetJustifyH("LEFT")
+    title:SetWidth(0)
+    local width = f:GetWidth() or 0
+    local right = TITLE_MARGIN + (f.timer:GetStringWidth() or 0) + TITLE_GAP
+    if f.close and f.close:IsShown() then
+        right = right + 28
+    end
+    if f.gear and f.gear:IsShown() then
+        right = right + (f.reset and f.reset:GetWidth() or 0) + (f.gear:GetWidth() or 0) + 12
+    end
+    local text = title:GetStringWidth() or 0
+    local x = (width - text) / 2
+    local room = width - right
+    if x + text > room then
+        x = math.max(TITLE_MARGIN, room - text)
+    end
+    text = math.min(text, math.max(0, room - x))
+    title:SetWidth(text)
+    title:ClearAllPoints()
+    title:SetPoint("TOPLEFT", f, "TOPLEFT", x, -6)
+end
+
 -- Sorting -------------------------------------------------------------------------------------
 
 Window.SORTS = {
@@ -672,6 +703,14 @@ function Table:Draw(members, columns, dim)
         self.headers[j]:Hide()
     end
     self.parent:SetSize(12 + LEAD_W + NAME_W + math.max(#columns, 3) * COL_W, TOP_H + math.max(#members, 1) * ROW_H + 8)
+    if not self.playerHeading then
+        self.playerHeading = self.parent:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
+        self.playerHeading:SetJustifyH("LEFT")
+        self.playerHeading:SetText(PLAYER_HEADING)
+        self.playerHeading:SetTextColor(0.85, 0.85, 0.85)
+    end
+    self.playerHeading:ClearAllPoints()
+    self.playerHeading:SetPoint("LEFT", self.parent, "TOPLEFT", 6 + LEAD_W, -TOP_H + 10)
 
     local readyCount = 0
     for i, m in ipairs(members) do
@@ -862,6 +901,7 @@ function Window:Refresh()
     else
         frame.timer:SetText(left .. "s, right-click to close")
     end
+    Window.FitTitle(frame)
 end
 
 -- What the Window tab draws: every column in order, the hidden ones faded, with sample players.
@@ -875,6 +915,7 @@ function Window:DrawEditor(t)
     local readyCount = t:Draw(members, columns, dim)
     t.parent.title:SetText(format("Ready check  %d/%d ready", readyCount, #members))
     t.parent.timer:SetText((settings().seconds or 30) .. "s, right-click to close")
+    Window.FitTitle(t.parent)
 end
 
 -- The frame ---------------------------------------------------------------------------------
