@@ -1,7 +1,8 @@
 local ADDON, CRT = ...
 
--- The note editor's palette and chips, shared by the note editor (Notes/EditorWindow.lua) and the Mech Alerts Assign
--- tab (Notes/AssignTab.lua), so both look and work the same: Search, Players from (the current group, a note's invite
+-- The note editor's palette and chips, shared by the note editor (Notes/EditorWindow.lua), the Mech Alerts Assign tab
+-- (Notes/AssignTab.lua) and the Interrupts page's Players panel (Interrupts/PagePalette.lua: no invite list; a General,
+-- Group or Class chip there adds the matching players), so all three look and work the same: Search, Players from (the current group, a note's invite
 -- list or a saved Raid Groups layout), the players with their class icons and colours, then General, Groups and
 -- Classes, each a chip; a drag of a chip onto a row, x to remove a row's chip. The sections and the sources are
 -- Notes/EditModel.lua's (Model.Palette, Model.Sources, Model.Roster); this file draws them. A host keeps its own state
@@ -10,7 +11,7 @@ local ADDON, CRT = ...
 --                                       state.paletteScroll. opts: width, names = { search, scroll } (global names),
 --                                       choices(), get(), set(key) for Players from, onSearch() (redraw)
 --   Palette.Draw(state, roster, width)  the chips for the roster (Palette.Roster), under state.query
---   Palette.DrawSections(state, sections, width)  a host's own sections of chips (the Interrupts page's players)
+--   Palette.DrawSections(state, sections, width)  a host's own sections of chips
 --   Palette.MakeRow(parent), RowLabel, RowChipsX, RowChips, PaintRow, HighlightRow, RowUnderMouse
 --                                       the note editor's group rows (a label, then chips with x; a drop target),
 --                                       shared with the Interrupts page's kick rows
