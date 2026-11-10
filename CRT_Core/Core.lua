@@ -117,6 +117,8 @@ local defaults = {
             classBars = true, -- a class colored bar behind each player's row
             locked = false, -- true: moved only in Previews; false: dragged anywhere while it is open
             holdOnHover = true, -- past its seconds, it stays open while the mouse is over it
+            opacity = 90, -- its background, percent: 100 is solid, 0 leaves only the text, icons and bars
+            border = true, -- the 1 px edge around it
             columns = {
                 food = true, flask = true, rune = true, vantus = false,
                 intellect = true, stamina = true, attack = true, versatility = true, mastery = true, movement = true,

@@ -19,6 +19,12 @@ const fadeStart = panel.indexOf('local fades = {}');
 const fadeEnd = panel.indexOf('function UI.SetFrameTitle');
 if (fadeStart < 0 || fadeEnd < fadeStart) { console.error('FAIL UI.FadeOut and UI.CancelFade not found in Panel.lua'); process.exit(1); }
 const fade = 'local ADDON, CRT = ...\nlocal UI = CRT.UI\n' + panel.slice(fadeStart, fadeEnd);
+// The themed backdrops, as they are in Panel.lua: UI.themed, UI:ApplyThemed and UI:RegisterThemed, which a theme
+// switch repaints (UI:ApplyStyle runs UI:ApplyThemed on each).
+const themedStart = panel.indexOf('UI.themed = {}');
+const themedEnd = panel.indexOf("-- The game's grey stone");
+if (themedStart < 0 || themedEnd < themedStart) { console.error('FAIL UI:RegisterThemed not found in Panel.lua'); process.exit(1); }
+const themed = 'local ADDON, CRT = ...\nlocal UI = CRT.UI\n' + panel.slice(themedStart, themedEnd);
 
 const harness = `
 local SRC = ...
@@ -92,6 +98,11 @@ local function mock(kind, parent, template, name)
     SetMouseMotionEnabled = function(self, on) self.motion = on and true or false end,
     RegisterForDrag = function(self, ...) self.dragButtons = { ... } end,
     HasFocus = function() return false end,
+    SetBackdrop = function(self, b) self.backdrop = b end,
+    SetBackdropColor = function(self, r, g, b, a) self.bg = { r, g, b, a or 1 } end,
+    SetBackdropBorderColor = function(self, r, g, b, a) self.edge = { r, g, b, a or 1 } end,
+    GetScale = function(self) return self.scale or 1 end,
+    SetScale = function(self, s) self.scale = s end,
     IsMouseOver = function(self)
       local cx, cy, w, h = rect(self)
       if not cx then return false end
@@ -185,14 +196,27 @@ end
 -- A stand-in CRT ---------------------------------------------------------------------------------------
 local previews, pages, helps = {}, {}, {}
 local window = { enabled = true, leadOnly = false, seconds = 30, scale = 100, groupBuffsOnly = false, order = {}, sort = "group",
-  classBars = true, locked = false, holdOnHover = true,
+  classBars = true, locked = false, holdOnHover = true, opacity = 90, border = true,
   columns = { food = true, flask = true, rune = true, vantus = false, durability = true, weapon = true } }
 local CRT = { db = { readycheck = { fadeOnPull = true, window = window }, consumables = {} } }
 function CRT:Print() end
 local UI = { PAGE_W = 1026, PAGE_H = 560 }
 CRT.UI = UI
 function UI:RegisterPreview(key, fn) previews[key] = fn end
-function UI:RegisterThemed() end
+local modern = false
+function UI:IsModern() return modern end
+CRT.PALETTE = { background = { 0.11, 0.12, 0.13 }, accent = { 0.9, 0.5, 0.2 } }
+-- a theme switch, as UI:ApplyStyle does it for the themed backdrops
+local function switchTheme(on) modern = on for _, f in ipairs(UI.themed) do UI:ApplyThemed(f) end end
+local sliders = {}
+function UI.Slider(parent, text, opts)
+  local r = mock("Frame", parent)
+  r.opts, r.label = opts, text
+  r:SetSize((opts.labelWidth or 140) + 5 + (opts.width or 200) + 44, 32)
+  r.refresh = function() end
+  sliders[text] = r
+  return r
+end
 function UI:RegisterLayer() end
 function UI:SkinCloseButton() end
 function UI:OnTheme() end
@@ -225,6 +249,7 @@ CRT.Consumables = { QUESTION_MARK = 1, Entries = function() return {} end, ItemI
 CRT.ConsumablesBar = { LongTime = function() return "1m" end }
 
 assert(load(SRC.fade, "Fade"))("CowfeeRaidTools", CRT)
+assert(load(SRC.themed, "Themed"))("CowfeeRaidTools", CRT)
 assert(load(SRC.placement, "Placement"))("CowfeeRaidTools", CRT)
 assert(load(SRC.window, "Window"))("CowfeeRaidTools", CRT)
 assert(load(SRC.page, "Page"))("CowfeeRaidTools", CRT)
@@ -241,6 +266,8 @@ do
   block = block or ""
   check(block:find("\\n%s*locked = false,") ~= nil, "default: locked = false")
   check(block:find("\\n%s*holdOnHover = true,") ~= nil, "default: holdOnHover = true")
+  check(block:find("\\n%s*opacity = 90,") ~= nil, "default: opacity = 90")
+  check(block:find("\\n%s*border = true,") ~= nil, "default: border = true")
 end
 
 local frame
@@ -539,6 +566,101 @@ if lock and hold and opened then
   check(left(hold) + 26 + width + 24 <= UI.PAGE_W, "inside the page's width")
 end
 
+-- the look: background opacity and the border ------------------------------------------------------------------
+local live = frame
+local sample
+for _, f in ipairs(frames) do
+  if f.template == "BackdropTemplate" and f ~= live and f.title then sample = f end
+end
+check(sample ~= nil, "the Window tab has its sample copy")
+sample = sample or live
+local function near(a, b) return a and math.abs(a - b) < 1e-6 end
+local function bgAlpha(f) return f.bg and f.bg[4] end
+local function edgeAlpha(f) return f.edge and f.edge[4] end
+W:Show(nil, true)
+window.opacity, window.border = 90, true
+W:Apply()
+check(near(bgAlpha(live), 0.9) and near(bgAlpha(sample), 0.9), "opacity 90: background alpha 0.9 on the window and the sample: " .. tostring(bgAlpha(live)))
+check(near(edgeAlpha(live), 1) and near(edgeAlpha(sample), 1), "border on: the edge shows on both")
+for _, case in ipairs({ { 100, 1 }, { 50, 0.5 }, { 0, 0 }, { 150, 1 }, { -5, 0 } }) do
+  window.opacity = case[1]
+  W:Apply()
+  check(near(bgAlpha(live), case[2]) and near(bgAlpha(sample), case[2]), "opacity " .. case[1] .. ": background alpha " .. case[2] .. " on both: " .. tostring(bgAlpha(live)) .. ", " .. tostring(bgAlpha(sample)))
+end
+-- the hidden window follows too, so it opens with the setting
+W:Hide()
+window.opacity = 70
+W:Apply()
+check(near(bgAlpha(live), 0.7), "a closed window takes the setting too")
+-- only the background fades: the frame itself stays at full alpha
+check(live.alpha == 1 and sample.alpha == 1, "text, icons and bars stay at full alpha (the frame isn't faded)")
+-- the border
+window.border = false
+W:Apply()
+check(near(edgeAlpha(live), 0) and near(edgeAlpha(sample), 0), "border off: the edge is hidden on both")
+check(live.backdrop and live.backdrop.edgeSize == 1 and sample.backdrop.edgeSize == 1, "border off keeps the 1 px edge's room: nothing shifts")
+-- a theme switch keeps both, in every look
+switchTheme(true)
+check(near(bgAlpha(live), 0.7) and near(bgAlpha(sample), 0.7), "a Modern theme keeps the opacity: " .. tostring(bgAlpha(live)))
+check(near(live.bg[1], CRT.PALETTE.background[1]), "and paints the theme's background")
+check(near(edgeAlpha(live), 0) and near(edgeAlpha(sample), 0), "and keeps the border off")
+window.border = true
+W:Apply()
+check(near(edgeAlpha(live), 1) and near(live.edge[1], CRT.PALETTE.accent[1]), "border on in Modern: the accent edge")
+switchTheme(false)
+check(near(bgAlpha(live), 0.7) and near(edgeAlpha(live), 1) and near(live.edge[1], 0.78), "back to Classic: opacity kept, the gold edge")
+window.opacity = 90
+
+-- the Window tab's two new controls
+local slider = sliders["Background opacity"]
+local borderBox = boxes["Show a border"]
+check(slider ~= nil, "the Window tab has a Background opacity slider")
+check(borderBox ~= nil, "the Window tab has a Show a border check box")
+if slider and borderBox then
+  local o = slider.opts
+  check(o.min == 0 and o.max == 100 and (o.step or 1) == 1, "the slider runs 0 to 100 in steps of 1")
+  check(not o.onRelease, "it applies as it moves")
+  check(o.format and o.format(90) == "90%", "it shows a percent")
+  check(o.get() == 90, "it shows the setting")
+  o.set(40)
+  check(window.opacity == 40 and near(bgAlpha(live), 0.4) and near(bgAlpha(sample), 0.4), "moving it sets the window and the sample at once")
+  window.opacity = 90
+  W:Apply()
+  check(borderBox.checked == true, "Show a border shows the setting")
+  borderBox.checked = false borderBox.scripts.OnClick(borderBox)
+  check(window.border == false and near(edgeAlpha(live), 0) and near(edgeAlpha(sample), 0), "unticking it hides the edge on both")
+  borderBox.checked = true borderBox.scripts.OnClick(borderBox)
+  check(window.border == true and near(edgeAlpha(sample), 1), "ticking it shows the edge again")
+  -- both stay enabled when the window doesn't open on a ready check: they style Show it now and /crt check too
+  local opened = boxes["Open the window on a ready check"]
+  opened.checked = false opened.scripts.OnClick(opened)
+  check(borderBox.enabled ~= false and not o.enabledIf, "they stay enabled with Open the window on a ready check off")
+  opened.checked = true opened.scripts.OnClick(opened)
+  -- layout: the border box in the right column under Keep it open; the slider under Size % in the left column
+  local hold, classBars = boxes["Keep it open while my mouse is over it"], boxes["Class color bar behind each row"]
+  local sp = slider.pts[1]
+  check(borderBox.pts[1].x == classBars.pts[1].x and borderBox.pts[1].y <= hold.pts[1].y - 24, "Show a border sits under Keep it open, in the right column")
+  local sizeLabel
+  for _, f in ipairs(frames) do if f.kind == "FontString" and f.text == "Size % (50 to 150)" then sizeLabel = f end end
+  check(sizeLabel and sp.x == sizeLabel.pts[1].x and sp.y <= sizeLabel.pts[1].y - 20, "the slider sits under Size %, lined up with it")
+  local helpRight = 0
+  for _, h in ipairs(helps) do if h.target == slider then helpRight = 24 end end
+  check(sp.x + slider.w + helpRight <= classBars.pts[1].x, "the slider (and its (?)) ends before the right column")
+  local cols
+  for _, f in ipairs(frames) do if f.kind == "FontString" and type(f.text) == "string" and f.text:find("^Columns:") then cols = f end end
+  local slBottom = sp.y - slider.h
+  check(cols and cols.pts[1].y <= slBottom - 8, "the Columns label is below the slider: " .. tostring(cols and cols.pts[1].y) .. " vs " .. slBottom)
+  check(borderBox.pts[1].y - 24 > cols.pts[1].y, "Show a border is above the Columns label")
+  local bp = sample.pts[1]
+  local sampleTop = bp.y * sample:GetScale()
+  check(sampleTop < cols.pts[1].y - 14, "the sample is below the Columns label")
+  local orderButton
+  for _, f in ipairs(frames) do if f.kind == "Button" and f.text == "Default order" then orderButton = f end end
+  local by = orderButton and orderButton.pts[1].y
+  check(by and by <= sampleTop - sample.h * sample:GetScale() - 4, "the buttons are below the sample: " .. tostring(by))
+  check(by and by - 24 >= -(UI.PAGE_H - 66), "and inside the page's height")
+end
+
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error(fails .. " ready check window checks failed") end
 `;
@@ -548,7 +670,7 @@ lualib.luaL_openlibs(L);
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 lua.lua_newtable(L);
 const SRC = {
-  fade, placement: read('CRT_Core/UI/Placement.lua'), window: read('CRT_Modules/ReadyCheck/Window.lua'),
+  fade, themed, placement: read('CRT_Core/UI/Placement.lua'), window: read('CRT_Modules/ReadyCheck/Window.lua'),
   page: read('CRT_Modules/ReadyCheck/Page.lua'), core: read('CRT_Core/Core.lua'),
 };
 for (const [k, v] of Object.entries(SRC)) { lua.lua_pushstring(L, to_luastring(v)); lua.lua_setfield(L, -2, to_luastring(k)); }

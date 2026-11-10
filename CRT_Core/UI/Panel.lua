@@ -708,22 +708,25 @@ end
 
 -- Backdrop frames outside the main window that follow the look: your bar, its drag and Close bars,
 -- and the ready check window. Each keeps its Classic colours; in Modern its background turns the theme's background
--- (keeping its own opacity) and its outline the accent.
+-- (keeping its own opacity) and its outline the accent (keeping its own alpha, so a hidden outline stays hidden).
 UI.themed = {}
 
 function UI:ApplyThemed(f)
     local c = f.crtClassic
+    local edgeAlpha = c.border[4] or 1
     if self:IsModern() then
         local bg, edge = CRT.PALETTE.background, CRT.PALETTE.accent
         f:SetBackdropColor(bg[1], bg[2], bg[3], c.bg[4])
-        f:SetBackdropBorderColor(edge[1], edge[2], edge[3], 1)
+        f:SetBackdropBorderColor(edge[1], edge[2], edge[3], edgeAlpha)
     else
         f:SetBackdropColor(c.bg[1], c.bg[2], c.bg[3], c.bg[4])
-        f:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], 1)
+        f:SetBackdropBorderColor(c.border[1], c.border[2], c.border[3], edgeAlpha)
     end
 end
 
--- classic = { bg = { r, g, b, a }, border = { r, g, b } }, the frame's colours in the Classic look.
+-- classic = { bg = { r, g, b, a }, border = { r, g, b, a } }, the frame's colours in the Classic look; the border's
+-- alpha is optional (1). A frame that changes its opacity or hides its outline sets bg[4] or border[4] in the table
+-- it passed and calls UI:ApplyThemed(f), so every theme repaints with them.
 function UI:RegisterThemed(f, classic)
     f.crtClassic = classic
     self.themed[#self.themed + 1] = f
