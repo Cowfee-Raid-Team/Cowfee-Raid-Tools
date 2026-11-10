@@ -330,11 +330,36 @@ function Window.SampleMembers()
     return list
 end
 
--- Gives a frame the window's look: backdrop, title and the time line in the corner. The frame must
--- be made with BackdropTemplate.
+-- Every frame dressed by Window.Dress (the window and the Window tab's copy), restyled by Window.ApplyLook.
+local dressed = {}
+local DEFAULT_OPACITY = 90 -- Core.lua's default, for a missing or broken saved value
+
+-- The window's look on every dressed frame: its background's alpha is "Background opacity" (window.opacity, 0 to
+-- 100; 100 is solid), and "Show a border" (window.border) shows or hides its 1 px edge. Only the backdrop changes,
+-- so text, icons and the class bars stay at full alpha, and a hidden edge keeps its room, so nothing moves. The values
+-- go in the frame's themed colours (UI:RegisterThemed), so a theme switch repaints with them in every theme.
+function Window.ApplyLook()
+    local s = CRT.db and settings()
+    if not s then
+        return
+    end
+    local opacity = tonumber(s.opacity) or DEFAULT_OPACITY
+    local alpha = math.max(0, math.min(100, opacity)) / 100
+    local edge = (s.border == false) and 0 or 1
+    for _, f in ipairs(dressed) do
+        f.crtClassic.bg[4] = alpha
+        f.crtClassic.border[4] = edge
+        CRT.UI:ApplyThemed(f)
+    end
+end
+
+-- Gives a frame the window's look: backdrop (Window.ApplyLook), title and the time line in the corner. The frame
+-- must be made with BackdropTemplate.
 function Window.Dress(f)
     f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    CRT.UI:RegisterThemed(f, { bg = { 0.05, 0.05, 0.07, 0.88 }, border = { 0.78, 0.63, 0.31 } })
+    CRT.UI:RegisterThemed(f, { bg = { 0.05, 0.05, 0.07, DEFAULT_OPACITY / 100 }, border = { 0.78, 0.63, 0.31, 1 } })
+    dressed[#dressed + 1] = f
+    Window.ApplyLook()
     f.title = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     f.title:SetPoint("TOPLEFT", 8, -6)
     f.timer = f:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
@@ -1035,8 +1060,9 @@ function Window:ResetPosition()
     placement:Reset()
 end
 
--- Applies changed settings to an open window.
+-- Applies changed settings: the look to the window (open or not) and the Window tab's copy, the rest to an open window.
 function Window:Apply()
+    Window.ApplyLook()
     if frame and frame:IsShown() then
         applyPosition()
         self:Refresh()
