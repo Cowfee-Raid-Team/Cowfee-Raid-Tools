@@ -22,9 +22,19 @@ local TEXT = {
     lockTip = "Unlocked, drag the window anywhere during a ready check. Locked, it only moves in Previews.",
     hold = "Keep it open while my mouse is over it",
     holdTip = "Past its seconds, the window stays while your mouse is over it, and closes a second after you move away. A pull timer's fade stops while your mouse is over it.",
+    opacity = "Background opacity",
+    opacityTip = "How solid the window's background is. 100% is solid; lower lets the game show through. Text, icons and the class color bars never fade.",
+    border = "Show a border",
 }
--- The Window tab's Lock and Keep it open boxes, in the right column under Class color bar (Keep it open 24 below).
+-- The Window tab's Lock, Keep it open and Show a border boxes, in the right column under Class color bar, 24 apart.
 local WINDOW_LOCK_Y = -68
+-- The Window tab's left column: the Background opacity slider (an Edit Mode style row, 32 high) under Size %, its
+-- label as wide as the number boxes' so its bar starts where they do; then the Columns line, the sample copy under it
+-- and the button row under the sample.
+local WINDOW_OPACITY = { y = -138, labelWidth = 185, width = 100 }
+local WINDOW_COLUMNS_Y = -180
+local WINDOW_SAMPLE_Y = WINDOW_COLUMNS_Y - 22
+local WINDOW_BUTTONS_Y = WINDOW_COLUMNS_Y - 24 - 150
 local PREVIEW_KEYS = { "readycheckwindow", "consumables" }
 -- Where the preview buttons sit: Settings', under its last check box in the left column; the Window tab's, at the
 -- end of its button row.
@@ -283,12 +293,35 @@ local function buildWindow(f)
     UI.HelpRight(lock, TEXT.lock, TEXT.lockTip)
     local hold = makeCheck(f, 396, WINDOW_LOCK_Y - 24, TEXT.hold, "holdOnHover", windowSettings, windowOn)
     UI.HelpRight(hold, TEXT.hold, TEXT.holdTip)
+    -- The look styles every way the window opens (Show it now, /crt check), so it is never greyed out.
+    makeCheck(f, 396, WINDOW_LOCK_Y - 48, TEXT.border, "border", windowSettings)
     makeNumber(f, 32, -90, "Seconds open (5 to 120)", "seconds", 5, 120)
     makeNumber(f, 32, -114, "Size % (50 to 150)", "scale", 50, 150)
+    -- Applies as it moves: it fades the window and the copy below, never resizes the page.
+    local opacity = UI.Slider(f, TEXT.opacity, {
+        min = 0,
+        max = 100,
+        step = 1,
+        labelWidth = WINDOW_OPACITY.labelWidth,
+        width = WINDOW_OPACITY.width,
+        format = function(v)
+            return v .. "%"
+        end,
+        get = function()
+            return windowSettings().opacity
+        end,
+        set = function(v)
+            windowSettings().opacity = v
+            CRT.ReadyCheckWindow:Apply()
+        end,
+    })
+    opacity:SetPoint("TOPLEFT", 32, WINDOW_OPACITY.y)
+    UI.HelpRight(opacity, TEXT.opacity, TEXT.opacityTip)
+    controls[#controls + 1] = opacity
 
     local Window = CRT.ReadyCheckWindow
     local cols = label(f, "Columns: drag a heading to move it, click it to show or hide it.")
-    cols:SetPoint("TOPLEFT", 8, -148)
+    cols:SetPoint("TOPLEFT", 8, WINDOW_COLUMNS_Y)
     cols:SetWordWrap(false)
     UI.HelpRight(cols, "The ready check window", "A table of every player's ready answer, consumables and raid buffs. It opens on a ready check (or with /crt check) and closes after the time set here, or on a right-click. Shift-click a heading to post who is missing that to raid chat.\n\nAn icon means they have it, a gold number is minutes left on a flask, x is missing, and ? means the game hid their buffs. Durability and weapon oils show only for players running CRT.")
 
@@ -304,15 +337,14 @@ local function buildWindow(f)
         local scale = math.min(1, available / box:GetWidth())
         box:SetScale(scale)
         box:ClearAllPoints()
-        box:SetPoint("TOPLEFT", f, "TOPLEFT", 8 / scale, -170 / scale)
+        box:SetPoint("TOPLEFT", f, "TOPLEFT", 8 / scale, WINDOW_SAMPLE_Y / scale)
     end
     editor = Window.NewTable(box, true, drawCopy)
     box.refresh = drawCopy
     controls[#controls + 1] = box
 
-    local y = -172 - 150
     local resetOrder = makeButton(f, "Default order", 150)
-    resetOrder:SetPoint("TOPLEFT", 8, y)
+    resetOrder:SetPoint("TOPLEFT", 8, WINDOW_BUTTONS_Y)
     resetOrder:SetScript("OnClick", function()
         windowSettings().order = {}
         Window:Apply()
