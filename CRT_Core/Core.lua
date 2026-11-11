@@ -476,6 +476,10 @@ local defaults = {
         plates = { on = true, all = true, size = 50, font = 24, offset = 20,
             mineBox = { 0, 1, 0, 1 }, mineText = { 1, 0, 0, 1 }, box = { 1, 0, 0, 1 }, text = { 1, 1, 1, 1 } }, -- saved, the player's to change: not a theme colour
         reminder = { on = true, sound = "none", size = 48 } },
+    -- Assignment highlights (Highlights/): enabled is the module's one switch, off until the player ticks Use assignment
+    -- highlights on its page, as Interrupts is. name and group mark the raid note lines that name you or your raid
+    -- group; glow makes a line with you in it glow when a new note changes it.
+    highlights = { enabled = false, name = true, group = true, glow = true },
     alerts = {
         bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20, spacing = 4, border = "none", font = "Friz Quadrata", fontSize = 13,
             barColor = { 0.44, 0.31, 0.22, 1 }, bgColor = { 0, 0, 0, 0.6 }, textColor = { 0.95, 0.90, 0.84, 1 }, showType = true }, -- saved, the player's to change: not a theme colour

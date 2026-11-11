@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- The Interrupts page, after Pace in the menu, shown only while Enable Interrupts is on (General Settings). Two tabs:
+-- The Interrupts page, first in the menu's Modules group, shown only while Enable Interrupts is on (General Settings). Two tabs:
 --   Assignments  the boss and difficulty (every kick setup, Interrupts:Bosses) with Edit setup beside it (your own
 --                setup, Interrupts/SetupEditor.lua), the status bar (which list is in use and your kick), the Kick
 --                list heading (its (?) is how the numbers are worked out: the setup, read-only), the kick rows

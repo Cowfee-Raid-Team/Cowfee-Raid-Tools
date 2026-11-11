@@ -546,6 +546,17 @@ local function buildLeft(pf)
         end
     end)
     UI.HelpRight(interrupts, TEXT.interrupts, TEXT.interruptsHelp)
+    -- the same saved switch as the module's own page (Highlights/Data.lua, Highlights/Page.lua); its (?) is the page's
+    local highlights = checkbox(pf, x, -348, CRT.HighlightsPage and CRT.HighlightsPage.TEXT.enable or "Use assignment highlights", function()
+        return CRT.NoteHighlights and CRT.NoteHighlights:Enabled()
+    end, function(on)
+        if CRT.NoteHighlights then
+            CRT.NoteHighlights:SetEnabled(on)
+        end
+    end)
+    if CRT.HighlightsPage then
+        UI.HelpRight(highlights, CRT.HighlightsPage.TEXT.enable, CRT.HighlightsPage.TEXT.enableHelp)
+    end
 
     x = MIDDLE_X
     heading(pf, x, -44, "Sound", "Every sound the addon plays uses this game sound channel and follows its volume and mute. Text to speech has its own volume, on Raid Notes > Alert Settings > Configuration (Note callout/assignments), and the game's low-health pulse its own in the game's Options > Accessibility > Combat Audio Alerts.")
