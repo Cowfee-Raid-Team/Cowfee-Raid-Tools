@@ -304,8 +304,19 @@ local function classPlace(class, role)
     return found
 end
 
--- A player's place, melee or ranged: every tank melee; else by the spec last seen (Groups.CachedSpec), else by a
--- class that is on one side in every spec of the player's role. nil when none of these can tell.
+-- A spec's own role (GetSpecializationInfoByID(specID) -> id, name, description, icon, role, as Groups.SpecInfo reads
+-- it), or nil.
+local function specRole(spec)
+    if not GetSpecializationInfoByID then
+        return nil
+    end
+    local ok, _, _, _, _, role = pcall(GetSpecializationInfoByID, spec)
+    return ok and readable(role) and type(role) == "string" and role or nil
+end
+
+-- A player's place, melee or ranged: every tank melee; else by the spec last seen (Groups.CachedSpec), with that
+-- spec's own role (a tank spec is melee whatever role the source has for the player), else by a class that is on one
+-- side in every spec of the player's role. nil when none of these can tell.
 local function placeOf(p)
     if p.role == "TANK" then
         return position("TANK", nil)
@@ -314,7 +325,7 @@ local function placeOf(p)
     if Groups and Groups.CachedSpec then
         local ok, spec = pcall(Groups.CachedSpec, p.key)
         if ok and spec then
-            return position(p.role, spec)
+            return position(specRole(spec) or p.role, spec)
         end
     end
     return p.class and classPlace(p.class, p.role) or nil

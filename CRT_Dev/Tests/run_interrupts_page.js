@@ -187,6 +187,10 @@ GetClassInfo = function(i) local c = CLASSES[i] if c then return c[1], c[2], c[3
 local function classByID(id) for _, c in ipairs(CLASSES) do if c[3] == id then return c end end end
 C_SpecializationInfo = { GetNumSpecializationsForClassID = function(id) local c = classByID(id) return c and #c[4] or 0 end }
 GetSpecializationInfoForClassID = function(id, i) local c = classByID(id) local s = c and c[4][i] if s then return s[1], "Spec", "", 1, s[2] end end
+-- GetSpecializationInfoByID(specID) -> id, name, description, icon, role, classFile, className
+GetSpecializationInfoByID = function(spec)
+  for _, c in ipairs(CLASSES) do for _, s in ipairs(c[4]) do if s[1] == spec then return s[1], "Spec", "", 1, s[2], c[2], c[1] end end end
+end
 local MELEE = { [71] = true, [72] = true, [255] = true }
 CRT.NoteEngine = { Position = function(role, spec) if role == "TANK" then return "melee" end return (spec and MELEE[spec]) and "melee" or "ranged" end }
 for _, src in ipairs({ markerTextSrc, registrySrc, seasonSrc, bossSrc, commSrc, parseSrc, notesSrc, editModelSrc, paletteSrc, latticeSrc, setupSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
@@ -502,6 +506,17 @@ do
   eq(dropped("Melee"), "Tovi,Brenn", "chips: a hunter with no spec seen isn't melee")
   eq(dropped("Ranged"), "Solex", "chips: nor ranged")
   SPECS["hunt-kazzak"] = 255
+  -- a player with no role (or a stale damage role) but a tank spec seen: melee, never ranged (review #1257)
+  MAIN[7] = "Guard-Kazzak"; SPECS["guard-kazzak"] = 73
+  for _, fn in ipairs(groupsListeners) do fn() end
+  eq(dropped("Melee"), "Tovi,Brenn,Hunt,Guard", "chips: a tank spec seen is melee, with no role")
+  eq(dropped("Ranged"), "Solex", "chips: and not ranged")
+  HAND["guard-kazzak"] = "DAMAGER"
+  for _, fn in ipairs(groupsListeners) do fn() end
+  eq(dropped("Melee"), "Tovi,Brenn,Hunt,Guard", "chips: a tank spec seen is melee, a damage role set by hand or not")
+  eq(dropped("Ranged"), "Solex", "chips: and still not ranged")
+  MAIN[7], SPECS["guard-kazzak"], HAND["guard-kazzak"] = "", nil, nil
+  for _, fn in ipairs(groupsListeners) do fn() end
   -- a raider can't
   lead = false; P.Refresh()
   check(not P.DropKick(chip("Everyone"), { g = 1 }), "chips: a raider's drop refused")
