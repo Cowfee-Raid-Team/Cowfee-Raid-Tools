@@ -206,7 +206,7 @@ const pages = [
   ['CRT_Modules/Consumables/Page.lua', [['"consumables"']]],
   ['CRT_Modules/Interrupts/Page.lua', [['"interrupts-box"', '"interrupts-reminder"'], ['"interrupts-box"'], ['"interrupts-reminder"']]],
   ['CRT_Modules/Pace/Page.lua', [['"pace"']]],
-  ['CRT_Modules/QoL/Page.lua', [['"lowhealth"'], ['"break"']]],
+  ['CRT_Modules/QoL/Page.lua', [['"lowhealth"'], ['"break"'], ['"battleres"']]],
   ['CRT_Modules/Debuffs/Page.lua', [['"debuffs"']]],
 ];
 // the text from an opening bracket to its match

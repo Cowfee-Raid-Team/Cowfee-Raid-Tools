@@ -248,6 +248,10 @@ local defaults = {
             formats = {}, -- Also send to: format key -> false when unticked (Integrations/Breaks.lua)
             bridge = false, -- the raid leader's CRT passes a break on in the formats it didn't come in
         },
+        -- The battle res icon (QoL/BattleRes.lua): show is "boss" (in boss fights), "combat" (in any combat in a
+        -- raid) or "raid" (always in a raid); timer shows the time to the next charge; size is a percent, 50 to 200.
+        -- position once it is moved.
+        battleRes = { enabled = false, show = "boss", timer = true, size = 100 },
     },
     -- Loot History's settings (the records are in CRTLootDB, Loot/Store.lua): minQuality (3 rare, 4 epic,
     -- 5 legendary), dungeons (record dungeon bosses too), keepMonths (0 keeps everything), rcEnrich
