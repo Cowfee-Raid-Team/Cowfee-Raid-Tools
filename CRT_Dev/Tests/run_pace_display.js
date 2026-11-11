@@ -255,6 +255,38 @@ previews.pace(true)
 check(label(1) == "Boss", "no page boss: Boss: " .. tostring(label(1)))
 previews.pace(false)
 
+-- several bosses in the preview (issue 1265)
+check(PAGE:find("Pace:RefreshPreview", 1, true) ~= nil, "the Pace page's boss change redraws the preview")
+defs[1001].units = { boss1 = "Vexhul", boss2 = "Ithraz" }
+Pace.PageBoss = function() return pageBoss end
+pageBoss = 1001
+local w = _G.CowfeeRaidToolsPace
+local function barFrame(i)
+  local n = 0
+  for _, f in ipairs(frames) do
+    if f.parent == w and f.label then n = n + 1 if n == i then return f end end
+  end
+end
+previews.pace(true)
+check(label(1) == "Vexhul" and label(2) == "Ithraz" and barFrame(3).shown == false, "two-unit plan: two bars, Vexhul and Ithraz: " .. tostring(label(1)) .. ", " .. tostring(label(2)))
+check(barFrame(1).bar.value ~= barFrame(2).bar.value, "the sample bars have different values")
+pageBoss = 1002
+Pace:RefreshPreview()
+check(label(1) == "Lone Boss" and barFrame(2).shown == false, "boss change redraws: one bar with the boss name")
+pageBoss = 1001
+Pace:RefreshPreview()
+check(label(2) == "Ithraz" and barFrame(2).shown == true, "boss change back redraws: two bars")
+previews.pace(false)
+Pace:RefreshPreview()
+check(w.shown == false, "preview off: a boss change draws nothing")
+-- no plan, a boss file with units: a bar per unit
+defs[1009] = { encounterID = 1009, name = "Unplanned", units = { boss1 = "Alpha", boss2 = "Beta" } }
+pageBoss = 1009
+previews.pace(true)
+check(label(1) == "Alpha" and label(2) == "Beta" and barFrame(3).shown == false, "no plan, boss file units: a bar per unit: " .. tostring(label(1)) .. ", " .. tostring(label(2)))
+previews.pace(false)
+Pace.PageBoss = nil
+
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error(fails .. " pace display checks failed") end
 `;

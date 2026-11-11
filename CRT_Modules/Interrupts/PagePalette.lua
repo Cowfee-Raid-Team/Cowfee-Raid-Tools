@@ -330,6 +330,8 @@ local function placeOf(p)
     end
     return p.class and classPlace(p.class, p.role) or nil
 end
+-- p = { key, role, class }. Raid Groups' Sort by reads it too (Groups/Sort.lua), so both place a player the same way.
+Page.PlaceOf = placeOf
 
 -- Whether a player matches a chip: General (everyone, a role, melee or ranged), Group ("Group3") or Class.
 local function matches(p, token, kind)

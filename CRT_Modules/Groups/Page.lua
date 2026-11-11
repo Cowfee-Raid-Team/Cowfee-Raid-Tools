@@ -16,6 +16,9 @@ local PICK_ROWS = 10
 local ROW_H = 22
 local LIST_ROW_H = 26 -- a Quick Load box (24) and the gap under it
 local INVITE_STATUS_LINES = 3 -- the invite status line, between the grid and Use This Group
+-- The Sort by row, between the grid and the invite status line: its bottom from the page's bottom, the dropdowns'
+-- labels and widths, and the gap between its parts
+local SORT = { y = 176, labelW = 54, width = 180, sideLabelW = 76, sideW = 230, gap = 10 }
 
 local GRAY = { 0.35, 0.35, 0.35 }
 -- The theme's good and heading colours; CRT.PALETTE's tables are refilled on a theme switch, so these follow.
@@ -35,6 +38,14 @@ local TEXT = {
     fromTitle = "from %s",
     fromBody = "%s sent this roster with a note, and it became your active group. Each note they share sends it again and opens it here, unless your grid has unsaved changes. You can edit it. The next roster they send replaces it.",
     editHelp = "Click a slot to choose a name, drag to move or swap. Right-click a name to invite that player, clear the slot or set their role. A role you set shows a small dot on its icon and wins over the game's role.",
+    sortBy = "Sort by",
+    sortGrid = "Sort grid",
+    sortHelp = "Sort grid rearranges the grid only, like an edit by hand. Nobody moves in the raid until you click Arrange Groups.\n\nRole blocks: tanks first, then melee, then ranged, with one healer in each group.\n\nMelee and ranged groups: tanks and melee fill the first groups, ranged the next ones. Healers are spread one per group.\n\nSpread duplicates: players of the same class, then of the same spec, go in different groups. Tanks and healers are spread too.\n\nLeft and right sides: pick an assignment with two rows from the Assign tab. The first row goes to groups 1 and 2, the second to groups 3 and 4. Everyone else is split between the two sides to even them out.",
+    side = "Assignment",
+    noSidesWhy = "No assignment this season has two rows of players. Make one on Mech Alerts' Assign tab.",
+    emptyGrid = "The grid is empty.",
+    postChanges = "Post group changes to raid chat",
+    postHelp = "When Arrange Groups is done, posts one line to raid chat for each group with someone new in it, such as \"[CRT] <Group 1 Changes>: Name, Name\". If it stops part-way, it posts the groups that did change. Nothing is posted when nobody moved. In combat or during a boss encounter, the post waits until it ends.",
 }
 
 local ROLE_TEXTURE = "Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES"
@@ -79,6 +90,23 @@ local function makeButton(parent, label, width, height)
     b:SetSize(width, height or 26)
     b:SetText(label)
     return b
+end
+
+-- An on/off setting: a UICheckButtonTemplate (UI:SkinTree skins it with the page) with its label on the right.
+-- get() and set(on) read and save it; c.refresh() shows it again.
+local function check(parent, label, get, set)
+    local c = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    c:SetSize(26, 26)
+    c.label = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    c.label:SetPoint("LEFT", c, "RIGHT", 2, 0)
+    c.label:SetText(label)
+    c:SetScript("OnClick", function(self)
+        set(self:GetChecked() and true or false)
+    end)
+    c.refresh = function()
+        c:SetChecked(get() and true or false)
+    end
+    return c
 end
 
 local function setBorder(frame, color)
@@ -717,6 +745,174 @@ local function buildInvites(pf, anchor)
     CRT.Invite:OnChange(refreshInvites)
 end
 
+-- Sort by ------------------------------------------------------------------------
+-- A method (Groups/Sort.lua) and Sort grid, which rewrites the grid (a hand edit: the layout shows unsaved changes);
+-- Arrange Groups still moves the raid. Left and right sides adds a dropdown of this season's two-row assignments,
+-- read again when the page opens or a note changes; the one picked is kept for the session.
+
+local sortRow, sideRow, sortButton, postCheck
+local sideCache, sideKey
+
+local function sortMethod()
+    local key = gdb().sortMethod
+    return CRT.GroupSort.Valid(key) and key or CRT.GroupSort.DEFAULT
+end
+
+local function sideBlocks()
+    if not sideCache then
+        local ok, list = pcall(CRT.GroupSort.SideBlocks)
+        sideCache = ok and list or {}
+    end
+    return sideCache
+end
+
+-- The picked side block: the one picked before while it is still there, else the first.
+local function sideBlock()
+    local list = sideBlocks()
+    for _, b in ipairs(list) do
+        if b.id == sideKey then
+            return b
+        end
+    end
+    sideKey = list[1] and list[1].id or nil
+    return list[1]
+end
+
+-- Whether Sort grid can run now, and why not.
+local function canSort()
+    local any = false
+    for _, key in ipairs(Groups:Working()) do
+        if key ~= "" then
+            any = true
+            break
+        end
+    end
+    if not any then
+        return false, TEXT.emptyGrid
+    end
+    if sortMethod() == "sides" and not sideBlock() then
+        return false, TEXT.noSidesWhy
+    end
+    return true
+end
+
+local function sortGrid()
+    if not canSort() then
+        return
+    end
+    local Sort = CRT.GroupSort
+    local method = sortMethod()
+    local players = Sort.Read(Groups:Working())
+    local opts
+    if method == "sides" then
+        opts = { rows = Sort.SideRows(sideBlock(), players) }
+    end
+    local slots = Sort.Arrange(method, players, opts)
+    if slots then
+        Groups:ReplaceWorking(slots)
+    end
+end
+
+local function refreshSort()
+    if not sortRow then
+        return
+    end
+    local sides = sortMethod() == "sides"
+    sortRow.refresh()
+    sideRow:SetShown(sides)
+    if sides then
+        sideBlock()
+        sideRow.refresh()
+    end
+    sortButton:ClearAllPoints()
+    sortButton:SetPoint("LEFT", sides and sideRow or sortRow, "RIGHT", SORT.gap, 0)
+    sortButton:SetEnabled(canSort() and true or false)
+    postCheck.refresh()
+end
+
+-- The Sort by row above the invite status line, and Post group changes right of Arrange Groups (apply).
+local function buildSort(pf, apply)
+    local Sort = CRT.GroupSort
+    if not Sort then
+        return
+    end
+    sortRow = UI.Dropdown(pf, TEXT.sortBy, {
+        labelWidth = SORT.labelW, width = SORT.width,
+        options = Sort.METHODS,
+        get = sortMethod,
+        set = function(key)
+            gdb().sortMethod = key
+            refreshSort()
+        end,
+    })
+    sortRow:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, SORT.y)
+
+    sideRow = UI.Dropdown(pf, TEXT.side, {
+        labelWidth = SORT.sideLabelW, width = SORT.sideW,
+        options = function()
+            local out = {}
+            for _, b in ipairs(sideBlocks()) do
+                out[#out + 1] = { key = b.id, label = b.label }
+            end
+            if #out == 0 then
+                out[1] = { key = "none", label = Sort.TEXT.noSides, disabled = true }
+            end
+            return out
+        end,
+        get = function()
+            local b = sideBlock()
+            return b and b.id or "none"
+        end,
+        set = function(key)
+            sideKey = key
+            refreshSort()
+        end,
+        enabledIf = function()
+            return #sideBlocks() > 0
+        end,
+    })
+    sideRow:SetPoint("LEFT", sortRow, "RIGHT", SORT.gap, 0)
+
+    sortButton = makeButton(pf, TEXT.sortGrid, 80)
+    local fs = sortButton:GetFontString()
+    sortButton:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
+    sortButton:SetScript("OnClick", sortGrid)
+    if sortButton.SetMotionScriptsWhileDisabled then
+        sortButton:SetMotionScriptsWhileDisabled(true) -- the tooltip says why while it is greyed
+    end
+    sortButton:SetScript("OnEnter", function(self)
+        local ok, why = canSort()
+        if ok then
+            return
+        end
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
+        GameTooltip:SetText(TEXT.sortGrid, 1, 1, 1)
+        GameTooltip:AddLine(why, 0.8, 0.8, 0.8, true)
+        GameTooltip:Show()
+    end)
+    sortButton:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    UI.HelpRight(sortButton, TEXT.sortBy, TEXT.sortHelp)
+
+    postCheck = check(pf, TEXT.postChanges, function()
+        return gdb().postChanges
+    end, function(on)
+        gdb().postChanges = on
+    end)
+    postCheck:SetPoint("LEFT", apply, "RIGHT", SORT.gap, 0)
+    UI.HelpRight(postCheck.label, TEXT.postChanges, TEXT.postHelp)
+
+    if CRT.Notes and CRT.Notes.OnChange then
+        CRT.Notes:OnChange(function()
+            sideCache = nil
+            if page and page:IsShown() then
+                refreshSort()
+            end
+        end)
+    end
+end
+
 -- Refresh ---------------------------------------------------------------------
 
 local function refreshPresets()
@@ -856,6 +1052,7 @@ refresh = function()
     refreshPresets()
     refreshExtras(roster, working)
     refreshInvites()
+    refreshSort()
 end
 
 -- Page ------------------------------------------------------------------------
@@ -1044,6 +1241,7 @@ local function buildPage(pf)
     apply:SetScript("OnClick", function()
         CRT.Apply:Start(Groups:Working())
     end)
+    buildSort(pf, apply)
 
     -- Right column: Quick Load
     local quick = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
@@ -1168,7 +1366,10 @@ local function buildPage(pf)
         refresh()
     end)
 
-    pf:SetScript("OnShow", refresh)
+    pf:SetScript("OnShow", function()
+        sideCache = nil -- the notes may have changed while the page was closed
+        refresh()
+    end)
     pf:SetScript("OnHide", function()
         if picker then
             picker:Hide()

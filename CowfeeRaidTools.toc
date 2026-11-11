@@ -44,6 +44,7 @@ CRT_Core\UI\TeamLookAlike.lua
 CRT_Core\WhatsNew\Data.lua
 CRT_Core\WhatsNew\WhatsNew.lua
 CRT_Modules\Groups\Data.lua
+CRT_Modules\Groups\Sort.lua
 CRT_Modules\Groups\Apply.lua
 CRT_Modules\Groups\Invite.lua
 CRT_Modules\Groups\Share.lua
