@@ -165,6 +165,37 @@ local function nextMove(members, target, failed)
     end
 end
 
+-- In combat or a boss encounter (Notes.Busy, which asks the game), or in combat when the notes aren't loaded.
+local function busy()
+    local Notes = CRT.Notes
+    if Notes and Notes.Busy then
+        return Notes.Busy()
+    end
+    return InCombatLockdown()
+end
+
+-- Post group changes to raid chat (CRTDB.groups.postChanges): once Arrange Groups is done, one line per group with
+-- someone new in it (Groups/Sort.lua's ChangeLines: "<Group N Changes>: Name, Name"), against the groups everyone was
+-- in when it started (before). Only in a raid, never in combat or a boss encounter.
+-- C_ChatInfo.SendChatMessage(message, chatType), else the older global (warcraft.wiki.gg), in pcall.
+local function postChanges(before, members)
+    local Sort = CRT.GroupSort
+    if not (before and Sort and CRT.db.groups.postChanges) or not IsInRaid() or busy() then
+        return
+    end
+    local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
+    if not send then
+        return
+    end
+    local after = {}
+    for _, m in ipairs(members) do
+        after[#after + 1] = { key = m.key, name = Groups.Display(m.name), subgroup = m.subgroup }
+    end
+    for _, line in ipairs(Sort.ChangeLines(before, after)) do
+        pcall(send, line, "RAID")
+    end
+end
+
 local function finish(members, reason)
     local state = run
     run = nil
@@ -185,6 +216,7 @@ local function finish(members, reason)
     else
         CRT:Print("Groups applied, but couldn't move: " .. table.concat(stuck, ", ") .. ".")
     end
+    postChanges(state.before, members)
 end
 
 local step
@@ -256,7 +288,12 @@ function Apply:Start(slots)
         CRT:Print("Not in the raid: " .. table.concat(missing, ", ") .. ".")
     end
 
-    run = { target = target, failed = {}, steps = 0, stalls = 0, waiting = false }
+    -- before: the group each member is in now, for the group changes post when it is done
+    local before = {}
+    for _, m in ipairs(members) do
+        before[m.key] = m.subgroup
+    end
+    run = { target = target, failed = {}, steps = 0, stalls = 0, waiting = false, before = before }
     step()
 end
 

@@ -180,6 +180,7 @@ g "removed cooldowns stay out" && { bad=$(grep -rnE 'spellID *= *(265202|47536|3
 g "late data" && { node run_late.js "$W/CRT_Modules/Late/Data.lua" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "late page" && { node run_latepage.js "$W/CRT_Modules/Late/Data.lua" "$W/CRT_Modules/Late/Page.lua" 2>&1 | tail -44; echo "exit ${PIPESTATUS[0]}"; }
 g "groups extras" && { node run_groups_extras.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
+g "groups sort" && { node run_groups_sort.js "$W" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
 g "roster share" && { node run_roster_share.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "spec cache" && { node run_spec_cache.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "spec words" && { node run_spec_words.js "$W" 2>&1 | tail -150; echo "exit ${PIPESTATUS[0]}"; }

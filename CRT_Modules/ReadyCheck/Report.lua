@@ -437,6 +437,8 @@ local function chunks(line)
     end
     return out
 end
+-- Raid Groups' group changes post splits its lines the same way (Groups/Sort.lua).
+Report.Chunks = chunks
 
 local function groupChannel()
     if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
