@@ -1,8 +1,8 @@
-// CRT_Modules/Pace/Display.lua: each pace bar's name. Best first: the unit's name when it reads; a hidden (secret)
-// name passed straight to the label's SetText, never compared; the name remembered from when it last read (at the
-// pull, a boss unit engaging, or an earlier update), kept per encounter for the session; on a plan with one boss
-// unit, the boss's name from the boss library; then the unit token. And the preview's bar takes the Pace page's
-// boss's name. On mock frames, with CRT_Modules/Pace/Data.lua loaded for the plans. Secret values are proxies that
+// CRT_Modules/Pace/Display.lua: each pace bar's name. Best first: the unit's name when it reads; the name remembered
+// from when it last read (at the pull, a boss unit engaging, or an earlier update), kept per encounter for the
+// session; the boss file's name for the unit (field units); a hidden (secret) name passed straight to the label's
+// SetText over the fallback, never compared; the fallback: the boss's name (with the unit's number on a plan with
+// several units), else the unit token. And the preview's bar takes the Pace page's boss's name. On mock frames, with CRT_Modules/Pace/Data.lua loaded for the plans. Secret values are proxies that
 // raise an error on any use the game forbids (arithmetic, comparison, indexing, concatenation, calling, tostring).
 // Usage: node run_pace_display.js <addon folder>
 const fs = require('fs');
@@ -27,7 +27,8 @@ function type(v) if getmetatable(v) == SECRET then return realType(rawget(v, "in
 
 -- frames that remember what is done to them
 local frames = {}
-local labelRefusesSecrets = false -- an older client: SetText errors on a secret
+local labelRefusesSecrets = false -- SetText errors on a secret
+local labelDropsSecrets = false -- SetText takes a secret but leaves the old text (not seen in the docs; guarded anyway)
 local function region(kind, parent, name)
   local r = { kind = kind, parent = parent, name = name, shown = true, scripts = {}, events = {} }
   frames[#frames + 1] = r
@@ -39,6 +40,7 @@ local function region(kind, parent, name)
   function r:RegisterEvent(e) self.events[e] = true end
   function r:SetText(t)
     if labelRefusesSecrets and issecretvalue(t) then error("secret text refused") end
+    if labelDropsSecrets and issecretvalue(t) then return end
     self.text = t
   end
   function r:SetAlpha(a) self.alpha = a end
@@ -78,6 +80,9 @@ local defs = {
   [1001] = { encounterID = 1001, name = "The Twin Fangs" },
   [1002] = { encounterID = 1002, name = "Lone Boss" },
   [1003] = { encounterID = 1003, name = "Another Lone Boss" },
+  [1006] = { encounterID = 1006, name = "The Twin Fangs" },
+  [1007] = { encounterID = 1007, name = "Paired Bosses", units = { boss1 = "Left Head", boss2 = "Right Head" } },
+  [1008] = { encounterID = 1008, name = "Half Filed", units = { boss2 = "Known Head", boss3 = 42 } },
 }
 CRT.Bosses = { Get = function(_, id) return defs[id] end }
 local TWO = { mode = "time", rows = { { ph = 1, t = 60, unit = "boss1", hp = 50 }, { ph = 1, t = 60, unit = "boss2", hp = 50 } } }
@@ -118,12 +123,12 @@ ok, err = pcall(tick)
 check(ok, "an update runs with no error: " .. tostring(err))
 check(label(1) == "Vexhul" and label(2) == "Ithraz", "a readable name names the bar: " .. tostring(label(1)) .. ", " .. tostring(label(2)))
 
--- a secret name goes to SetText as it is, never compared
+-- a secret name, the name kept from when it read: the kept name, which needs no secret
 local hidden = secret("Vexhul")
 units.boss1 = hidden
 ok, err = pcall(tick)
 check(ok, "a secret name raises no error (never compared): " .. tostring(err))
-check(rawequal(label(1), hidden), "a secret name is passed straight to the label")
+check(label(1) == "Vexhul", "a secret name with a kept name: the kept name")
 
 -- the name remembered from when it last read: the secret refused by the label, or the unit gone
 labelRefusesSecrets = true
@@ -178,6 +183,48 @@ fire("ENCOUNTER_START", 1002, "Lone Boss", 16, 20)
 tick()
 check(label(1) == "Lone Boss", "one boss unit, no name yet: the boss's name: " .. tostring(label(1)))
 fire("ENCOUNTER_END", 1002)
+
+-- a label as the checks print it: a secret is never turned into text
+local function show(v) if issecretvalue(v) then return "<secret>" end return tostring(v) end
+
+-- The Twin Fangs in a raid (issue 1258): two boss units, their names hidden from the first engage, so nothing is
+-- ever kept. A label that refuses the secret, or takes it but keeps its old text, showed "boss1": now the boss's
+-- name with the unit's number, as the boss frames are ordered.
+CRT.PaceDB.bosses[1006] = TWO
+units = { boss1 = false, boss2 = false }
+fire("ENCOUNTER_START", 1006, "The Twin Fangs", 16, 20)
+tick() -- the first draw, before any boss unit
+units = { boss1 = secret("Vexhul"), boss2 = secret("Ithraz") }
+fire("INSTANCE_ENCOUNTER_ENGAGE_UNIT")
+for _, mode in ipairs({ "refuses", "drops" }) do
+  labelRefusesSecrets, labelDropsSecrets = mode == "refuses", mode == "drops"
+  ok, err = pcall(tick)
+  check(ok, "two hidden names, a label that " .. mode .. " the secret: no error: " .. tostring(err))
+  check(label(1) == "The Twin Fangs 1" and label(2) == "The Twin Fangs 2", "two hidden names, a label that " .. mode .. " the secret: the boss's name and unit number, not boss1: " .. show(label(1)) .. ", " .. show(label(2)))
+end
+labelRefusesSecrets, labelDropsSecrets = false, false
+tick()
+check(issecretvalue(label(1)) and issecretvalue(label(2)), "two hidden names, a label that takes them: the hidden names, over the fallback")
+fire("ENCOUNTER_END", 1006)
+
+-- the boss file says which unit is which (field units): that name, with no secret needed
+CRT.PaceDB.bosses[1007] = TWO
+units = { boss1 = secret("Left Head"), boss2 = secret("Right Head") }
+fire("ENCOUNTER_START", 1007, "Paired Bosses", 16, 20)
+ok, err = pcall(tick)
+check(ok, "a boss file's unit names: no error: " .. tostring(err))
+check(label(1) == "Left Head" and label(2) == "Right Head", "a boss file's unit names name the bars, not the secret: " .. show(label(1)) .. ", " .. show(label(2)))
+units = { boss1 = false, boss2 = false }
+tick()
+check(label(1) == "Left Head" and label(2) == "Right Head", "a boss file's unit names, the units gone: " .. show(label(1)) .. ", " .. show(label(2)))
+fire("ENCOUNTER_END", 1007)
+-- a file naming only some units (or with a name that isn't text): the others fall back
+CRT.PaceDB.bosses[1008] = { mode = "time", rows = { { ph = 1, t = 60, unit = "boss1", hp = 50 }, { ph = 1, t = 60, unit = "boss2", hp = 50 }, { ph = 1, t = 60, unit = "boss3", hp = 50 } } }
+units = { boss1 = false, boss2 = false, boss3 = false }
+fire("ENCOUNTER_START", 1008, "Half Filed", 16, 20)
+tick()
+check(label(1) == "Half Filed 1" and label(2) == "Known Head" and label(3) == "Half Filed 3", "a file naming some units: those, the boss's name and number for the rest: " .. show(label(1)) .. ", " .. show(label(2)) .. ", " .. show(label(3)))
+fire("ENCOUNTER_END", 1008)
 
 -- then the unit token: two boss units, no name ever read, no boss file
 CRT.PaceDB.bosses[1004] = TWO

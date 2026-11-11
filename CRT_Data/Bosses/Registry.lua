@@ -19,7 +19,10 @@ local ADDON, CRT = ...
 --                  (Timeline:ApplyAbilities); /crt dev labels and the Timeline's Export labels export them in this
 --                  format. An entry, type, tag or field that doesn't read is left out, with a chat line in developer
 --                  builds.
--- Two fields are read where they are used, through Bosses:Get, not copied here:
+-- Three fields are read where they are used, through Bosses:Get, not copied here:
+--   units       -> Pace/Display.lua (each pace bar's name): which boss unit is which, { boss1 = "Name", ... },
+--                  only units a probe or the default boss frames confirmed. The game hides a boss unit's name in
+--                  an encounter, so this names the bar with no secret; a unit left out falls back.
 --   special     -> CRT.AlertSpecial (Alerts/Special.lua: the boss's scripted special alerts, on Mech Alerts'
 --                  Special list), a list of { key, label, help, type, difficulty, default, when = { row |
 --                  spellID | times (a P1 time may be before the pull: "-0:15") }, lead, icon (a spell ID),
