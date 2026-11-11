@@ -1,16 +1,18 @@
 local ADDON, CRT = ...
 
--- The note editor's palette and chips, shared by the note editor (Notes/EditorWindow.lua) and the Mech Alerts Assign
--- tab (Notes/AssignTab.lua), so both look and work the same: Search, Players from (the current group, a note's invite
+-- The note editor's palette and chips, shared by the note editor (Notes/EditorWindow.lua), the Mech Alerts Assign tab
+-- (Notes/AssignTab.lua) and the Interrupts page's Players panel (Interrupts/PagePalette.lua: no invite list; a General,
+-- Group or Class chip there adds the matching players), so all three look and work the same: Search, Players from (the current group, a note's invite
 -- list or a saved Raid Groups layout), the players with their class icons and colours, then General, Groups and
 -- Classes, each a chip; a drag of a chip onto a row, x to remove a row's chip. The sections and the sources are
 -- Notes/EditModel.lua's (Model.Palette, Model.Sources, Model.Roster); this file draws them. A host keeps its own state
 -- table, which these fill:
 --   Palette.Build(parent, state, opts)  the right-hand side: state.search, state.from, state.paletteChild,
 --                                       state.paletteScroll. opts: width, names = { search, scroll } (global names),
---                                       choices(), get(), set(key) for Players from, onSearch() (redraw)
+--                                       choices(), get(), set(key) for Players from, onSearch() (redraw),
+--                                       fromHelp = { title, text } (a (?) right of Players from: state.fromHelp)
 --   Palette.Draw(state, roster, width)  the chips for the roster (Palette.Roster), under state.query
---   Palette.DrawSections(state, sections, width)  a host's own sections of chips (the Interrupts page's players)
+--   Palette.DrawSections(state, sections, width)  a host's own sections of chips
 --   Palette.MakeRow(parent), RowLabel, RowChipsX, RowChips, PaintRow, HighlightRow, RowUnderMouse
 --                                       the note editor's group rows (a label, then chips with x; a drop target),
 --                                       shared with the Interrupts page's kick rows
@@ -417,15 +419,20 @@ function Palette.Build(parent, state, opts)
         self:ClearFocus()
     end)
     state.search = search
-    -- Players from: the group, the note's invite list or a saved Raid Groups layout
+    -- Players from: the group, the note's invite list or a saved Raid Groups layout; a host's (?) right of it, inside
+    -- the column (opts.fromHelp = { title, text }), the dropdown that much narrower
+    local helpW = opts.fromHelp and ((UI.HELP_SIZE or 20) + (UI.HELP_GAP or 4)) or 0
     local from = UI.Dropdown(right, TEXT.playersFrom, {
-        labelWidth = L.fromLabelW, width = width - L.fromLabelW - L.fromGap - 4,
+        labelWidth = L.fromLabelW, width = width - L.fromLabelW - L.fromGap - 4 - helpW,
         options = opts.choices,
         get = opts.get,
         set = opts.set,
     })
     from:SetPoint("TOPLEFT", 2, -(L.searchH + 6))
     state.from = from
+    if opts.fromHelp then
+        state.fromHelp = UI.HelpRight(from, opts.fromHelp.title, opts.fromHelp.text)
+    end
     local scroll = CreateFrame("ScrollFrame", names.scroll, right, "UIPanelScrollFrameTemplate")
     UI:SkinScrollBar(scroll.ScrollBar)
     scroll:SetPoint("TOPLEFT", 0, -(L.searchH + 6 + L.fromH + 2))

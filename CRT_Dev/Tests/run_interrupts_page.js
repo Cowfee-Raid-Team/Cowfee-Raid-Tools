@@ -3,8 +3,9 @@
 // with Settings last, one boss listed with its difficulty, the status bar's states (no list, your own list, the raid's
 // list and your kick, enemy nameplates off first), Share greyed with its reason, the work per show (the group, the
 // layouts and the note read once, one refresh), the kick rows (the note editor's rows: kick order, class colours, your
-// own outlined, x, read-only for a raider), the palette (your group, then each Raid Groups layout), drops from the
-// palette, along a row and onto another, a full row refusing, Add name, Clear list asking first, Use the raid's list,
+// own outlined, x, read-only for a raider), the palette (the note editor's: Search, Players from saved with its
+// fallback, Players, General, Groups and Classes of the chosen source only), drops from the palette (a General, Group or
+// Class chip adding every matching player as one change), along a row and onto another, a full row refusing, Add name, Clear list asking first, Use the raid's list,
 // Who has it in its pop-out from the Addon check, How the numbers are worked out in the Kick list's (?), Test on trash,
 // Test reminder, the Settings tab's
 // sliders and colours, every control inside the page area, /crt interrupts, and the General Settings switch hiding and
@@ -159,13 +160,39 @@ CRT.InterruptReminder = { Preview = function() previewed = previewed + 1 end }
 local previewBoss = 3470
 CRT.InterruptPlates = { PreviewBoss = function() return previewBoss end }
 CRT.db.notes = { list = {}, nextId = 1 }
-CRT.db.classCache = { tovi = "WARRIOR" }
--- Raid Groups: one layout, as the note editor's Players from reads it
-local MAIN = { "Tovi-Kazzak", "", "Solex", "Brenn" }
+CRT.db.classCache = { tovi = "WARRIOR", hunt = "HUNTER", solex = "MAGE" }
+-- Raid Groups: two layouts, as the note editor's Players from reads them. Main: Tovi, Solex and Brenn in group 1, Hunt
+-- in group 2 (slot 6)
+local MAIN = { "Tovi-Kazzak", "", "Solex", "Brenn", "", "Hunt-Kazzak" }
+for i = 7, 40 do MAIN[i] = "" end
+local ALT = { "Other" }
 local groupsListeners = {}
-CRT.Groups = { Presets = function() return { { id = 7, name = "Main" } } end,
-  Find = function(_, id) if id == 7 then return { slots = MAIN } end end,
+-- the live group (Groups:ReadRoster), in raid order: Solex in group 2, Brenn the tank and Quick in group 1
+local LIVE = { { key = "Solex-Kazzak", subgroup = 2, class = "MAGE", role = "DAMAGER" }, { key = "Brenn-Kazzak", subgroup = 1, class = "WARRIOR", role = "TANK" },
+  { key = "Quick-Kazzak", subgroup = 1, class = "MAGE", role = "DAMAGER" } }
+local ROLES, HAND, SPECS = { ["tovi-kazzak"] = "TANK", solex = "DAMAGER" }, { brenn = "TANK" }, { ["hunt-kazzak"] = 255 }
+local findAsked = {}
+CRT.Groups = { Presets = function() return { { id = 7, name = "Main" }, { id = 8, name = "Alt" } } end,
+  Find = function(_, id) findAsked[#findAsked + 1] = id if id == 7 then return { slots = MAIN } elseif id == 8 then return { slots = ALT } end end,
+  ReadRoster = function() local out = {} for i, p in ipairs(LIVE) do out[i] = { key = p.key, subgroup = p.subgroup, class = p.class, role = p.role } end return out end,
+  CachedRole = function(key) return ROLES[key:lower()] end, HandRole = function(key) return HAND[key:lower()] end,
+  CachedSpec = function(key) return SPECS[key:lower()] end,
   OnChange = function(_, fn) groupsListeners[#groupsListeners + 1] = fn end }
+-- the game's classes and their specs (warcraft.wiki.gg: GetClassInfo, GetSpecializationInfoForClassID), and the note
+-- alerts' melee rule (Notes/Engine.lua's Engine.Position): every tank melee, else by the melee spec list
+local CLASSES = { { "Warrior", "WARRIOR", 1, { { 71, "DAMAGER" }, { 72, "DAMAGER" }, { 73, "TANK" } } }, { "Hunter", "HUNTER", 3, { { 253, "DAMAGER" }, { 254, "DAMAGER" }, { 255, "DAMAGER" } } },
+  { "Mage", "MAGE", 8, { { 62, "DAMAGER" }, { 63, "DAMAGER" }, { 64, "DAMAGER" } } } }
+GetNumClasses = function() return #CLASSES end
+GetClassInfo = function(i) local c = CLASSES[i] if c then return c[1], c[2], c[3] end end
+local function classByID(id) for _, c in ipairs(CLASSES) do if c[3] == id then return c end end end
+C_SpecializationInfo = { GetNumSpecializationsForClassID = function(id) local c = classByID(id) return c and #c[4] or 0 end }
+GetSpecializationInfoForClassID = function(id, i) local c = classByID(id) local s = c and c[4][i] if s then return s[1], "Spec", "", 1, s[2] end end
+-- GetSpecializationInfoByID(specID) -> id, name, description, icon, role, classFile, className
+GetSpecializationInfoByID = function(spec)
+  for _, c in ipairs(CLASSES) do for _, s in ipairs(c[4]) do if s[1] == spec then return s[1], "Spec", "", 1, s[2], c[2], c[1] end end end
+end
+local MELEE = { [71] = true, [72] = true, [255] = true }
+CRT.NoteEngine = { Position = function(role, spec) if role == "TANK" then return "melee" end return (spec and MELEE[spec]) and "melee" or "ranged" end }
 for _, src in ipairs({ markerTextSrc, registrySrc, seasonSrc, bossSrc, commSrc, parseSrc, notesSrc, editModelSrc, paletteSrc, latticeSrc, setupSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
 CRT.Bosses:Get(3470).interrupts = { { difficulty = 16, label = "Kick", groups = { { key = "left", label = "Left", slots = 5 }, { key = "right", label = "Right", slots = 5 } },
   timing = { anchor = { unit = "boss2", cycle = 7, ordinal = 5, times = { 33, 94, 188, 249, 343, 404 } },
@@ -304,22 +331,78 @@ grouped = false; P.Refresh()
 check(chipsOf(1)[1].remove.shown and not drag.readOnly(), "rows: editable solo")
 grouped, lead = true, true; P.Refresh()
 
--- the palette: your group, then each Raid Groups layout
-local sections = P.PaletteSections()
-eq(sections[1].title, "In your group", "palette: your group first")
-eq(sections[1].entries[1].name, "Brenn", "palette: the group sorted")
-eq(sections[1].entries[2].name, "Quick", "palette: names without realm")
-eq(sections[2] and sections[2].title, "Raid Groups: Main", "palette: then each Raid Groups layout")
-eq(sections[2] and sections[2].entries[1].name, "Tovi", "palette: a layout's players, without realm")
-eq(sections[2] and sections[2].entries[1].class, "WARRIOR", "palette: a layout player's class from the class cache")
-eq(sections[2] and sections[2].entries[2].name, "Solex", "palette: the layout's slots in order")
-eq(sections[2] and #sections[2].entries, 3, "palette: empty slots left out")
-eq(#sections, 2, "palette: nothing else")
-local pchips = 0
-for _, c in ipairs(P.dragState.paletteChips) do if c.shown then pchips = pchips + 1 end end
-eq(pchips, 6, "palette: a chip per player in each section")
-eq(P.dragState.paletteChips[1].source.name, "Brenn", "palette: a chip drags its name")
-check(P.paletteHelp and P.paletteHelp.helpTarget == P.paletteHead, "palette: how to drag in its (?)")
+-- the palette (#1257): the note editor's (Notes/Palette.lua's Palette.Build): Search, Players from (the current group
+-- and each Raid Groups layout, no invite list), then Players, General, Groups and Classes for the chosen source only
+local PS = P.dragState
+local function headingsShown()
+  local t = {}
+  for _, h in ipairs(PS.headings) do if h.shown then t[#t + 1] = h.text end end
+  return table.concat(t, ",")
+end
+local function playerLabels()
+  local t = {}
+  for _, c in ipairs(PS.paletteChips) do if c.shown and c.source.kind == "player" then t[#t + 1] = plain(c.text.text) end end
+  return table.concat(t, ",")
+end
+local function chipOf(label)
+  for _, c in ipairs(PS.paletteChips) do if c.shown and plain(c.text.text) == label then return c end end
+end
+check(PS.search ~= nil and PS.search.skinned, "palette: a Search box, in the theme")
+check(PS.from ~= nil and PS.from.rowKind == "dropdown" and PS.from.label == "Players from", "palette: a Players from dropdown")
+local choices = PS.from.opts.options()
+eq(#choices, 3, "palette: Players from lists the current group and both layouts")
+eq(choices[1].label, "Current group", "palette: Current group first")
+eq(choices[2].label .. "," .. choices[3].label, "Main,Alt", "palette: then each layout, no invite list")
+eq(PS.from.opts.get(), "group", "palette: Current group to start with")
+eq(headingsShown(), "Players,General,Groups,Classes", "palette: Players, General, Groups and Classes")
+eq(playerLabels(), "Brenn,Quick,Solex", "palette: only the group's players (by role, then name), without realm")
+eq(chipOf("Quick").class, "MAGE", "palette: a player's class")
+eq(chipOf("Brenn").source.token, "Brenn", "palette: a chip drags its name")
+check(chipOf("Everyone") and chipOf("Melee") and chipOf("Group 1") and chipOf("Group 8") and chipOf("Mage") and chipOf("Hunter"), "palette: every General, Group and Class chip, even with nobody to match")
+eq(chipOf("Group 7").source.kind, "group", "palette: a group chip drags its kind")
+check(P.paletteHelp and P.paletteHelp.helpTarget == PS.from, "palette: how to drag in the (?) right of Players from (Alex, 2026-11-10)")
+eq(PS.fromHelp, P.paletteHelp, "palette: placed by the shared palette")
+check(P.paletteHead == nil, "palette: no Players heading over Search, only the palette's own Players section")
+do
+  local LAY = P.LAYOUT
+  local fromX = PS.from.points[1] and PS.from.points[1][2] or 0
+  check(fromX + PS.from.w + 4 + 20 <= LAY.rightW, "palette: Players from and its (?) inside the column (" .. tostring(fromX + PS.from.w + 24) .. " of " .. LAY.rightW .. ")")
+  local top = P.palette.points[1]
+  check(top and top[3] == P.PaletteLayout.top and P.palette.h == UI.PAGE_H + LAY.contentY + P.PaletteLayout.top - P.PaletteLayout.bottom, "palette: at the column's top, down to the page's bottom")
+end
+check(P.paletteHelp.helpText:find("Group", 1, true) and P.paletteHelp.helpText:find("already on the row", 1, true), "palette: its (?) says what a General, Group or Class chip adds")
+-- a layout picked: only its players, saved
+PS.from.opts.set(7); flush()
+eq(CRT.db.interrupts.playersFrom, 7, "palette: the choice saved")
+eq(PS.from.opts.get(), 7, "palette: and shown")
+eq(playerLabels(), "Brenn,Tovi,Solex,Hunt", "palette: only the layout's players (a role set by hand first), empty slots left out")
+eq(chipOf("Tovi").class, "WARRIOR", "palette: a layout player's class from the class cache")
+-- search filters the chips shown
+PS.search.text = "to"; PS.search.scripts.OnTextChanged(PS.search, true)
+eq(playerLabels(), "Tovi", "search: only the players that match")
+check(chipOf("Everyone") == nil, "search: and the other chips that don't match are hidden")
+PS.search.text = ""; PS.search.scripts.OnTextChanged(PS.search, true)
+eq(playerLabels(), "Brenn,Tovi,Solex,Hunt", "search: emptied, every player again")
+-- the cache works out only the chosen source
+do
+  local players, roster = P.counts.players, P.counts.roster
+  for k in pairs(findAsked) do findAsked[k] = nil end
+  PS.from.opts.set(8); flush()
+  eq(P.counts.players, players + 1, "cache: another source works out its players once")
+  eq(P.counts.roster, roster, "cache: the group isn't read again for it")
+  local others = 0
+  for _, id in ipairs(findAsked) do if id ~= 8 then others = others + 1 end end
+  eq(others, 0, "cache: no other layout is read")
+  eq(playerLabels(), "Other", "cache: the Alt layout's players")
+  P.Refresh()
+  eq(P.counts.players, players + 1, "cache: and kept")
+end
+-- a saved layout that is gone: Current group
+CRT.db.interrupts.playersFrom = 99; P.Refresh()
+eq(PS.from.opts.get(), "group", "fallback: a layout that is gone falls back to Current group")
+eq(CRT.db.interrupts.playersFrom, "group", "fallback: saved as Current group")
+eq(playerLabels(), "Brenn,Quick,Solex", "fallback: the group's players")
+check(not P.SetSource(99) and CRT.db.interrupts.playersFrom == "group", "fallback: a source that is gone can't be picked")
 
 -- drops: from the palette, along a row, onto another row; a full row refuses
 I:Clear(id); P.Refresh()
@@ -380,6 +463,76 @@ do
   I:Clear(id); P.Refresh()
 end
 
+-- a General, Group or Class chip dropped on a row (#1257): every matching player of the chosen roster, in its order,
+-- skipping anyone on the row already, as one change; nobody to match changes nothing
+do
+  I:Clear(id); P.SetSource("group"); P.Refresh()
+  local function chip(label) local c = chipOf(label) return c and c.source end
+  check(drag.begin(chip("Brenn")), "chips: a player chip can be dragged")
+  check(drag.begin(chip("Everyone")), "chips: so can a General chip")
+  drag.drop(chip("Brenn"), { g = 1 }); flush()
+  eq(namesOf(1), "Brenn", "chips: a player chip fills the row's next slot, without realm")
+  local fires = 0
+  I:OnChange(function(what) if what == "list" then fires = fires + 1 end end)
+  drag.drop(chip("Everyone"), { g = 1 }); flush()
+  eq(namesOf(1), "Brenn,Solex,Quick", "chips: Everyone adds the group in its order, Brenn not twice")
+  eq(fires, 1, "chips: one drop is one change")
+  I:Clear(id); P.Refresh()
+  local function dropped(label, g)
+    I:Clear(id); P.Refresh()
+    drag.drop(chip(label), { g = g or 1 }); flush()
+    return namesOf(g or 1)
+  end
+  eq(dropped("Tanks"), "Brenn", "chips: Tanks, by the game's role")
+  eq(dropped("Dps"), "Solex,Quick", "chips: Dps")
+  eq(dropped("Group 1"), "Brenn,Quick", "chips: Group 1, by raid group")
+  eq(dropped("Group 2"), "Solex", "chips: Group 2")
+  eq(dropped("Mage"), "Solex,Quick", "chips: a class")
+  eq(dropped("Melee"), "Brenn", "chips: Melee: a tank")
+  eq(dropped("Ranged"), "Solex,Quick", "chips: Ranged: a class that is ranged in every spec")
+  eq(dropped("Healers"), "", "chips: nobody to match adds nobody")
+  eq(dropped("Group 7"), "", "chips: an empty group adds nobody")
+  eq(dropped("Hunter"), "", "chips: a class nobody plays adds nobody")
+  -- onto a chip: the players take its place, in order
+  I:Clear(id); I:SetName(id, 1, 1, "Zed"); P.Refresh()
+  drag.drop(chip("Dps"), { g = 1, at = 1 }); flush()
+  eq(namesOf(1), "Solex,Quick,Zed", "chips: dropped on a chip, the players take its place")
+  -- a row with room for only some: as many as fit, in order
+  I:Clear(id); for s, n in ipairs({ "A", "B", "C", "D" }) do I:SetName(id, 1, s, n) end P.Refresh()
+  drag.drop(chip("Everyone"), { g = 1 }); flush()
+  eq(namesOf(1), "A,B,C,D,Solex", "chips: a row takes only as many as it has slots for")
+  -- a layout: its slots' groups, roles by hand or last seen, Melee by spec or class
+  P.SetSource(7); P.Refresh()
+  eq(dropped("Group 1"), "Tovi,Solex,Brenn", "chips: a layout's group, in slot order")
+  eq(dropped("Group 2"), "Hunt", "chips: a layout's group 2 from its slots")
+  eq(dropped("Tanks"), "Tovi,Brenn", "chips: a layout's tanks, a role set by hand too")
+  eq(dropped("Melee"), "Tovi,Brenn,Hunt", "chips: Melee: tanks, and a spec seen as melee")
+  eq(dropped("Ranged"), "Solex", "chips: Ranged: a class ranged in every spec of its role")
+  eq(dropped("Hunter"), "Hunt", "chips: a layout's class")
+  eq(dropped("Everyone", 2), "Tovi,Solex,Brenn,Hunt", "chips: Everyone onto the second row")
+  -- a player whose place can't be told isn't added
+  SPECS["hunt-kazzak"] = nil
+  eq(dropped("Melee"), "Tovi,Brenn", "chips: a hunter with no spec seen isn't melee")
+  eq(dropped("Ranged"), "Solex", "chips: nor ranged")
+  SPECS["hunt-kazzak"] = 255
+  -- a player with no role (or a stale damage role) but a tank spec seen: melee, never ranged (review #1257)
+  MAIN[7] = "Guard-Kazzak"; SPECS["guard-kazzak"] = 73
+  for _, fn in ipairs(groupsListeners) do fn() end
+  eq(dropped("Melee"), "Tovi,Brenn,Hunt,Guard", "chips: a tank spec seen is melee, with no role")
+  eq(dropped("Ranged"), "Solex", "chips: and not ranged")
+  HAND["guard-kazzak"] = "DAMAGER"
+  for _, fn in ipairs(groupsListeners) do fn() end
+  eq(dropped("Melee"), "Tovi,Brenn,Hunt,Guard", "chips: a tank spec seen is melee, a damage role set by hand or not")
+  eq(dropped("Ranged"), "Solex", "chips: and still not ranged")
+  MAIN[7], SPECS["guard-kazzak"], HAND["guard-kazzak"] = "", nil, nil
+  for _, fn in ipairs(groupsListeners) do fn() end
+  -- a raider can't
+  lead = false; P.Refresh()
+  check(not P.DropKick(chip("Everyone"), { g = 1 }), "chips: a raider's drop refused")
+  lead = true
+  P.SetSource("group"); I:Clear(id); P.Refresh()
+end
+
 -- a row drawn again mid-drag: the drop carries the name it picked up, and a chip now holding another drops nothing
 do
   for s, n in ipairs({ "Solex", "Brenn" }) do I:SetName(id, 1, s, n) end
@@ -406,15 +559,15 @@ end
 
 -- the cache: a Raid Groups change, another boss, a group read while a name was secret
 do
+  P.SetSource(7); P.Refresh()
   local before = P.counts.layouts
   MAIN[2] = "Newcomer"
   for _, fn in ipairs(groupsListeners) do fn() end
-  local found = false
-  for _, e in ipairs(P.PaletteSections()[2].entries) do if e.name == "Newcomer" then found = true end end
-  check(found, "cache: a Raid Groups change shows on the palette")
+  check(chipOf("Newcomer") ~= nil, "cache: a Raid Groups change shows on the palette")
   eq(P.counts.layouts, before + 1, "cache: the layouts read again once")
   MAIN[2] = ""
   for _, fn in ipairs(groupsListeners) do fn() end
+  P.SetSource("group"); P.Refresh()
   local r = P.counts.roster
   P.bossRow.opts.set("3470:16"); flush()
   eq(P.counts.roster, r + 1, "cache: another boss reads the group again")
