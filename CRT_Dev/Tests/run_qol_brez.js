@@ -24,7 +24,11 @@ for _, k in ipairs({ "__lt", "__le", "__eq", "__add", "__sub", "__mul", "__div",
   secretMeta[k] = boom
 end
 local function secret() return setmetatable({}, secretMeta) end
-issecretvalue = function(v) return type(v) == "table" and getmetatable(v) == secretMeta end
+local rawtype = type
+issecretvalue = function(v) return rawtype(v) == "table" and getmetatable(v) == secretMeta end
+-- In the game a secret number's type is "number", so a type() test never stands in for the issecretvalue guards:
+-- with one of those guards gone, the code reaches a comparison or SetCooldown with the secret and a check fails.
+type = function(v) if issecretvalue(v) then return "number" end return rawtype(v) end
 local function holdsSecret(t)
   for _, v in pairs(t) do if issecretvalue(v) then return true end end
   return false
@@ -289,6 +293,26 @@ previews.battleres(true)
 previews.battleres(false)
 check(shown() and not p.handle.shown and p.count.text == 0, "preview off while wanted: the real charges again")
 
+-- Entering the world (a zone-in or a release mid-fight): the fight and combat are read again, not only at login
+s.show = "boss"
+fire("ENCOUNTER_END")
+check(not shown(), "(set up) no fight, hidden")
+IsEncounterInProgress = function() return true end
+fire("PLAYER_ENTERING_WORLD")
+check(shown(), "boss: entering the world mid-fight shows it")
+IsEncounterInProgress = function() return false end
+fire("PLAYER_ENTERING_WORLD")
+check(not shown(), "boss: entering the world after the fight hides it")
+s.show = "combat"
+inside, kind = true, "raid"
+UnitAffectingCombat = function() return true end
+fire("PLAYER_ENTERING_WORLD")
+check(shown(), "combat: entering a raid in combat shows it")
+UnitAffectingCombat = function() return false end
+fire("PLAYER_ENTERING_WORLD")
+check(not shown(), "combat: entering out of combat hides it")
+s.show = "raid"
+
 -- The probe: every field, secrets by type only; no error with secret fields
 assert(load(probeSrc, "BattleResProbe.lua"))("CowfeeRaidTools", CRT)
 local out = {}
@@ -300,7 +324,7 @@ ok, err = pcall(function() return CRT.BattleResProbe:Command("dev brez") end)
 print = realPrint
 check(ok and err == true, "/crt dev brez runs with secret fields: " .. tostring(err))
 local all = table.concat(out, "\\n")
-check(all:find("currentCharges: <secret table>", 1, true) and all:find("maxCharges: 5", 1, true) and all:find("isActive: true", 1, true), "the probe prints each field, a secret by its type: " .. all)
+check(all:find("currentCharges: <secret number>", 1, true) and all:find("maxCharges: 5", 1, true) and all:find("isActive: true", 1, true), "the probe prints each field, a secret by its type: " .. all)
 check(all:find("Encounter active", 1, true) and all:find("SetCooldownFromDurationObject", 1, true), "the probe says whether the encounter is active and tries the duration object")
 check(CRT.BattleResProbe:Command("dev other") == false, "the probe takes only dev brez")
 

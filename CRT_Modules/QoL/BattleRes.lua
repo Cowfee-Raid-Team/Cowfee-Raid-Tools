@@ -364,8 +364,8 @@ events:SetScript("OnEvent", function(_, event)
         encounter = true
     elseif event == "ENCOUNTER_END" then
         encounter = false
-    elseif event == "PLAYER_LOGIN" then
-        -- a /reload mid-fight: the fight and combat as they are now
+    elseif event == "PLAYER_LOGIN" or event == "PLAYER_ENTERING_WORLD" then
+        -- a /reload, a zone-in or a release mid-fight: the fight and combat as they are now
         inCombat = UnitAffectingCombat and UnitAffectingCombat("player") and true or false
         encounter = IsEncounterInProgress and IsEncounterInProgress() and true or false
     end
