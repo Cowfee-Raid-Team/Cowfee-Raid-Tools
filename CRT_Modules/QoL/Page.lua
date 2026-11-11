@@ -4,8 +4,9 @@ local ADDON, CRT = ...
 -- defaults in Core.lua: the experimental low-health alert (QoL/LowHealth.lua; for a sound, a line points to the
 -- game's own Combat Audio Alerts pulse, since an addon can't play one for hidden health), and on its own tab the
 -- break timer's other-addon formats and bridge (QoL/BreakTimer.lua, Integrations/Breaks.lua), and on the Sounds
--- tab the voice that speaks (sound.voice, Sound/Voices.lua) above your own sound files. The Low health,
--- Debuffs and Break timer tabs each have a preview button for their display (UI.PreviewButton); with no
+-- tab the voice that speaks (sound.voice, Sound/Voices.lua) above your own sound files. The Battle res tab holds the
+-- battle res icon's settings (QoL/BattleRes.lua). The Low health, Debuffs, Break timer and Battle res tabs each have a
+-- preview button for their display (UI.PreviewButton); with no
 -- Settings tab, the page has no group button. The
 -- window scale moved to the Addon Settings page (UI/SettingsPage.lua) in 0.13.1.
 
@@ -51,6 +52,16 @@ local TEXT = {
     lowHealthPreviewTip = "Shows the LOW HEALTH banner with its drag box so you can drag it into place. Other previews stay as they are.",
     breakPreview = "Preview break timer",
     breakPreviewTip = "Shows the break timer with a sample break so you can drag it into place. Other previews stay as they are.",
+    brezEnable = "Show battle res icon",
+    brezNote = "An icon with your group's battle res charges in its corner, for raids only: it never shows in dungeons or Mythic+. While a charge comes back, it shows the time to it. At 0 charges its border and number turn the theme's bad colour (red in Default: Blizzard). In a fight the game may hide the count's value, so the number won't change colour. If it hides the recharge too, the icon shows the count only.",
+    brezShow = "Show it",
+    brezBoss = "In raid boss fights",
+    brezCombat = "In any combat in a raid",
+    brezRaid = "Always in a raid",
+    brezSize = "Size",
+    brezTimer = "Show the timer",
+    brezPreview = "Preview battle res",
+    brezPreviewTip = "Shows the icon with 2 charges and one coming back, so you can drag it into place. Other previews stay as they are.",
 }
 
 local page
@@ -384,11 +395,98 @@ local function buildBreak(pf, top)
     preview:SetPoint("TOPLEFT", 8, y - BREAK_PREVIEW_GAP)
 end
 
--- Tabs: Low health, Debuffs, Break timer and Sounds (the debuff panel, Debuffs/Page.lua). Both are only settings.
+-- Battle res (QoL/BattleRes.lua) ----------------------------------------------------------------------
+
+local BREZ_LABEL_W = 120
+
+local function buildBattleRes(pf, top)
+    local BattleRes = CRT.BattleRes
+    local function brez()
+        return CRT.db.qol.battleRes
+    end
+    local function on()
+        return brez().enabled
+    end
+    local function changed()
+        BattleRes:Apply()
+        refresh()
+    end
+
+    local enable = checkRow(pf, 6, top, TEXT.brezEnable)
+    enable:SetScript("OnClick", function(self)
+        brez().enabled = self:GetChecked() and true or false
+        changed()
+    end)
+    enable.refresh = function()
+        enable:SetChecked(on() and true or false)
+    end
+    controls[#controls + 1] = enable
+    UI.HelpRight(enable.label, TEXT.brezEnable, TEXT.brezNote)
+
+    local show = UI.Dropdown(pf, TEXT.brezShow, {
+        options = {
+            { key = "boss", label = TEXT.brezBoss },
+            { key = "combat", label = TEXT.brezCombat },
+            { key = "raid", label = TEXT.brezRaid },
+        },
+        labelWidth = BREZ_LABEL_W,
+        width = 200,
+        get = function()
+            return brez().show
+        end,
+        set = function(key)
+            brez().show = key
+            changed()
+        end,
+        enabledIf = on,
+    })
+    show:SetPoint("TOPLEFT", 10, top - 32)
+    controls[#controls + 1] = show
+
+    local size = UI.Slider(pf, TEXT.brezSize, {
+        min = 50,
+        max = 200,
+        step = 10,
+        onRelease = true,
+        labelWidth = BREZ_LABEL_W,
+        width = 200,
+        format = percent,
+        get = function()
+            return brez().size or 100
+        end,
+        set = function(v)
+            brez().size = v
+            BattleRes:Apply()
+        end,
+        enabledIf = on,
+    })
+    size:SetPoint("TOPLEFT", 10, top - 66)
+    controls[#controls + 1] = size
+
+    local timer = checkRow(pf, 6, top - 100, TEXT.brezTimer)
+    timer:SetScript("OnClick", function(self)
+        brez().timer = self:GetChecked() and true or false
+        changed()
+    end)
+    timer.refresh = function()
+        local enabled = on() and true or false
+        timer:SetChecked(brez().timer and true or false)
+        timer:SetEnabled(enabled)
+        timer.label:SetFontObject(enabled and CRTFontSmall or CRTFontDisableSmall)
+    end
+    controls[#controls + 1] = timer
+
+    local preview = UI.PreviewButton(pf, TEXT.brezPreview, { "battleres" }, { tooltip = TEXT.brezPreviewTip })
+    preview:SetPoint("TOPLEFT", 8, top - 136)
+end
+
+-- Tabs: Low health, Debuffs, Break timer, Battle res and Sounds (the debuff panel, Debuffs/Page.lua). All are only
+-- settings and their previews.
 local TABS = {
     { key = "lowhealth", label = "Low health" },
     { key = "debuffs", label = "Debuffs" },
     { key = "break", label = "Break timer" },
+    { key = "brez", label = "Battle res" },
     { key = "sounds", label = "Sounds" },
 }
 local tabButtons, tabFrames = {}, {}
@@ -445,6 +543,7 @@ local function build(pf)
     buildLowHealth(tabFrames.lowhealth, -8)
     CRT.DebuffsPage.Build(tabFrames.debuffs)
     buildBreak(tabFrames["break"], -8)
+    buildBattleRes(tabFrames.brez, -8)
     buildSounds(tabFrames.sounds, -8)
     selectTab(CRT.db.qol.tab)
 
@@ -457,7 +556,7 @@ end
 
 UI:RegisterPage("qol", TEXT.title, build)
 
--- Opens the page on a tab: "lowhealth", "debuffs" (/crt debuffs), "break" or "sounds".
+-- Opens the page on a tab: "lowhealth", "debuffs" (/crt debuffs), "break", "brez" or "sounds".
 CRT.QoLPage = {
     Open = function(key)
         UI:Show("qol")

@@ -227,6 +227,7 @@ CRT_Modules\Interrupts\SetupEditor.lua
 CRT_Modules\QoL\LowHealth.lua
 CRT_Modules\QoL\LowHealthSound.lua
 CRT_Modules\QoL\BreakTimer.lua
+CRT_Modules\QoL\BattleRes.lua
 CRT_Modules\QoL\Page.lua
 CRT_Core\UI\Minimap.lua
 CRT_Core\UI\SettingsPage.lua
@@ -242,6 +243,7 @@ CRT_Dev\Dev\ClearProbe.lua
 CRT_Dev\Dev\AbsorbProbe.lua
 CRT_Dev\Dev\AuraProbe.lua
 CRT_Dev\Dev\LowHealthProbe.lua
+CRT_Dev\Dev\BattleResProbe.lua
 CRT_Dev\Dev\InstantReleaseTest.lua
 CRT_Dev\Dev\ShieldBarDev.lua
 CRT_Dev\Dev\BossDebug.lua

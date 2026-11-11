@@ -79,6 +79,7 @@ Profiles.SHARE = {
             customSounds = false, -- your own sound files, which a raider doesn't have
         },
         breakTimer = true,
+        battleRes = true, -- the battle res icon's settings and place
     },
     loot = true, -- Loot History's settings only (the history is in CRTLootDB), Tooltip position and spot among them
     lootmaster = {
@@ -143,7 +144,7 @@ Profiles.POSITIONS = {
     "notes.window.position", "notes.assignments.position", "notes.personal.position", "notes.alert.position", "notes.editor",
     "notes.window.width", "notes.window.height", "notes.assignments.width", "notes.assignments.height",
     "notes.personal.width", "notes.personal.height",
-    "qol.lowHealth.position", "qol.breakTimer.position",
+    "qol.lowHealth.position", "qol.breakTimer.position", "qol.battleRes.position",
     "lootmaster.window", "lootmaster.popup", "lootmaster.answers", "lootmaster.bossLoot", "lootmaster.lootingPrompt", "lootmaster.wishlistWindow", "team.popup",
     "gearChecker.popout", "timeline.popout", "markers.position", "pace.position",
     "alerts.bars.position", "alerts.bars.positionV", "alerts.areas.icons.position", "alerts.areas.texts.position", "alerts.areas.circles.position",
