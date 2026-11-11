@@ -6,7 +6,8 @@ local ADDON, CRT = ...
 --   My Loot (left, everyone's): one large card. Its status line counts the items of the session you were
 --     sent that still wait for your answer, with their icons (quality borders, tooltips); with nothing
 --     waiting it shows the session's or the last one's items dimmed (LM.MyLoot, LootMaster/RaiderWindow.lua).
---     A click anywhere on it opens your loot popup and All Loot Rolls (LM:OpenMyLoot), as /crt loot does.
+--     A click anywhere on it opens your loot popup and All Loot Rolls (LM:OpenMyLoot), as /crt loot does. Under it,
+--     My wishlist opens your wishlist (LM:ShowWishlist, LootMaster/WishlistWindow.lua), as /crt wishlist does.
 --   Master loot (right, the looter's): its heading's (?) says only the master looter uses it. CRT Looting's
 --     state with the leader's Turn on / Turn off for everyone (LootMaster/Looting.lua); the session line; a
 --     2x2 grid of Test boss kill, Start session (N), Master Loot Window and End session; Held boss loot as a
@@ -25,6 +26,7 @@ local L = {
     icon = 36, iconGap = 6, iconTop = -84, iconEdge = 2, -- the waiting items' icons, at most LM.MAX_ITEMS
     oldAlpha = 0.4, -- the last session's icons, with nothing waiting
     redraw = 1, -- seconds between the card's redraws while it shows (an item's time runs out)
+    wishTop = -218, -- the My wishlist button, under the card
     col = 424, -- Master loot
     sub = 724, -- its second column, under the buttons: Add from bags and Items
     lootingTop = -32, sessionTop = -100, gridTop = -120, gridRow = 30, gridGap = 6, buttonH = 24,
@@ -38,6 +40,8 @@ L.subW = UI.PAGE_W - L.sub - 8
 local TEXT = {
     myLoot = "My Loot",
     hint = "Click to open your roll window · /crt loot",
+    wishlist = "My wishlist",
+    wishlistHelp = "The items you want from this season's raids, ranked Big upgrade, Small upgrade or Off spec. The loot master and raid assists see your rank when an item drops. You can also right-click an item in the Adventure Guide. /crt wishlist",
     nothing = "Nothing to roll on right now",
     waitingOne = "1 item waiting for your answer",
     waitingMany = "%d items waiting for your answer",
@@ -193,6 +197,12 @@ local function buildCard(f, refreshers)
         end
     end)
     refreshers[#refreshers + 1] = refreshCard
+    -- My wishlist (LootMaster/WishlistWindow.lua), under the card
+    T.wishlist = UI.PanelButton(f, TEXT.wishlist, L.buttonH, function()
+        LM:ShowWishlist()
+    end)
+    T.wishlist:SetPoint("TOPLEFT", L.card, L.wishTop)
+    T.wishlistHelp = UI.HelpRight(T.wishlist, TEXT.wishlist, TEXT.wishlistHelp)
 end
 
 -- Held boss loot ------------------------------------------------------------------------------------

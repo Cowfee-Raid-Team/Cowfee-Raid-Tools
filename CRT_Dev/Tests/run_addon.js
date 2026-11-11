@@ -385,9 +385,16 @@ do
   check(shownPages[before + 1] == "interrupts", "/crt interrupts opens the page once it is on")
   CRT.Interrupts:SetEnabled(false)
 end
+-- /crt wishlist: your Loot Master wishlist window (LootMaster/WishlistWindow.lua; its dropdowns need more of the game's
+-- frames than these stand-ins have, so the window itself is checked in run_loot_wishlist.js)
+do
+  check(CRT.Slash.words.wishlist ~= nil, "/crt wishlist is registered")
+  check(help:find("/crt wishlist|r", 1, true) ~= nil, "/crt help lists /crt wishlist")
+  check(type(CRT.LootMaster.ShowWishlist) == "function", "/crt wishlist has its window to open")
+end
 local count = 0
 for _ in pairs(CRT.Slash.words) do count = count + 1 end
-check(count == 8, "eight registered words (the six above, loot and interrupts), got " .. count)
+check(count == 9, "nine registered words (the six above, loot, interrupts and wishlist), got " .. count)
 check(not help:find("turned off", 1, true), "/crt help names nothing turned off")
 for _, def in pairs(CRT.Slash.words) do
   check(def.module == nil and def.raider == nil and def.raiderHelp == nil, "a registered word has only run, help and top")

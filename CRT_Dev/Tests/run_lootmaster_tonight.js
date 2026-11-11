@@ -219,6 +219,16 @@ check(T.heldList ~= nil and T.heldList.view ~= nil, "Held boss loot is a scrolli
 check(T.addHeading and T.addHeading.text == "Add from bags", "an Add from bags heading")
 check(slot ~= nil and type(helps["Add from bags"]) == "string", "the bag slot, with its (?)")
 check(T.itemsHeading and T.itemsHeading.text == "Items", "the session's Items")
+-- My wishlist, under the card on the left (LootMaster/WishlistWindow.lua)
+local wl = buttons["My wishlist"]
+check(wl ~= nil and wl == T.wishlist, "a My wishlist button")
+local wx, wy = at(wl)
+check(type(wx) == "number" and wx < 20 and wy < -(card and card.height or 0), "it sits under the card (" .. tostring(wx) .. ", " .. tostring(wy) .. ")")
+check(type(helps["My wishlist"]) == "string", "with its (?)")
+local wishOpened = 0
+function LM:ShowWishlist() wishOpened = wishOpened + 1 end
+if wl then wl.onClick() end
+eq(wishOpened, 1, "it opens My wishlist")
 
 -- 2. The card's status line counts the items waiting for your answer, with their icons
 LM:Fire("bossloot", "changed")
