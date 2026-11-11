@@ -74,7 +74,7 @@ local kits = {}
 function PlaySound(id) kits[#kits + 1] = { id = id, at = clock } return true end
 
 local CRT = { db = { sound = { custom = {}, voice = "xavier" }, ui = { soundChannel = "Dialog" },
-  notes = { alert = { tts = true, ttsRate = 0, ttsVolume = 100 } }, alerts = {}, qol = { lowHealth = {}, breakTimer = {} } },
+  notes = { alert = { tts = true, ttsRate = 0, ttsVolume = 100 } }, alerts = {}, qol = { lowHealth = {}, breakTimer = {}, battleRes = {} } },
   Print = function() end }
 for i, src in ipairs({ engineSrc, voicesSrc, rulesSrc, alertsSrc, speechSrc }) do assert(load(src, "@f" .. i))("CowfeeRaidTools", CRT) end
 local Sound, Speech, Rules, Alerts = CRT.Sound, CRT.AlertSpeech, CRT.AlertRules, CRT.Alerts

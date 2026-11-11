@@ -4,7 +4,7 @@
 // once, RELEASE_DELAY seconds later, after checking again. Never after a kill, with the setting off, alive, as a ghost,
 // with a resurrection on the way or offered, while you can resurrect yourself, or with a nil or secret encounter. Also:
 // the default in Core.lua (off, under alerts; no qol.autoRelease), no boss file carries autoRelease and the boss
-// library has no autoRelease accessors, and Quality of Life is back to its four tabs with no release box. The check box
+// library has no autoRelease accessors, and Quality of Life has its tabs (Battle res added in #1262) with no release box. The check box
 // on Mech Alerts > Special is checked in run_mechalerts.js.
 // Usage: node run_instantrelease.js <addon folder>
 const fs = require('fs');
@@ -262,7 +262,7 @@ local code = releaseSrc:gsub("%-%-[^\n]*", "")
 check("the file names no boss and reads no boss data (the ticks are the player's)", not code:find("Twin Fangs", 1, true) and not code:find("3421", 1, true)
   and not code:find("Bosses:Get", 1, true) and not code:find("AutoRelease", 1, true))
 
--- Quality of Life: its four tabs again, and no release box ----------------------------------------------------------
+-- Quality of Life: its tabs, and no release box ----------------------------------------------------------
 local helps, tabs, build = {}, {}, nil
 CRT.UI = {
   RegisterPage = function(_, key, title, fn) build = fn end,
@@ -283,7 +283,7 @@ assert(load(pageSrc, "@Page.lua"))("CowfeeRaidTools", CRT)
 build(mock())
 local labels = {}
 for _, b in ipairs(tabs) do labels[#labels + 1] = tostring(b.text and rawget(b.text, "text")) end
-check("Quality of Life has its four tabs, no Settings", table.concat(labels, ",") == "Low health,Debuffs,Break timer,Sounds", table.concat(labels, ","))
+check("Quality of Life has its five tabs, no Settings", table.concat(labels, ",") == "Low health,Debuffs,Break timer,Battle res,Sounds", table.concat(labels, ","))
 local box = false
 for _, h in ipairs(helps) do if tostring(h.title):find("elease", 1, true) then box = true end end
 check("and no release box or (?)", not box and not pageSrc:find("autoRelease", 1, true))
