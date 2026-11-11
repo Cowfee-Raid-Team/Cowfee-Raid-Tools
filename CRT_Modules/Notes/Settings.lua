@@ -12,7 +12,11 @@ local UI = CRT.UI
 -- Every word on this tab, in one place so the wording is easy to change. Keep the keys, change the
 -- text in quotes, save, and /reload.
 local TEXT = {
-    hint = "Untick Locked to drag a window and resize it from its corner, then lock it so clicks pass through. Keep up when empty leaves a window on screen with nothing to show. Preview note windows shows all three with sample text; the button under each window shows just that one.",
+    hint = {
+        { "Locked", "untick it to drag a window and resize it from its corner, then lock it so clicks pass through." },
+        { "Keep up when empty", "leaves a window on screen with nothing to show." },
+        { "Preview note windows", "shows all three with sample text; the button under each window shows just that one." },
+    },
 
     -- The three window columns.
     timers = "Timers",
@@ -44,12 +48,16 @@ local TEXT = {
     trustedOnly = "Only accept notes from leader or assistants",
     autoAccept = "Accept healers' cooldown changes automatically",
     autoAcceptHelp = "For the raid leader and assistants. Healers can move their own cooldowns on the Timeline's "
-        .. "Healer CDs and send them to you; they show under Proposed changes there. Ticked, a change from a group "
+        .. "Healer CDs (Timeline > Review > Pop out > Healer CDs) and send them to you; they show under Proposed changes there. Ticked, a change from a group "
         .. "member about their own line is written into the raid note at once. A change to a line you changed since "
         .. "always waits. Share the note afterwards as usual.",
     notesList = "Notes list",
     listStyle = "Show notes",
-    listHelp = "How the Notes tab lists notes: Grouped headings puts every note under its difficulty; Dropdown and Chips show one difficulty at a time, picked above the list.",
+    listHelp = {
+        "How the Notes tab lists notes.",
+        { "Grouped headings", "puts every note under its difficulty." },
+        { "Dropdown and Chips", "show one difficulty at a time, picked above the list." },
+    },
     grouped = "Grouped headings",
     dropdown = "Dropdown",
     chips = "Chips",

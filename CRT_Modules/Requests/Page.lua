@@ -19,10 +19,13 @@ local L = {
 
 local TEXT = {
     title = "Requests",
-    help = "Ask everyone in the group who needs an item: a Vantus Rune, a flask, a feast, anything you can trade.\n\n"
-        .. "Drag the item from your bags onto the slot, or shift-click it, then press Ask the raid. Raiders with CRT get a popup with Need one and No thanks. Raiders without CRT show as No answer.\n\n"
-        .. "Trade 1 opens a trade with that player and puts one in it. You both still press Trade. Given counts it once the trade completes.\n\n"
-        .. "Only the raid leader or an assist can ask. Out of a group you can try it on yourself. Nothing is saved: a /reload closes the request.",
+    help = {
+        "Ask everyone in the group who needs an item: a Vantus Rune, a flask, a feast, anything you can trade.\n\n"
+            .. "Drag the item from your bags onto the slot, or shift-click it, then press Ask the raid. Raiders with CRT get a popup with Need one and No thanks. Raiders without CRT show as No answer.",
+        { "Trade 1", "opens a trade with that player and puts one in it. You both still press Trade." },
+        { "Given", "counts it once the trade completes." },
+        "Only the raid leader or an assist can ask. Out of a group you can try it on yourself. Nothing is saved: a /reload closes the request.",
+    },
     slot = "Item: drag it from your bags here, or shift-click it.",
     slotHelpTitle = "Item",
     slotHelp = "Any item you can still trade. Shift-click on a stack opens the game's split instead, so drag stacks.",

@@ -41,15 +41,19 @@ local TEXT = {
     title = "Season Stats",
     columns = { name = "Boss", pulls = "Pulls", wipes = "Wipes", kills = "Kills", toKill = "To first kill", best = "Best kill", first = "First kill",
         repairs = "Your repairs", raid = "Raid costs" },
-    help = "Your raid's season, boss by boss: pulls, wipes and kills on the difficulty you pick.\n\n"
-        .. "Every pull the Timeline saves counts, so keep Record on in the Timeline's settings.\n\n"
-        .. "Pulls from before Season Stats are filled in once from the Timeline's saved pulls. It keeps only the newest of them, so older pulls count as wipes with no length.\n\n"
-        .. "Raid nights are the Late Tracker's nights between the season's first and last pull. Click a boss to see how its pulls went.\n\n"
-        .. "Your repairs is how much your repair bill went up over each pull. It's read from your gear right at the pull and again after it, so running back adds nothing. If the read at the pull fails, your last read out of combat is used.\n\n"
-        .. "Raid costs adds up the same from every raider running CRT, on the pulls Season Stats counted. Raiders without CRT aren't counted.\n\n"
-        .. "It isn't confirmed yet whether reputation discounts on repairs are included.\n\n"
-        .. "Repair counting starts with this update, so older pulls have none.\n\n"
-        .. "The Team filter picks All or one team. Each pull counts under the team it started with, picked on General Settings > Team raids, and in All. Pug is the raids that weren't a team raid. Before teams, shown only while it has pulls, is the pulls from before you had teams of your own: Merge team on General Settings > Team raids can move them into one of your teams.",
+    help = {
+        "Your raid's season, boss by boss: pulls, wipes and kills on the difficulty you pick. Click a boss to see how its pulls went.\n\n"
+            .. "Every pull the Timeline saves counts, so keep Record every pull on, on Timeline > Settings.\n\n"
+            .. "Pulls from before Season Stats are filled in once from the Timeline's saved pulls. It keeps only the newest of them, so older pulls count as wipes with no length.",
+        { "Raid nights", "the Late Tracker's nights between the season's first and last pull." },
+        { "Your repairs", "how much your repair bill went up over each pull. It's read from your gear right at the pull and again after it, so running back adds nothing. If the read at the pull fails, your last read out of combat is used." },
+        { "Raid costs", "adds up the same from every raider running CRT, on the pulls Season Stats counted. Raiders without CRT aren't counted." },
+        "It isn't confirmed yet whether reputation discounts on repairs are included.\n\n"
+            .. "Repair counting starts with this update, so older pulls have none.",
+        { "Team", "picks All or one team. Each pull counts under the team it started with, picked on General Settings > Appearance > Team raids, and in All." },
+        { "Pug", "the raids that weren't a team raid." },
+        { "Before teams", "shown only while it has pulls: the pulls from before you had teams of your own. Merge team on General Settings > Appearance > Team raids can move them into one of your teams." },
+    },
     season = "Season", difficulty = "Difficulty", show = "Team",
     killed = "Bosses killed", pulls = "Pulls", nights = "Raid nights", time = "Time in pulls",
     repairs = "Your repairs", raid = "Raid costs",
@@ -72,7 +76,7 @@ local TEXT = {
         .. "The game hides a boss's health from addons during an encounter, so the longest pull and the furthest phase stand in for how close you got.\n\n"
         .. "The phase is the one the alerts reached in the pull. Pulls from before Season Stats have none.\n\n"
         .. "A death cause on the boss's ability timeline shows in its type's colour, as on the Timeline. Hover a cause to see the spell, its Encounter Journal text and its types.\n\n"
-        .. "Avoidable damage is Tattlebot's: its tracked mechanics, and the game's avoidable damage when that is on in Tattlebot's settings. Click a night to open it in Tattlebot.",
+        .. "Avoidable damage is Tattlebot's: its tracked mechanics, and the game's avoidable damage when that is on, on Tattlebot > Settings. Click a night to open it in Tattlebot.",
     pick = "Click a boss in the table to see how its pulls went.",
     bossEmpty = "No pulls on this boss on %s yet.",
     longest = "Longest pull each night",

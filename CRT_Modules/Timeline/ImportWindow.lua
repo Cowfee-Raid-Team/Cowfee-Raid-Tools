@@ -25,9 +25,16 @@ local TEXT = {
     nothing = "Nothing in it to import.",
     noneTicked = "No line is ticked.",
     replace = "Replace what I imported before for these bosses",
-    replaceHelp = "On: the reminders you imported before for each boss and difficulty in the box are deleted first, then these are added. Your other reminders stay.\n\nOff: these are added to what you have. A reminder you already have (the same time and text) is not added twice.",
+    replaceHelp = {
+        { "On", "the reminders you imported before for each boss and difficulty in the box are deleted first, then these are added. Your other reminders stay." },
+        { "Off", "these are added to what you have. A reminder you already have (the same time and text) is not added twice." },
+    },
     tickAll = "Tick every line, for everyone",
-    tickAllHelp = "On: every line that can be read is ticked, for you or for someone else. A line for someone else alerts you too.\n\nOff: only your own lines are ticked again.\n\nA group box ticks or unticks all its lines. Click a line or a group anywhere to tick it.",
+    tickAllHelp = {
+        { "On", "every line that can be read is ticked, for you or for someone else. A line for someone else alerts you too." },
+        { "Off", "only your own lines are ticked again." },
+        "A group box ticks or unticks all its lines. Click a line or a group anywhere to tick it.",
+    },
     import = "Import %d",
     close = "Close",
     forYou = "%d for you",

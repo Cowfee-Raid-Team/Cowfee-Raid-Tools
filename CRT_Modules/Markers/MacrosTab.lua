@@ -36,10 +36,13 @@ local TEXT = {
         .. "The macros send to /raid, which only works in a raid group. So while the test runs, click a marker under Your macros to send it to /say, or type /say {rt1}.\n\n"
         .. "Stop test ends it.",
     macros = "Your macros",
-    macrosHelp = "One macro per raid marker, CRT Star to CRT Skull. Each sends its marker to raid chat (/raid {rt1}), where the marker display reads it. Drag a made one from here straight to your action bars.\n\n"
-        .. "Click a marker that isn't made yet to make just that one, or Generate all macros for all eight. They go in General Macros, for all your characters. When General Macros is full they go in this character's macros. When both are too full, nothing is made and chat says how many to free.\n\n"
-        .. "Remove macros deletes only the macros the addon made. A macro you edited or renamed, or your own with the same name, is never changed.\n\n"
-        .. "Not in combat: the game doesn't let addons change macros during a fight.",
+    macrosHelp = {
+        "One macro per raid marker, CRT Star to CRT Skull. Each sends its marker to raid chat (/raid {rt1}), where the marker display reads it. Drag a made one from here straight to your action bars.\n\n"
+            .. "Click a marker that isn't made yet to make just that one.",
+        { "Generate all macros", "makes all eight. They go in General Macros, for all your characters. When General Macros is full they go in this character's macros. When both are too full, nothing is made and chat says how many to free." },
+        { "Remove macros", "deletes only the macros the addon made. A macro you edited or renamed, or your own with the same name, is never changed." },
+        "Not in combat: the game doesn't let addons change macros during a fight.",
+    },
     generate = "Generate all macros",
     remove = "Remove macros",
     removeAsk = "Remove the %s macros the addon made? Macros you edited or renamed stay.",

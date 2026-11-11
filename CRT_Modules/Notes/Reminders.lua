@@ -41,7 +41,11 @@ local TEXT = {
     saveAs = "Save as",
     asNote = "Raid note",
     asMine = "Only me",
-    raidNoteHelp = "Only me: the alert is yours alone.\n\nRaid note: the alert goes into this boss's raid note for the difficulty on show, one line per cast, for those ticked in For: Everyone, or any of the roles and players you tick. You get it once, from the note, like everyone else. Every change here rewrites those lines; nothing else in the note changes. Share the note to send it to the raid.\n\nOnly me again takes the lines out and makes it your own alert. Also when it lands on me stays yours. Raiders on an older CRT see a plain bar, without its ticks, and hear the text on show with a count from 3.",
+    raidNoteHelp = {
+        { "Only me", "the alert is yours alone." },
+        { "Raid note", "the alert goes into this boss's raid note for the difficulty on show, one line per cast, for those ticked in For: Everyone, or any of the roles and players you tick. You get it once, from the note, like everyone else. Every change here rewrites those lines; nothing else in the note changes. Share the note to send it to the raid." },
+        "Only me again takes the lines out and makes it your own alert. Also when it lands on me stays yours. Raiders on an older CRT see a plain bar, without its ticks, and hear the text on show with a count from 3.",
+    },
     forLabel = "For",
     forEveryone = "Everyone",
     forTanks = "Tanks",
@@ -62,7 +66,11 @@ local TEXT = {
     linesStay = "Saved as Only me. Its lines stay in the raid note until the raid leader or an assistant takes them out.",
     deletedLinesStay = "Deleted. Its lines stay in the raid note until the raid leader or an assistant takes them out.",
     -- the (?) after Linger, on the When tab (its title is the tab's, Alerts/SubTabs.lua)
-    triggersHelp = "Duration: how long before the specified time this alert should start showing up. Linger: how long it stays after 0. The times come from the boss's ability timeline, counted from the start of each phase.",
+    triggersHelp = {
+        { "Duration", "how long before the specified time this alert should start showing up." },
+        { "Linger", "how long it stays after 0." },
+        "The times come from the boss's ability timeline, counted from the start of each phase.",
+    },
     noTimes = "No times on the ability timeline for this mechanic.",
     times = "Times",
     timesHelp = "This alert has no times on the ability timeline, so type its own: the phase, then minutes:seconds from the start of that phase, as in P1 0:30, 1:15; P2 0:20. No phase means phase 1. Saved when you press Enter or leave the box.",
@@ -80,7 +88,11 @@ local TEXT = {
     countHelp = "What the bar's number counts down to: the end of the cast, or the next hit.",
     iconSpell = "Spell",
     iconID = "Icon ID",
-    iconHelp = "Spell: the spell's ID; the alert shows its icon and, with no text, its name. Icon ID: an icon's file ID instead. Or type a spell name (3 letters or more) to search this boss's abilities and your spells; a close spelling works too.",
+    iconHelp = {
+        { "Spell", "the spell's ID; the alert shows its icon and, with no text, its name." },
+        { "Icon ID", "an icon's file ID instead." },
+        "Or type a spell name (3 letters or more) to search this boss's abilities and your spells; a close spelling works too.",
+    },
     colorDefault = "Default",
     test = "Test",
     template = "Save as template",

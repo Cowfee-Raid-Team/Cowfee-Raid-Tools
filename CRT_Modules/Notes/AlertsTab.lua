@@ -45,7 +45,10 @@ local TEXT = {
     custom = "Use custom colours",
 
     tryIt = "Try it",
-    tryHelp = "Preview alerts shows the note callout and every alert area with samples, so you can drag them into place; the cog on each opens its settings here. Test all areas counts three test alerts down in each.",
+    tryHelp = {
+        { "Preview alerts", "shows the note callout and every alert area with samples, so you can drag them into place; the cog on each opens its settings here." },
+        { "Test all areas", "counts three test alerts down in each." },
+    },
     previews = "Preview alerts",
     previewsTip = "Shows the note callout and the five alert areas with samples, so you can drag them into place. Other previews stay as they are.",
     onScreen = "On screen now: %s",
