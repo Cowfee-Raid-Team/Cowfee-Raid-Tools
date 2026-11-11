@@ -133,11 +133,22 @@ fire("ENCOUNTER_END")
 inside, kind = false, "none"
 fire("ZONE_CHANGED_NEW_AREA")
 
--- In boss fights (the default)
+-- In raid boss fights (the default): raid bosses only, never a dungeon's or Mythic+ (Alex, 2026-11-11)
 s.enabled = true
 s.show = "boss"
 B:Apply()
-check(not shown(), "boss: hidden before the pull")
+inside, kind = true, "party"
+fire("PLAYER_ENTERING_WORLD")
+fire("ENCOUNTER_START")
+check(not shown(), "boss: a dungeon boss shows nothing")
+fire("ENCOUNTER_END")
+inside, kind = false, "none"
+fire("ENCOUNTER_START")
+check(not shown(), "boss: a boss outside any instance shows nothing")
+fire("ENCOUNTER_END")
+inside, kind = true, "raid"
+fire("PLAYER_ENTERING_WORLD")
+check(not shown(), "boss: hidden in a raid before the pull")
 fire("ENCOUNTER_START")
 check(shown(), "boss: shown on ENCOUNTER_START")
 local p = parts()
@@ -157,6 +168,7 @@ fire("PLAYER_REGEN_ENABLED")
 
 -- In any combat in a raid
 s.show = "combat"
+inside, kind = false, "none"
 B:Apply()
 fire("PLAYER_REGEN_DISABLED")
 check(not shown(), "combat: outside a raid instance, nothing")

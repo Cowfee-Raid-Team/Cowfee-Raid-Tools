@@ -248,7 +248,7 @@ local defaults = {
             formats = {}, -- Also send to: format key -> false when unticked (Integrations/Breaks.lua)
             bridge = false, -- the raid leader's CRT passes a break on in the formats it didn't come in
         },
-        -- The battle res icon (QoL/BattleRes.lua): show is "boss" (in boss fights), "combat" (in any combat in a
+        -- The battle res icon (QoL/BattleRes.lua): show is "boss" (in raid boss fights only), "combat" (in any combat in a
         -- raid) or "raid" (always in a raid); timer shows the time to the next charge; size is a percent, 50 to 200.
         -- position once it is moved.
         battleRes = { enabled = false, show = "boss", timer = true, size = 100 },

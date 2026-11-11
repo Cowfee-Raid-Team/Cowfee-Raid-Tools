@@ -3,7 +3,7 @@ local ADDON, CRT = ...
 -- The battle res icon (optional, off by default): the Rebirth icon with the group's shared battle res charges in its
 -- bottom-right corner and, while a charge is coming back, a cooldown sweep and the time to it in the middle. At 0
 -- charges its border and number turn the theme's bad colour. Settings in CRTDB.qol.battleRes (defaults in Core.lua):
--- enabled, show ("boss": between ENCOUNTER_START and ENCOUNTER_END; "combat": in combat inside a raid instance;
+-- enabled, show ("boss": between ENCOUNTER_START and ENCOUNTER_END inside a raid instance, never a dungeon; "combat": in combat inside a raid instance;
 -- "raid": always inside a raid instance), timer (the time text) and size (percent). Its place is the shared
 -- Placement helper's (UI/Placement.lua), saved as battleRes.position. The settings are on Quality of Life's
 -- Battle res tab (QoL/Page.lua), with a preview to place it.
@@ -302,7 +302,7 @@ function BattleRes:Wanted()
     elseif s.show == "raid" then
         return inRaid()
     end
-    return encounter
+    return encounter and inRaid() -- raid bosses only, never a dungeon's or Mythic+ (Alex, 2026-11-11)
 end
 
 -- Shows or hides the icon for the setting, the fight and the preview, and paints it.
