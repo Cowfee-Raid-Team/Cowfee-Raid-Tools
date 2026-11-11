@@ -288,6 +288,7 @@ local defaults = {
         wishlistWindow = {},
         responseSeconds = 60,
         score = { show = true, late = 5, per10 = 1, noShow = 15, recover = 5, weeks = 8 },
+        tieOrder = "wish", -- how equal answers are ordered: "wish", "score", "wishonly" or "scoreonly" (LM.TIE_ORDERS)
         awardMessage = "%i awarded to %p for %r with a %v roll.",
         awardChannel = "RAID",
         noRoll = "-",

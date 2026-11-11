@@ -317,6 +317,45 @@ eq(LM.SORT_VALUES.wish(rows[4]), 0, "sort: not listed is lowest")
 local byName = LM.SortRows(s:Rows(1, nil, W.RankFor), "name", 1)
 eq(byName[1].name, "Arrow-Sargeras", "sort: a header the looter picked wins")
 
+-- 6b. Order equal answers by (lootmaster.tieOrder): four orders on one set of rows with equal answers
+W.lists["Arrow-Sargeras"] = { items = { [212401] = "small" }, at = 0 }
+local s2 = LM.Session.New({ id = "s2", leader = "Solex-Sargeras", items = { { itemString = "item:212401::::::::80" } } })
+s2:Expect({ "Arrow-Sargeras", "Halo-Sargeras", "Quick-Sargeras", "Solex-Sargeras" })
+local ROLLS = { ["Arrow-Sargeras"] = 50, ["Quick-Sargeras"] = 60, ["Halo-Sargeras"] = 70, ["Solex-Sargeras"] = 70 }
+local SCORES = { ["Arrow-Sargeras"] = 100, ["Quick-Sargeras"] = 90, ["Halo-Sargeras"] = 80, ["Solex-Sargeras"] = 90 }
+for name, roll in pairs(ROLLS) do
+    s2:Answer(name, 1, { response = "up" })
+    s2:SetRoll(name, 1, roll)
+end
+local function scoreOf(name) return SCORES[name] end
+local function order(rows)
+    local out = {}
+    for i, r in ipairs(rows) do out[i] = r.name:match("^[^-]+") end
+    return table.concat(out, ",")
+end
+CRT.db.lootmaster.tieOrder = nil
+eq(order(s2:Rows(1, scoreOf, W.RankFor)), "Halo,Arrow,Quick,Solex", "tie order: unset is wishlist, then score, then roll")
+CRT.db.lootmaster.tieOrder = "bogus"
+eq(order(s2:Rows(1, scoreOf, W.RankFor)), "Halo,Arrow,Quick,Solex", "tie order: an unknown value is the default")
+CRT.db.lootmaster.tieOrder = "wish"
+eq(order(s2:Rows(1, scoreOf, W.RankFor)), "Halo,Arrow,Quick,Solex", "tie order: wishlist, score, roll")
+CRT.db.lootmaster.tieOrder = "score"
+eq(order(s2:Rows(1, scoreOf, W.RankFor)), "Arrow,Quick,Solex,Halo", "tie order: score, wishlist, roll")
+CRT.db.lootmaster.tieOrder = "wishonly"
+eq(order(s2:Rows(1, scoreOf, W.RankFor)), "Halo,Quick,Arrow,Solex", "tie order: wishlist, roll (score skipped)")
+CRT.db.lootmaster.tieOrder = "scoreonly"
+eq(order(s2:Rows(1, scoreOf, W.RankFor)), "Arrow,Solex,Quick,Halo", "tie order: score, roll (wishlist skipped)")
+CRT.db.lootmaster.tieOrder = "wishonly"
+eq(order(s2:Rows(1, scoreOf)), "Halo,Solex,Quick,Arrow", "tie order: no wishlist data, the missing key is skipped (roll, then name)")
+CRT.db.lootmaster.tieOrder = "score"
+eq(order(s2:Rows(1, nil, W.RankFor)), "Halo,Quick,Arrow,Solex", "tie order: no score, the missing key is skipped")
+local weighted = LM.SortRows(s2:Rows(1, scoreOf, W.RankFor), "name", 1)
+eq(weighted[1].name, "Arrow-Sargeras", "tie order: a header the looter picked still wins")
+s2:Answer("Solex-Sargeras", 1, { response = "bis" })
+eq(s2:Rows(1, scoreOf, W.RankFor)[1].name, "Solex-Sargeras", "tie order: a higher answer still wins over every order")
+CRT.db.lootmaster.tieOrder = "wish"
+W.lists["Arrow-Sargeras"] = nil
+
 -- 7. Leaving the group forgets the lists heard
 GROUP = nil
 onEvent("GROUP_ROSTER_UPDATE")

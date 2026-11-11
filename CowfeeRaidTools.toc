@@ -144,6 +144,7 @@ CRT_Modules\LootMaster\LootingPrompt.lua
 CRT_Modules\LootMaster\FilterTab.lua
 CRT_Modules\LootMaster\WishlistWindow.lua
 CRT_Modules\LootMaster\Tonight.lua
+CRT_Modules\LootMaster\SettingsLayout.lua
 CRT_Modules\LootMaster\Page.lua
 CRT_Modules\Requests\Data.lua
 CRT_Modules\Requests\Popup.lua

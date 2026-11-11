@@ -1085,10 +1085,23 @@ function Session:Row(name, index)
     }
 end
 
--- Every player's row for an item: response weight, then wishlist rank (wish(name, itemString), the rank on
--- their wishlist: LootMaster/Wishlist.lua's W.RankFor; r.wish, r.wishOrder), then Raider Score (score(name),
--- higher first), then roll, then name. Without wish no row has a rank, so the order is as before.
+-- Order equal answers by (Settings tab, lootmaster.tieOrder): the keys after the answer's weight, in order.
+-- A key a row has no data for (no wishlist lookup, no score) is equal on every row, so it is skipped.
+LM.TIE_ORDERS = {
+    wish = { "wishOrder", "score", "roll" }, -- the default
+    score = { "score", "wishOrder", "roll" },
+    wishonly = { "wishOrder", "roll" },
+    scoreonly = { "score", "roll" },
+}
+LM.TIE_ORDER_DEFAULT = "wish"
+local TIE_MISSING = { wishOrder = 0, score = 0, roll = -1 } -- what a row without the key sorts as
+
+-- Every player's row for an item: response weight, then the tie order above (wishlist rank: wish(name,
+-- itemString), the rank on their wishlist: LootMaster/Wishlist.lua's W.RankFor; r.wish, r.wishOrder; Raider
+-- Score: score(name); the roll; each higher first), then name. Without wish no row has a rank.
 function Session:Rows(index, score, wish)
+    local set = CRT.db and CRT.db.lootmaster
+    local keys = LM.TIE_ORDERS[set and set.tieOrder] or LM.TIE_ORDERS[LM.TIE_ORDER_DEFAULT]
     local rows = {}
     local item = self.items[index]
     local order = LM.Wishlist and LM.Wishlist.Order
@@ -1103,14 +1116,11 @@ function Session:Rows(index, score, wish)
         if a.weight ~= b.weight then
             return a.weight > b.weight
         end
-        if a.wishOrder ~= b.wishOrder then
-            return a.wishOrder > b.wishOrder
-        end
-        if (a.score or 0) ~= (b.score or 0) then
-            return (a.score or 0) > (b.score or 0)
-        end
-        if (a.roll or -1) ~= (b.roll or -1) then
-            return (a.roll or -1) > (b.roll or -1)
+        for _, key in ipairs(keys) do
+            local x, y = a[key] or TIE_MISSING[key], b[key] or TIE_MISSING[key]
+            if x ~= y then
+                return x > y
+            end
         end
         return a.name < b.name
     end)

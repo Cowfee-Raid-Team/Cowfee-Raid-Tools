@@ -83,7 +83,7 @@ Profiles.SHARE = {
     },
     loot = true, -- Loot History's settings only (the history is in CRTLootDB), Tooltip position and spot among them
     lootmaster = {
-        window = true, popup = true, answers = true, bossLoot = true, lootingPrompt = true, responseSeconds = true, score = true,
+        window = true, popup = true, answers = true, bossLoot = true, lootingPrompt = true, responseSeconds = true, score = true, tieOrder = true,
         noRoll = true, tooltipMode = true, tooltipSpot = true, itemTooltip = true, showAllItems = true, enableInParty = true, filter = true,
         wishlistWindow = true, -- the My wishlist window's place, boss and Only my class (the list is per character, not a setting)
         awardMessage = false, awardChannel = false, -- what you post, and where
