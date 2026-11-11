@@ -86,6 +86,7 @@ g "previews" && { node run_previews.js "$WA" 2>&1 | tail -30; echo "exit ${PIPES
 g "help" && { node run_help.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "tooltip spots" && { node run_tooltip_spots.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "help icons sit right" &&{ node run_help.js "$WA" lint 2>&1 | tail -140; echo "exit ${PIPESTATUS[0]}"; }
+g "help one paragraph per option" && { node run_help_options.js "$WA" 2>&1 | tail -80; echo "exit ${PIPESTATUS[0]}"; }
 g "themes" && { node run_themes.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "menu" && { node run_menu.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "addon" && { node run_addon.js "$WA" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
