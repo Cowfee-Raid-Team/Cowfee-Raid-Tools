@@ -63,30 +63,7 @@ local function picked()
     return s.boss or "all", s.classOnly and true or false
 end
 
-local function qualityColor(q)
-    if type(q) == "number" and C_Item and C_Item.GetItemQualityColor then
-        local ok, r, g, b = pcall(C_Item.GetItemQualityColor, q)
-        if ok and type(r) == "number" then
-            return r, g, b
-        end
-    end
-    return UI.Color("border")
-end
-
 -- Rows ------------------------------------------------------------------------------------------------
-
-local function showTip(owner, it)
-    if not it then
-        return
-    end
-    UI.TooltipOwner(GameTooltip, owner, "ANCHOR_RIGHT", nil, nil, "lootmaster")
-    pcall(GameTooltip.SetHyperlink, GameTooltip, it.link or ("item:" .. it.id))
-    GameTooltip:Show()
-end
-
-local function hideTip()
-    GameTooltip:Hide()
-end
 
 local function rankOptions(row)
     local it = row.data and row.data.item
@@ -113,17 +90,9 @@ local function makeRow(row)
             W.Set(it.id, self:GetChecked() and (W.Rank(it.id) or W.DEFAULT_RANK) or nil)
         end
     end)
-    row.icon = CreateFrame("Button", nil, row, "BackdropTemplate")
-    row.icon:SetSize(L.iconSize, L.iconSize)
-    row.icon:SetPoint("LEFT", L.icon, 0)
-    row.icon:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = L.iconEdge })
-    row.icon.tex = row.icon:CreateTexture(nil, "ARTWORK")
-    row.icon.tex:SetPoint("TOPLEFT", L.iconEdge, -L.iconEdge)
-    row.icon.tex:SetPoint("BOTTOMRIGHT", -L.iconEdge, L.iconEdge)
-    row.icon:SetScript("OnEnter", function(self)
-        showTip(self, row.data and row.data.item)
+    row.icon = W.ItemIcon(row, L.icon, L.iconSize, L.iconEdge, function()
+        return row.data and row.data.item
     end)
-    row.icon:SetScript("OnLeave", hideTip)
     row.name = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     row.name:SetPoint("LEFT", L.name, 0)
     row.name:SetWidth(L.nameW)
@@ -173,9 +142,8 @@ local function initRow(row, data)
         return
     end
     row.tick:SetChecked(W.Rank(it.id) ~= nil)
-    row.icon.tex:SetTexture(it.icon or 134400)
-    row.icon:SetBackdropBorderColor(qualityColor(it.quality))
-    local r, g, b = qualityColor(it.quality)
+    W.SetItemIcon(row.icon, it)
+    local r, g, b = W.QualityColor(it.quality)
     row.name:SetText(it.name or ("item:" .. it.id))
     row.name:SetTextColor(r, g, b) -- the game's item quality colour: not a theme colour
     row.slot:SetText(it.slot or "")

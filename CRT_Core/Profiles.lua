@@ -86,6 +86,7 @@ Profiles.SHARE = {
         window = true, popup = true, answers = true, bossLoot = true, lootingPrompt = true, responseSeconds = true, score = true, tieOrder = true,
         noRoll = true, tooltipMode = true, tooltipSpot = true, itemTooltip = true, showAllItems = true, enableInParty = true, filter = true,
         wishlistWindow = true, -- the My wishlist window's place, boss and Only my class (the list is per character, not a setting)
+        wishlists = false, wishlistsAsked = false, wishlistsTab = false, -- raiders' saved wishlists are data; the tab's view is page state
         awardMessage = false, awardChannel = false, -- what you post, and where
         authority = false, -- who you trust to run loot stays yours
         sort = false,

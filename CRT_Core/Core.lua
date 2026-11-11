@@ -286,6 +286,12 @@ local defaults = {
         -- the My wishlist window's place and size, the boss picked (boss: an encounter ID or "all") and Only my class
         -- (classOnly); the wishlist itself is per character, CRTDBChar.lootmaster.wishlist (LootMaster/Wishlist.lua)
         wishlistWindow = {},
+        -- raiders' wishlists an officer or assist heard, saved (LootMaster/WishlistSaved.lua): [Name-Realm] =
+        -- { items = { [itemID] = rank }, at, got, class }; wishlistsAsked, when you last asked the guild for them (time());
+        -- wishlistsTab, the Wishlists tab's view, team filter, boss and sort (LootMaster/WishlistTab.lua)
+        wishlists = {},
+        wishlistsAsked = 0,
+        wishlistsTab = {},
         responseSeconds = 60,
         score = { show = true, late = 5, per10 = 1, noShow = 15, recover = 5, weeks = 8 },
         tieOrder = "wish", -- how equal answers are ordered: "wish", "score", "wishonly" or "scoreonly" (LM.TIE_ORDERS)

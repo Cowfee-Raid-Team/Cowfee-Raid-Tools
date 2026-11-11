@@ -176,6 +176,7 @@ g "season stats" && { node run_seasonstats.js "$W" 2>&1 | tail -30; echo "exit $
 g "season repairs" && { node run_seasonrepairs.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster filter" && { node run_lootmaster_filter.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "loot wishlist" && { node run_loot_wishlist.js "$W" 2>&1 | tail -250; echo "exit ${PIPESTATUS[0]}"; }
+g "loot wishlists saved" && { node run_loot_wishlists_saved.js "$W" 2>&1 | tail -250; echo "exit ${PIPESTATUS[0]}"; }
 g "debuffs" && { node run_debuffs.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "consumables dock" && { node run_consumables_dock.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "game ids" && { node run_gameids.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }

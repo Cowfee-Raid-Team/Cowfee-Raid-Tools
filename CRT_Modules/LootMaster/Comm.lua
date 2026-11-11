@@ -237,6 +237,93 @@ local function send(kind, fields)
 end
 LM.Send = send
 
+-- Guild messages (LM.SendGuild) wait in a queue of their own. The game's allowance for addon messages is per prefix
+-- across every chat type (warcraft.wiki.gg API_C_ChatInfo.SendAddonMessage, read 2026-11-11: about 10 at once, one
+-- more each second; past it AddonMessageThrottle on every channel), and both queues use LM.PREFIX. So the guild's
+-- queue sends only while the group's is empty, not sending and not held (else it looks again in a second), and at
+-- most one message every GUILD_GAP seconds: the allowance refills between them, and the group's loot messages find
+-- it nearly full. A throttle waits GUILD_GAP; the lockdown holds it until LOCKDOWN_RETRY or ENCOUNTER_END; NotInGuild
+-- (Enum.SendAddonMessageResult 10: you left the guild) drops what waits without a word, as leaving the group does;
+-- anything else is dropped, reported once.
+local GUILD_GAP = 2 -- seconds between two guild messages
+LM.GUILD_GAP = GUILD_GAP
+local NOT_IN_GUILD = RESULT.NotInGuild or 10
+local guildQueue = {}
+local guildSending, guildHeld = false, false
+local guildCooling = false -- a guild message went less than GUILD_GAP ago; its timer pumps again
+
+local guildPump
+local function guildResume()
+    if guildHeld then
+        guildHeld = false
+        guildPump()
+    end
+end
+
+guildPump = function()
+    if guildCooling then
+        return
+    end
+    if not guildQueue[1] then
+        guildSending = false
+        return
+    end
+    if queue[1] or sending or held then
+        C_Timer.After(1, guildPump) -- the group's messages go first
+        return
+    end
+    local ok, result = pcall(C_ChatInfo.SendAddonMessage, LM.PREFIX, guildQueue[1], "GUILD")
+    if ok and (result == THROTTLED or result == CHANNEL_THROTTLED) then
+        C_Timer.After(GUILD_GAP, guildPump)
+        return
+    elseif ok and result == LOCKDOWN then
+        if not guildHeld then
+            guildHeld = true
+            C_Timer.After(LOCKDOWN_RETRY, guildResume)
+        end
+        return
+    elseif ok and result == NOT_IN_GUILD then
+        guildQueue = {} -- left the guild: no one to send to
+    else
+        if not ok or not (result == nil or result == true or result == SUCCESS) then
+            local key = "guild " .. tostring(ok and result or "error")
+            if not warned[key] then
+                warned[key] = true
+                CRT:Print("Loot Master: a guild message could not be sent (" .. tostring(ok and result or "error") .. ").")
+            end
+        end
+        table.remove(guildQueue, 1)
+    end
+    -- one every GUILD_GAP, even when the next is queued later
+    guildCooling = true
+    C_Timer.After(GUILD_GAP, function()
+        guildCooling = false
+        guildPump()
+    end)
+    if not guildQueue[1] then
+        guildSending = false
+    end
+end
+
+-- For tests: a harness that drops its timers empties the guild's queue and its cooldown too.
+function LM.ResetGuildQueue()
+    guildQueue, guildSending, guildHeld, guildCooling = {}, false, false, false
+end
+
+-- A finished message to your guild (the GUILD addon channel). Out of a guild (IsInGuild) nothing is sent. Returns
+-- whether it was queued. The game echoes GUILD addon messages back to the sender too.
+function LM.SendGuild(text)
+    if not (IsInGuild and IsInGuild()) then
+        return false
+    end
+    guildQueue[#guildQueue + 1] = text
+    if not guildSending and not guildHeld then
+        guildSending = true
+        guildPump()
+    end
+    return true
+end
+
 -- Whether the game holds addon messages now (C_ChatInfo.InChatMessagingLockdown: a boss encounter).
 -- Ordinary combat doesn't. Unreadable is no.
 function LM.ChatLocked()
@@ -1050,7 +1137,7 @@ end
 
 local HANDLERS = {}
 
--- Another file's message kind: fn(fields, sender), sender a full Name-Realm.
+-- Another file's message kind: fn(fields, sender, channel), sender a full Name-Realm, channel the chat type.
 function LM.Handle(kind, fn)
     HANDLERS[kind] = fn
 end
@@ -1280,11 +1367,12 @@ HANDLERS.G = function(f, sender)
     end
 end
 
-receive = function(text, sender)
+-- channel: the chat type it came on (CHAT_MSG_ADDON's third argument), nil for a message handed over out of a group.
+receive = function(text, sender, channel)
     local kind, fields = Wire.Decode(text)
     local h = kind and HANDLERS[kind]
     if h then
-        local ok, err = pcall(h, fields, full(sender))
+        local ok, err = pcall(h, fields, full(sender), channel)
         if not ok then
             geterrorhandler()(err)
         end
@@ -1442,7 +1530,7 @@ local waitStarted = false -- the group wait of a fresh login, from its first loa
 events:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
     if event == "CHAT_MSG_ADDON" then
         if a1 == LM.PREFIX then
-            receive(a2, a4)
+            receive(a2, a4, a3)
         end
     elseif event == "PLAYER_LOGIN" then
         loadAuthority()
@@ -1463,6 +1551,7 @@ events:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
             noteEncounter(a1, a2, a5)
         end
         resume()
+        guildResume()
     else
         if (restoring or parked) and IsInGroup() then
             restore() -- a fresh login's group is known now

@@ -507,6 +507,21 @@ V.rows[2].scripts.OnClick(V.rows[2])
 check(not V.refl.hint.shown and V.refl.body.shown, "Gamma picked: the reflection fills")
 check(V.refl.title.text:find("Gamma", 1, true) ~= nil, "the reflection names the boss")
 check(V.refl.bars[1].shown and V.refl.bars[1].value.text:find("6:40", 1, true) and V.refl.bars[1].value.text:find("Phase 2", 1, true), "a bar per night: longest pull and phase (" .. tostring(V.refl.bars[1].value.text) .. ")")
+-- the night bars' look (the catalog's Night bars, drawn by the shared value bar): a border track at 0.6, an accent fill
+-- sized to the value, the value in small text on the right; the same places and sizes as before the helper
+do
+  local b = V.refl.bars[1]
+  local P = CRT.PALETTE
+  local function same(c, want, alpha) return c and math.abs(c[1] - want[1]) < 1e-6 and math.abs(c[2] - want[2]) < 1e-6 and math.abs(c[3] - want[3]) < 1e-6 and (alpha == nil or math.abs((c[4] or 1) - alpha) < 1e-6) end
+  check(b.track and b.track.point and b.track.point[1] == "TOPLEFT" and b.track.point[2] == 74 and b.track.point[3] == -3, "bars: the track at 74, -3")
+  check(b.track.w == 150 and b.track.h == 10, "bars: the track 150 x 10")
+  check(same(b.track.colorTex, P.border, 0.6), "bars: the track in the border colour at 0.6")
+  check(b.fill.point and b.fill.point[2] == 74 and b.fill.point[3] == -3 and b.fill.h == 10, "bars: the fill over the track")
+  check(same(b.fill.colorTex, P.accent, 1), "bars: the fill in the accent")
+  check(b.fill.w >= 1 and b.fill.w <= 150, "bars: the fill sized to the value (" .. tostring(b.fill.w) .. ")")
+  check(b.value.point and b.value.point[1] == "TOPLEFT" and b.value.point[2] == 230 and b.value.point[3] == 0 and b.value.w == 98, "bars: the value on the right, 98 wide")
+  check(b.date.point and b.date.point[2] == 0 and b.date.w == 70, "bars: the date on the left")
+end
 check(V.refl.furthest.text:find("Phase 2", 1, true) ~= nil, "furthest phase line")
 local c1, c2, c3 = V.refl.causes[1], V.refl.causes[2], V.refl.causes[3]
 check(plain(c1.label.text):find("Fang Bite", 1, true) and c1.label.text:find("12", 1, true), "top cause by name, with its count (" .. tostring(c1.label.text) .. ")")

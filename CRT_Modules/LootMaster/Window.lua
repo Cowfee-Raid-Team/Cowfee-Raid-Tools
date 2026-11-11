@@ -196,7 +196,10 @@ local function initRow(row, r)
         end)
         row:SetScript("OnEnter", function(self)
             local d = self.data
-            if not d or not ((d.note and d.note ~= "") or d.auto) then
+            local W = LM.Wishlist
+            -- a rank from a saved list (none heard this login) says how old it is (LootMaster/Wishlist.lua)
+            local aged = d and W and W.HasAge(d.name, self.wishItem, d.wish)
+            if not d or not ((d.note and d.note ~= "") or d.auto or aged) then
                 return
             end
             UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, "lootmaster")
@@ -226,6 +229,9 @@ local function initRow(row, r)
                 end
                 GameTooltip:AddLine(text, 0.85, 0.85, 0.85, true)
             end
+            if aged then
+                W.AddAgeLines(GameTooltip, d.name, self.wishItem, d.wish)
+            end
             GameTooltip:Show()
         end)
         row:SetScript("OnLeave", function()
@@ -242,6 +248,7 @@ local function initRow(row, r)
     cols.wish:SetText(LM.Wishlist and LM.Wishlist.Cell(r.wish) or "")
     cols.ilvl:SetText(r.ilvl and string.format("%.0f", r.ilvl) or "")
     local item = LM.current and LM.current.items[current]
+    row.wishItem = item and item.itemString -- for the tooltip's saved-list age
     for i, t in ipairs(row.gear) do
         LM.SetGear(t, r.gear[i], r.name == LM:Me() and item and item.itemString or nil)
     end
