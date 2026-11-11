@@ -41,8 +41,12 @@ function IsInRaid() return raid end
 function IsInInstance() return true, "raid" end
 function GetNumGroupMembers() return raid and 5 or 1 end
 function GetNumSubgroupMembers() return 0 end
-function UnitIsUnit(a, b) return raid and a == "raid2" and b == "player" end
-function GetRaidRosterInfo(i) if i == 2 then return "Cheoeqar", 0, myGroup end return "Other" .. i, 0, 1 end
+-- you sit at raid index myIndex (slots can have gaps, so it may be past GetNumGroupMembers); rosterFail makes the
+-- roster read fail, as a hidden value mid-fight would
+local myIndex, rosterFail = 2, false
+function UnitInRaid(u) if raid and u == "player" then return myIndex end return nil end
+function UnitIsUnit(a, b) return raid and a == "raid" .. myIndex and b == "player" end
+function GetRaidRosterInfo(i) if rosterFail then error("hidden") end if i == myIndex then return "Cheoeqar", 0, myGroup end return "Other" .. i, 0, 1 end
 function GetDifficultyInfo(id) return ({ [16] = "Mythic" })[id] end
 C_Spell = { GetSpellInfo = function(id) return { name = "Spell" .. id, iconID = 100000 + id } end }
 local errors = {}
@@ -132,6 +136,7 @@ local NOTE = table.concat({
   "time:10;ph:1;tag:Cheoeqar;spellid:31884;",
   "time:20;ph:1;tag:Rixxy;spellid:31885;",
   "time:30;ph:1;tag:G3;text:Stack left;",
+  "time:5;ph:2;tag:Cheoeqar;spellid:31890;",
   "Soak 1: Cheoeqar Gadios",
   "Soak 2: Rixxy Djaztech",
   "Kicks G3: Rixxy Gadios",
@@ -332,7 +337,91 @@ NW:Changed()
 step()
 edit("Kicks G3: Rixxy Djaztech", "Kicks G3: Gadios Djaztech")
 check(not anyGlow("assignments") and banded(rowWith("assignments", "Kicks G3")), "Glow when a line with me changes off: the band but no glow")
+local aw = NW:Get("assignments")
+check(rowWith("assignments", "Kicks G3").text.width == 500 - 16, "Glow off: a marked line keeps no room for the tag")
 S.glow = true
+NW:Changed()
+step()
+local roomRow = rowWith("assignments", "Kicks G3")
+check(H.Room(aw) > 0 and roomRow.text.width == 500 - 16 - H.Room(aw) and rowWith("assignments", "Soak 2").text.width == 500 - 16,
+  "tag room: a marked line's text leaves room at its end for the changed tag; other lines keep the whole width")
+
+local function stopGlows()
+  for _, key in ipairs({ "window", "assignments" }) do
+    for _, row in ipairs(rowsOf(key)) do if row.glowAnim then row.glowAnim:Stop() end end
+  end
+end
+edit("Kicks G3: Gadios Djaztech", "Kicks G3: Rixxy Gadios")
+local tagged = rowWith("assignments", "Kicks G3")
+local tp = tagged.tag and tagged.tag.points[1]
+check(glowing(tagged) and tp and tp[1] == "TOPLEFT" and tp[2] == tagged.text and tp[3] == "TOPRIGHT", "tag room: the changed tag sits after the line's text, not over it")
+stopGlows()
+
+-- lines coming into view are not changes
+CRT.db.notes.window.onlyMe = true
+NW:Changed()
+step()
+CRT.db.notes.window.onlyMe = false
+NW:Changed()
+step()
+check(not anyGlow("window"), "glow: lines Show only me hid never glow when they come back")
+fire("ENCOUNTER_START", 3470, "Big Boss", 16)
+step()
+check(rowWith("window", "Spell31890") == nil and rowWith("window", "Phase 2 starts") ~= nil, "pull: phase 2's timer waits for Next phase")
+check(not anyGlow("window"), "glow: none at the pull")
+CRT.NoteEngine:NextPhase()
+clock = clock + 1 -- the phase 2 timer comes 5 s after the phase start
+NW:RefreshAll()
+check(banded(rowWith("window", "Spell31890")) and not glowing(rowWith("window", "Spell31890")), "glow: none on your phase 2 timer at the phase start")
+for _ = 1, 8 do step() end
+check(rowWith("window", "Spell31884") == nil, "pull: passed and cut lines are gone")
+fire("ENCOUNTER_END", 3470, "Big Boss", 16, 20, 0)
+step()
+check(rowWith("window", "Spell31884") ~= nil and not anyGlow("window"), "glow: none when a wipe brings every line back")
+
+-- another note is not a change; the same boss's note shared again is
+CRT.db.notes.list[2] = { raw = "EncounterID:3471;Difficulty:Mythic;Name:Next Boss\\ntime:5;ph:1;tag:Cheoeqar;spellid:31891;\\nSoak 1: Cheoeqar Rixxy", name = "Next Boss", encounterID = 3471, difficulty = "Mythic" }
+Notes:SetActive(2)
+step()
+check(banded(rowWith("assignments", "Soak 1")) and not anyGlow("assignments") and not anyGlow("window"), "glow: none when another note becomes the one shown")
+Notes:SetActive(1)
+step()
+check(not anyGlow("assignments") and not anyGlow("window"), "glow: none when switching back to the first note")
+CRT.db.notes.list[3] = { raw = CRT.db.notes.list[1].raw:gsub("Kicks G3: Rixxy Gadios", "Kicks G3: Djaztech Gadios"), name = "Big Boss", encounterID = 3470, difficulty = "Mythic" }
+Notes:SetActive(3)
+step()
+check(glowing(rowWith("assignments", "Kicks G3")) and not glowing(rowWith("assignments", "Soak 1")), "glow: the same boss's note shared again as a new record glows your changed line")
+Notes:SetActive(1)
+step()
+stopGlows()
+
+-- your group: the raid index from UnitInRaid, and a failed read keeps the last group
+myIndex = 7
+H:ResetGroup()
+check(H:MyGroup() == 3, "group: read at the raid index UnitInRaid gives, past the member count")
+rosterFail, myGroup = true, 5
+H:ResetGroup()
+check(H:MyGroup() == 3, "group: a failed roster read in a raid keeps the last group")
+rosterFail = false
+H:ResetGroup()
+check(H:MyGroup() == 5, "group: read again once the roster can be read")
+myIndex, myGroup = 2, 3
+H:ResetGroup()
+
+-- nothing runs with the module off
+local keyCalls, timerKey = 0, H.TimerKey
+H.TimerKey = function(...) keyCalls = keyCalls + 1 return timerKey(...) end
+S.enabled = false
+NW:Changed()
+step()
+check(keyCalls == 0, "module off: no timer key is worked out")
+local keysLeft = false
+for _, row in ipairs(rowsOf("assignments")) do if row.line.hlKey or row.line.hl then keysLeft = true end end
+check(not keysLeft, "module off: no line keeps a mark or a key")
+H.TimerKey = timerKey
+S.enabled = true
+NW:Changed()
+step()
 
 -- preview ---------------------------------------------------------------------------------------------
 CRT.db.notes.assignments.shown = false
@@ -345,6 +434,23 @@ check(glowing(rowWith("assignments", "Soak 1: Cheoeqar")) and not banded(rowWith
 previews[H.PREVIEW_KEY](false)
 check(not w.frame.shown, "preview off: the window goes back to hidden")
 CRT.db.notes.assignments.shown = true
+-- out of a raid: the sample's group 1 stays in the sample; the note in use never glows against the sample
+raid = false
+H:ResetGroup()
+NW:Changed()
+step()
+stopGlows()
+previews[H.PREVIEW_KEY](true)
+check(banded(rowWith("assignments", "Kicks G1")) and H:MyGroup() == nil and H:Spans("Kicks G1: Rixxy") == nil,
+  "preview out of a raid: the sample matches group 1, the real note does not")
+stopGlows()
+previews[H.PREVIEW_KEY](false)
+check(w.frame.shown and tostring(w.frame.strings[1].text):find("Big Boss", 1, true) and not anyGlow("assignments"),
+  "preview off: the note in use comes back with no glow")
+raid = true
+H:ResetGroup()
+NW:Changed()
+step()
 
 -- page -------------------------------------------------------------------------------------------------
 local pf = newObj("Frame", UIParent)

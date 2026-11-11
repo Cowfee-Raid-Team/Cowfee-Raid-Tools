@@ -232,11 +232,15 @@ local function textLine(line, noHeading, spans)
 end
 
 -- The text of lines of free text, one line each. With hl (the assignments window), also per line whether it is
--- marked for assignment highlights and its key for the glow on change (Highlights/Data.lua).
-local function textRows(lines, hl)
+-- marked for assignment highlights and its key for the glow on change (Highlights/Data.lua), while that module is
+-- on. sampleGroup: the module's preview sample, matched on its own group.
+local function textRows(lines, hl, sampleGroup)
     local out, marks, keys = {}, {}, {}
     local Kicks = CRT.InterruptNote
     local H = hl and CRT.NoteHighlights
+    if not (H and H:Active()) then
+        H, marks, keys = nil, nil, nil
+    end
     for i, line in ipairs(lines) do
         -- a kick order line: its group's raid marker icon in front (Interrupts/NoteBlock.lua's Expand)
         local marker
@@ -244,9 +248,11 @@ local function textRows(lines, hl)
             marker, line = Kicks.TakeMarker(line)
         end
         local icon = marker and Kicks.Icon(marker, 14) or ""
-        local spans = H and H:Spans(line) or nil
+        local spans = H and H:Spans(line, sampleGroup) or nil
         out[#out + 1] = (icon ~= "" and (icon .. " ") or "") .. textLine(line, nil, spans)
-        marks[i], keys[i] = spans ~= nil, line ~= "" and line or nil
+        if H then
+            marks[i], keys[i] = spans ~= nil, line ~= "" and line or nil
+        end
     end
     return table.concat(out, "\n"), marks, keys
 end
@@ -349,8 +355,13 @@ local function timersRebuild(record, note, onlyMe, as, running)
     k.note, k.record, k.version, k.alerts, k.classes = note, record, contentVersion, A and A.version, classVersion()
     k.onlyMe, k.as, k.running, k.builtAt, k.missing = onlyMe, as, running, GetTime(), false
     local entries = k.entries
-    -- assignment highlights (Highlights/Data.lua): the tags that are your name or group, and the line's key
+    -- assignment highlights (Highlights/Data.lua), while on: the tags that are your name or group, each line's key,
+    -- and the whole note's keys for the glow (every timer, shown or not)
     local H = not as and CRT.NoteHighlights or nil
+    if H and not H:Active() then
+        H = nil
+    end
+    local keys = H and {} or nil
     for i, item in ipairs(note.timers) do
         local e = entries[i] or {}
         entries[i] = e
@@ -362,10 +373,14 @@ local function timersRebuild(record, note, onlyMe, as, running)
         e.cut = running and Engine.IsCut and Engine:IsCut(item) and true or false
         e.spans = H and H:TagSpans(item.tags) or nil
         e.hl, e.hlKey = e.spans ~= nil, H and H.TimerKey(item) or nil
+        if keys then
+            keys[i] = e.hlKey
+        end
         e.x, e.missing = restText(item, e.spans)
         k.missing = k.missing or e.missing
         e.sec, e.t = nil, nil
     end
+    k.hlFull = H and H.Full(H.NoteKey(record), keys) or nil
     for i = #note.timers + 1, #entries do
         entries[i] = nil
     end
@@ -495,7 +510,7 @@ local function timersBuild(_, force)
     if running then
         timersTick(note, onlyMe)
     end
-    return timers.lines, timers.heading, #note.timers > 0
+    return timers.lines, timers.heading, #note.timers > 0, timers.hlFull
 end
 
 local SAMPLE_ASSIGNMENTS = {
@@ -506,13 +521,14 @@ local SAMPLE_ASSIGNMENTS = {
     "Kicks G1: Teronhorefnd Gadios",
 }
 
--- Returns text, heading, hasContent, and per line whether it is marked and its key (textRows).
+-- Returns text, heading, hasContent, and per line whether it is marked and its key (textRows), and which note it is
+-- for the glow (Highlights/Data.lua's NoteKey).
 local function assignmentsText()
     -- Assignment highlights' preview (Highlights/Data.lua): its sample note, over the note in use
     local H = CRT.NoteHighlights
     if previewing.highlights and H then
-        local text, marks, keys = textRows(H.SampleLines(), true)
-        return text, "Assignments (sample)", true, marks, keys
+        local text, marks, keys = textRows(H.SampleLines(), true, H:SampleGroup())
+        return text, "Assignments (sample)", true, marks, keys, "sample"
     end
     local _, record, note = Notes:Active()
     local lines = note and note.lines
@@ -525,7 +541,7 @@ local function assignmentsText()
     end
     if lines and #lines > 0 then
         local text, marks, keys = textRows(lines, true)
-        return text, "Assignments: " .. record.name, true, marks, keys
+        return text, "Assignments: " .. record.name, true, marks, keys, keys and CRT.NoteHighlights.NoteKey(record)
     end
     if previewing.assignments then
         return textBlock(SAMPLE_ASSIGNMENTS), "Assignments (sample)", true
@@ -535,13 +551,13 @@ end
 
 local assignmentsCache = {}
 local function assignmentsBuild()
-    local text, heading, hasContent, marks, keys = assignmentsText()
+    local text, heading, hasContent, marks, keys, noteKey = assignmentsText()
     local lines = textLines(assignmentsCache, text)
     -- a marked line's text always holds a painted word, so the same text is always marked the same
     for i, line in ipairs(lines) do
         line.hl, line.hlKey = marks and marks[i] or nil, keys and keys[i] or nil
     end
-    return lines, heading, hasContent
+    return lines, heading, hasContent, keys and CRT.NoteHighlights.Full(noteKey, keys) or nil
 end
 
 -- Your reminders in the personal window ------------------------------------------------------
@@ -994,17 +1010,17 @@ local function layoutRows(w)
             time:SetPoint("TOPLEFT", to, at, x, y)
             time:SetWidth(row.cellW)
             text:SetPoint("TOPLEFT", time, "TOPRIGHT", 0, 0)
-            text:SetWidth(math.max(1, width - row.cellW))
+            text:SetWidth(math.max(1, width - row.cellW - (row.hlRoom or 0)))
         else
             row.cellW = 0
             text:SetPoint("TOPLEFT", to, at, x, y)
-            text:SetWidth(width)
+            text:SetWidth(math.max(1, width - (row.hlRoom or 0)))
         end
         used = used + row.gap * lineH + math.max(lineH, text:GetStringHeight() or 0)
         fits = fits and used <= height + 0.5
         text:SetShown(fits)
         time:SetShown(fits and timed)
-        if H and (row.band or row.line.hl) then
+        if H and (row.band or row.glow or row.line.hl) then
             H.PlaceRow(w, row, fits)
         end
         prev = row
@@ -1021,6 +1037,7 @@ local function drawLines(w, lines)
         lines[i][mark] = pass
     end
     local relayout = w.layoutDirty
+    local H = CRT.NoteHighlights
     -- rows whose line is gone, kept for reuse (pushed last first, so they come back in order)
     for i = #order, 1, -1 do
         local row = order[i]
@@ -1029,9 +1046,10 @@ local function drawLines(w, lines)
             row.line = nil
             row.time:Hide()
             row.text:Hide()
-            if row.band then
-                CRT.NoteHighlights.HideRow(row)
+            if row.band or row.glow then
+                H.HideRow(row)
             end
+            row.hlRoom = nil
             free[#free + 1] = row
             relayout = true
         end
@@ -1058,6 +1076,13 @@ local function drawLines(w, lines)
                 relayout = true
             end
             gap = 0
+            -- a marked line (assignment highlights, Highlights/Data.lua): its band, and the room its text leaves for
+            -- the "changed" tag
+            local hlRoom = line.hl and H and H.Room(w) or nil
+            if row.hlRoom ~= hlRoom then
+                row.hlRoom = hlRoom
+                relayout = true
+            end
             if row.x ~= line.x then
                 row.x = line.x
                 row.text:SetText(line.x)
@@ -1247,7 +1272,7 @@ local function createWindow(key, defaultPosition, build)
         self.drawnClasses = classes
         self.drawnAt = GetTime()
         -- out of a run, every refresh that gets here rebuilds; during one, the kept text is reused
-        local lines, heading, hasContent = build(self, not live)
+        local lines, heading, hasContent, hlFull = build(self, not live)
         -- a stamp waits for this draw, so a window the new note just made visible shows it too; and a
         -- note with nothing for this window (an empty note, or a boss with no timers or text) keeps it
         -- up, blank, at least for the stamp
@@ -1282,7 +1307,7 @@ local function createWindow(key, defaultPosition, build)
         drawLines(self, lines)
         -- a line with you in it that a new note changed glows (Highlights/Data.lua)
         if H then
-            H.AfterDraw(self, lines, contentVersion)
+            H.AfterDraw(self, lines, contentVersion, hasContent and hlFull or nil)
         end
     end
 
@@ -1428,7 +1453,9 @@ function NoteWindow:PreviewHighlights(on)
     build()
     previewing.highlights = on and true or nil
     local w = self.windows.assignments
-    if w then
+    if w and CRT.NoteHighlights then
+        -- off: the note in use comes back as a first display, never compared with the sample
+        CRT.NoteHighlights.Forget(w)
         w.hlForce = on and true or nil
     end
     changed()

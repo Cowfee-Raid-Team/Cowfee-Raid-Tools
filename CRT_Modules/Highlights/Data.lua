@@ -48,6 +48,13 @@ function H:Enabled()
     return CRT.db ~= nil and CRT.db.highlights ~= nil and CRT.db.highlights.enabled == true
 end
 
+-- The one switch, for the module's page and General Settings > Modules alike: both read highlights.enabled when they
+-- show, so they stay in step.
+function H:SetEnabled(on)
+    CRT.db.highlights.enabled = on and true or false
+    self:Changed()
+end
+
 function H:Active()
     local s = self:Enabled() and H.Settings()
     return s and (s.name or s.group) and true or false
@@ -70,34 +77,51 @@ function H:MyName()
     return myName
 end
 
--- Your raid group, 1 to 8, from the raid roster; nil outside a raid or when the roster can't be read. A preview
--- with no raid uses group 1, so its sample shows a group line.
+-- Your raid group, 1 to 8, from the raid roster; nil outside a raid. Your raid index comes from UnitInRaid (the
+-- roster's slots can have gaps), else from a walk of the raid units. A read that fails in a raid (a hidden value
+-- mid-fight) keeps the last group known; with none known, no group matches.
 local groupCache, groupAt
-local function readGroup()
-    if not (IsInRaid and IsInRaid()) then
-        return nil
-    end
-    for i = 1, GetNumGroupMembers() do
-        if UnitIsUnit("raid" .. i, "player") then
-            local _, _, subgroup = GetRaidRosterInfo(i)
-            if readable(subgroup) and type(subgroup) == "number" and subgroup >= 1 and subgroup <= MAX_GROUP then
-                return subgroup
-            end
-            return nil
-        end
+local function rosterGroup(index)
+    local _, _, subgroup = GetRaidRosterInfo(index)
+    if readable(subgroup) and type(subgroup) == "number" and subgroup >= 1 and subgroup <= MAX_GROUP then
+        return subgroup
     end
     return nil
 end
 
+-- Returns inRaid, group (nil when it can't be read).
+local function readGroup()
+    if not (IsInRaid and IsInRaid()) then
+        return false, nil
+    end
+    local index = UnitInRaid and UnitInRaid("player")
+    if readable(index) and type(index) == "number" and index >= 1 then
+        return true, rosterGroup(index)
+    end
+    for i = 1, GetNumGroupMembers() do
+        if UnitIsUnit("raid" .. i, "player") then
+            return true, rosterGroup(i)
+        end
+    end
+    return true, nil
+end
+
 function H:MyGroup()
     if not (groupAt and GetTime() - groupAt < GROUP_SECONDS) then
-        local ok, g = pcall(readGroup)
-        groupCache, groupAt = ok and g or nil, GetTime()
-    end
-    if not groupCache and self.previewing then
-        return 1
+        local ok, inRaid, g = pcall(readGroup)
+        if ok and not inRaid then
+            groupCache = nil
+        elseif ok and g then
+            groupCache = g
+        end -- a failed read in a raid keeps the last group
+        groupAt = GetTime()
     end
     return groupCache
+end
+
+-- The group the preview's sample note names and matches: yours, or group 1 out of a raid. Only the sample uses it.
+function H:SampleGroup()
+    return self:MyGroup() or 1
 end
 
 function H:ResetGroup()
@@ -130,14 +154,15 @@ end
 
 -- The words of a line of free text to paint: { [start] = true } for each word that is your name or a word of your
 -- group ("Group 3" paints both), by the word's start in the line, as Window.lua's textLine reads words. Nil when
--- nothing in the line is about you, or the module is off.
-function H:Spans(line)
+-- nothing in the line is about you, or the module is off. sampleGroup: the preview's sample (SampleGroup) in place
+-- of your group.
+function H:Spans(line, sampleGroup)
     if not self:Active() or type(line) ~= "string" or line == "" then
         return nil
     end
     local s = H.Settings()
     local name = s.name and self:MyName() or nil
-    local group = s.group and self:MyGroup() or nil
+    local group = s.group and (sampleGroup or self:MyGroup()) or nil
     if not name and not group then
         return nil
     end
@@ -227,12 +252,35 @@ end
 -- glowing row also gets a brighter layer that pulses (an AnimationGroup, no per-frame code) and the "changed" tag
 -- at the line's end, in the theme's warn colour, fading with the last pulse. All made the first time a row needs
 -- them and kept with the row. Both layers sit on ARTWORK above the window's "note updated" stamp, under the text.
+-- While glows are on, a marked row's text is narrower by H.Room (Window.lua's layoutRows), so the tag sits in that
+-- room at the line's end and never over the text; the band still reaches the window's width.
 
-local function anchor(region, row)
+-- The room a marked row keeps at its end for the "changed" tag: the tag's width and a gap; 0 while glows are off.
+-- Measured once per window, on a font string of the tag's font.
+local TAG_GAP = 6
+function H.Room(w)
+    if not H:GlowOn() then
+        return 0
+    end
+    if not w.hlRoom then
+        local measure = w.frame:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        measure:SetText(TEXT.changed)
+        measure:Hide()
+        w.hlRoom = math.ceil(measure:GetStringWidth() or 0) + TAG_GAP
+    end
+    return w.hlRoom
+end
+
+local function anchor(region, row, room)
     local first = (row.line and row.line.t ~= nil) and row.time or row.text
     region:ClearAllPoints()
     region:SetPoint("TOPLEFT", first, "TOPLEFT", -BAND_PAD, BAND_PAD)
-    region:SetPoint("BOTTOMRIGHT", row.text, "BOTTOMRIGHT", BAND_PAD, -BAND_PAD)
+    region:SetPoint("BOTTOMRIGHT", row.text, "BOTTOMRIGHT", BAND_PAD + (room or 0), -BAND_PAD)
+end
+
+local function placeTag(row)
+    row.tag:ClearAllPoints()
+    row.tag:SetPoint("TOPLEFT", row.text, "TOPRIGHT", TAG_GAP, 0)
 end
 
 local function stopGlow(row)
@@ -295,11 +343,11 @@ function H.PlaceRow(w, row, fits)
     end
     row.band:SetShown(on)
     if on then
-        anchor(row.band, row)
+        local room = H.Room(w)
+        anchor(row.band, row, room)
         if row.glow then
-            anchor(row.glow, row)
-            row.tag:ClearAllPoints()
-            row.tag:SetPoint("TOPRIGHT", row.text, "TOPRIGHT", 0, 0)
+            anchor(row.glow, row, room)
+            placeTag(row)
         end
     else
         stopGlow(row)
@@ -319,9 +367,8 @@ function H.Glow(w, row)
     if not row.glow then
         makeGlow(w, row)
     end
-    anchor(row.glow, row)
-    row.tag:ClearAllPoints()
-    row.tag:SetPoint("TOPRIGHT", row.text, "TOPRIGHT", 0, 0)
+    anchor(row.glow, row, H.Room(w))
+    placeTag(row)
     row.glowAnim:Stop()
     row.tagAnim:Stop()
     row.glow:Show()
@@ -331,29 +378,49 @@ function H.Glow(w, row)
     row.tagAnim:Play()
 end
 
--- The glow on change. After a window rebuilt its lines (version: Window.lua's content count), each marked line
--- whose key the window did not show before glows. The keys shown are kept per window; with none kept (the window
--- just opened, after /reload, or it showed nothing) the draw only keeps them, so nothing glows. A preview's first
+-- Which note a window shows, for the glow: the boss and difficulty, so a note shared again for the same boss counts
+-- as the same note even when it arrives as a new record; else the record itself.
+function H.NoteKey(record)
+    if type(record) ~= "table" then
+        return nil
+    end
+    if record.encounterID then
+        return "boss:" .. tostring(record.encounterID) .. ":" .. tostring(record.difficulty or "")
+    end
+    return record
+end
+
+-- A window's whole note for the glow: { note = NoteKey, keys = { [key] = true } } with the key of every line of the
+-- note, shown or not (a later phase, a passed line, a line Show only me hides). Nil while the module is off.
+function H.Full(noteKey, keys)
+    if not H:Active() or noteKey == nil then
+        return nil
+    end
+    local set = {}
+    for _, key in pairs(keys) do
+        set[key] = true
+    end
+    return { note = noteKey, keys = set }
+end
+
+-- The glow on change. After a window rebuilt its lines (version: Window.lua's content count), each shown marked line
+-- whose key was not in the whole note the window had before glows, and only when it is the same note (full.note):
+-- the same note with new content, never a switch to another note (the next boss, a rehearsal). Lines coming into
+-- view (a phase start, Show only me off, a run's end) were in the whole note already, so they never glow. With no
+-- note kept (the window just opened, after /reload, or it showed nothing) the draw only keeps it. A preview's first
 -- draw (w.hlForce) glows every marked line, to show what a glow looks like.
-function H.AfterDraw(w, lines, version)
-    if not H:Active() then
-        w.hlSeen, w.hlVersion, w.hlForce = nil, nil, nil
+function H.AfterDraw(w, lines, version, full)
+    if not H:Active() or not full then
+        w.hlSeen, w.hlNote, w.hlVersion, w.hlForce = nil, nil, nil, nil
         return
     end
     if w.hlVersion == version and not w.hlForce then
         return
     end
     w.hlVersion = version
-    local seen, any = {}, false
-    for _, line in ipairs(lines) do
-        if line.hlKey then
-            seen[line.hlKey] = true
-            any = true
-        end
-    end
-    local prev, force = w.hlSeen, w.hlForce
+    local prev, prevNote, force = w.hlSeen, w.hlNote, w.hlForce
     w.hlForce = nil
-    if (prev or force) and H:GlowOn() then
+    if H:GlowOn() and (force or (prev and prevNote == full.note)) then
         for _, line in ipairs(lines) do
             if line.hl and line.hlKey and (force or not prev[line.hlKey]) then
                 local row = w.bound and w.bound[line]
@@ -363,12 +430,13 @@ function H.AfterDraw(w, lines, version)
             end
         end
     end
-    w.hlSeen = any and seen or nil
+    w.hlSeen = next(full.keys) and full.keys or nil
+    w.hlNote = w.hlSeen and full.note or nil
 end
 
--- The window hid: its next draw is a first display again.
+-- The window hid, or a preview ended: its next draw is a first display again.
 function H.Forget(w)
-    w.hlSeen, w.hlVersion = nil, nil
+    w.hlSeen, w.hlNote, w.hlVersion, w.hlForce = nil, nil, nil, nil
 end
 
 -- The preview ---------------------------------------------------------------------------------------------------
@@ -390,7 +458,7 @@ function H.SampleLines()
     if not (readable(name) and type(name) == "string" and name ~= "") then
         name = "You"
     end
-    local group = H:MyGroup() or 1
+    local group = H:SampleGroup()
     local out = {}
     for i, line in ipairs(SAMPLE) do
         if line:find("%s", 1, true) then
