@@ -418,14 +418,15 @@ end
 
 -- Output --------------------------------------------------------------------------------
 
--- Splits a line longer than one chat message at the commas.
-local function chunks(line)
-    if #line <= CHAT_MAX then
+-- Splits a line longer than one chat message (max, default CHAT_MAX) at the commas.
+local function chunks(line, max)
+    max = max or CHAT_MAX
+    if #line <= max then
         return { line }
     end
     local out, current = {}, ""
     for piece in line:gmatch("[^,]+,?") do
-        if #current + #piece > CHAT_MAX and current ~= "" then
+        if #current + #piece > max and current ~= "" then
             out[#out + 1] = current
             current = "  " .. strtrim(piece)
         else
@@ -437,6 +438,8 @@ local function chunks(line)
     end
     return out
 end
+-- Raid Groups' group changes post splits its lines the same way, with room for its prefix (Groups/Sort.lua).
+Report.Chunks = chunks
 
 local function groupChannel()
     if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then

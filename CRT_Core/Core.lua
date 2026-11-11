@@ -71,6 +71,10 @@ local defaults = {
         working = {},
         -- roles set by hand on a slot's Set role (Groups.HandRole): [key in lower case] = "TANK", "HEALER" or "DAMAGER"
         roles = {},
+        -- Sort by's method (Groups/Sort.lua: "roles", "melee", "spread" or "sides"), and whether Arrange Groups posts
+        -- who is new in each group to raid chat when it is done (Groups/Apply.lua)
+        sortMethod = "roles",
+        postChanges = false,
     },
     -- The consumables list ships in each season pack's GameIDs.lua. Players choose the order
     -- (categoryOrder is the icon order, itemOrder[category] is which item is used first) and
