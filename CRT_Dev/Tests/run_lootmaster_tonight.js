@@ -9,6 +9,11 @@ const fs = require('fs');
 const path = require('path');
 const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
+// Page.lua places its Settings tab from SettingsLayout.lua: that file goes in front of it, in its own block
+function pageWithLayout(f, src) {
+  if (!f.endsWith('LootMaster/Page.lua')) return src;
+  return 'do\n' + fs.readFileSync(path.join(dir, 'CRT_Modules/LootMaster/SettingsLayout.lua'), 'utf8') + '\nend\n' + src;
+}
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
@@ -362,7 +367,7 @@ const files = ['CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/Comm.l
   'CRT_Modules/LootMaster/Tonight.lua', 'CRT_Modules/LootMaster/Page.lua'];
 for (const f of files) {
   const p = path.join(dir, f);
-  lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));
+  lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? pageWithLayout(f, fs.readFileSync(p, 'utf8')) : 'error("missing ' + f + '")'));
 }
 if (lua.lua_pcall(L, files.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
 if (srcFails > 0) { console.log(srcFails + ' source checks failed'); process.exit(1); }
