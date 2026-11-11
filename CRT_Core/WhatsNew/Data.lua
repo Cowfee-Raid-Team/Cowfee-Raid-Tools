@@ -6,6 +6,17 @@ local ADDON, CRT = ...
 -- CRT_Dev/Tests/run_whatsnew.js checks every entry.
 CRT.WhatsNewData = {
     {
+        version = "1.3.5",
+        lines = {
+            "Ready check window: background opacity slider",
+            "Ready check window: show or hide the border",
+            "Ready check title centred, Player heading",
+            "Interrupts: Players from, Search and group chips",
+            "Pace bars named for each boss, not boss1",
+        },
+        more = 0,
+    },
+    {
         version = "1.2.0",
         lines = {
             "Assign tab: soaks and sides with timers",

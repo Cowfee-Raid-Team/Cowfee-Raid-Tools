@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.5 (2026-11-10)
+
+- **Ready check window opacity:** a Background opacity slider on the Ready Check page's Window tab. 100% is solid; it starts at 90%, close to how it looked before. Only the background fades: names, icons and class bars stay sharp.
+- **Ready check window border:** untick Show a border on the Window tab to hide the gold edge. Nothing shifts when it's hidden.
+- **Ready check window header:** the title is centred, and a Player heading sits over the names like the other columns.
+- **Interrupts players:** the Players panel works like the note editor's: Search, Players from (your group or any Raid Groups layout, remembered), then Players, General, Groups and Classes. Drop a group, role or class chip on a kick row to add every matching player from the chosen roster, in order, skipping anyone already on it.
+- **Pace bars on fights with more than one boss:** each bar is named for its boss instead of boss1. When the game hides the name, it reads the encounter's name and the boss's number, like "The Twin Fangs 1".
+
 ## 1.3.4 (2026-11-03)
 
 - **One copy of your ability timeline per boss and difficulty:** edits you make on the Timeline now show everywhere, since there's only one copy to change. Normal and Heroic share a copy, Mythic has its own. On your first `/reload`, any extra copies are folded into the newest one and the older ones are kept aside in your saved data, and chat says how many.
