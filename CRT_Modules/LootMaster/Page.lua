@@ -22,6 +22,9 @@ local L = {
     respRow = 30, respTop = -30,
     label = 104, weight = 40, icon = 120,
     sliderLabel = 118, sliderW = 110,
+    -- Order equal answers by, under the Raider Score sliders: its label and dropdown widths (with the (?) they end
+    -- inside the third column), its place under the last slider, and the room it takes before Loot authority
+    tieLabel = 128, tiePick = 130, tieGap = 28, tieRow = 28,
     scoreRow = 20,
     authorityRows = LM.AUTHORITY_MAX, -- named players with loot authority
     -- the Loot authority Add row: "Add", the guild dropdown, then a box filling the rest of the column
@@ -36,8 +39,8 @@ local L = {
     tooltipTop = -328, tooltipLabel = 110, tooltipPick = 160, tooltipPairGap = 2,
     -- Items a raider can't use, under Sync Master Loot (which ends near -410), its long line wrapped in two
     specsTop = -416,
-    -- CRT Looting, in the third column under Loot authority's Add row (which ends near -440)
-    lootingTop = -446,
+    -- CRT Looting, in the third column under Loot authority's Add row (which ends near -446 with six names)
+    lootingTop = -450,
 }
 L.col3W = UI.PAGE_W - L.col3 - 8 -- the third column, to the page's right margin
 L.col2W = L.col3 - L.col2 - 12 -- the second column, with a gap before the third
@@ -61,6 +64,14 @@ local TEXT = {
     scoreSettings = "Raider Score",
     scoreSettingsHelp = "For each night counted where a player was expected: a no-show costs the No-show points, a late arrival the Late points plus Per 10 min for every full ten minutes. Each penalty shrinks by Back each week. Only the last weeks you pick count.",
     showScore = "Show the Score column",
+    tieOrder = "Order equal answers by",
+    tieOrderHelp = "How the Master Loot Window orders players who gave the same answer.\n\nWishlist, then Raider Score: a Big upgrade first, then the higher score, then the higher roll. This is the default.\n\nRaider Score, then wishlist: the higher score first, then the better wishlist rank, then the roll.\n\nWishlist only: the wishlist rank, then the roll.\n\nRaider Score only: the score, then the roll.\n\nA header you click in the loot window still sorts first.",
+    tieChoices = {
+        { key = "wish", label = "Wishlist, then Raider Score" },
+        { key = "score", label = "Raider Score, then wishlist" },
+        { key = "wishonly", label = "Wishlist only" },
+        { key = "scoreonly", label = "Raider Score only" },
+    },
     authority = "Loot authority",
     authorityHelp = "Who may run loot: start a session, give items out, show popups again, roll again and end it. Everyone else gets the raider window only. Raiders accept a session only from the raid leader or a name on the leader's list, so your list counts while you lead.",
     authorityLeader = "The raid leader",
@@ -786,23 +797,42 @@ local function buildSettings(f)
         LM:SendAuthority()
         refresh()
     end
-    local ay = y - 48
+    -- Order equal answers by: under the last slider (its row is 32 high, the dropdown 26, so they overlap
+    -- a little), with its (?) beside it
+    local tie = UI.Dropdown(f, TEXT.tieOrder, {
+        labelWidth = L.tieLabel, width = L.tiePick,
+        options = TEXT.tieChoices,
+        get = function()
+            local v = LM:Settings().tieOrder
+            return LM.TIE_ORDERS[v] and v or LM.TIE_ORDER_DEFAULT
+        end,
+        set = function(v)
+            LM:Settings().tieOrder = v
+            LM:Fire("wishlist") -- an open Master Loot Window redraws its rows
+        end,
+    })
+    tie:SetPoint("TOPLEFT", L.col3, y - L.tieGap)
+    UI.HelpRight(tie, TEXT.tieOrder, TEXT.tieOrderHelp, { parent = f })
+    refreshers[#refreshers + 1] = tie.refresh
+    y = y - L.tieGap - L.tieRow
+
+    local ay = y - 4
     heading(f, L.col3, ay, TEXT.authority, TEXT.authorityHelp)
-    check(f, L.col3 - 2, ay - 20, TEXT.authorityLeader, function()
+    check(f, L.col3 - 2, ay - 18, TEXT.authorityLeader, function()
         return auth().leader ~= false
     end, function(on)
         auth().leader = on
         changed()
     end)
     local also = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    also:SetPoint("TOPLEFT", L.col3, ay - 50)
+    also:SetPoint("TOPLEFT", L.col3, ay - 46)
     also:SetTextColor(0.7, 0.7, 0.7)
     also:SetText(TEXT.authorityAlso)
     local rows = {}
     for i = 1, L.authorityRows do
         local r = CreateFrame("Frame", nil, f)
         r:SetSize(260, 18)
-        r:SetPoint("TOPLEFT", L.col3 + 8, ay - 66 - (i - 1) * 18)
+        r:SetPoint("TOPLEFT", L.col3 + 8, ay - 60 - (i - 1) * 18)
         r.text = r:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         r.text:SetPoint("LEFT")
         r.remove = CreateFrame("Button", nil, r, "UIPanelCloseButton")
