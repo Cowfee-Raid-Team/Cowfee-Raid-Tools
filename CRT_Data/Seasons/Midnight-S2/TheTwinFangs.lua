@@ -17,11 +17,14 @@ local ADDON, CRT = ...
 --             seconds, 0.5 s off the lattice, which the tolerance drops. times are the waves' anchors from the
 --             pull, for a pull whose cast count is missing; the Stir the Depths rows sit 14 s after each. Heroic
 --             has no Broodlings, so no block for it. Check the numbers with /crt dev kicks after a hotfix.
+-- units       Which boss unit is which, for the pace bars' names: Vexhul is on the top default boss frame (boss1)
+--             and Ithraz below it (boss2), from Alex's screenshot of the boss frames on 2026-11-10.
 
 CRT.Bosses:Register({
     encounterID = 3421,
     name = "The Twin Fangs",
     season = "midnight-s2",
+    units = { boss1 = "Vexhul", boss2 = "Ithraz" },
     references = {
         [[
 Boss: The Twin Fangs
