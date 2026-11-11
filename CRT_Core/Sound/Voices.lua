@@ -83,7 +83,7 @@ local TEXT = {
     lacksOne = "%s has no %s, so that uses text to speech.",
     listAnd = "%s and %s",
     listOr = "%s or %s",
-    noVolume = "Clips play on your sound channel (General Settings) at that channel's volume: the game takes no volume for them.",
+    noVolume = "Clips play on your sound channel (General Settings > Appearance > Sound channel) at that channel's volume: the game takes no volume for them.",
 }
 
 -- A text as a clip's word is matched: lower case, without spaces or punctuation. Nil for anything that isn't

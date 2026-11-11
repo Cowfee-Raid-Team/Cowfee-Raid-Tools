@@ -3,7 +3,7 @@ local ADDON, CRT = ...
 -- Team raids (CRT.Team): which team tonight's raid is, so Season Stats, Tattlebot and the Late Tracker can keep a
 -- team's numbers apart from a night with other players. One owner every module asks.
 --
--- The rule: tonight's team is picked on General Settings > Team raids (Pug or a team you added; the list is
+-- The rule: tonight's team is picked on General Settings > Appearance > Team raids (Pug or a team you added; the list is
 -- TeamList.lua) or set by the raid leader's push. In a raid group (not a party, not solo, not a finder group) the
 -- group is a team raid when tonight's team isn't Pug; outside one there is no team (nil). Team:IsTeam() answers now,
 -- Team:Tonight() is the name,

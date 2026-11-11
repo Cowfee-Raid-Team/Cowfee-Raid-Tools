@@ -29,10 +29,13 @@ local HOW = { schedule = "from the schedule", button = "by Start raid now" }
 -- active layout, so a raider's tracker expects the same people, but records only when it starts a night itself.
 local HELP_TEXT = {
     pageTitle = "The Late Tracker",
-    page = "On the Settings tab, tick your raid days and start time and pick the Raid Groups layout of who should be "
-        .. "there. At the start time, anyone in it who isn't in your group is late until they join. Tonight shows the "
-        .. "night as it happens; History keeps every night, with an export for Discord.\n\n"
-        .. "A raider's tracker records only when their own schedule or Start raid now runs.",
+    page = {
+        "On the Settings tab, tick your raid days and start time and pick the Raid Groups layout of who should be "
+            .. "there. At the start time, anyone in it who isn't in your group is late until they join.",
+        { "Tonight", "the night as it happens." },
+        { "History", "every night, with an export for Discord." },
+        "A raider's tracker records only when their own schedule or Start raid now runs.",
+    },
     rosterTitle = "Expected roster",
     roster = "The active Raid Groups layout: who should be there, in their groups (Make active on Raid Groups). During "
         .. "a raid night, tonight's list follows it when you change or switch layouts, with everyone's clock kept.\n\n"
@@ -926,7 +929,12 @@ local function getEditor()
         d.addGroup.Dropdown:SetDefaultText("Pick a player")
     end
     -- the (?) on the whole window, right of its title (BasicFrameTemplate's TitleText)
-    UI.HelpRight(d.TitleText, "Edit tonight's roster", "Changes tonight's list only; the expected roster on Raid Groups stays as it is. Add from group: someone who should count tonight (press On time if they were here from the start). On time: counts a player as here from the start. Remove: takes them off tonight's list.", { parent = d })
+    UI.HelpRight(d.TitleText, "Edit tonight's roster", {
+        "Changes tonight's list only; the expected roster on Raid Groups stays as it is.",
+        { "Add from group", "someone who should count tonight (press On time if they were here from the start)." },
+        { "On time", "counts a player as here from the start." },
+        { "Remove", "takes them off tonight's list." },
+    }, { parent = d })
 
     local sync = makeButton(d, "Update from layout", 150, 22)
     editorFont(sync)
@@ -1161,7 +1169,11 @@ local function buildHistory(f)
         end,
     })
     showDropdown:SetPoint("LEFT", exportButton, "RIGHT", 16, 0)
-    local showHelp = UI.HelpRight(showDropdown, "Show", "Team raids keeps the list, the totals and the export to the nights that were team raids: tonight's team at the start wasn't Pug (General Settings > Team raids). All raids adds the other nights. Nights from before this update are team raids.")
+    local showHelp = UI.HelpRight(showDropdown, "Show", {
+        { "Team raids", "keeps the list, the totals and the export to the nights that were team raids: tonight's team at the start wasn't Pug (General Settings > Appearance > Team raids)." },
+        { "All raids", "adds the other nights." },
+        "Nights from before this update are team raids.",
+    })
     local showRefresh = showDropdown.refresh
     showDropdown.refresh = function()
         local on = Late:HasOtherNights()
@@ -1288,7 +1300,7 @@ local function buildSettings(f)
         onlyTeam:SetChecked(Late:Settings().onlyTeam and true or false)
     end
     controls[#controls + 1] = onlyTeam
-    UI.HelpRight(onlyTeamLabel, "Only record team raids", "The schedule starts a night only once the group is a team raid: a raid group whose team tonight isn't Pug (General Settings > Team raids). It waits for one until 5 minutes after the start time. Start raid now always starts a night, marked as a team raid or not.")
+    UI.HelpRight(onlyTeamLabel, "Only record team raids", "The schedule starts a night only once the group is a team raid: a raid group whose team tonight isn't Pug (General Settings > Appearance > Team raids). It waits for one until 5 minutes after the start time. Start raid now always starts a night, marked as a team raid or not.")
 end
 
 local function build(pf)

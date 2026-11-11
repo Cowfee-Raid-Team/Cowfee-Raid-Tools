@@ -169,7 +169,11 @@ local function buildAuto(f)
 
     local counts = label(f, "What counts")
     counts:SetPoint("TOPLEFT", 8, -224)
-    UI.HelpRight(counts, "What counts", "Food: any food buff counts. Lower quality flasks are flagged only once they are in the built-in list. Not available: potions and healthstones used in the last fight, and other players' weapon oils and armour kits.")
+    UI.HelpRight(counts, "What counts", {
+        { "Food", "any food buff counts." },
+        { "Flasks", "lower quality flasks are flagged only once they are in the built-in list." },
+        { "Not available", "potions and healthstones used in the last fight, and other players' weapon oils and armour kits." },
+    })
     makeDropdown(f, 8, -240, "Flask and oil expiring warning", "flaskWarn", WARNS, nil, 200, 170)
     makeCheck(f, 4, -274, "Count a lower quality flask as a problem", "lowFlask")
     local lock = makeCheck(f, 4, -304, "Lock my Ready button until everyone has my raid buff", "buffLock")
@@ -195,7 +199,10 @@ local function buildAuto(f)
     end
     local barTitle = label(f, "Your bar")
     barTitle:SetPoint("TOPLEFT", 404, -12)
-    UI.HelpRight(barTitle, "Your bar", "Your own row of consumable icons on a ready check. Arrange it on the Your bar tab.\n\nNot when I start it: a raid leader who starts the check usually has no need to see it.")
+    UI.HelpRight(barTitle, "Your bar", {
+        "Your own row of consumable icons on a ready check. Arrange it on the Your bar tab.",
+        { "Not when I start the ready check", "a raid leader who starts the check usually has no need to see it." },
+    })
     makeCheck(f, 400, -32, "Show my bar on a ready check", "enabled", bar)
     makeCheck(f, 424, -56, "Not when I start the ready check", "notStarter", bar, function()
         return bar().enabled
@@ -237,7 +244,11 @@ local function buildAuto(f)
         return false
     end
     local cauldron = makeCheck(f, 400, -112, "Flasks from a cauldron only (WIP)", "cauldronOnly", bar, wip)
-    UI.HelpRight(cauldron, "Coming soon", "Flasks from a cauldron only: clicking the flask icon would use only a raid cauldron's Fleeting flasks. Unlimited rune only: the rune icon would use only a rune that isn't used up. Both wait for their item IDs.")
+    UI.HelpRight(cauldron, "Coming soon", {
+        { "Flasks from a cauldron only", "clicking the flask icon would use only a raid cauldron's Fleeting flasks." },
+        { "Unlimited augment rune only", "the rune icon would use only a rune that isn't used up." },
+        "Both wait for their item IDs.",
+    })
     makeCheck(f, 400, -136, "Unlimited augment rune only (WIP)", "unlimitedRune", bar, wip)
 end
 
@@ -323,7 +334,14 @@ local function buildWindow(f)
     local cols = label(f, "Columns: drag a heading to move it, click it to show or hide it.")
     cols:SetPoint("TOPLEFT", 8, WINDOW_COLUMNS_Y)
     cols:SetWordWrap(false)
-    UI.HelpRight(cols, "The ready check window", "A table of every player's ready answer, consumables and raid buffs. It opens on a ready check (or with /crt check) and closes after the time set here, or on a right-click. Shift-click a heading to post who is missing that to raid chat.\n\nAn icon means they have it, a gold number is minutes left on a flask, x is missing, and ? means the game hid their buffs. Durability and weapon oils show only for players running CRT.")
+    UI.HelpRight(cols, "The ready check window", {
+        "A table of every player's ready answer, consumables and raid buffs. It opens on a ready check (or with /crt check) and closes after the time set here, or on a right-click. Shift-click a heading to post who is missing that to raid chat.",
+        { "An icon", "they have it." },
+        { "A gold number", "minutes left on a flask." },
+        { "x", "missing." },
+        { "?", "the game hid their buffs." },
+        "Durability and weapon oils show only for players running CRT.",
+    })
 
     -- The same table the window draws, with sample players, in edit mode.
     local box = CreateFrame("Frame", nil, f, "BackdropTemplate")

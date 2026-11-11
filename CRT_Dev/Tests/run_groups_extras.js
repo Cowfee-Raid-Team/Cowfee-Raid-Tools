@@ -60,7 +60,7 @@ local gridRef
 local CRT = { db = { groups = { presets = {}, nextId = 1, keepChanges = false, source = "raid", working = {} }, classCache = {}, roleCache = {}, ui = {} } }
 function CRT:Print(m) print("  [chat] " .. m) end
 local pages = {}
-CRT.UI = { SkinScrollBar = function() end, SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title) local m = mock("help") rawset(m, "helpTitle", title) groupHelps[#groupHelps + 1] = m return m end, RegisterPage = function(_, k, t, fn) pages[k] = fn end,
+CRT.UI = { SkinScrollBar = function() end, SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title, text) local m = mock("help") rawset(m, "helpTitle", title) rawset(m, "helpText", text) groupHelps[#groupHelps + 1] = m return m end, RegisterPage = function(_, k, t, fn) pages[k] = fn end,
   PanelButtonWidth = function(w) return w + 28 end,
   Dropdown = function(_, text, opts) local row = mock("dropdown") rawset(row, "label", text) rawset(row, "opts", opts)
     rawset(row, "refresh", function() rawset(row, "enabled", not opts.enabledIf or opts.enabledIf() and true or false) end) dropdowns[#dropdowns + 1] = row return row end, ContextMenu = function(owner, fill) local m = { owner = owner, fill = fill, Close = function(self) self.closed = true end } menus[#menus + 1] = m return m end }
@@ -298,6 +298,15 @@ do
   tip = {}
   sortButton.OnEnter(sortButton)
   check(tip[2] and tip[2]:find("two rows", 1, true), "Sort grid's tooltip says why: " .. tostring(tip[2]))
+  check(tip[2] and tip[2]:find("Raid Notes > Mech Alerts > Mechanics (pick the boss and the ability, then its Assign tab)", 1, true), "and where to make one, by its full path: " .. tostring(tip[2]))
+  -- Sort by's (?): one paragraph per method, in the list form (UI.AddTooltipText), the sides one naming the same path
+  local sortHelp
+  for _, h in ipairs(groupHelps) do if h.helpTitle == "Sort by" then sortHelp = rawget(h, "helpText") end end
+  local items = {}
+  for _, item in ipairs(type(sortHelp) == "table" and sortHelp or {}) do if type(item) == "table" then items[#items + 1] = item end end
+  check(#items == 4 and items[1][1] == "Role blocks" and items[2][1] == "Melee and ranged groups" and items[3][1] == "Spread duplicates" and items[4][1] == "Left and right sides",
+    "Sort by's (?) has one item per method, by its on-screen name")
+  check(items[4] and items[4][2]:find("Raid Notes > Mech Alerts > Mechanics (pick the boss and the ability, then its Assign tab)", 1, true), "the sides method names where its assignment is made")
   sortBy.opts.set("roles")
   check(not side.shown and sortButton.enabled == true, "back to Role blocks")
   -- Sort grid: the same names, rearranged, as an unsaved edit; nobody in the raid moves (SetRaidSubgroup isn't there)
