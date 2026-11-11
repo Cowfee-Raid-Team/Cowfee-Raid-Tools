@@ -717,9 +717,45 @@ let failed = 0;
   const core = read('CRT_Core/Core.lua');
   const m = /\n\s*highlights = (\{[^\r\n]*\}),?\r?\n/.exec(core);
   const def = m ? m[1].replace(/\s+/g, ' ') : '';
-  const want = '{ enabled = true, name = true, group = true, glow = true, windows = { assignments = true, timers = false, personal = false } }';
-  if (def === want) console.log('ok defaults: on, for the assignments window only (Core.lua)');
+  const want = '{ enabled = true, name = true, group = true, glow = true, windows = { assignments = true, timers = false, personal = false }, migrated = 1 }';
+  if (def === want) console.log('ok defaults: on, for the assignments window only, already switched on once (Core.lua)');
   else { failed++; console.log('FAIL defaults in Core.lua: ' + def); }
+}
+// The one-time switch-on (Alex, 2026-11-11: "Merge, switch on once"): CRT.SwitchOnHighlightsOnce from Core.lua, run on
+// its own, and called before the defaults fill in highlights.windows.
+{
+  const core = read('CRT_Core/Core.lua').replace(/\r\n/g, '\n');
+  const start = core.indexOf('function CRT.SwitchOnHighlightsOnce(');
+  const end = start < 0 ? -1 : core.indexOf('\nend\n', start);
+  const call = core.indexOf('CRT.SwitchOnHighlightsOnce(CRTDB)');
+  const defaultsAt = core.indexOf('copyDefaults(defaults, CRTDB)');
+  const say = (ok, what) => { if (ok) console.log('ok ' + what); else { failed++; console.log('FAIL ' + what); } };
+  say(start >= 0 && end > start, 'switch on once: Core.lua has CRT.SwitchOnHighlightsOnce');
+  say(call >= 0 && defaultsAt > call, 'switch on once: runs at load, before the defaults fill in highlights.windows');
+  if (start >= 0 && end > start) {
+    const src = 'local CRT = {}\n' + core.slice(start, end + 5) + `
+local out = {}
+local function add(ok, what) out[#out + 1] = (ok and "ok " or "FAIL ") .. what end
+-- a build#006 profile: its saved default, off, and no windows yet
+local old = { highlights = { enabled = false, name = true, group = true, glow = true } }
+add(CRT.SwitchOnHighlightsOnce(old) == true and old.highlights.enabled == true and old.highlights.migrated == 1, "switch on once: a build#006 profile is switched on")
+old.highlights.enabled = false -- the player turns it off again
+add(CRT.SwitchOnHighlightsOnce(old) == false and old.highlights.enabled == false, "switch on once: never runs twice, so turning it off again stays off")
+-- turned off after this build: windows saved, so it stays off
+local mine = { highlights = { enabled = false, name = true, group = true, glow = true, windows = { assignments = true } } }
+add(CRT.SwitchOnHighlightsOnce(mine) == false and mine.highlights.enabled == false and mine.highlights.migrated == 1, "switch on once: a profile with windows saved and off stays off")
+-- a fresh profile: nothing saved, the defaults bring it on with the flag
+local fresh = {}
+add(CRT.SwitchOnHighlightsOnce(fresh) == false and fresh.highlights == nil, "switch on once: a fresh profile is left to the defaults")
+return table.concat(out, "\\n")
+`;
+    const L2 = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L2);
+    if (lauxlib.luaL_loadstring(L2, to_luastring(src)) !== lua.LUA_OK || lua.lua_pcall(L2, 0, 1, 0) !== lua.LUA_OK) {
+      failed++; console.log('FAIL switch on once: ' + lua.lua_tojsstring(L2, -1));
+    } else {
+      for (const line of lua.lua_tojsstring(L2, -1).split('\n')) { if (line.startsWith('FAIL')) failed++; console.log(line); }
+    }
+  }
 }
 try {
   const bare = run('bare', false);
