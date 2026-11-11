@@ -360,7 +360,16 @@ eq(chipOf("Quick").class, "MAGE", "palette: a player's class")
 eq(chipOf("Brenn").source.token, "Brenn", "palette: a chip drags its name")
 check(chipOf("Everyone") and chipOf("Melee") and chipOf("Group 1") and chipOf("Group 8") and chipOf("Mage") and chipOf("Hunter"), "palette: every General, Group and Class chip, even with nobody to match")
 eq(chipOf("Group 7").source.kind, "group", "palette: a group chip drags its kind")
-check(P.paletteHelp and P.paletteHelp.helpTarget == P.paletteHead, "palette: how to drag in its (?)")
+check(P.paletteHelp and P.paletteHelp.helpTarget == PS.from, "palette: how to drag in the (?) right of Players from (Alex, 2026-11-10)")
+eq(PS.fromHelp, P.paletteHelp, "palette: placed by the shared palette")
+check(P.paletteHead == nil, "palette: no Players heading over Search, only the palette's own Players section")
+do
+  local LAY = P.LAYOUT
+  local fromX = PS.from.points[1] and PS.from.points[1][2] or 0
+  check(fromX + PS.from.w + 4 + 20 <= LAY.rightW, "palette: Players from and its (?) inside the column (" .. tostring(fromX + PS.from.w + 24) .. " of " .. LAY.rightW .. ")")
+  local top = P.palette.points[1]
+  check(top and top[3] == P.PaletteLayout.top and P.palette.h == UI.PAGE_H + LAY.contentY + P.PaletteLayout.top - P.PaletteLayout.bottom, "palette: at the column's top, down to the page's bottom")
+end
 check(P.paletteHelp.helpText:find("Group", 1, true) and P.paletteHelp.helpText:find("already on the row", 1, true), "palette: its (?) says what a General, Group or Class chip adds")
 -- a layout picked: only its players, saved
 PS.from.opts.set(7); flush()

@@ -1,9 +1,9 @@
 local ADDON, CRT = ...
 
 -- The Interrupts page's players (Interrupts/Page.lua builds it through Page.BuildPalette): the panel on the right of
--- Assignments, the note editor's own (Notes/Palette.lua: Palette.Build and Palette.Draw): a Players heading with its
--- (?), Search, Players from (Current group, then each Raid Groups layout; no invite list, a kick list has no note),
--- then that source's Players, General, Groups and Classes as chips, class coloured with their class icons. The choice
+-- Assignments, the note editor's own (Notes/Palette.lua: Palette.Build and Palette.Draw): Search, Players from
+-- (Current group, then each Raid Groups layout; no invite list, a kick list has no note) with the panel's (?) right of
+-- it, then that source's Players, General, Groups and Classes as chips, class coloured with their class icons. The choice
 -- is saved (CRTDB.interrupts.playersFrom); a layout that is gone falls back to Current group. A chip dragged onto a
 -- group's row fills its next slot (Interrupts/PageGrid.lua takes the drop): a player's chip adds that player, a General,
 -- Group or Class chip every player of the chosen roster it matches (Page.MatchingPlayers).
@@ -32,7 +32,7 @@ local TEXT = {
 Page.PaletteText = TEXT
 
 local LAYOUT = {
-    headY = -8, top = -32, bottom = 8, -- the heading, then the shared palette (Search, Players from, the chips) under it
+    top = -8, bottom = 8, -- the shared palette (Search, Players from, the chips), from the column's top to the page's bottom
 }
 Page.PaletteLayout = LAYOUT
 
@@ -391,11 +391,8 @@ Page.DrawPalette = draw
 
 function Page.BuildPalette(f)
     local state = Page.dragState
-    local head = Page.Label(f, TEXT.players, "CRTFontNormal")
-    head:SetPoint("TOPLEFT", L.rightX, LAYOUT.headY)
-    Page.paletteHelp = UI.HelpRight(head, TEXT.players, TEXT.playersHelp)
-    Page.paletteHead = head
-    -- Search, Players from and the chips: the note editor's palette, in the right column
+    -- Search, Players from with the panel's (?) right of it, and the chips: the note editor's palette, filling the
+    -- right column (no heading of its own over it: the palette has its Players section; Alex, 2026-11-10)
     local right = Palette.Build(f, state, {
         width = L.rightW,
         names = { search = "CowfeeRaidToolsKickSearch", scroll = "CowfeeRaidToolsKickPalette" },
@@ -407,10 +404,11 @@ function Page.BuildPalette(f)
         end,
         get = Page.Source,
         set = Page.SetSource,
+        fromHelp = { title = TEXT.players, text = TEXT.playersHelp },
     })
     right:SetPoint("TOPLEFT", L.rightX, LAYOUT.top)
     right:SetHeight(UI.PAGE_H + L.contentY + LAYOUT.top - LAYOUT.bottom)
-    Page.palette, Page.paletteScroll = right, state.paletteScroll
+    Page.palette, Page.paletteScroll, Page.paletteHelp = right, state.paletteScroll, state.fromHelp
     -- Players from shows the choice; the chips are drawn again only when the players were worked out again
     Page.AddControl(state.from)
     Page.AddControl({ refresh = function()
