@@ -1,8 +1,8 @@
 local ADDON, CRT = ...
 
 -- Loot Master wishlists: each raider keeps a ranked list of the items they want (Alex, 2026-11-11, Issue #1263),
--- and the loot master and raid assists see it in their loot windows when an item drops. No frames here: the list,
--- its message and who keeps what. The Encounter Journal's right-click menu and the item tooltip line are in
+-- and the loot master and raid assists see it in their loot windows when an item drops. The list, its message and
+-- who keeps what, plus the small drawing helpers the wishlist windows share (W.ItemIcon, W.QualityColor, W.CellTip). The Encounter Journal's right-click menu and the item tooltip line are in
 -- LootMaster/WishlistJournal.lua, the My wishlist window in LootMaster/WishlistWindow.lua, the Wishlist column in
 -- LootMaster/Window.lua (the Master Loot Window) and RaiderWindow.lua (All Loot Rolls, for assists).
 --
@@ -69,6 +69,9 @@ W.TEXT = {
     sending = "Sending...",
     solo = "Sends when you join a group.",
     guild = "Sent to your guild's officers.",
+    fromToday = "From a list made today.",
+    fromDay = "From a list made 1 day ago.",
+    fromDays = "From a list made %d days ago.",
     column = "Wishlist",
 }
 local TEXT = W.TEXT
@@ -212,6 +215,103 @@ end
 
 function W.Label(rank)
     return rank and TEXT[rank] or TEXT.notListed
+end
+
+-- Shared drawing for the wishlist windows ------------------------------------------------------------------
+-- (My wishlist, the Wishlists tab, and the roll windows' Wishlist cell; the rest of this file draws nothing.)
+
+-- An item quality's colour (C_Item.GetItemQualityColor), else the theme's border colour: r, g, b.
+function W.QualityColor(q)
+    if type(q) == "number" and C_Item and C_Item.GetItemQualityColor then
+        local ok, r, g, b = pcall(C_Item.GetItemQualityColor, q)
+        if ok and type(r) == "number" then
+            return r, g, b
+        end
+    end
+    return CRT.UI.Color("border")
+end
+
+-- An item's icon in a row: a button at x with its quality's border, showing the item's tooltip on hover.
+-- item() gives the row's item ({ id, link, icon, quality }) when hovered; W.SetItemIcon paints it.
+function W.ItemIcon(row, x, size, edge, item)
+    local UI = CRT.UI
+    local b = CreateFrame("Button", nil, row, "BackdropTemplate")
+    b:SetSize(size, size)
+    b:SetPoint("LEFT", x, 0)
+    b:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = edge })
+    b.tex = b:CreateTexture(nil, "ARTWORK")
+    b.tex:SetPoint("TOPLEFT", edge, -edge)
+    b.tex:SetPoint("BOTTOMRIGHT", -edge, edge)
+    b:SetScript("OnEnter", function(self)
+        local it = item()
+        if it then
+            UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, "lootmaster")
+            pcall(GameTooltip.SetHyperlink, GameTooltip, it.link or ("item:" .. it.id))
+            GameTooltip:Show()
+        end
+    end)
+    b:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    return b
+end
+
+function W.SetItemIcon(b, it)
+    b.tex:SetTexture(it.icon or 134400)
+    b:SetBackdropBorderColor(W.QualityColor(it.quality))
+end
+
+-- How many whole days old a player's rank for an item is when it comes from the saved copy (no list heard this
+-- login); nil for your own list, a list heard this login, or no rank.
+function W.RankAge(name, item)
+    if not name or name == LM:Me() or W.lists[name] then
+        return nil
+    end
+    local id = W.ItemID(item)
+    local saved = id and W.SavedList and W.SavedList(name)
+    if not (saved and saved.items[id] and type(saved.at) == "number") then
+        return nil
+    end
+    return math.max(0, math.floor((time() - saved.at) / 86400))
+end
+
+function W.AgeLine(days)
+    return days == 0 and TEXT.fromToday or days == 1 and TEXT.fromDay or TEXT.fromDays:format(days)
+end
+
+-- The roll windows' Wishlist cell tooltip: a button over the cell that shows how old a saved list's rank is, and
+-- hands its clicks to the row (so picking a row and its menu work over it). Hidden when the rank is from a list heard
+-- this login, so the row's own tooltip shows there then.
+function W.CellTip(row, cell)
+    local b = CreateFrame("Button", nil, row)
+    b:SetAllPoints(cell)
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    b:SetScript("OnClick", function(_, button)
+        local click = row:GetScript("OnClick")
+        if click then
+            click(row, button)
+        end
+    end)
+    b:SetScript("OnEnter", function(self)
+        if self.days then
+            CRT.UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, "lootmaster")
+            GameTooltip:SetText(TEXT.tooltip:format(W.Label(self.rank)))
+            GameTooltip:AddLine(W.AgeLine(self.days), 1, 1, 1)
+            GameTooltip:Show()
+        end
+    end)
+    b:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    b:Hide()
+    return b
+end
+
+-- shown: whether the cell shows (All Loot Rolls hides its Wishlist column for players who don't keep lists).
+function W.SetCellTip(b, name, item, rank, shown)
+    b.rank = rank
+    b.days = (shown ~= false and rank) and W.RankAge(name, item) or nil
+    b:SetShown(b.days ~= nil)
 end
 
 -- A rank as coloured text for a window: its rank's theme colour, or "Not listed" muted.
@@ -678,9 +778,21 @@ LM:OnChange(function(what)
     end
 end)
 
+-- The officer's ask, once per login: LOGIN_ASK_DELAY after login, or, when your rank couldn't be read as an officer's
+-- by then (the guild's data comes late), at the first PLAYER_GUILD_UPDATE or GUILD_ROSTER_UPDATE that says so
+-- (warcraft.wiki.gg; GuildInfoDocumentation, read 2026-11-11). W.AskGuild keeps the GUILD_ASK_SECONDS limit.
+local guildAskWaiting = false
+local function tryGuildAsk()
+    if guildAskWaiting and inGuild() and W.Officer() then
+        guildAskWaiting = false
+        W.AskGuild()
+    end
+end
+
 local wasInGroup = false
 local events = CreateFrame("Frame")
-for _, e in ipairs({ "ENCOUNTER_START", "ENCOUNTER_END", "GROUP_ROSTER_UPDATE", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD" }) do
+for _, e in ipairs({ "ENCOUNTER_START", "ENCOUNTER_END", "GROUP_ROSTER_UPDATE", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD",
+    "PLAYER_GUILD_UPDATE", "GUILD_ROSTER_UPDATE" }) do
     events:RegisterEvent(e)
 end
 events:SetScript("OnEvent", function(_, event)
@@ -734,7 +846,12 @@ events:SetScript("OnEvent", function(_, event)
                 queueGuild(0)
             end
         end)
-        C_Timer.After(W.LOGIN_ASK_DELAY, W.AskGuild)
+        C_Timer.After(W.LOGIN_ASK_DELAY, function()
+            guildAskWaiting = true
+            tryGuildAsk()
+        end)
+    elseif event == "PLAYER_GUILD_UPDATE" or event == "GUILD_ROSTER_UPDATE" then
+        tryGuildAsk() -- the guild's rank data may arrive after the login wait
     end
 end)
 

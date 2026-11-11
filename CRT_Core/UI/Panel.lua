@@ -704,6 +704,37 @@ function UI.ThemedText(fs, build)
         fs:SetText(build())
     end
 end
+
+-- A value bar (the catalog's Night bars: Season Stats' longest pulls, Loot Master's Wishlists > Bosses): a track in the
+-- border colour at 0.6, an accent fill sized to the value, and the value's text in CRTFontSmall on its right. Both
+-- textures sit at x, y (TOPLEFT of parent), w x h; the text at x + w + 6, textY, textW wide. Painted through UI.Tint, so
+-- it follows a theme switch. Here so the harnesses that load these helpers have it too.
+--   local bar = UI.ValueBar(parent, { x, y, w, h, textY, textW })   -- bar.track, bar.fill, bar.value
+--   UI.SetValueBar(bar, value, max, text)                            -- the fill at least 1 wide
+function UI.ValueBar(parent, opts)
+    local bar = { w = opts.w }
+    bar.track = parent:CreateTexture(nil, "BACKGROUND")
+    bar.track:SetPoint("TOPLEFT", opts.x, opts.y)
+    bar.track:SetSize(opts.w, opts.h)
+    UI.Tint(bar.track, "SetColorTexture", "border", 0.6)
+    bar.fill = parent:CreateTexture(nil, "ARTWORK")
+    bar.fill:SetPoint("TOPLEFT", opts.x, opts.y)
+    bar.fill:SetSize(1, opts.h)
+    UI.Tint(bar.fill, "SetColorTexture", "accent")
+    bar.value = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    bar.value:SetPoint("TOPLEFT", opts.x + opts.w + 6, opts.textY or 0)
+    if opts.textW then
+        bar.value:SetWidth(opts.textW)
+        bar.value:SetWordWrap(false)
+    end
+    bar.value:SetJustifyH("LEFT")
+    return bar
+end
+
+function UI.SetValueBar(bar, value, max, text)
+    bar.fill:SetWidth(math.max(1, (max or 0) > 0 and bar.w * value / max or 1))
+    bar.value:SetText(text or "")
+end
 -- [/theme helpers]
 
 -- Backdrop frames outside the main window that follow the look: your bar, its drag and Close bars,

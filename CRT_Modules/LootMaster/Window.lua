@@ -171,6 +171,9 @@ local function initRow(row, r)
         end
         row.diff = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         row.diff:SetPoint("LEFT", gx + 44, 0)
+        if LM.Wishlist then
+            row.wishTip = LM.Wishlist.CellTip(row, row.cols.wish) -- a saved list's age on hover
+        end
         row.sel = row:CreateTexture(nil, "BACKGROUND")
         row.sel:SetAllPoints()
         local hl = row:CreateTexture(nil, "HIGHLIGHT")
@@ -242,6 +245,9 @@ local function initRow(row, r)
     cols.wish:SetText(LM.Wishlist and LM.Wishlist.Cell(r.wish) or "")
     cols.ilvl:SetText(r.ilvl and string.format("%.0f", r.ilvl) or "")
     local item = LM.current and LM.current.items[current]
+    if row.wishTip then
+        LM.Wishlist.SetCellTip(row.wishTip, r.name, item and item.itemString, r.wish)
+    end
     for i, t in ipairs(row.gear) do
         LM.SetGear(t, r.gear[i], r.name == LM:Me() and item and item.itemString or nil)
     end

@@ -169,18 +169,19 @@ end
 -- every message until the encounter ends (or LOCKDOWN_RETRY); anything else is dropped, reported once.
 pump = function()
     while queue[1] do
-        local ch = queue[1].ch or channel() -- ch: a message for the guild (LM.SendGuild)
+        local ch = channel()
+        if not ch then
+            while queue[1] do
+                dequeue(false) -- left the group: no one to send to
+            end
+            break
+        end
         local to = queue[1].to
-        if to and ch then
+        if to then
             ch = "WHISPER" -- one group member only (LootMaster/Resync.lua's catch-up)
         end
-        local ok, result
-        if ch then
-            ok, result = pcall(C_ChatInfo.SendAddonMessage, LM.PREFIX, queue[1].text, ch, to)
-        end
-        if not ch then
-            dequeue(false) -- left the group: no one to send to
-        elseif ok and (result == THROTTLED or result == CHANNEL_THROTTLED) then
+        local ok, result = pcall(C_ChatInfo.SendAddonMessage, LM.PREFIX, queue[1].text, ch, to)
+        if ok and (result == THROTTLED or result == CHANNEL_THROTTLED) then
             C_Timer.After(1, pump)
             return
         elseif ok and result == LOCKDOWN then
@@ -236,17 +237,61 @@ local function send(kind, fields)
 end
 LM.Send = send
 
--- A finished message to your guild (the GUILD addon channel), in the same queue: held in an encounter's lockdown,
--- throttled like the rest. Out of a guild (IsInGuild) nothing is sent. Returns whether it was queued. The
--- game echoes GUILD addon messages back to the sender too.
+-- Guild messages (LM.SendGuild) wait in a queue of their own, so a throttled guild channel (ChannelThrottle is per
+-- channel) or a long wishlist never holds the group's loot messages: each queue sends on its own. The guild's
+-- throttle waits a second; the lockdown holds it until LOCKDOWN_RETRY or the group queue's resume; NotInGuild
+-- (Enum.SendAddonMessageResult 10, warcraft.wiki.gg API_C_ChatInfo.SendAddonMessage, read 2026-11-11: you left
+-- the guild) drops what waits without a word, as leaving the group does; anything else is dropped, reported once.
+local NOT_IN_GUILD = RESULT.NotInGuild or 10
+local guildQueue = {}
+local guildSending, guildHeld = false, false
+
+local guildPump
+local function guildResume()
+    if guildHeld then
+        guildHeld = false
+        guildPump()
+    end
+end
+
+guildPump = function()
+    while guildQueue[1] do
+        local ok, result = pcall(C_ChatInfo.SendAddonMessage, LM.PREFIX, guildQueue[1], "GUILD")
+        if ok and (result == THROTTLED or result == CHANNEL_THROTTLED) then
+            C_Timer.After(1, guildPump)
+            return
+        elseif ok and result == LOCKDOWN then
+            if not guildHeld then
+                guildHeld = true
+                C_Timer.After(LOCKDOWN_RETRY, guildResume)
+            end
+            return
+        elseif ok and result == NOT_IN_GUILD then
+            guildQueue = {} -- left the guild: no one to send to
+        else
+            if not ok or not (result == nil or result == true or result == SUCCESS) then
+                local key = "guild " .. tostring(ok and result or "error")
+                if not warned[key] then
+                    warned[key] = true
+                    CRT:Print("Loot Master: a guild message could not be sent (" .. tostring(ok and result or "error") .. ").")
+                end
+            end
+            table.remove(guildQueue, 1)
+        end
+    end
+    guildSending = false
+end
+
+-- A finished message to your guild (the GUILD addon channel). Out of a guild (IsInGuild) nothing is sent. Returns
+-- whether it was queued. The game echoes GUILD addon messages back to the sender too.
 function LM.SendGuild(text)
     if not (IsInGuild and IsInGuild()) then
         return false
     end
-    queue[#queue + 1] = { text = text, ch = "GUILD" }
-    if not sending and not held then
-        sending = true
-        pump()
+    guildQueue[#guildQueue + 1] = text
+    if not guildSending and not guildHeld then
+        guildSending = true
+        guildPump()
     end
     return true
 end
@@ -1478,6 +1523,7 @@ events:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
             noteEncounter(a1, a2, a5)
         end
         resume()
+        guildResume()
     else
         if (restoring or parked) and IsInGroup() then
             restore() -- a fresh login's group is known now

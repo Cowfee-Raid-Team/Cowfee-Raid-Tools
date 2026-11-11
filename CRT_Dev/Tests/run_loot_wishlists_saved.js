@@ -10,9 +10,10 @@
 const fs = require('fs');
 const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
+const themeLua = require('./theme_stub');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv.slice(2)) + `
 local dataSrc, commSrc, wishSrc, savedSrc, viewsSrc, tabSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
@@ -58,9 +59,9 @@ C_GuildInfo = { CanEditOfficerNote = function() return OFFICERS[ME] == true end 
 local timers = {}
 C_Timer = { After = function(s, fn) timers[#timers+1] = { s = s, fn = fn } end, NewTicker = function(s, fn) return { Cancel = function() end } end }
 local function runTimers() for _ = 1, 6 do local t = timers timers = {} for _, e in ipairs(t) do e.fn() end end end
-local outbox, LOCKED = {}, false
+local outbox, LOCKED, RESULTS = {}, false, {} -- RESULTS[channel]: what the game answers there instead of sending
 C_ChatInfo = { RegisterAddonMessagePrefix = function() end, InChatMessagingLockdown = function() return LOCKED end,
-  SendAddonMessage = function(p, text, ch) outbox[#outbox+1] = { text = text, ch = ch } return 0 end }
+  SendAddonMessage = function(p, text, ch) local r = RESULTS[ch] if r then return r end outbox[#outbox+1] = { text = text, ch = ch } return 0 end }
 local frames = {}
 local function onEvent(event, ...) for _, f in ipairs(frames) do if f.events[event] and f.fn then f.fn(f, event, ...) end end end
 function CreateFrame()
@@ -236,6 +237,31 @@ eq(#take(), 0, "no guild: nothing queued")
 eq(W.AskGuild(), false, "no guild: no ask")
 GROUP = GROUP_SAVE
 
+-- 4b. Two queues: a throttled guild channel never holds the group's loot messages; NotInGuild drops quietly
+be("Quick") take() timers = {}
+RESULTS.GUILD = 8 -- ChannelThrottle, on GUILD only
+for i = 1, 20 do LM.SendGuild("X|ab:" .. string.format("%02d", i) .. "/20|1,b") end
+LM.Send("K", { "hello" })
+eq(#on(outbox, "RAID"), 1, "queues: a group message goes while the guild channel is throttled")
+eq(#on(outbox, "GUILD"), 0, "queues: the guild's wait")
+RESULTS.GUILD = nil
+runTimers()
+eq(#on(take(), "GUILD"), 20, "queues: the guild's go once the throttle lifts, every part")
+local printed = 0
+local realPrint = CRT.Print
+CRT.Print = function() printed = printed + 1 end
+RESULTS.GUILD = 10 -- NotInGuild: you left the guild
+LM.SendGuild("X|?") LM.SendGuild("X|?")
+RESULTS.GUILD = nil
+runTimers()
+eq(#take(), 0, "not in guild: what waits for the guild is dropped")
+eq(printed, 0, "not in guild: without a word")
+RESULTS.GUILD = 9 -- GeneralError: reported once
+LM.SendGuild("X|?") LM.SendGuild("X|?")
+RESULTS.GUILD = nil
+eq(printed, 1, "another failure: reported once")
+CRT.Print = realPrint
+
 -- 5. The encounter hold applies to the guild too
 be("Quick") GROUP_SAVE = GROUP GROUP = nil take() timers = {}
 onEvent("ENCOUNTER_START", 1, "Boss", 16, 20)
@@ -283,6 +309,19 @@ eq(W.AskGuild(), false, "ask: not a second early")
 CLOCK = CLOCK + 1
 eq(W.AskGuild(), true, "ask: again after ten minutes")
 take()
+-- the guild's rank data late: the ask waits for the guild's events, still once per login
+be("Gild") CRT.db.lootmaster.wishlistsAsked = 0 OFFICERS.Gild = nil timers = {} take()
+onEvent("PLAYER_LOGIN") runTimers()
+local function asksIn(box) local k = 0 for _, m in ipairs(box) do if m.text == "X|?" and m.ch == "GUILD" then k = k + 1 end end return k end
+eq(asksIn(take()), 0, "late rank: no officer rank read yet, no ask")
+onEvent("GUILD_ROSTER_UPDATE")
+eq(asksIn(take()), 0, "late rank: a roster update that still says no, no ask")
+OFFICERS.Gild = true
+onEvent("PLAYER_GUILD_UPDATE")
+eq(asksIn(take()), 1, "late rank: asked once the guild's data says officer")
+CRT.db.lootmaster.wishlistsAsked = 0
+onEvent("GUILD_ROSTER_UPDATE") onEvent("PLAYER_GUILD_UPDATE")
+eq(asksIn(take()), 0, "late rank: once per login")
 be("Quick") timers = {}
 eq(W.AskGuild(), false, "ask: a raider who isn't an officer doesn't ask")
 -- the answers: every raider with a list, after a short random wait, at most once a minute
@@ -424,6 +463,10 @@ CRT.UI.TooltipOwner = function() end
 CRT.UI.OnTheme = function() end
 CRT.UI.HelpRight = function(target, title, text) target.help = text end
 CRT.UI.PAGE_W = 1026
+-- the real value bar (CRT_Core/UI/Panel.lua's helpers), painted from the real theme
+local themed = {}
+CRT_THEME({}, themed)
+CRT.UI.ValueBar, CRT.UI.SetValueBar = themed.ValueBar, themed.SetValueBar
 local helps = {}
 assert(load(tabSrc, "WishlistTab.lua"))("CowfeeRaidTools", CRT)
 local tab = mock("frame")
@@ -457,9 +500,11 @@ bl.view.init(row, bl.rows[2])
 eq(row.name.text, "Second Boss", "tab: the boss row's name")
 eq(row.big.text, "<good>2", "tab: Big in the good colour")
 eq(row.off.text, "<muted>1", "tab: Off in the muted colour")
-eq(row.bar.width, 300, "tab: the top value fills the bar")
+eq(row.bar.fill.width, 300, "tab: the top value fills the bar")
+eq(row.bar.value.text, "7.5", "tab: the value on the bar's right")
+check(row.bar.track ~= nil and row.bar.w == 300, "tab: the shared value bar (track and fill)")
 bl.view.init(row, bl.rows[1])
-eq(row.bar.width, math.floor(300 * 7 / 7.5 + 0.5), "tab: a smaller value, a shorter bar")
+eq(row.bar.fill.width, 300 * 7 / 7.5, "tab: a smaller value, a shorter bar")
 bl.view.init(row, bl.rows[2])
 local reads0 = reads
 row.scripts.OnClick(row)
@@ -508,6 +553,40 @@ for _, r in ipairs(rl.rows) do if r.name == "Faraway-Sargeras" then hasFar = tru
 eq(hasFar, false, "tab: In my raid now leaves out who isn't in your raid")
 drops.Team.opts.set("team")
 eq(drops.Team.opts.get(), "all", "tab: no layout in use reads as Everyone kept")
+drops.Team.opts.set("all")
+-- a boss kept from another season: Boss detail falls back to the season's first
+CRT.db.lootmaster.wishlistsTab.boss = 777
+drops.View.opts.set("detail")
+eq(drops.Boss.opts.get(), 1, "detail: a boss not in this season reads as the first")
+check(#rows.detail > 0, "detail: and shows its items")
+check(helps["Raiders' wishlists"]:find("Team: everyone you keep", 1, true) ~= nil and not helps["Raiders' wishlists"]:find("everyone kept", 1, true), "help: the Team wording")
+
+-- 9. The shared drawing helpers, and the roll windows' Wishlist cell: a saved list's age on hover
+check(type(W.ItemIcon) == "function" and type(W.QualityColor) == "function" and type(W.CellTip) == "function", "shared: the icon, quality colour and cell helpers")
+CLOCK = CLOCK + 3 * 86400
+W.lists = {}
+W.Keep("Quick-Sargeras", { [11] = "big" }, CLOCK - 3 * 86400 + 1) -- newer than the copy kept
+local cellRow = mock("row")
+local tip = W.CellTip(cellRow, mock("fs"))
+W.SetCellTip(tip, "Quick-Sargeras", 11, "big")
+eq(tip.shown, true, "cell: a rank from the saved copy has a tooltip")
+eq(tip.days, 2, "cell: its age in days")
+eq(W.AgeLine(2), "From a list made 2 days ago.", "cell: the age line")
+eq(W.AgeLine(1), "From a list made 1 day ago.", "cell: one day")
+eq(W.AgeLine(0), "From a list made today.", "cell: today")
+W.lists["Quick-Sargeras"] = { items = { [11] = "big" }, at = 0 }
+W.SetCellTip(tip, "Quick-Sargeras", 11, "big")
+eq(tip.shown, false, "cell: a list heard this login shows no age")
+W.lists = {}
+W.SetCellTip(tip, "Quick-Sargeras", 11, "big", false)
+eq(tip.shown, false, "cell: none while the column is hidden")
+W.SetCellTip(tip, "Gild-Sargeras", 11, nil)
+eq(tip.shown, false, "cell: no rank, no tooltip")
+local clicked
+cellRow.scripts.OnClick = function(_, b) clicked = b end
+cellRow.GetScript = function(self, name) return self.scripts[name] end
+tip.scripts.OnClick(tip, "RightButton")
+eq(clicked, "RightButton", "cell: its clicks go to the row")
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
@@ -521,3 +600,9 @@ for (const f of files) {
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));
 }
 if (lua.lua_pcall(L, files.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+// the item icon and quality colour are shared, not copied: neither window keeps its own
+for (const f of ['CRT_Modules/LootMaster/WishlistTab.lua', 'CRT_Modules/LootMaster/WishlistWindow.lua']) {
+  const src = fs.readFileSync(path.join(dir, f), 'utf8');
+  if (/local function qualityColor|GetItemQualityColor|"BackdropTemplate"/.test(src)) { console.log('FAIL ' + f + ' draws its own item icon or quality colour'); process.exitCode = 1; }
+  else console.log('ok ' + f + ' uses the shared item icon');
+}

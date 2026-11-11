@@ -160,6 +160,7 @@ local function initRow(row, r)
         wish:SetWordWrap(false)
         wish:Hide()
         row.cols.wish = wish
+        row.wishTip = LM.Wishlist and LM.Wishlist.CellTip(row, wish) -- a saved list's age on hover
         row.gear = {}
         for i = 1, 2 do
             row.gear[i] = LM.GearIcon(row, COLS[6].x + (i - 1) * 20)
@@ -184,6 +185,9 @@ local function initRow(row, r)
     row.cols.roll:SetText(r.roll and tostring(r.roll) or "")
     row.cols.ilvl:SetText(r.ilvl and string.format("%.0f", r.ilvl) or "")
     local item = inc and inc.items[current]
+    if row.wishTip then
+        LM.Wishlist.SetCellTip(row.wishTip, r.name, item and item.itemString, r.wish, wishShown)
+    end
     for i, t in ipairs(row.gear) do
         LM.SetGear(t, r.gear[i], r.name == LM:Me() and item and item.itemString or nil)
     end

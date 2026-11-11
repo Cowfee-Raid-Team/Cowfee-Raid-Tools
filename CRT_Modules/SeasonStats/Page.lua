@@ -342,15 +342,9 @@ local function buildBars(body)
         bar:SetPoint("TOPLEFT", 0, L.barsTop - (i - 1) * L.line)
         bar:SetSize(L.reflW, L.line)
         bar.date = text(bar, "CRTFontSmall", 0, 0, L.dateW)
-        bar.track = bar:CreateTexture(nil, "BACKGROUND")
-        bar.track:SetPoint("TOPLEFT", L.barX, -3)
-        bar.track:SetSize(L.barW, L.barH)
-        UI.Tint(bar.track, "SetColorTexture", "border", 0.6)
-        bar.fill = bar:CreateTexture(nil, "ARTWORK")
-        bar.fill:SetPoint("TOPLEFT", L.barX, -3)
-        bar.fill:SetSize(1, L.barH)
-        UI.Tint(bar.fill, "SetColorTexture", "accent")
-        bar.value = text(bar, "CRTFontSmall", L.barX + L.barW + 6, 0, L.reflW - L.barX - L.barW - 6)
+        -- the shared value bar (CRT_Core/UI/Panel.lua): track, fill and the value on the right
+        local v = UI.ValueBar(bar, { x = L.barX, y = -3, w = L.barW, h = L.barH, textY = 0, textW = L.reflW - L.barX - L.barW - 6 })
+        bar.track, bar.fill, bar.value, bar.shape = v.track, v.fill, v.value, v
         bars[i] = bar
     end
     return bars
@@ -465,9 +459,8 @@ local function paintBars(r)
         bar:SetShown(night ~= nil)
         if night then
             bar.date:SetText(night.key)
-            bar.fill:SetWidth(math.max(1, r.longest > 0 and L.barW * night.longest / r.longest or 1))
             local clock = S.Clock(night.longest)
-            bar.value:SetText(night.phase and TEXT.barValue:format(clock, S.PhaseText(night.phase)) or clock)
+            UI.SetValueBar(bar.shape, night.longest, r.longest, night.phase and TEXT.barValue:format(clock, S.PhaseText(night.phase)) or clock)
         end
     end
 end

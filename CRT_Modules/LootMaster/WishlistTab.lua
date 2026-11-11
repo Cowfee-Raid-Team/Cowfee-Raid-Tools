@@ -25,7 +25,7 @@ local L = {
     x = 8, top = -8, controls = -30, head = -70, list = -90, rowH = 24, bottom = 8, scrollGap = 20,
     viewLabel = 34, viewW = 130, teamLabel = 38, teamW = 170, bossLabel = 34, bossW = 220, gap = 16,
     -- Bosses
-    bossName = 4, bossNameW = 260, count = 60, big = 270, small = 334, off = 398, value = 462, valueW = 40, bar = 506, barW = 300, barH = 12,
+    bossName = 4, bossNameW = 260, count = 60, big = 270, small = 334, off = 398, value = 462, barW = 300, barH = 10, valueY = -6, valueW = 60,
     -- Boss detail
     icon = 4, iconSize = 22, iconEdge = 2, itemName = 32, itemNameW = 240, wants = 282,
     -- Raiders
@@ -34,7 +34,7 @@ local L = {
 
 local TEXT = {
     title = "Raiders' wishlists",
-    help = "The wishlists raiders made in the Adventure Guide or with /crt wishlist. Guild officers, the loot master, the raid leader and raid assists keep a copy of each list they hear, saved between sessions. Raiders send their list to the guild when it changes and a little after they log in, so it arrives without a group.\n\nBosses counts the wants for each boss's items: Big upgrade, Small upgrade and Off spec. Value adds them up: Big 3, Small 1, Off 0.5. Click a boss to see its items.\n\nBoss detail lists who wants each item.\n\nRaiders shows each raider's wants per boss as Big/Small/Off, and how old their list is.\n\nTeam keeps everyone kept, the players in your raid now, or the Raid Groups layout in use (Use This Group).",
+    help = "The wishlists raiders made in the Adventure Guide or with /crt wishlist. Guild officers, the loot master, the raid leader and raid assists keep a copy of each list they hear, saved between sessions. Raiders send their list to the guild when it changes and a little after they log in, so it arrives without a group.\n\nBosses counts the wants for each boss's items: Big upgrade, Small upgrade and Off spec. Value adds them up: Big 3, Small 1, Off 0.5. Click a boss to see its items.\n\nBoss detail lists who wants each item.\n\nRaiders shows each raider's wants per boss as Big/Small/Off, and how old their list is.\n\nTeam: everyone you keep, the players in your raid now, or the Raid Groups layout in use (Use This Group).",
     notKeeper = "Only officers and raid assists keep raiders' lists.",
     notKeeperHelp = "Raiders' wishlists are kept by guild officers (a rank that can edit officer notes), the loot master, the raid leader and raid assists.\n\nYour own list is My wishlist, on the Tonight tab.",
     view = "View",
@@ -82,14 +82,17 @@ local function seasonKey()
     return def and def.key or nil
 end
 
--- The boss Boss detail shows: the one picked, else the season's first.
+-- The boss Boss detail shows: the one picked while it is in this season's map, else the season's first (a boss
+-- kept from an older season reads as the first).
 local function detailBoss()
     local s = state()
-    if s.boss then
-        return s.boss
+    local bosses = V.Map().bosses or {}
+    for _, b in ipairs(bosses) do
+        if b.encounterID == s.boss then
+            return s.boss
+        end
     end
-    local first = (V.Map().bosses or {})[1]
-    return first and first.encounterID or nil
+    return bosses[1] and bosses[1].encounterID or nil
 end
 
 local function classText(name, class)
@@ -138,16 +141,6 @@ local function ageText(row)
     return row.old and UI.ColorText(text, "warn") or text
 end
 LM.WishlistAgeText = ageText -- for tests
-
-local function qualityColor(q)
-    if type(q) == "number" and C_Item and C_Item.GetItemQualityColor then
-        local ok, r, g, b = pcall(C_Item.GetItemQualityColor, q)
-        if ok and type(r) == "number" then
-            return r, g, b
-        end
-    end
-    return UI.Color("border")
-end
 
 local function fontString(row, x, w, justify)
     local fs = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
@@ -207,10 +200,8 @@ local function initBossRow(row, data)
         row.big = fontString(row, L.big, L.count)
         row.small = fontString(row, L.small, L.count)
         row.off = fontString(row, L.off, L.count)
-        row.value = fontString(row, L.value, L.valueW)
-        row.bar = row:CreateTexture(nil, "ARTWORK")
-        row.bar:SetPoint("LEFT", L.bar, 0)
-        row.bar:SetHeight(L.barH)
+        -- the shared value bar (the catalog's Night bars, as Season Stats draws them), the value on its right
+        row.bar = UI.ValueBar(row, { x = L.value, y = -(L.rowH - L.barH) / 2, w = L.barW, h = L.barH, textY = L.valueY, textW = L.valueW })
         row:SetScript("OnClick", function(self)
             if self.data then
                 local s = state()
@@ -224,11 +215,7 @@ local function initBossRow(row, data)
     row.big:SetText(count(data.big, W.RANK_COLOR.big))
     row.small:SetText(count(data.small, W.RANK_COLOR.small))
     row.off:SetText(count(data.off, W.RANK_COLOR.off))
-    row.value:SetText(tostring(data.value))
-    local w = rows.maxValue and rows.maxValue > 0 and math.floor(L.barW * data.value / rows.maxValue + 0.5) or 0
-    row.bar:SetWidth(math.max(1, w))
-    row.bar:SetColorTexture(UI.Color("accent", 0.8))
-    row.bar:SetShown(w > 0)
+    UI.SetValueBar(row.bar, data.value, rows.maxValue, tostring(data.value))
 end
 
 local BOSS_COLS = {
@@ -236,7 +223,7 @@ local BOSS_COLS = {
     { key = "big", x = L.big, w = L.count, title = TEXT.colBig },
     { key = "small", x = L.small, w = L.count, title = TEXT.colSmall },
     { key = "off", x = L.off, w = L.count, title = TEXT.colOff },
-    { key = "value", x = L.value, w = L.valueW + 40, title = TEXT.colValue },
+    { key = "value", x = L.value, w = L.barW, title = TEXT.colValue },
 }
 
 local function buildBosses(f)
@@ -259,15 +246,6 @@ local function buildBosses(f)
 end
 
 -- View B: Boss detail -------------------------------------------------------------------------------------
-
-local function showItemTip(owner, it)
-    if not it then
-        return
-    end
-    UI.TooltipOwner(GameTooltip, owner, "ANCHOR_RIGHT", nil, nil, "lootmaster")
-    pcall(GameTooltip.SetHyperlink, GameTooltip, it.link or ("item:" .. it.id))
-    GameTooltip:Show()
-end
 
 -- Every name for an item, one rank a line, for a row too long to read in full.
 local function showWantsTip(owner, data)
@@ -296,17 +274,9 @@ end
 local function initDetailRow(row, data)
     if not row.icon then
         hover(row)
-        row.icon = CreateFrame("Button", nil, row, "BackdropTemplate")
-        row.icon:SetSize(L.iconSize, L.iconSize)
-        row.icon:SetPoint("LEFT", L.icon, 0)
-        row.icon:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = L.iconEdge })
-        row.icon.tex = row.icon:CreateTexture(nil, "ARTWORK")
-        row.icon.tex:SetPoint("TOPLEFT", L.iconEdge, -L.iconEdge)
-        row.icon.tex:SetPoint("BOTTOMRIGHT", -L.iconEdge, L.iconEdge)
-        row.icon:SetScript("OnEnter", function(self)
-            showItemTip(self, row.data and row.data.item)
+        row.icon = W.ItemIcon(row, L.icon, L.iconSize, L.iconEdge, function()
+            return row.data and row.data.item
         end)
-        row.icon:SetScript("OnLeave", hideTip)
         row.name = fontString(row, L.itemName, L.itemNameW)
         row.wants = fontString(row, L.wants)
         row.wants:SetPoint("RIGHT", -4, 0)
@@ -317,10 +287,9 @@ local function initDetailRow(row, data)
     end
     row.data = data
     local it = data.item
-    row.icon.tex:SetTexture(it.icon or 134400)
-    row.icon:SetBackdropBorderColor(qualityColor(it.quality))
+    W.SetItemIcon(row.icon, it)
     row.name:SetText(it.name or ("item:" .. it.id))
-    row.name:SetTextColor(qualityColor(it.quality)) -- the game's item quality colour: not a theme colour
+    row.name:SetTextColor(W.QualityColor(it.quality)) -- the game's item quality colour: not a theme colour
     row.wants:SetText(wantsText(data.wants))
 end
 
