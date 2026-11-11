@@ -5,7 +5,7 @@ const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local dataSrc, pageSrc, applySrc, inviteSrc = ...
+local dataSrc, pageSrc, applySrc, inviteSrc, sortSrc = ...
 local buttons, strings = {}, {}
 local groupHelps = {} -- every (?) the page makes
 local function mock(kind)
@@ -55,14 +55,18 @@ C_PartyInfo = { InviteUnit = function(n) invites[#invites + 1] = n end, ConvertT
 local tip = {}
 GameTooltip = { SetOwner = function() tip = {} end, SetText = function(_, s) tip[#tip + 1] = s end, AddLine = function(_, s) tip[#tip + 1] = s end, Show = function() end, Hide = function() end }
 local menus = {}
+local dropdowns = {} -- every UI.Dropdown the page makes: its label and opts; refresh() asks enabledIf
 local gridRef
 local CRT = { db = { groups = { presets = {}, nextId = 1, keepChanges = false, source = "raid", working = {} }, classCache = {}, roleCache = {}, ui = {} } }
 function CRT:Print(m) print("  [chat] " .. m) end
 local pages = {}
 CRT.UI = { SkinScrollBar = function() end, SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title) local m = mock("help") rawset(m, "helpTitle", title) groupHelps[#groupHelps + 1] = m return m end, RegisterPage = function(_, k, t, fn) pages[k] = fn end,
-  PanelButtonWidth = function(w) return w + 28 end, ContextMenu = function(owner, fill) local m = { owner = owner, fill = fill, Close = function(self) self.closed = true end } menus[#menus + 1] = m return m end }
+  PanelButtonWidth = function(w) return w + 28 end,
+  Dropdown = function(_, text, opts) local row = mock("dropdown") rawset(row, "label", text) rawset(row, "opts", opts)
+    rawset(row, "refresh", function() rawset(row, "enabled", not opts.enabledIf or opts.enabledIf() and true or false) end) dropdowns[#dropdowns + 1] = row return row end, ContextMenu = function(owner, fill) local m = { owner = owner, fill = fill, Close = function(self) self.closed = true end } menus[#menus + 1] = m return m end }
 CRT_THEME(CRT, CRT.UI)
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
+assert(load(sortSrc, "Sort.lua"))("CowfeeRaidTools", CRT)
 assert(load(applySrc, "Apply.lua"))("CowfeeRaidTools", CRT)
 assert(load(inviteSrc, "Invite.lua"))("CowfeeRaidTools", CRT)
 local G = CRT.Groups
@@ -268,6 +272,64 @@ do
   check(G:Working()[3] == "Balevolence-Area52", "the picker fills a slot on the open grid: " .. tostring(G:Working()[3]))
   G:Delete(id)
 end
+
+-- Sort by: a dropdown of the four methods, Sort grid and its (?); Left and right sides adds the assignment dropdown,
+-- and with no two-row assignment Sort grid is greyed with the reason. Sort grid rewrites the grid only.
+do
+  local function dropdown(label) for _, d in ipairs(dropdowns) do if d.label == label then return d end end end
+  local sortBy, side = dropdown("Sort by"), dropdown("Assignment")
+  check(sortBy ~= nil and side ~= nil, "the Sort by and Assignment dropdowns are there")
+  local keys = {}
+  for _, o in ipairs(sortBy.opts.options) do keys[#keys + 1] = o.label end
+  check(table.concat(keys, "|") == "Role blocks|Melee and ranged groups|Spread duplicates|Left and right sides", "the four methods in order: " .. table.concat(keys, "|"))
+  check(sortBy.opts.get() == "roles", "Role blocks is picked by default")
+  local sortButton
+  for _, b in ipairs(buttons) do if rawget(b, "text") == "Sort grid" then sortButton = b end end
+  check(sortButton ~= nil, "the Sort grid button")
+  local helpTargets = {}
+  for _, h in ipairs(groupHelps) do helpTargets[h.helpTitle] = rawget(h, "helpTarget") end
+  check(helpTargets["Sort by"] == sortButton, "Sort by's (?) is right of Sort grid")
+  check(not side.shown and sortButton.enabled == true, "Role blocks: no Assignment dropdown, Sort grid enabled")
+  sortBy.opts.set("sides")
+  check(CRT.db.groups.sortMethod == "sides" and side.shown, "Left and right sides: saved, and the Assignment dropdown shows")
+  local opts = side.opts.options()
+  check(#opts == 1 and opts[1].label == "No two-row assignments" and opts[1].disabled, "no two-row assignments: it says so")
+  check(side.enabled == false and sortButton.enabled == false, "and both are greyed")
+  tip = {}
+  sortButton.OnEnter(sortButton)
+  check(tip[2] and tip[2]:find("two rows", 1, true), "Sort grid's tooltip says why: " .. tostring(tip[2]))
+  sortBy.opts.set("roles")
+  check(not side.shown and sortButton.enabled == true, "back to Role blocks")
+  -- Sort grid: the same names, rearranged, as an unsaved edit; nobody in the raid moves (SetRaidSubgroup isn't there)
+  local w0, set0 = G:Working(), {}
+  G:ReplaceWorking({ "Solex-Area52", "", "", "", "", "Abu-KelThuzad", "", "", "", "", "Balevolence-Area52", "", "", "", "", "Newguy-Area52" })
+  G.dirty = false
+  for _, k in ipairs(G:Working()) do if k ~= "" then set0[k] = true end end
+  sortButton.OnClick(sortButton)
+  local w1, n = G:Working(), 0
+  for i = 1, 40 do if w1[i] ~= "" then n = n + 1 check(set0[w1[i]], "kept " .. w1[i]) end end
+  check(n == 4 and w1[1] ~= "" and w1[5] == "" and w1[6] == "", "the four fill group 1: " .. table.concat({ w1[1], w1[2], w1[3], w1[4] }, ","))
+  check(G.dirty == true, "an unsaved edit")
+  G:ReplaceWorking({})
+  sortButton.OnClick(sortButton)
+  check(sortButton.enabled == false, "an empty grid: greyed")
+end
+-- Post group changes to raid chat: a check box right of Arrange Groups, saved; off by default
+do
+  local post
+  for _, f in ipairs(frames) do local l = rawget(f, "label") if type(l) == "table" and rawget(l, "text") == "Post group changes to raid chat" then post = f end end
+  check(post ~= nil, "the Post group changes check box")
+  local helpTarget
+  for _, h in ipairs(groupHelps) do if h.helpTitle == "Post group changes to raid chat" then helpTarget = rawget(h, "helpTarget") end end
+  check(post and helpTarget == post.label, "its (?) is right of its label")
+  check(not CRT.db.groups.postChanges, "off to begin with")
+  rawset(post, "GetChecked", function() return true end)
+  post.OnClick(post)
+  check(CRT.db.groups.postChanges == true, "ticking it saves it")
+  rawset(post, "GetChecked", function() return false end)
+  post.OnClick(post)
+  check(CRT.db.groups.postChanges == false, "unticking it saves it")
+end
 if fails > 0 then error(fails .. " groups invite checks failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness + tail)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
@@ -276,4 +338,5 @@ lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Groups/Data
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Groups/Page.lua', 'utf8')));
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Groups/Apply.lua', 'utf8')));
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Groups/Invite.lua', 'utf8')));
-if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Groups/Sort.lua', 'utf8')));
+if (lua.lua_pcall(L, 5, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
