@@ -23,7 +23,7 @@ local TICK_EVERY = 0.2
 
 local frame, handle
 local bars = {}
-local run -- { encounterID, plan, units, pullAt, rehearsal } while a pull (or a rehearsal) with a plan runs
+local run -- { encounterID, plan, units, pullAt, rehearsal, def, bossName } while a pull (or a rehearsal) with a plan runs
 local previewOn = false
 
 local function db()
@@ -173,30 +173,17 @@ local function where()
     return 1, now - run.pullAt
 end
 
--- A rehearsal's bar: the plan's own health, on its tick.
-local function setRehearsalBar(b, i, expected)
-    b.label:SetText(i == 1 and run.bossName or ("Boss " .. i))
-    b.bar:SetValue(expected or 0)
-    b.ahead:SetAlpha(0)
-    b.behind:SetAlpha(0)
-    if not expected then
-        b.tick:Hide()
-        b.state:SetText("")
-        return
-    end
-    b.tick:ClearAllPoints()
-    b.tick:SetPoint("CENTER", b.bar, "LEFT", BAR_W * expected / 100, 0)
-    b.tick:Show()
-    b.state:SetText(string.format("should be %.0f%%", expected))
-end
-
--- Each bar's name. In combat the game hides a boss unit's name (UnitName gives a secret), so, best first:
+-- Each bar's name. In a raid encounter the game hides a boss unit's name from its first engage on (UnitName gives
+-- a secret; the boss emotes probe saw it on every engage of a Mythic pull), so, best first:
 --   1. the name, when it reads;
---   2. the hidden name, given to the label as it is (FontString:SetText takes a secret) and never compared;
---   3. the name kept from when it last read (at the pull, a boss unit engaging, or an earlier update), per
+--   2. the name kept from when it last read (at the pull, a boss unit engaging, or an earlier update), per
 --      encounter for this session only, never saved;
---   4. on a plan with one boss unit, the boss's name from the boss library;
---   5. the unit token.
+--   3. the boss file's name for that unit (field units), where the file says which unit is which;
+--   4. the hidden name, given to the label as it is (FontString:SetText takes a secret) and never compared or
+--      read back. The fallback (5) goes on the label first, so a label that refuses the secret, or takes it and
+--      keeps its old text, still shows the fallback, never a stale unit token;
+--   5. the boss's name from the boss library: alone on a plan with one boss unit, with the unit's number on a
+--      plan with several ("Boss 2", in the boss frames' order); the unit token with no boss file.
 local names = {} -- [encounterID][unit] = name
 
 -- The unit's name when it reads; else nil, and true with the secret itself when the game hid it.
@@ -234,6 +221,29 @@ local function rememberAll()
     end
 end
 
+-- A name that needs no secret: kept from this session (not in a rehearsal), else the boss file's for the unit.
+local function knownName(unit)
+    local kept = not run.rehearsal and run.encounterID and names[run.encounterID] and names[run.encounterID][unit]
+    if kept then
+        return kept
+    end
+    local own = run.def and type(run.def.units) == "table" and run.def.units[unit]
+    if type(own) == "string" and own ~= "" then
+        return own
+    end
+end
+
+-- Step 5: the boss's name, with the unit's number when the plan has several units; else the unit token.
+local function fallbackName(unit)
+    if not run.bossName then
+        return unit
+    elseif #run.units == 1 then
+        return run.bossName
+    end
+    local n = unit:match("^boss(%d+)$")
+    return n and (run.bossName .. " " .. n) or run.bossName
+end
+
 local function setLabel(b, unit)
     local name, isSecret, hidden = readName(unit)
     if name then
@@ -241,17 +251,33 @@ local function setLabel(b, unit)
         b.label:SetText(name)
         return
     end
-    if isSecret and pcall(b.label.SetText, b.label, hidden) then
+    name = knownName(unit)
+    if name then
+        b.label:SetText(name)
         return
     end
-    local kept = run.encounterID and names[run.encounterID] and names[run.encounterID][unit]
-    if kept then
-        b.label:SetText(kept)
-    elseif #run.units == 1 and run.bossName then
-        b.label:SetText(run.bossName)
-    else
-        b.label:SetText(unit)
+    b.label:SetText(fallbackName(unit))
+    if isSecret then
+        pcall(b.label.SetText, b.label, hidden)
     end
+end
+
+-- A rehearsal's bar: the plan's own health, on its tick. No boss is there, so the name is the boss file's for the
+-- unit or the fallback.
+local function setRehearsalBar(b, unit, expected)
+    b.label:SetText(knownName(unit) or fallbackName(unit))
+    b.bar:SetValue(expected or 0)
+    b.ahead:SetAlpha(0)
+    b.behind:SetAlpha(0)
+    if not expected then
+        b.tick:Hide()
+        b.state:SetText("")
+        return
+    end
+    b.tick:ClearAllPoints()
+    b.tick:SetPoint("CENTER", b.bar, "LEFT", BAR_W * expected / 100, 0)
+    b.tick:Show()
+    b.state:SetText(string.format("should be %.0f%%", expected))
 end
 
 local function setBar(b, unit, expected)
@@ -305,7 +331,7 @@ local function onUpdate(_, dt)
     local ph, seconds = where()
     for i, unit in ipairs(run.units) do
         if run.rehearsal then
-            setRehearsalBar(bar(i), i, Pace.Expected(run.plan, unit, ph, seconds))
+            setRehearsalBar(bar(i), unit, Pace.Expected(run.plan, unit, ph, seconds))
             bar(i):SetAlpha(1)
         elseif UnitExists(unit) then
             setBar(bar(i), unit, Pace.Expected(run.plan, unit, ph, seconds))
@@ -330,8 +356,8 @@ function Pace:Start(encounterID, rehearsal)
         return
     end
     run = { encounterID = encounterID, plan = plan, units = units, pullAt = GetTime(), rehearsal = rehearsal and true or nil }
-    local def = encounterID and CRT.Bosses and CRT.Bosses:Get(encounterID)
-    run.bossName = def and def.name or (rehearsal and "Boss" or nil)
+    run.def = encounterID and CRT.Bosses and CRT.Bosses:Get(encounterID) or nil
+    run.bossName = run.def and run.def.name or (rehearsal and "Boss" or nil)
     rememberAll()
     elapsed = TICK_EVERY -- the first update draws at once
     for _, b in ipairs(bars) do
