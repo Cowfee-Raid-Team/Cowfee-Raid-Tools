@@ -1,36 +1,22 @@
 local ADDON, CRT = ...
 
 -- Assignment highlights: an optional module (off until the player ticks Use assignment highlights on its page,
--- Highlights/Page.lua). In the raid note windows (Notes/Window.lua: the timers window and the assignments window)
--- a line that names you or your raid group gets a band behind it in the theme's accent, and the name or group
--- word in the accent colour. When a new note changes a line with you in it, that line glows for a few seconds
--- with a small "changed" tag.
+-- Highlights/Page.lua, or on General Settings). In the raid note windows (Notes/Window.lua: the timers window and the
+-- assignments window) a line that names you or your raid group gets a band behind it in the theme's accent, and the
+-- name or group word in the accent colour. When a new version of the same note changes what you do, the line glows
+-- for a few seconds with a tag saying what changed: Added, Removed or Moved (Highlights/Changes.lua).
+-- This file reads who you are and which words name you:
 --   H:Spans(line)          the word starts in a line of free text to paint, or nil when the line is not about you
 --   H:TagSpans(tags)       the same for a timer's tags (by index)
 --   H.Paint(word)          a word in the accent colour
---   H.PlaceRow(w, row, fits), H.HideRow(row)   a window row's band and glow (Window.lua's layoutRows, drawLines)
---   H.AfterDraw(w, lines, version), H.Forget(w) the glow on change, after each rebuild of a window's lines
+--   H.TimerKey, H.TimerId, H.LineId, H.IdCounter, H.NoteKey   what a line says, and which line it is across versions
 -- Only plain string work on the note's text: your name is read once, out of a fight, and your group from the raid
 -- roster; a value the game hides is never compared, and then nothing matches. Settings: CRTDB.highlights (Core.lua).
 
 local H = {}
 CRT.NoteHighlights = H
 
-local TEXT = {
-    changed = "changed",
-}
-H.TEXT = TEXT
-
--- The look: the band's alpha (as the Version list's selected row), the glow's, and how the glow pulses.
-local BAND_ALPHA = 0.18
-local GLOW_ALPHA = 0.45
-local GLOW_PULSES = 3          -- pulses in one glow
-local PULSE_SECONDS = 0.5      -- each half of a pulse: GLOW_PULSES * 2 * PULSE_SECONDS = 3 s in all
-local TAG_FADE = 1             -- the "changed" tag fades out over the glow's last second
-local BAND_PAD = 2             -- how far the band reaches past the line's text
 local GROUP_SECONDS = 5        -- how long your raid group is kept, past a roster change
-H.BAND_ALPHA, H.GLOW_ALPHA = BAND_ALPHA, GLOW_ALPHA
-H.GLOW_SECONDS = GLOW_PULSES * 2 * PULSE_SECONDS
 
 local MAX_GROUP = 8
 local WORD = "()([%w\128-\255]+)()"
@@ -237,145 +223,39 @@ function H:TagSpans(tags)
     return spans
 end
 
--- A timer line's key for the glow: what it says and when, never how it is drawn.
+-- A timer's content for the glow: what it says, when and for whom, never how it is drawn.
 function H.TimerKey(item)
     return table.concat({ tostring(item.ph or 1), tostring(item.time or 0), tostring(item.spellId or item.text or ""),
         table.concat(item.tags or {}, " ") }, ":")
 end
 
+-- A line's identity across two versions of a note, so a change can say what happened to you: a timer by its phase,
+-- time and spell or text (its names left out); an assignment line by its label, the words before its colon, in lower
+-- case ("Soak 1"); any other line by its text. Two lines of the same identity are told apart by IdCounter.
+function H.TimerId(item)
+    return table.concat({ tostring(item.ph or 1), tostring(item.time or 0), tostring(item.spellId or item.text or "") }, ":")
+end
+
+function H.LineId(line)
+    local label = line:match("^%s*([^:]-)%s*:")
+    if label and label ~= "" then
+        return "label:" .. label:lower()
+    end
+    return "text:" .. line
+end
+
+-- Numbers repeats of an identity in note order: "label:soak 1#1", "label:soak 1#2".
+function H.IdCounter()
+    local seen = {}
+    return function(base)
+        local n = (seen[base] or 0) + 1
+        seen[base] = n
+        return base .. "#" .. n
+    end
+end
+
 function H.Paint(word)
     return CRT.UI.ColorText(word, "accent")
-end
-
--- Window rows -------------------------------------------------------------------------------------------------
--- A marked row gets a band (accent at BAND_ALPHA) behind its text, from its first cell to the window's width; a
--- glowing row also gets a brighter layer that pulses (an AnimationGroup, no per-frame code) and the "changed" tag
--- at the line's end, in the theme's warn colour, fading with the last pulse. All made the first time a row needs
--- them and kept with the row. Both layers sit on ARTWORK above the window's "note updated" stamp, under the text.
--- While glows are on, a marked row's text is narrower by H.Room (Window.lua's layoutRows), so the tag sits in that
--- room at the line's end and never over the text; the band still reaches the window's width.
-
--- The room a marked row keeps at its end for the "changed" tag: the tag's width and a gap; 0 while glows are off.
--- Measured once per window, on a font string of the tag's font.
-local TAG_GAP = 6
-function H.Room(w)
-    if not H:GlowOn() then
-        return 0
-    end
-    if not w.hlRoom then
-        local measure = w.frame:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-        measure:SetText(TEXT.changed)
-        measure:Hide()
-        w.hlRoom = math.ceil(measure:GetStringWidth() or 0) + TAG_GAP
-    end
-    return w.hlRoom
-end
-
-local function anchor(region, row, room)
-    local first = (row.line and row.line.t ~= nil) and row.time or row.text
-    region:ClearAllPoints()
-    region:SetPoint("TOPLEFT", first, "TOPLEFT", -BAND_PAD, BAND_PAD)
-    region:SetPoint("BOTTOMRIGHT", row.text, "BOTTOMRIGHT", BAND_PAD + (room or 0), -BAND_PAD)
-end
-
-local function placeTag(row)
-    row.tag:ClearAllPoints()
-    row.tag:SetPoint("TOPLEFT", row.text, "TOPRIGHT", TAG_GAP, 0)
-end
-
-local function stopGlow(row)
-    if row.glowAnim then
-        row.glowAnim:Stop()
-        row.tagAnim:Stop()
-        row.glow:Hide()
-        row.tag:Hide()
-    end
-end
-
-local function makeGlow(w, row)
-    local frame = w.frame
-    local glow = frame:CreateTexture(nil, "ARTWORK", nil, 2)
-    CRT.UI.Tint(glow, "SetColorTexture", "accent", GLOW_ALPHA)
-    glow:SetAlpha(0)
-    glow:Hide()
-    local anim = glow:CreateAnimationGroup()
-    for p = 1, GLOW_PULSES do
-        local up = anim:CreateAnimation("Alpha")
-        up:SetFromAlpha(0)
-        up:SetToAlpha(1)
-        up:SetDuration(PULSE_SECONDS)
-        up:SetOrder(p * 2 - 1)
-        local down = anim:CreateAnimation("Alpha")
-        down:SetFromAlpha(1)
-        down:SetToAlpha(0)
-        down:SetDuration(PULSE_SECONDS)
-        down:SetOrder(p * 2)
-    end
-    anim:SetScript("OnFinished", function()
-        glow:Hide()
-    end)
-
-    local tag = frame:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    tag:SetText(TEXT.changed)
-    CRT.UI.Tint(tag, "SetTextColor", "warn")
-    tag:Hide()
-    local tagAnim = tag:CreateAnimationGroup()
-    local fade = tagAnim:CreateAnimation("Alpha")
-    fade:SetFromAlpha(1)
-    fade:SetToAlpha(0)
-    fade:SetStartDelay(H.GLOW_SECONDS - TAG_FADE)
-    fade:SetDuration(TAG_FADE)
-    tagAnim:SetScript("OnFinished", function()
-        tag:Hide()
-    end)
-    row.glow, row.glowAnim, row.tag, row.tagAnim = glow, anim, tag, tagAnim
-end
-
--- After Window.lua placed a row: its band shown while its line is marked and the row fits; a glow stops with it.
-function H.PlaceRow(w, row, fits)
-    local on = fits and row.line and row.line.hl and true or false
-    if on and not row.band then
-        row.band = w.frame:CreateTexture(nil, "ARTWORK", nil, 1)
-        CRT.UI.Tint(row.band, "SetColorTexture", "accent", BAND_ALPHA)
-    end
-    if not row.band then
-        return
-    end
-    row.band:SetShown(on)
-    if on then
-        local room = H.Room(w)
-        anchor(row.band, row, room)
-        if row.glow then
-            anchor(row.glow, row, room)
-            placeTag(row)
-        end
-    else
-        stopGlow(row)
-    end
-end
-
--- A row put away for reuse (its line is gone).
-function H.HideRow(row)
-    if row.band then
-        row.band:Hide()
-    end
-    stopGlow(row)
-end
-
--- Starts a row's glow and its tag (again from the start when it was already glowing).
-function H.Glow(w, row)
-    if not row.glow then
-        makeGlow(w, row)
-    end
-    anchor(row.glow, row, H.Room(w))
-    placeTag(row)
-    row.glowAnim:Stop()
-    row.tagAnim:Stop()
-    row.glow:Show()
-    row.tag:SetAlpha(1)
-    row.tag:Show()
-    row.glowAnim:Play()
-    row.tagAnim:Play()
 end
 
 -- Which note a window shows, for the glow: the boss and difficulty, so a note shared again for the same boss counts
@@ -390,58 +270,10 @@ function H.NoteKey(record)
     return record
 end
 
--- A window's whole note for the glow: { note = NoteKey, keys = { [key] = true } } with the key of every line of the
--- note, shown or not (a later phase, a passed line, a line Show only me hides). Nil while the module is off.
-function H.Full(noteKey, keys)
-    if not H:Active() or noteKey == nil then
-        return nil
-    end
-    local set = {}
-    for _, key in pairs(keys) do
-        set[key] = true
-    end
-    return { note = noteKey, keys = set }
-end
-
--- The glow on change. After a window rebuilt its lines (version: Window.lua's content count), each shown marked line
--- whose key was not in the whole note the window had before glows, and only when it is the same note (full.note):
--- the same note with new content, never a switch to another note (the next boss, a rehearsal). Lines coming into
--- view (a phase start, Show only me off, a run's end) were in the whole note already, so they never glow. With no
--- note kept (the window just opened, after /reload, or it showed nothing) the draw only keeps it. A preview's first
--- draw (w.hlForce) glows every marked line, to show what a glow looks like.
-function H.AfterDraw(w, lines, version, full)
-    if not H:Active() or not full then
-        w.hlSeen, w.hlNote, w.hlVersion, w.hlForce = nil, nil, nil, nil
-        return
-    end
-    if w.hlVersion == version and not w.hlForce then
-        return
-    end
-    w.hlVersion = version
-    local prev, prevNote, force = w.hlSeen, w.hlNote, w.hlForce
-    w.hlForce = nil
-    if H:GlowOn() and (force or (prev and prevNote == full.note)) then
-        for _, line in ipairs(lines) do
-            if line.hl and line.hlKey and (force or not prev[line.hlKey]) then
-                local row = w.bound and w.bound[line]
-                if row and row.text:IsShown() then
-                    H.Glow(w, row)
-                end
-            end
-        end
-    end
-    w.hlSeen = next(full.keys) and full.keys or nil
-    w.hlNote = w.hlSeen and full.note or nil
-end
-
--- The window hid, or a preview ended: its next draw is a first display again.
-function H.Forget(w)
-    w.hlSeen, w.hlNote, w.hlVersion, w.hlForce = nil, nil, nil, nil
-end
-
 -- The preview ---------------------------------------------------------------------------------------------------
 -- "Preview highlights" (Page.lua) shows the assignments window with a sample note that names you and your group
--- (group 1 out of a raid), its lines marked, and the line with your name glowing once.
+-- (group 1 out of a raid), its lines marked, and one of each change: a line you were added to, a line you moved to,
+-- and a ghost of a line you were taken off (Changes.lua's preview).
 
 local SAMPLE = {
     "Sample assignments",
@@ -452,23 +284,36 @@ local SAMPLE = {
     "Kicks G%d: Rixxy Cheoeqar",
     "Group %d: stack left",
 }
+-- Which sample line shows which change, and the line the ghost stood under.
+local SAMPLE_KINDS = { [2] = "added", [6] = "moved" }
+local SAMPLE_GHOST = { text = "Soak 3: %s Rixxy", after = 3 }
 
+local function fill(line, name, group)
+    if line:find("%s", 1, true) then
+        return string.format(line, name)
+    elseif line:find("%d", 1, true) then
+        return string.format(line, group)
+    end
+    return line
+end
+
+-- The sample's lines; also H.sample = { kinds = { [line id] = change }, ghost = { text, after = line id } }.
 function H.SampleLines()
     local name = UnitName and UnitName("player")
     if not (readable(name) and type(name) == "string" and name ~= "") then
         name = "You"
     end
     local group = H:SampleGroup()
-    local out = {}
+    local out, ids, nextId = {}, {}, H.IdCounter()
     for i, line in ipairs(SAMPLE) do
-        if line:find("%s", 1, true) then
-            out[i] = string.format(line, name)
-        elseif line:find("%d", 1, true) then
-            out[i] = string.format(line, group)
-        else
-            out[i] = line
-        end
+        out[i] = fill(line, name, group)
+        ids[i] = out[i] ~= "" and nextId(H.LineId(out[i])) or nil
     end
+    local kinds = {}
+    for i, kind in pairs(SAMPLE_KINDS) do
+        kinds[ids[i]] = kind
+    end
+    H.sample = { kinds = kinds, ghost = { text = fill(SAMPLE_GHOST.text, name, group), after = ids[SAMPLE_GHOST.after] } }
     return out
 end
 

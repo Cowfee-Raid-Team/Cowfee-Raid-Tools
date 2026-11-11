@@ -232,15 +232,17 @@ local function textLine(line, noHeading, spans)
 end
 
 -- The text of lines of free text, one line each. With hl (the assignments window), also per line whether it is
--- marked for assignment highlights and its key for the glow on change (Highlights/Data.lua), while that module is
--- on. sampleGroup: the module's preview sample, matched on its own group.
+-- marked for assignment highlights (Highlights/Data.lua), while that module is
+-- on: marks, keys (the line as written) and ids (the line's identity across versions, Highlights/Data.lua's LineId).
+-- sampleGroup: the module's preview sample, matched on its own group.
 local function textRows(lines, hl, sampleGroup)
-    local out, marks, keys = {}, {}, {}
+    local out, marks, keys, ids = {}, {}, {}, {}
     local Kicks = CRT.InterruptNote
     local H = hl and CRT.NoteHighlights
     if not (H and H:Active()) then
-        H, marks, keys = nil, nil, nil
+        H, marks, keys, ids = nil, nil, nil, nil
     end
+    local nextId = H and H.IdCounter()
     for i, line in ipairs(lines) do
         -- a kick order line: its group's raid marker icon in front (Interrupts/NoteBlock.lua's Expand)
         local marker
@@ -250,11 +252,11 @@ local function textRows(lines, hl, sampleGroup)
         local icon = marker and Kicks.Icon(marker, 14) or ""
         local spans = H and H:Spans(line, sampleGroup) or nil
         out[#out + 1] = (icon ~= "" and (icon .. " ") or "") .. textLine(line, nil, spans)
-        if H then
-            marks[i], keys[i] = spans ~= nil, line ~= "" and line or nil
+        if H and line ~= "" then
+            marks[i], keys[i], ids[i] = spans ~= nil, line, nextId(H.LineId(line))
         end
     end
-    return table.concat(out, "\n"), marks, keys
+    return table.concat(out, "\n"), marks, keys, ids
 end
 
 local function textBlock(lines)
@@ -355,13 +357,13 @@ local function timersRebuild(record, note, onlyMe, as, running)
     k.note, k.record, k.version, k.alerts, k.classes = note, record, contentVersion, A and A.version, classVersion()
     k.onlyMe, k.as, k.running, k.builtAt, k.missing = onlyMe, as, running, GetTime(), false
     local entries = k.entries
-    -- assignment highlights (Highlights/Data.lua), while on: the tags that are your name or group, each line's key,
-    -- and the whole note's keys for the glow (every timer, shown or not)
+    -- assignment highlights (Highlights/Data.lua), while on: the tags that are your name or group, each line's
+    -- identity, and the whole note for its changes (every timer, shown or not: Highlights/Changes.lua)
     local H = not as and CRT.NoteHighlights or nil
     if H and not H:Active() then
         H = nil
     end
-    local keys = H and {} or nil
+    local whole, nextId = H and {} or nil, H and H.IdCounter()
     for i, item in ipairs(note.timers) do
         local e = entries[i] or {}
         entries[i] = e
@@ -372,15 +374,15 @@ local function timersRebuild(record, note, onlyMe, as, running)
         -- A later phase started first: this line never comes.
         e.cut = running and Engine.IsCut and Engine:IsCut(item) and true or false
         e.spans = H and H:TagSpans(item.tags) or nil
-        e.hl, e.hlKey = e.spans ~= nil, H and H.TimerKey(item) or nil
-        if keys then
-            keys[i] = e.hlKey
-        end
+        e.hl, e.hlId = e.spans ~= nil, H and nextId(H.TimerId(item)) or nil
         e.x, e.missing = restText(item, e.spans)
+        if whole then
+            whole[i] = { id = e.hlId, marked = e.hl, text = fmtTime(item.time or 0) .. e.x, raw = H.TimerKey(item) }
+        end
         k.missing = k.missing or e.missing
         e.sec, e.t = nil, nil
     end
-    k.hlFull = H and H.Full(H.NoteKey(record), keys) or nil
+    k.hlFull = H and H.Full(H.NoteKey(record), whole) or nil
     for i = #note.timers + 1, #entries do
         entries[i] = nil
     end
@@ -527,8 +529,8 @@ local function assignmentsText()
     -- Assignment highlights' preview (Highlights/Data.lua): its sample note, over the note in use
     local H = CRT.NoteHighlights
     if previewing.highlights and H then
-        local text, marks, keys = textRows(H.SampleLines(), true, H:SampleGroup())
-        return text, "Assignments (sample)", true, marks, keys, "sample"
+        local text, marks, keys, ids = textRows(H.SampleLines(), true, H:SampleGroup())
+        return text, "Assignments (sample)", true, marks, keys, ids, "sample"
     end
     local _, record, note = Notes:Active()
     local lines = note and note.lines
@@ -540,8 +542,8 @@ local function assignmentsText()
         end
     end
     if lines and #lines > 0 then
-        local text, marks, keys = textRows(lines, true)
-        return text, "Assignments: " .. record.name, true, marks, keys, keys and CRT.NoteHighlights.NoteKey(record)
+        local text, marks, keys, ids = textRows(lines, true)
+        return text, "Assignments: " .. record.name, true, marks, keys, ids, ids and CRT.NoteHighlights.NoteKey(record)
     end
     if previewing.assignments then
         return textBlock(SAMPLE_ASSIGNMENTS), "Assignments (sample)", true
@@ -551,13 +553,17 @@ end
 
 local assignmentsCache = {}
 local function assignmentsBuild()
-    local text, heading, hasContent, marks, keys, noteKey = assignmentsText()
+    local text, heading, hasContent, marks, keys, ids, noteKey = assignmentsText()
     local lines = textLines(assignmentsCache, text)
     -- a marked line's text always holds a painted word, so the same text is always marked the same
+    local whole = ids and {} or nil
     for i, line in ipairs(lines) do
-        line.hl, line.hlKey = marks and marks[i] or nil, keys and keys[i] or nil
+        line.hl, line.hlId = marks and marks[i] or nil, ids and ids[i] or nil
+        if whole and line.hlId then
+            whole[#whole + 1] = { id = line.hlId, marked = line.hl, text = keys[i], raw = keys[i] }
+        end
     end
-    return lines, heading, hasContent, keys and CRT.NoteHighlights.Full(noteKey, keys) or nil
+    return lines, heading, hasContent, whole and CRT.NoteHighlights.Full(noteKey, whole) or nil
 end
 
 -- Your reminders in the personal window ------------------------------------------------------
@@ -994,7 +1000,7 @@ local function layoutRows(w)
     local height = (frame:GetHeight() or 0) - 36
     local lineH = w.lineH or 14
     local used, fits, prev = 0, true, nil
-    local H = CRT.NoteHighlights -- a marked line's band (Highlights/Data.lua)
+    local H = CRT.NoteHighlights -- a marked line's band (Highlights/Changes.lua)
     for _, row in ipairs(order) do
         local timed = row.line.t ~= nil
         local to, at, x, y = frame, "TOPLEFT", 8, -28 - row.gap * lineH
@@ -1016,7 +1022,11 @@ local function layoutRows(w)
             text:SetPoint("TOPLEFT", to, at, x, y)
             text:SetWidth(math.max(1, width - (row.hlRoom or 0)))
         end
-        used = used + row.gap * lineH + math.max(lineH, text:GetStringHeight() or 0)
+        -- the row is as tall as its text at the window's font and size (wrapped lines too), set on the font string
+        -- itself so whatever is anchored to it (the next row, a highlight band) follows: never a fixed height
+        local rowH = math.max(lineH, math.ceil(text:GetStringHeight() or 0))
+        text:SetHeight(rowH)
+        used = used + row.gap * lineH + rowH
         fits = fits and used <= height + 0.5
         text:SetShown(fits)
         time:SetShown(fits and timed)
@@ -1038,6 +1048,13 @@ local function drawLines(w, lines)
     end
     local relayout = w.layoutDirty
     local H = CRT.NoteHighlights
+    -- a new font or size: every cell gets its text again, so it is measured at the new font
+    if w.fontChanged then
+        w.fontChanged = false
+        for _, row in ipairs(order) do
+            row.x, row.t = nil, nil
+        end
+    end
     -- rows whose line is gone, kept for reuse (pushed last first, so they come back in order)
     for i = #order, 1, -1 do
         local row = order[i]
@@ -1078,7 +1095,7 @@ local function drawLines(w, lines)
             gap = 0
             -- a marked line (assignment highlights, Highlights/Data.lua): its band, and the room its text leaves for
             -- the "changed" tag
-            local hlRoom = line.hl and H and H.Room(w) or nil
+            local hlRoom = (line.hl or line.hlTag) and H and H.Room(w) or nil
             if row.hlRoom ~= hlRoom then
                 row.hlRoom = hlRoom
                 relayout = true
@@ -1233,6 +1250,11 @@ local function createWindow(key, defaultPosition, build)
     function w:ApplyStyle()
         local settings = s()
         font:SetFont(fontPath(settings.font), settings.fontSize or 14, CRT.db.ui.outline or "")
+        local fontKey = tostring(settings.font) .. ":" .. tostring(settings.fontSize or 14) .. ":" .. tostring(CRT.db.ui.outline or "")
+        if self.fontKey ~= fontKey then
+            -- a later change (not the first style) sets every row's text again (drawLines)
+            self.fontKey, self.fontChanged = fontKey, self.fontKey ~= nil
+        end
         frame:SetSize(settings.width or 360, settings.height or 240)
         frame:SetAlpha((settings.alpha or 100) / 100)
         local bg = (settings.bgAlpha or 50) / 100
@@ -1303,11 +1325,15 @@ local function createWindow(key, defaultPosition, build)
             self.heading = heading
             title:SetText(heading)
         end
+        -- what a new version of the note changed for you: the changed lines, and ghosts of lines gone
+        -- (Highlights/Changes.lua); they glow once drawn
+        if H then
+            lines = H.BeforeDraw(self, lines, contentVersion, hasContent and hlFull or nil)
+        end
         self.lines = lines
         drawLines(self, lines)
-        -- a line with you in it that a new note changed glows (Highlights/Data.lua)
         if H then
-            H.AfterDraw(self, lines, contentVersion, hasContent and hlFull or nil)
+            H.AfterDraw(self)
         end
     end
 
