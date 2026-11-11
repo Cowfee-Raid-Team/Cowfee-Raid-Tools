@@ -19,10 +19,11 @@ local ADDON, CRT = ...
 --     selected instance and boss only (EJ_SelectInstance, EJ_SelectEncounter, EJ_SetLootFilter, EJ_GetNumLoot,
 --     C_EncounterJournal.GetLootInfoByIndex, C_EncounterJournal.GetSlotFilter / ResetSlotFilter / SetSlotFilter:
 --     warcraft.wiki.gg and the Journal's own code). So each read selects the boss, reads its item IDs at once, and
---     puts the Journal's instance, boss, class filter and slot filter back in the same frame; the Journal redraws
---     only on its own events, which come later and see its own choice again. The difficulty is never changed (an
---     item's ID is the same on every difficulty). The current Journal tier's raids are searched for the season's
---     bosses (as Dev/BossOrder.lua lists them), once per login. What is read is kept for the login; names and icons
+--     puts back in the same frame the Journal's tier, difficulty, class and slot filters and, once its window has
+--     loaded, the instance and boss it shows (EncounterJournal.instanceID and .encounterID); the Journal redraws only
+--     on its own events, which come later and see its own choice again. The difficulty is never changed on purpose
+--     (an item's ID is the same on every difficulty). The newest Journal tier's raids (EJ_GetNumTiers, EJ_SelectTier)
+--     are searched for the season's bosses; a boss not found is searched again after SEARCH_AGAIN seconds. What is read is kept for the login; names and icons
 --     that weren't loaded yet arrive through the item's own load callback (Item:ContinueOnItemLoad).
 
 local LM = CRT.LootMaster
@@ -114,8 +115,8 @@ local hooked = setmetatable({}, { __mode = "k" }) -- loot rows already hooked
 
 -- A loot row's right-click: the item it shows now, the menu a frame later (after the game's own click).
 local function onMouseUp(row, button)
-    if button ~= "RightButton" then
-        return
+    if button ~= "RightButton" or (IsModifiedClick and IsModifiedClick()) then
+        return -- a modified click is the game's (links, previews)
     end
     local id = W.ItemID(row.itemID) or W.ItemID(row.link)
     if not id then
@@ -162,7 +163,9 @@ W.InstallJournal = install
 
 -- The Journal's loot for a boss ---------------------------------------------------------------------------
 
-local where -- [dungeonEncounterID] = { instance = Journal instance, journal = Journal encounter }, once per login
+local where = {} -- [dungeonEncounterID] = { instance = Journal instance, journal = Journal encounter }, as found
+local searchedAt = {} -- [dungeonEncounterID] = GetTime() of a search that didn't find it (searched again after SEARCH_AGAIN)
+local SEARCH_AGAIN = 30
 local lootCache = {} -- ["encounterID:classOnly"] = the items read
 local tries = {} -- reads that found nothing, by the same key
 local LOOT_TRIES = 2 -- reads that may find nothing (the Journal's data still coming) before a boss counts as having none
@@ -175,10 +178,63 @@ local function call(fn, ...)
     return pcall(fn, ...)
 end
 
--- The season's bosses in the Journal's current tier, by dungeon encounter ID (EJ_GetEncounterInfo's seventh return).
+-- The Journal's own choices, to put back after a read: its tier and difficulty (EJ_GetCurrentTier, EJ_GetDifficulty),
+-- its class and slot filters, and, once the Journal window has loaded, the instance and boss it shows
+-- (EncounterJournal.instanceID and .encounterID, which EncounterJournal_DisplayInstance and _DisplayEncounter set;
+-- encounterID is nil on an instance's overview). Before it has loaded nothing shows, so there is no instance to keep.
+local function journalState()
+    local CEJ = C_EncounterJournal or {}
+    local st = {}
+    local ok, v = call(EJ_GetCurrentTier)
+    st.tier = ok and tonumber(v) or nil
+    ok, v = call(EJ_GetDifficulty)
+    st.difficulty = ok and tonumber(v) or nil
+    local okF, class, spec = call(EJ_GetLootFilter)
+    if okF then
+        st.class, st.spec = class or 0, spec or 0
+    end
+    local okS, slot = call(CEJ.GetSlotFilter)
+    if okS then
+        st.slot = slot
+    end
+    local EJ = EncounterJournal
+    if type(EJ) == "table" then
+        st.instance, st.encounter = EJ.instanceID, EJ.encounterID
+    end
+    return st
+end
+
+local function restoreJournal(st)
+    local CEJ = C_EncounterJournal or {}
+    if st.class then
+        call(EJ_SetLootFilter, st.class, st.spec)
+    end
+    if st.slot ~= nil then
+        call(CEJ.SetSlotFilter, st.slot)
+    end
+    local ok, tier = call(EJ_GetCurrentTier)
+    if st.tier and not (ok and tier == st.tier) then
+        call(EJ_SelectTier, st.tier)
+    end
+    if st.instance then
+        call(EJ_SelectInstance, st.instance)
+    end
+    if st.encounter then
+        call(EJ_SelectEncounter, st.encounter)
+    end
+    local okD, difficulty = call(EJ_GetDifficulty)
+    if st.difficulty and not (okD and difficulty == st.difficulty) then
+        call(EJ_SetDifficulty, st.difficulty)
+    end
+end
+
+-- The raids of the Journal's newest tier (EJ_GetNumTiers, selected for the search), by dungeon encounter ID
+-- (EJ_GetEncounterInfo's seventh return), added to where. The caller puts the Journal's choices back.
 local function findBosses()
-    local out = {}
-    local okPrev, previous = call(EJ_GetCurrentInstance)
+    local okN, n = call(EJ_GetNumTiers)
+    if okN and tonumber(n) and tonumber(n) > 0 then
+        call(EJ_SelectTier, tonumber(n))
+    end
     for i = 1, 30 do
         local ok, instanceID = call(EJ_GetInstanceByIndex, i, true)
         if not (ok and instanceID) then
@@ -192,14 +248,10 @@ local function findBosses()
             end
             local ok3, _, _, _, _, _, _, dungeonEncounterID = call(EJ_GetEncounterInfo, journalID)
             if ok3 and tonumber(dungeonEncounterID) then
-                out[tonumber(dungeonEncounterID)] = { instance = instanceID, journal = journalID }
+                where[tonumber(dungeonEncounterID)] = { instance = instanceID, journal = journalID }
             end
         end
     end
-    if okPrev and previous and previous ~= 0 then
-        call(EJ_SelectInstance, previous)
-    end
-    return out
 end
 
 -- An item's slot as the game words it (the INVTYPE_ global for its equip slot), or "".
@@ -240,14 +292,10 @@ local function whenLoaded(id)
     end
 end
 
--- Reads one boss's loot from the Journal, putting its own choices back. Returns { { id, name, link, icon, quality,
--- slot } } in the Journal's order (each item once), or nil when the Journal gives none yet.
+-- Reads one boss's loot: { { id, name, link, icon, quality, slot } } in the Journal's order (each item once), or nil
+-- when the Journal gives none yet. The caller puts the Journal's choices back.
 local function readLoot(at, classOnly)
-    local _, prevInstance = call(EJ_GetCurrentInstance)
-    local prevEncounter = EncounterJournal and EncounterJournal.encounterID
-    local okF, prevClass, prevSpec = call(EJ_GetLootFilter)
     local CEJ = C_EncounterJournal or {}
-    local okS, prevSlot = call(CEJ.GetSlotFilter)
     call(EJ_SelectInstance, at.instance)
     call(EJ_SelectEncounter, at.journal)
     local classID = 0
@@ -268,24 +316,39 @@ local function readLoot(at, classOnly)
                 quality = info.itemQuality, slot = type(info.slot) == "string" and info.slot or nil }
         end
     end
-    -- the Journal's own choices back, in the same frame
-    if okF then
-        call(EJ_SetLootFilter, prevClass or 0, prevSpec or 0)
-    end
-    if okS and prevSlot ~= nil then
-        call(CEJ.SetSlotFilter, prevSlot)
-    end
-    if prevInstance and prevInstance ~= 0 then
-        call(EJ_SelectInstance, prevInstance)
-    end
-    if prevEncounter then
-        call(EJ_SelectEncounter, prevEncounter)
-    end
     return #items > 0 and items or nil
 end
 
+-- Finds the boss if needed and reads its loot, with the Journal's choices put back in the same frame. Returns the
+-- items (nil: none yet), or nil, "missing".
+local function lookUp(encounterID, classOnly)
+    local st = journalState()
+    local ok, result, why = pcall(function()
+        if not where[encounterID] then
+            local last = searchedAt[encounterID]
+            if last and GetTime() - last < SEARCH_AGAIN then
+                return nil, "missing"
+            end
+            findBosses()
+            if not where[encounterID] then
+                searchedAt[encounterID] = GetTime() -- searched again later, not kept missing for the login
+                return nil, "missing"
+            end
+        end
+        return readLoot(where[encounterID], classOnly)
+    end)
+    restoreJournal(st)
+    if not ok then
+        if geterrorhandler then
+            geterrorhandler()(result)
+        end
+        return nil, "missing"
+    end
+    return result, why
+end
+
 -- One boss's loot (a dungeon encounter ID) for the window: items, or nil and why ("journal": no Journal here,
--- "missing": the boss isn't in the Journal's current tier, "loading": the Journal hasn't got its loot yet).
+-- "missing": the boss isn't in the Journal's newest tier, "loading": the Journal hasn't got its loot yet).
 -- Kept per boss and class filter for the login; an item still loading fires LM:Fire("wishlist", "loot") later.
 function W.BossLoot(encounterID, classOnly)
     if not (EJ_SelectInstance and EJ_SelectEncounter and EJ_GetNumLoot and C_EncounterJournal
@@ -295,12 +358,10 @@ function W.BossLoot(encounterID, classOnly)
     local key = tostring(encounterID) .. ":" .. (classOnly and 1 or 0)
     local kept = lootCache[key]
     if not kept then
-        where = where or findBosses()
-        local at = where[encounterID]
-        if not at then
+        local items, why = lookUp(encounterID, classOnly)
+        if why == "missing" then
             return nil, "missing"
         end
-        local items = readLoot(at, classOnly)
         if not items then
             tries[key] = (tries[key] or 0) + 1
             if tries[key] <= LOOT_TRIES then
@@ -329,7 +390,7 @@ end
 
 -- Forgets what was read (for tests, and a new tier).
 function W.ForgetLoot()
-    where, lootCache, tries, loadingIDs = nil, {}, {}, {}
+    where, searchedAt, lootCache, tries, loadingIDs = {}, {}, {}, {}, {}
 end
 
 local events = CreateFrame("Frame")

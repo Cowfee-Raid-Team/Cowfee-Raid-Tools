@@ -16,7 +16,8 @@ local ADDON, CRT = ...
 --   X|?                                             the loot master (or a leader or assist) asks for everyone's list
 -- You send your list a few seconds after it changes (SEND_DELAY, so several clicks go as one), when you join a
 -- group, and when someone who may keep lists asks (the loot master asks at each session start, and after a /reload
--- in a group). Never during a boss encounter: it waits for ENCOUNTER_END. Out of a group nothing is sent.
+-- in a group). Never during a boss encounter: it waits for ENCOUNTER_END (or, held by the chat lockdown alone, is tried
+-- again every HELD_RETRY seconds). Out of a group nothing is sent, and a message from outside your group is ignored.
 -- Only the loot master (LM:CanLoot), the group leader and raid assists keep the lists they hear (W.Sees), in
 -- memory for this login (W.lists): a /reload asks again, so nothing about other players is saved.
 
@@ -37,6 +38,7 @@ W.MAX = 200 -- items on one list (yours, and one heard); a few messages at most
 W.MAX_PARTS = 20 -- parts of one list a receiver takes
 W.SEND_DELAY = 3 -- seconds after a change before your list goes
 W.ASK_SECONDS = 10 -- at most one ask this often
+W.HELD_RETRY = 10 -- seconds between tries while the chat lockdown holds messages with no encounter seen (as Comm.lua)
 
 W.TEXT = {
     big = "Big upgrade",
@@ -282,6 +284,9 @@ LM.Handle("X", function(f, sender)
     if not sender then
         return
     end
+    if sender ~= LM:Me() and not LM.UnitOf(sender) then
+        return -- not in your group
+    end
     if f[1] == "?" then
         if sender ~= LM:Me() and mayAsk(sender) then
             queue(true)
@@ -324,7 +329,39 @@ local function held()
     return inEncounter or LM.ChatLocked()
 end
 
-local function sendNow(force)
+-- Whether a boss encounter runs now (C_InstanceEncounter.IsEncounterInProgress, as Alerts/DebuffListView.lua reads
+-- it), for a /reload or a loading screen in the middle of one. Unreadable or secret is no.
+local function encounterRuns()
+    local fn = C_InstanceEncounter and C_InstanceEncounter.IsEncounterInProgress
+    if type(fn) ~= "function" then
+        return false
+    end
+    local ok, on = pcall(fn)
+    return ok and not secret(on) and on == true
+end
+
+local retrying = false
+local sendNow -- set below
+local askHeld -- set below
+
+-- While messages are held with no ENCOUNTER_END to wait for (the chat lockdown alone), tried again every HELD_RETRY.
+local function retryHeld()
+    if retrying then
+        return
+    end
+    retrying = true
+    C_Timer.After(W.HELD_RETRY, function()
+        retrying = false
+        if pending and not timerSet then
+            sendNow(pending == "force")
+        end
+        if askPending then
+            askHeld()
+        end
+    end)
+end
+
+sendNow = function(force)
     timerSet = false
     if not pending then
         return
@@ -336,7 +373,10 @@ local function sendNow(force)
         return
     end
     if held() then
-        W.status = "held" -- sent at ENCOUNTER_END
+        W.status = "held" -- sent at ENCOUNTER_END, or tried again while only the lockdown holds it
+        if not inEncounter then
+            retryHeld()
+        end
         LM:Fire("wishlist")
         return
     end
@@ -388,6 +428,9 @@ ask = function()
     end
     if held() then
         askPending = true
+        if not inEncounter then
+            retryHeld()
+        end
         return false
     end
     if lastAsk and GetTime() - lastAsk < W.ASK_SECONDS then
@@ -398,6 +441,9 @@ ask = function()
     return true
 end
 W.Ask = ask
+askHeld = function()
+    ask()
+end
 
 changed = function()
     LM:Fire("wishlist")
@@ -424,7 +470,7 @@ end)
 
 local wasInGroup = false
 local events = CreateFrame("Frame")
-for _, e in ipairs({ "ENCOUNTER_START", "ENCOUNTER_END", "GROUP_ROSTER_UPDATE", "PLAYER_LOGIN" }) do
+for _, e in ipairs({ "ENCOUNTER_START", "ENCOUNTER_END", "GROUP_ROSTER_UPDATE", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD" }) do
     events:RegisterEvent(e)
 end
 events:SetScript("OnEvent", function(_, event)
@@ -456,6 +502,12 @@ events:SetScript("OnEvent", function(_, event)
             LM:Fire("wishlist")
         end
         wasInGroup = now
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        -- a /reload or loading screen: no ENCOUNTER_END may come for an encounter left behind
+        inEncounter = encounterRuns()
+        if not inEncounter and (pending or askPending) then
+            retryHeld()
+        end
     elseif event == "PLAYER_LOGIN" then
         wasInGroup = IsInGroup() and true or false
         if wasInGroup then

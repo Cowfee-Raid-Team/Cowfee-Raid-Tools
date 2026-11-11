@@ -38,6 +38,7 @@ local TEXT = {
 }
 
 local win, list, bossRow, classCheck, status, empty
+local rebuildSet = false -- a rebuild waits for the next frame
 local rows = {} -- the rows worked out for the pick: { header = name } or { item = { id, name, link, icon, quality, slot } }
 
 local function saved()
@@ -295,7 +296,14 @@ LM:OnChange(function(what, how)
         return
     end
     if how == "loot" then
-        rebuild() -- the Journal's data, or an item's name and icon, arrived
+        -- the Journal's data, or an item's name and icon, arrived: many items load at once, so one rebuild a frame
+        if not rebuildSet then
+            rebuildSet = true
+            C_Timer.After(0, function()
+                rebuildSet = false
+                rebuild()
+            end)
+        end
     else
         redraw()
     end

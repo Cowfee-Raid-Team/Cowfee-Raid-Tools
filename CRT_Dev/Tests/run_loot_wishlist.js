@@ -15,7 +15,7 @@ lualib.luaL_openlibs(L);
 const harness = `
 local dataSrc, commSrc, wishSrc, journalSrc, winSrc = ...
 local fails, passes = 0, 0
-local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
+local function check(ok, what) if ok then passes = passes + 1 print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
 local NOW = 100
 GetTime = function() return NOW end
@@ -228,6 +228,33 @@ LOCKED = false
 onEvent("ENCOUNTER_END", 3470, "Boss", 16, 20, 0) runTimers()
 eq(#take(), 1, "lockdown: sent once it ends")
 
+-- 4b. Held by the chat lockdown with no encounter seen: tried again; a /reload mid-encounter knows it from the game
+as("Quick") take()
+LOCKED = true
+W.Set(212401, "big")
+local held = timers timers = {}
+for _, fn in ipairs(held) do fn() end -- the send delay: held
+eq(#outbox, 0, "lockdown alone: held")
+LOCKED = false
+runTimers()
+eq(#take(), 1, "lockdown alone: tried again and sent, with no ENCOUNTER_END")
+local RUNS = true
+C_InstanceEncounter = { IsEncounterInProgress = function() return RUNS end }
+onEvent("ENCOUNTER_START", 1, "Boss", 16, 20)
+onEvent("PLAYER_ENTERING_WORLD") -- a /reload mid-encounter: still in it
+W.Set(212401, "off") runTimers()
+eq(#outbox, 0, "entering world: an encounter still running holds the list")
+RUNS = false
+onEvent("PLAYER_ENTERING_WORLD") -- out of the instance: no ENCOUNTER_END will come
+runTimers()
+eq(#take(), 1, "entering world: no encounter any more, the list goes")
+-- a list from someone outside your group is ignored
+as("Halo")
+deliver(W.Encode("f6", { { id = 4242, rank = "big" } }), "Stranger-Elsewhere")
+eq(W.RankFor("Stranger-Elsewhere", 4242), nil, "outside the group: a list is ignored")
+as("Quick") deliver({ "X|?" }, "Stranger-Elsewhere") runTimers()
+eq(#take(), 0, "outside the group: an ask is ignored")
+
 -- 5. The ask: from the leader or an assist everyone sends (an empty list too); from a raider nobody does
 as("Arrow")
 eq(W.Count(), 0, "ask: Arrow has an empty list")
@@ -371,6 +398,12 @@ eq(root.items[2].items[2].isSel(root.items[2].items[2].data), false, "menu: the 
 eq(root.items[3] and root.items[3].text, "Remove from wishlist", "menu: Remove when listed")
 root.items[3].fn()
 eq(W.Rank(212403), nil, "menu: Remove takes it off")
+local modified = false
+IsModifiedClick = function() return modified end
+modified = true
+row.hooks.OnMouseUp[1](row, "RightButton") runTimers()
+eq(#menus, 2, "menu: a modified right-click is left to the game")
+modified = false
 
 -- 9. The tooltip line
 local lines = {}
@@ -390,18 +423,25 @@ eq(#lines, 2, "tooltip: a secret id is never worked around")
 tooltipCalls[1].fn(tip, SECRET)
 eq(#lines, 2, "tooltip: secret data skipped")
 
--- 10. The Journal's loot for a boss: read, and the Journal's own choices put back
-local EJ = { instance = 77, encounter = 501, class = 0, spec = 0, slot = 4, numCalls = 0 }
-EncounterJournal.encounterID = 501
-local INSTANCES = { 1300 }
-local BOSSES = { [1300] = { { journal = 2601, dungeon = 3470 }, { journal = 2602, dungeon = 3497 } } }
+-- 10. The Journal's loot for a boss: the newest tier searched, the Journal's own choices put back
+-- the Journal shows an older tier's instance 77, boss 501, on difficulty 16, with a slot filter
+local EJ = { tier = 1, instance = 77, encounter = 501, difficulty = 16, class = 0, spec = 0, slot = 4 }
+EncounterJournal.instanceID, EncounterJournal.encounterID = 77, 501
+local TIERS = { [1] = { 77 }, [2] = { 1300 } }
+local BOSSES = { [77] = { { journal = 501, dungeon = 1111 } }, [1300] = { { journal = 2601, dungeon = 3470 }, { journal = 2602, dungeon = 3497 } } }
 local LOOT = { [2601] = { 212401, 212402, 212401 }, [2602] = {} }
 local CLASS_LOOT = { [2601] = { 212402 } }
-EJ_GetCurrentInstance = function() return EJ.instance end
-EJ_GetInstanceByIndex = function(i, raid) if raid and INSTANCES[i] then return INSTANCES[i], "A Raid" end end
-EJ_SelectInstance = function(id) EJ.instance = id EJ.encounter = nil end
+local searches = 0
+EJ_GetNumTiers = function() searches = searches + 1 return 2 end
+EJ_GetCurrentTier = function() return EJ.tier end
+EJ_SelectTier = function(t) EJ.tier = t end
+EJ_GetDifficulty = function() return EJ.difficulty end
+EJ_SetDifficulty = function(d) EJ.difficulty = d end
+EJ_GetInstanceByIndex = function(i, raid) local list = TIERS[EJ.tier] if raid and list and list[i] then return list[i], "A Raid" end end
+local selects = 0
+EJ_SelectInstance = function(id) selects = selects + 1 EJ.instance = id EJ.encounter = nil EJ.difficulty = 14 end -- the game picks its own difficulty
 EJ_GetEncounterInfoByIndex = function(j) local b = BOSSES[EJ.instance] and BOSSES[EJ.instance][j] if b then return "Boss", "", b.journal end end
-EJ_GetEncounterInfo = function(jid) for _, list in pairs(BOSSES) do for _, b in ipairs(list) do if b.journal == jid then return "Boss", "", jid, 1, "", 1300, b.dungeon end end end end
+EJ_GetEncounterInfo = function(jid) for inst, list in pairs(BOSSES) do for _, b in ipairs(list) do if b.journal == jid then return "Boss", "", jid, 1, "", inst, b.dungeon end end end end
 EJ_SelectEncounter = function(jid) EJ.encounter = jid end
 EJ_GetLootFilter = function() return EJ.class, EJ.spec end
 EJ_SetLootFilter = function(c, sp) EJ.class, EJ.spec = c, sp end
@@ -413,12 +453,14 @@ C_EncounterJournal = {
 }
 Item = { CreateFromItemID = function(_, id) return { ContinueOnItemLoad = function() end } end }
 local loot, why = W.BossLoot(3470, false)
-eq(loot and #loot, 2, "loot: the boss's items, each once (" .. tostring(why) .. ")")
+eq(loot and #loot, 2, "loot: the boss's items from the newest tier, each once (" .. tostring(why) .. ")")
 eq(loot and loot[1].id, 212401, "loot: in the Journal's order")
 eq(loot and loot[1].name, "Coiled Fang", "loot: the name")
 eq(loot and loot[1].slot, "Shoulder", "loot: the slot")
-eq(EJ.instance, 77, "loot: the Journal's instance put back")
-eq(EJ.encounter, 501, "loot: the Journal's boss put back")
+eq(EJ.tier, 1, "loot: the Journal's tier put back")
+eq(EJ.instance, 77, "loot: the instance the Journal shows put back (EncounterJournal.instanceID)")
+eq(EJ.encounter, 501, "loot: the boss the Journal shows put back (EncounterJournal.encounterID)")
+eq(EJ.difficulty, 16, "loot: the Journal's difficulty put back")
 eq(EJ.slot, 4, "loot: the Journal's slot filter put back")
 eq(EJ.class, 0, "loot: the Journal's class filter put back")
 EJ.class, EJ.spec = 5, 0
@@ -426,14 +468,41 @@ local mine = W.BossLoot(3470, true)
 eq(mine and #mine, 1, "loot: Only my class reads with your class's filter")
 eq(mine and mine[1].id, 212402, "loot: your class's item")
 eq(EJ.class, 5, "loot: a filter the Journal had is put back")
+EJ.class = 0
+-- the Journal on an instance's overview (no boss): the instance comes back, no boss is picked
+EncounterJournal.encounterID = nil
+EJ.encounter = nil
 local none, why2 = W.BossLoot(3497, false)
 eq(none, nil, "loot: none yet")
 eq(why2, "loading", "loot: waiting for the Journal's data")
+eq(EJ.instance, 77, "overview: the instance put back")
+eq(EJ.encounter, nil, "overview: no boss picked afterwards")
 W.BossLoot(3497, false)
 local none3 = W.BossLoot(3497, false)
 eq(none3 and #none3, 0, "loot: still none after the Journal answered: the boss has none")
+-- the Journal window not loaded: nothing it shows to keep, so no instance is selected afterwards
+local journalFrame = EncounterJournal
+EncounterJournal = nil
+W.ForgetLoot()
+selects = 0
+W.BossLoot(3470, false)
+eq(selects, 2, "not loaded: only the search's and the read's selections, none to put back (" .. selects .. ")")
+eq(EJ.tier, 1, "not loaded: the tier still put back")
+eq(EJ.difficulty, 16, "not loaded: the difficulty still put back")
+EncounterJournal = journalFrame
+-- a boss the Journal doesn't have: searched again later, not missing for the whole login
+searches = 0
 local _, why4 = W.BossLoot(9999, false)
 eq(why4, "missing", "loot: a boss not in the Journal")
+eq(searches, 1, "missing: searched")
+W.BossLoot(9999, false)
+eq(searches, 1, "missing: not searched again at once")
+BOSSES[1300][3] = { journal = 2603, dungeon = 9999 }
+LOOT[2603] = { 212403 }
+NOW = NOW + 31
+local later = W.BossLoot(9999, false)
+eq(searches, 2, "missing: searched again after a while")
+eq(later and later[1] and later[1].id, 212403, "missing: found once the Journal has it")
 
 -- 11. The My wishlist window, on stand-in frames: rows once per pick, a tick lists the item, the rank dropdown, the line
 local function mock(kind)
@@ -536,8 +605,18 @@ parts.classCheck.checked = true
 parts.classCheck.scripts.OnClick(parts.classCheck)
 eq(CRT.db.lootmaster.wishlistWindow.classOnly, true, "window: Only my class is kept")
 eq(#listView.rows, 1, "window: only your class's item")
+-- many items loading at once: one rebuild a frame
+local built = 0
+local realBossLoot = W.BossLoot
+W.BossLoot = function(...) built = built + 1 return realBossLoot(...) end
+timers = {}
+for _ = 1, 5 do LM:Fire("wishlist", "loot") end
+eq(built, 0, "window: item loads wait for the next frame")
+runTimers()
+eq(built, 1, "window: five item loads, one rebuild")
+W.BossLoot = realBossLoot
 -- a boss not in the Journal
-bossDrop.opts.set(9999)
+bossDrop.opts.set(8888)
 eq(#listView.rows, 0, "window: no rows for a boss the Journal doesn't have")
 eq(parts.empty.shown, true, "window: the empty line shows")
 eq(parts.empty.text, "This boss isn't in the Adventure Guide's current expansion.", "window: and says why")
