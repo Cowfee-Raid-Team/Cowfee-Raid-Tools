@@ -1,0 +1,622 @@
+local ADDON, CRT = ...
+
+-- Loot Master > Wishlists (Alex, 2026-11-11, Issue #1269): the raiders' saved wishlists (LootMaster/WishlistSaved.lua),
+-- for a keeper (W.Keeps: a guild officer, the loot master, the raid leader or an assist). Everyone else sees one line
+-- saying who keeps lists, with a (?).
+--   View      Bosses: per boss in route order, Big / Small / Off counts and a value bar; the headings sort (Value,
+--             Big, Small, Off; a third click goes back to route order); a click on a boss opens Boss detail.
+--             Boss detail: the boss's items someone wants (icon in its quality's border, with its tooltip, and name),
+--             then who wants each, by rank ("Big: A, B  Small: C  Off: D"), names in class colour.
+--             Raiders: per raider, Big/Small/Off counts per boss (one column a boss, blank when none) and Updated (how
+--             old their list is; past V.OLD_DAYS in warn). Players in your raid with no list show "no list". The X
+--             forgets one raider's list.
+--   Team      Everyone kept, In my raid now, Raid Groups layout (the active layout, Groups:ActiveNames).
+--   Forget all asks first (W.AskForgetAll).
+-- The rows are worked out once per data change (a list heard or forgotten, your own list, the Journal's data, the
+-- roster, a pick); the lists draw only the rows in view. The view, team, boss and sort are kept in
+-- lootmaster.wishlistsTab. Built by Page.lua's tab (LM.BuildWishlistsTab), inside the page area.
+
+local LM = CRT.LootMaster
+local UI = CRT.UI
+local W = LM.Wishlist
+local V = W.Views
+
+local L = {
+    x = 8, top = -8, controls = -30, head = -70, list = -90, rowH = 24, bottom = 8, scrollGap = 20,
+    viewLabel = 34, viewW = 130, teamLabel = 38, teamW = 170, bossLabel = 34, bossW = 220, gap = 16,
+    -- Bosses
+    bossName = 4, bossNameW = 260, count = 60, big = 270, small = 334, off = 398, value = 462, valueW = 40, bar = 506, barW = 300, barH = 12,
+    -- Boss detail
+    icon = 4, iconSize = 22, iconEdge = 2, itemName = 32, itemNameW = 240, wants = 282,
+    -- Raiders
+    name = 4, nameW = 160, grid = 170, updatedW = 80, forget = 16, minCol = 48,
+}
+
+local TEXT = {
+    title = "Raiders' wishlists",
+    help = "The wishlists raiders made in the Adventure Guide or with /crt wishlist. Guild officers, the loot master, the raid leader and raid assists keep a copy of each list they hear, saved between sessions. Raiders send their list to the guild when it changes and a little after they log in, so it arrives without a group.\n\nBosses counts the wants for each boss's items: Big upgrade, Small upgrade and Off spec. Value adds them up: Big 3, Small 1, Off 0.5. Click a boss to see its items.\n\nBoss detail lists who wants each item.\n\nRaiders shows each raider's wants per boss as Big/Small/Off, and how old their list is.\n\nTeam keeps everyone kept, the players in your raid now, or the Raid Groups layout in use (Use This Group).",
+    notKeeper = "Only officers and raid assists keep raiders' lists.",
+    notKeeperHelp = "Raiders' wishlists are kept by guild officers (a rank that can edit officer notes), the loot master, the raid leader and raid assists.\n\nYour own list is My wishlist, on the Tonight tab.",
+    view = "View",
+    views = { { key = "bosses", label = "Bosses" }, { key = "detail", label = "Boss detail" }, { key = "raiders", label = "Raiders" } },
+    team = "Team",
+    teams = { all = "Everyone kept", raid = "In my raid now", team = "Raid Groups layout" },
+    noLayout = "Pick a layout with Use This Group on Raid Groups first.",
+    boss = "Boss",
+    forgetAll = "Forget all",
+    forget = "Forget %s's list",
+    colBoss = "Boss", colBig = "Big", colSmall = "Small", colOff = "Off", colValue = "Value",
+    colItem = "Item", colWants = "Who wants it",
+    colRaider = "Raider", colUpdated = "Updated",
+    big = "Big", small = "Small", off = "Off",
+    noList = "no list",
+    today = "today", day = "1 day", days = "%d days",
+    none = "No wishlists kept yet.",
+    noneDetail = "Nobody wants this boss's items yet.",
+    loading = "Loading the items...",
+}
+
+local parts = {} -- the tab's frames, kept for the tests
+local rows = { bosses = {}, detail = {}, raiders = {} } -- worked out per data change; people: who counts (V.Raiders)
+local frame -- the tab's frame
+
+local function state()
+    local set = LM:Settings()
+    if type(set.wishlistsTab) ~= "table" then
+        set.wishlistsTab = {}
+    end
+    return set.wishlistsTab
+end
+
+local function picked()
+    local s = state()
+    local team = s.team or "all"
+    if not V.HasTeam(team) then
+        team = "all"
+    end
+    return s.view or "bosses", team
+end
+
+local function seasonKey()
+    local def = CRT.Bosses and CRT.Bosses:Current()
+    return def and def.key or nil
+end
+
+-- The boss Boss detail shows: the one picked, else the season's first.
+local function detailBoss()
+    local s = state()
+    if s.boss then
+        return s.boss
+    end
+    local first = (V.Map().bosses or {})[1]
+    return first and first.encounterID or nil
+end
+
+local function classText(name, class)
+    local short = Ambiguate(name, "none")
+    local c = class and (C_ClassColor and C_ClassColor.GetClassColor(class) or (RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]))
+    return c and c.WrapTextInColorCode and c:WrapTextInColorCode(short) or short
+end
+
+local function count(n, key)
+    return n > 0 and UI.ColorText(tostring(n), key) or UI.ColorText("0", "muted")
+end
+
+-- "2/1/0" in the ranks' colours, or "" when all are 0.
+local function bso(c)
+    if not c or c.big + c.small + c.off == 0 then
+        return ""
+    end
+    return UI.ColorText(tostring(c.big), W.RANK_COLOR.big) .. "/" .. UI.ColorText(tostring(c.small), W.RANK_COLOR.small)
+        .. "/" .. UI.ColorText(tostring(c.off), W.RANK_COLOR.off)
+end
+
+-- "Big: A, B  Small: C  Off: D", the rank words in their colours, the names in class colour.
+local function wantsText(wants)
+    local out = {}
+    for _, rank in ipairs(W.RANKS) do
+        local list = wants[rank]
+        if list and #list > 0 then
+            local names = {}
+            for i, r in ipairs(list) do
+                names[i] = classText(r.name, r.class)
+            end
+            out[#out + 1] = UI.ColorText(TEXT[rank] .. ":", W.RANK_COLOR[rank]) .. " " .. table.concat(names, ", ")
+        end
+    end
+    return table.concat(out, "  ")
+end
+LM.WishlistWantsText = wantsText -- for tests
+
+local function ageText(row)
+    if row.noList then
+        return UI.ColorText(TEXT.noList, "muted")
+    elseif row.age == nil then
+        return ""
+    end
+    local text = row.age == 0 and TEXT.today or row.age == 1 and TEXT.day or TEXT.days:format(row.age)
+    return row.old and UI.ColorText(text, "warn") or text
+end
+LM.WishlistAgeText = ageText -- for tests
+
+local function qualityColor(q)
+    if type(q) == "number" and C_Item and C_Item.GetItemQualityColor then
+        local ok, r, g, b = pcall(C_Item.GetItemQualityColor, q)
+        if ok and type(r) == "number" then
+            return r, g, b
+        end
+    end
+    return UI.Color("border")
+end
+
+local function fontString(row, x, w, justify)
+    local fs = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    fs:SetPoint("LEFT", x, 0)
+    if w then
+        fs:SetWidth(w)
+    end
+    fs:SetJustifyH(justify or "LEFT")
+    fs:SetWordWrap(false)
+    return fs
+end
+
+local function hover(row)
+    local hl = row:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.05)
+end
+
+-- One list: a WowScrollBoxList and its bar, under the headings, one row each extent.
+local function makeList(f, init)
+    local box = CreateFrame("Frame", nil, f, "WowScrollBoxList")
+    box:SetPoint("TOPLEFT", L.x, L.list)
+    box:SetPoint("BOTTOMRIGHT", -(L.x + L.scrollGap), L.bottom)
+    local bar = CreateFrame("EventFrame", nil, f, "MinimalScrollBar")
+    UI:SkinScrollBar(bar)
+    bar:SetPoint("TOPLEFT", box, "TOPRIGHT", 6, 0)
+    bar:SetPoint("BOTTOMLEFT", box, "BOTTOMRIGHT", 6, 0)
+    local v = CreateScrollBoxListLinearView()
+    v:SetElementExtent(L.rowH)
+    v:SetElementInitializer("Button", init)
+    ScrollUtil.InitScrollBoxListWithScrollBar(box, bar, v)
+    box.bar = bar
+    return box
+end
+
+local function heading(f, x, text, w)
+    local h = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    h:SetPoint("TOPLEFT", L.x + x, L.head)
+    if w then
+        h:SetWidth(w)
+        h:SetWordWrap(false)
+    end
+    h:SetJustifyH("LEFT")
+    h:SetText(text)
+    UI.Tint(h, "SetTextColor", "label")
+    return h
+end
+
+local refresh -- set below
+
+-- View A: Bosses ------------------------------------------------------------------------------------------
+
+local function initBossRow(row, data)
+    if not row.name then
+        hover(row)
+        row.name = fontString(row, L.bossName, L.bossNameW)
+        row.big = fontString(row, L.big, L.count)
+        row.small = fontString(row, L.small, L.count)
+        row.off = fontString(row, L.off, L.count)
+        row.value = fontString(row, L.value, L.valueW)
+        row.bar = row:CreateTexture(nil, "ARTWORK")
+        row.bar:SetPoint("LEFT", L.bar, 0)
+        row.bar:SetHeight(L.barH)
+        row:SetScript("OnClick", function(self)
+            if self.data then
+                local s = state()
+                s.boss, s.view = self.data.encounterID, "detail"
+                refresh()
+            end
+        end)
+    end
+    row.data = data
+    row.name:SetText(data.name)
+    row.big:SetText(count(data.big, W.RANK_COLOR.big))
+    row.small:SetText(count(data.small, W.RANK_COLOR.small))
+    row.off:SetText(count(data.off, W.RANK_COLOR.off))
+    row.value:SetText(tostring(data.value))
+    local w = rows.maxValue and rows.maxValue > 0 and math.floor(L.barW * data.value / rows.maxValue + 0.5) or 0
+    row.bar:SetWidth(math.max(1, w))
+    row.bar:SetColorTexture(UI.Color("accent", 0.8))
+    row.bar:SetShown(w > 0)
+end
+
+local BOSS_COLS = {
+    { key = "name", x = L.bossName, w = L.bossNameW, title = TEXT.colBoss, sortable = false },
+    { key = "big", x = L.big, w = L.count, title = TEXT.colBig },
+    { key = "small", x = L.small, w = L.count, title = TEXT.colSmall },
+    { key = "off", x = L.off, w = L.count, title = TEXT.colOff },
+    { key = "value", x = L.value, w = L.valueW + 40, title = TEXT.colValue },
+}
+
+local function buildBosses(f)
+    local view = CreateFrame("Frame", nil, f)
+    view:SetAllPoints()
+    view.sorter = UI.SortHeaders(view, BOSS_COLS, {
+        x = L.x, y = L.head, backToDefault = true,
+        get = function()
+            local s = state()
+            return s.sortKey, s.sortDir or 1
+        end,
+        set = function(key, dir)
+            local s = state()
+            s.sortKey, s.sortDir = key, dir
+            refresh()
+        end,
+    })
+    view.list = makeList(view, initBossRow)
+    return view
+end
+
+-- View B: Boss detail -------------------------------------------------------------------------------------
+
+local function showItemTip(owner, it)
+    if not it then
+        return
+    end
+    UI.TooltipOwner(GameTooltip, owner, "ANCHOR_RIGHT", nil, nil, "lootmaster")
+    pcall(GameTooltip.SetHyperlink, GameTooltip, it.link or ("item:" .. it.id))
+    GameTooltip:Show()
+end
+
+-- Every name for an item, one rank a line, for a row too long to read in full.
+local function showWantsTip(owner, data)
+    if not data then
+        return
+    end
+    UI.TooltipOwner(GameTooltip, owner, "ANCHOR_RIGHT", nil, nil, "lootmaster")
+    GameTooltip:SetText(data.item.name or ("item:" .. data.item.id))
+    for _, rank in ipairs(W.RANKS) do
+        local list = data.wants[rank]
+        if #list > 0 then
+            local names = {}
+            for i, r in ipairs(list) do
+                names[i] = classText(r.name, r.class)
+            end
+            GameTooltip:AddLine(UI.ColorText(W.Label(rank) .. ":", W.RANK_COLOR[rank]) .. " " .. table.concat(names, ", "), 1, 1, 1, true)
+        end
+    end
+    GameTooltip:Show()
+end
+
+local function hideTip()
+    GameTooltip:Hide()
+end
+
+local function initDetailRow(row, data)
+    if not row.icon then
+        hover(row)
+        row.icon = CreateFrame("Button", nil, row, "BackdropTemplate")
+        row.icon:SetSize(L.iconSize, L.iconSize)
+        row.icon:SetPoint("LEFT", L.icon, 0)
+        row.icon:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = L.iconEdge })
+        row.icon.tex = row.icon:CreateTexture(nil, "ARTWORK")
+        row.icon.tex:SetPoint("TOPLEFT", L.iconEdge, -L.iconEdge)
+        row.icon.tex:SetPoint("BOTTOMRIGHT", -L.iconEdge, L.iconEdge)
+        row.icon:SetScript("OnEnter", function(self)
+            showItemTip(self, row.data and row.data.item)
+        end)
+        row.icon:SetScript("OnLeave", hideTip)
+        row.name = fontString(row, L.itemName, L.itemNameW)
+        row.wants = fontString(row, L.wants)
+        row.wants:SetPoint("RIGHT", -4, 0)
+        row:SetScript("OnEnter", function(self)
+            showWantsTip(self, self.data)
+        end)
+        row:SetScript("OnLeave", hideTip)
+    end
+    row.data = data
+    local it = data.item
+    row.icon.tex:SetTexture(it.icon or 134400)
+    row.icon:SetBackdropBorderColor(qualityColor(it.quality))
+    row.name:SetText(it.name or ("item:" .. it.id))
+    row.name:SetTextColor(qualityColor(it.quality)) -- the game's item quality colour: not a theme colour
+    row.wants:SetText(wantsText(data.wants))
+end
+
+local function buildDetail(f)
+    local view = CreateFrame("Frame", nil, f)
+    view:SetAllPoints()
+    heading(view, L.icon, TEXT.colItem)
+    heading(view, L.wants, TEXT.colWants)
+    view.list = makeList(view, initDetailRow)
+    return view
+end
+
+-- View C: Raiders -----------------------------------------------------------------------------------------
+
+-- The boss columns: as many as the season has, sharing the width between the names and Updated.
+local function gridLayout()
+    local bosses = V.Map().bosses
+    local width = UI.PAGE_W - 2 * L.x - L.scrollGap - L.grid - L.updatedW - L.forget - 8
+    local colW = #bosses > 0 and math.max(L.minCol, math.floor(width / #bosses)) or L.minCol
+    return bosses, colW, L.grid + colW * #bosses
+end
+
+local function initRaiderRow(row, data)
+    if not row.name then
+        hover(row)
+        row.name = fontString(row, L.name, L.nameW)
+        row.cells = {}
+        row.updated = fontString(row, 0, L.updatedW)
+        row.forget = CreateFrame("Button", nil, row, "UIPanelCloseButton")
+        row.forget:SetSize(L.forget, L.forget)
+        UI:SkinCloseButton(row.forget)
+        row.forget:SetScript("OnClick", function()
+            if row.data then
+                W.Forget(row.data.name)
+            end
+        end)
+        row.forget:SetScript("OnEnter", function(self)
+            if row.data then
+                UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, "lootmaster")
+                GameTooltip:SetText(TEXT.forget:format(Ambiguate(row.data.name, "none")))
+                GameTooltip:Show()
+            end
+        end)
+        row.forget:SetScript("OnLeave", hideTip)
+    end
+    row.data = data
+    local bosses, colW, right = gridLayout()
+    for i, boss in ipairs(bosses) do
+        local cell = row.cells[i]
+        if not cell then
+            cell = fontString(row, 0, colW - 4)
+            row.cells[i] = cell
+        end
+        cell:ClearAllPoints()
+        cell:SetPoint("LEFT", L.grid + (i - 1) * colW, 0)
+        cell:SetWidth(colW - 4)
+        cell:SetText(bso(data.counts[boss.encounterID]))
+        cell:Show()
+    end
+    for i = #bosses + 1, #row.cells do
+        row.cells[i]:Hide()
+    end
+    row.name:SetText(data.noList and UI.ColorText(Ambiguate(data.name, "none"), "muted") or classText(data.name, data.class))
+    row.updated:ClearAllPoints()
+    row.updated:SetPoint("LEFT", right + 4, 0)
+    row.updated:SetText(ageText(data))
+    row.forget:ClearAllPoints()
+    row.forget:SetPoint("LEFT", right + 4 + L.updatedW, 0)
+    row.forget:SetShown(not data.noList and data.name ~= LM:Me())
+end
+
+-- A boss column's heading: its name cut to the column, the whole name on hover.
+local function bossHeading(view, i)
+    local b = CreateFrame("Button", nil, view)
+    b:SetHeight(18)
+    b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    b.text:SetAllPoints()
+    b.text:SetJustifyH("LEFT")
+    b.text:SetWordWrap(false)
+    UI.Tint(b.text, "SetTextColor", "label")
+    b:SetScript("OnEnter", function(self)
+        if self.name then
+            UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP", nil, nil, "lootmaster")
+            GameTooltip:SetText(self.name)
+            GameTooltip:AddLine(TEXT.big .. "/" .. TEXT.small .. "/" .. TEXT.off, 1, 1, 1)
+            GameTooltip:Show()
+        end
+    end)
+    b:SetScript("OnLeave", hideTip)
+    view.bossHeads[i] = b
+    return b
+end
+
+local function placeHeadings(view)
+    local bosses, colW, right = gridLayout()
+    for i, boss in ipairs(bosses) do
+        local b = view.bossHeads[i] or bossHeading(view, i)
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", L.x + L.grid + (i - 1) * colW, L.head)
+        b:SetWidth(colW - 4)
+        b.name = boss.name
+        b.text:SetText(boss.name)
+        b:Show()
+    end
+    for i = #bosses + 1, #view.bossHeads do
+        view.bossHeads[i]:Hide()
+    end
+    view.updatedHead:ClearAllPoints()
+    view.updatedHead:SetPoint("TOPLEFT", L.x + right + 4, L.head)
+end
+
+local function buildRaiders(f)
+    local view = CreateFrame("Frame", nil, f)
+    view:SetAllPoints()
+    view.bossHeads = {}
+    heading(view, L.name, TEXT.colRaider)
+    view.updatedHead = heading(view, 0, TEXT.colUpdated)
+    view.list = makeList(view, initRaiderRow)
+    return view
+end
+
+-- The tab ---------------------------------------------------------------------------------------------------
+
+-- Works the rows out for the pick: once per data change, never per row drawn.
+local function work()
+    local view, team = picked()
+    local raiders = V.Raiders(team)
+    local m = V.Map()
+    local s = state()
+    rows.view, rows.loading, rows.people = view, m.loading, raiders
+    if view == "bosses" then
+        local list = V.BossRows(raiders)
+        local max = 0
+        for _, r in ipairs(list) do
+            max = math.max(max, r.value)
+        end
+        rows.maxValue = max
+        rows.bosses = V.SortBossRows(list, s.sortKey, s.sortDir)
+    elseif view == "detail" then
+        rows.detail = V.Detail(raiders, detailBoss())
+    else
+        rows.raiders = V.RaiderRows(raiders)
+    end
+    return rows
+end
+LM.WishlistTabWork = work -- for tests
+
+local function emptyText()
+    if rows.loading then
+        return TEXT.loading
+    elseif rows.view == "detail" then
+        return TEXT.noneDetail
+    end
+    return TEXT.none
+end
+
+refresh = function()
+    if not (frame and frame:IsVisible()) then
+        return
+    end
+    local keeps = W.Keeps()
+    parts.note:SetShown(not keeps)
+    parts.controls:SetShown(keeps)
+    if not keeps then
+        return
+    end
+    work()
+    local view = rows.view
+    parts.viewRow.refresh()
+    parts.teamRow.refresh()
+    parts.bossRow.refresh()
+    parts.bossRow:SetShown(view == "detail")
+    local list
+    for key, v in pairs(parts.views) do
+        v:SetShown(key == view)
+    end
+    if view == "bosses" then
+        parts.views.bosses.sorter.refresh()
+        list = rows.bosses
+    elseif view == "detail" then
+        list = rows.detail
+    else
+        placeHeadings(parts.views.raiders)
+        list = rows.raiders
+    end
+    parts.views[view].list:SetDataProvider(CreateDataProvider(list), ScrollBoxConstants and ScrollBoxConstants.RetainScrollPosition)
+    parts.empty:SetText(emptyText())
+    parts.empty:SetShown(#list == 0)
+end
+
+local function teamOptions()
+    local out = {}
+    for _, key in ipairs(V.TEAMS) do
+        local o = { key = key, label = TEXT.teams[key] }
+        if key == "team" then
+            o.disabled = function()
+                return not V.HasTeam("team")
+            end
+            o.tooltip = TEXT.noLayout
+        end
+        out[#out + 1] = o
+    end
+    return out
+end
+
+local function buildControls(f)
+    local c = CreateFrame("Frame", nil, f)
+    c:SetAllPoints()
+    parts.controls = c
+    parts.viewRow = UI.Dropdown(c, TEXT.view, {
+        labelWidth = L.viewLabel, width = L.viewW, options = TEXT.views,
+        get = function()
+            return (picked())
+        end,
+        set = function(key)
+            state().view = key
+            refresh()
+        end,
+    })
+    parts.viewRow:SetPoint("TOPLEFT", L.x, L.controls)
+    parts.teamRow = UI.Dropdown(c, TEXT.team, {
+        labelWidth = L.teamLabel, width = L.teamW, options = teamOptions,
+        get = function()
+            return select(2, picked())
+        end,
+        set = function(key)
+            state().team = key
+            refresh()
+        end,
+    })
+    parts.teamRow:SetPoint("LEFT", parts.viewRow, "RIGHT", L.gap, 0)
+    parts.bossRow = UI.Dropdown(c, TEXT.boss, {
+        labelWidth = L.bossLabel, width = L.bossW, maxHeight = 400,
+        options = function()
+            return CRT.Bosses and CRT.Bosses:Options(seasonKey()) or {}
+        end,
+        get = detailBoss,
+        set = function(key)
+            state().boss = key
+            refresh()
+        end,
+    })
+    parts.bossRow:SetPoint("LEFT", parts.teamRow, "RIGHT", L.gap, 0)
+    parts.forgetAll = UI.PanelButton(c, TEXT.forgetAll, 24, function()
+        W.AskForgetAll()
+    end)
+    parts.forgetAll:SetPoint("TOPRIGHT", -L.x, L.controls + 2)
+    parts.views = { bosses = buildBosses(c), detail = buildDetail(c), raiders = buildRaiders(c) }
+    parts.empty = c:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    parts.empty:SetPoint("TOP", 0, L.list - 40)
+    UI.Tint(parts.empty, "SetTextColor", "muted")
+end
+
+-- Page.lua's Wishlists tab. h: { heading, refreshers }.
+function LM.BuildWishlistsTab(f, h)
+    frame = f
+    h.heading(f, L.x, L.top, TEXT.title, TEXT.help)
+    parts.note = f:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    parts.note:SetPoint("TOPLEFT", L.x, L.controls - 6)
+    parts.note:SetText(TEXT.notKeeper)
+    UI.Tint(parts.note, "SetTextColor", "text")
+    UI.HelpRight(parts.note, TEXT.notKeeper, TEXT.notKeeperHelp)
+    buildControls(f)
+    h.refreshers[#h.refreshers + 1] = refresh
+end
+
+-- For tests: the tab's parts and rows.
+function LM.WishlistTabParts()
+    return parts, rows
+end
+
+local workSet = false -- a redraw waits for the next frame
+local function soon(forgetMap)
+    if forgetMap then
+        V.ForgetMap()
+    end
+    if workSet or not (frame and frame:IsVisible()) then
+        return
+    end
+    workSet = true
+    C_Timer.After(0, function()
+        workSet = false
+        refresh()
+    end)
+end
+
+LM:OnChange(function(what, how)
+    if what == "wishlist" then
+        soon(how == "loot") -- the Journal's data or an item's name arrived: the item map again
+    elseif what == "wishlists" or what == "authority" then
+        soon(false) -- a list kept or forgotten; the roster or who leads changed
+    end
+end)
+if CRT.Groups and CRT.Groups.OnChange then
+    CRT.Groups:OnChange(function()
+        soon(false) -- the Raid Groups layout in use
+    end)
+end
+UI:OnTheme(refresh)

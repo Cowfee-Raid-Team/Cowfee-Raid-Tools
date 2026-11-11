@@ -19,7 +19,18 @@ local ADDON, CRT = ...
 -- in a group). Never during a boss encounter: it waits for ENCOUNTER_END (or, held by the chat lockdown alone, is tried
 -- again every HELD_RETRY seconds). Out of a group nothing is sent, and a message from outside your group is ignored.
 -- Only the loot master (LM:CanLoot), the group leader and raid assists keep the lists they hear (W.Sees), in
--- memory for this login (W.lists): a /reload asks again, so nothing about other players is saved.
+-- memory for this login (W.lists): a /reload asks again.
+--
+-- Saved copies and the guild (Alex, 2026-11-11, Issue #1269): guild officers (W.Officer) keep lists too, and every
+-- keeper (W.Keeps) saves a copy of each list heard, account-wide (LootMaster/WishlistSaved.lua; the Wishlists tab is
+-- LootMaster/WishlistTab.lua). The stamp is now the time your list last changed (CRTDBChar.lootmaster.wishlistAt, in
+-- hex), so a newer list wins over an older copy. The same X messages also go on the GUILD channel (LM.SendGuild):
+-- your list a few seconds after a change and once LOGIN_DELAY (plus up to LOGIN_JITTER) seconds after login, and in
+-- answer to an X|? heard on GUILD (after up to ASK_JITTER seconds, at most once every GUILD_ANSWER_SECONDS). Every
+-- raider with a list answers: the ask carries no stamps (the message format is unchanged). An officer asks the guild
+-- LOGIN_ASK_DELAY seconds after login, at most once every GUILD_ASK_SECONDS (lootmaster.wishlistsAsked). Never during
+-- a boss encounter, never out of a guild. A list heard on GUILD is from a guild member (the game sends GUILD to the
+-- guild only), so the group check is for RAID, PARTY and INSTANCE_CHAT only.
 
 local LM = CRT.LootMaster
 local Wire = LM.Wire
@@ -39,6 +50,12 @@ W.MAX_PARTS = 20 -- parts of one list a receiver takes
 W.SEND_DELAY = 3 -- seconds after a change before your list goes
 W.ASK_SECONDS = 10 -- at most one ask this often
 W.HELD_RETRY = 10 -- seconds between tries while the chat lockdown holds messages with no encounter seen (as Comm.lua)
+W.LOGIN_DELAY = 30 -- seconds after login before your list goes to the guild
+W.LOGIN_JITTER = 60 -- plus up to this many, so a guild logging in at once doesn't send together
+W.ASK_JITTER = 5 -- an answer to a guild ask waits up to this many seconds
+W.GUILD_ANSWER_SECONDS = 60 -- at most one answer to a guild ask this often
+W.LOGIN_ASK_DELAY = 20 -- seconds after login before an officer asks the guild (the guild's data is in by then)
+W.GUILD_ASK_SECONDS = 600 -- an officer asks the guild at most this often, across logins
 
 W.TEXT = {
     big = "Big upgrade",
@@ -51,6 +68,7 @@ W.TEXT = {
     held = "Will send after the fight.",
     sending = "Sending...",
     solo = "Sends when you join a group.",
+    guild = "Sent to your guild's officers.",
     column = "Wishlist",
 }
 local TEXT = W.TEXT
@@ -73,6 +91,35 @@ function W.Store()
         lm.wishlist = {}
     end
     return lm.wishlist
+end
+
+-- When your list last changed, the stamp its messages carry: CRTDBChar.lootmaster.wishlistAt, else (a list from
+-- before it was kept) its newest item's time, else 0.
+function W.Stamp()
+    W.Store()
+    local lm = CRTDBChar.lootmaster
+    if type(lm.wishlistAt) == "number" then
+        return lm.wishlistAt
+    end
+    local at = 0
+    for _, e in pairs(lm.wishlist) do
+        if type(e) == "table" and type(e.at) == "number" and e.at > at then
+            at = e.at
+        end
+    end
+    return at
+end
+
+-- A change's new stamp: now, and always past the last one, so two changes in one second still count as newer.
+local function restamp()
+    local now = time()
+    local last = W.Stamp()
+    CRTDBChar.lootmaster.wishlistAt = (now > last) and now or (last + 1)
+end
+
+-- Whether you have a list to tell the guild about: items on it, or a list you emptied.
+function W.HasList()
+    return W.Count() > 0 or W.Stamp() > 0
 end
 
 -- An item's ID from an item ID, an item string or a link; nil when it doesn't read or is secret.
@@ -249,6 +296,36 @@ function W.Sees()
     return IsInGroup() and leads("player") or false
 end
 
+-- Whether you are in a guild (IsInGuild). Unreadable is no.
+local function inGuild()
+    if IsInGuild == nil then
+        return false
+    end
+    local v = IsInGuild()
+    return not secret(v) and v and true or false
+end
+W.InGuild = inGuild
+
+-- Whether you are a guild officer: your rank may edit officer notes (C_GuildInfo.CanEditOfficerNote, warcraft.wiki.gg
+-- and Blizzard's GuildInfoDocumentation, read 2026-11-11). Viewing officer notes (CanViewOfficerNote) is often given
+-- to more ranks, so editing is the officer's mark. Unreadable or secret is no.
+function W.Officer()
+    if not inGuild() then
+        return false
+    end
+    local fn = C_GuildInfo and C_GuildInfo.CanEditOfficerNote
+    if type(fn) ~= "function" then
+        return false
+    end
+    local ok, can = pcall(fn)
+    return ok and isTrue(can)
+end
+
+-- Whether you keep (and save) the lists you hear: a guild officer, the loot master, the group leader or a raid assist.
+function W.Keeps()
+    return W.Officer() or W.Sees()
+end
+
 -- Whether a player may ask for everyone's list: one who may run loot, the leader or an assist.
 local function mayAsk(name)
     return LM.Allowed(name) or leads(LM.UnitOf(name))
@@ -266,7 +343,15 @@ function W.RankFor(name, item)
         return W.Rank(item)
     end
     local id, list = W.ItemID(item), W.lists[name]
-    return id and list and list.items[id] or nil
+    if not id then
+        return nil
+    end
+    if list then
+        return list.items[id]
+    end
+    -- not heard this login: the saved copy (LootMaster/WishlistSaved.lua), when you keep one
+    local saved = W.SavedList and W.SavedList(name)
+    return saved and saved.items[id] or nil
 end
 
 function W.Order(rank)
@@ -279,32 +364,41 @@ local partsIn = {} -- [sender] = { stamp, n, parts = { [i] = field } }
 
 local ask -- set below
 local queue -- set below
+local answerGuild -- set below
 
-LM.Handle("X", function(f, sender)
+-- channel: the message's chat type (CHAT_MSG_ADDON's third argument); GUILD comes from a guild member.
+LM.Handle("X", function(f, sender, channel)
     if not sender then
         return
     end
-    if sender ~= LM:Me() and not LM.UnitOf(sender) then
+    local guild = channel == "GUILD"
+    if sender ~= LM:Me() and not guild and not LM.UnitOf(sender) then
         return -- not in your group
     end
     if f[1] == "?" then
-        if sender ~= LM:Me() and mayAsk(sender) then
+        if sender == LM:Me() then
+            return
+        elseif guild then
+            answerGuild()
+        elseif mayAsk(sender) then
             queue(true)
         end
         return
     end
-    if not W.Sees() then
+    local sees = W.Sees() and not guild -- the group's lists, for the roll windows
+    if not (sees or W.Keeps()) then
         partsIn[sender] = nil
-        return -- only the loot master, the leader and assists keep lists
+        return -- only officers, the loot master, the leader and assists keep lists
     end
     local stamp, i, n = W.ParseHead(f[1])
     if not stamp then
         return
     end
-    local p = partsIn[sender]
+    local key = (guild and "g:" or "") .. sender -- a list may come on both channels at once
+    local p = partsIn[key]
     if not p or p.stamp ~= stamp or p.n ~= n then
         p = { stamp = stamp, n = n, parts = {} }
-        partsIn[sender] = p
+        partsIn[key] = p
     end
     p.parts[i] = f[2] or ""
     for k = 1, n do
@@ -312,18 +406,34 @@ LM.Handle("X", function(f, sender)
             return
         end
     end
-    partsIn[sender] = nil
-    W.lists[sender] = { items = W.Decode(p.parts), at = time() }
+    partsIn[key] = nil
+    local items = W.Decode(p.parts)
+    if sees then
+        W.lists[sender] = { items = items, at = time() }
+    end
+    if sender ~= LM:Me() and W.Keep then
+        W.Keep(sender, items, tonumber(stamp, 16)) -- saved, when newer than the copy kept
+    end
     LM:Fire("wishlist", sender)
 end)
 
 -- Sending ------------------------------------------------------------------------------------------------
 
 local pending, timerSet, inEncounter = false, false, false
-local stampN = 0
+local guildPending, guildTimer = false, false -- your list waits to go to the guild; its timer is set
 local lastSentCount -- how many items your last list sent had (nil before the first)
 local lastAsk, askPending = nil, false
-W.status = "solo" -- "solo", "sending", "held" or "sent", for the window's line
+local lastGuildAnswer -- GetTime() of your last answer to a guild ask
+W.status = "solo" -- "solo", "sending", "held", "sent" or "guild", for the window's line
+
+-- A random wait of up to max seconds, so a guild's answers spread out (math.random; a test sets its own).
+function W.Jitter(max)
+    return math.random() * max
+end
+
+local function stampText()
+    return string.format("%x", W.Stamp())
+end
 
 local function held()
     return inEncounter or LM.ChatLocked()
@@ -343,6 +453,7 @@ end
 local retrying = false
 local sendNow -- set below
 local askHeld -- set below
+local sendGuild -- set below
 
 -- While messages are held with no ENCOUNTER_END to wait for (the chat lockdown alone), tried again every HELD_RETRY.
 local function retryHeld()
@@ -358,7 +469,17 @@ local function retryHeld()
         if askPending then
             askHeld()
         end
+        if guildPending and not guildTimer then
+            sendGuild()
+        end
     end)
+end
+
+-- Out of a group: the line says what the guild got, or that your list waits for a group.
+local function idle()
+    if not (inGuild() and (guildPending or W.status == "guild")) then
+        W.status = "solo"
+    end
 end
 
 sendNow = function(force)
@@ -368,7 +489,7 @@ sendNow = function(force)
     end
     if not IsInGroup() then
         pending = false
-        W.status = "solo"
+        idle()
         LM:Fire("wishlist")
         return
     end
@@ -387,8 +508,7 @@ sendNow = function(force)
         LM:Fire("wishlist")
         return
     end
-    stampN = (stampN % 0xFFFF) + 1
-    for _, text in ipairs(W.Encode(string.format("%x", stampN), items)) do
+    for _, text in ipairs(W.Encode(stampText(), items)) do
         LM.SendText(text)
     end
     lastSentCount = #items
@@ -405,8 +525,8 @@ queue = function(force)
         pending = true
     end
     if not IsInGroup() then
-        W.status = "solo"
         pending = false
+        idle()
         return
     end
     W.status = held() and "held" or "sending"
@@ -419,6 +539,69 @@ queue = function(force)
     end)
 end
 W.Queue = queue
+
+-- Your list to the guild (LM.SendGuild), when it waits to go: never out of a guild, held during an encounter.
+sendGuild = function()
+    if not guildPending then
+        return
+    end
+    if not inGuild() then
+        guildPending = false
+        idle()
+        return
+    end
+    if held() then
+        if not IsInGroup() then
+            W.status = "held"
+            LM:Fire("wishlist")
+        end
+        if not inEncounter then
+            retryHeld()
+        end
+        return
+    end
+    guildPending = false
+    for _, text in ipairs(W.Encode(stampText())) do
+        LM.SendGuild(text)
+    end
+    if not IsInGroup() then
+        W.status = "guild"
+        LM:Fire("wishlist")
+    end
+end
+
+-- Your list goes to the guild delay seconds from now (SEND_DELAY when not given); a send already waiting takes it.
+local function queueGuild(delay)
+    if not inGuild() then
+        guildPending = false
+        return
+    end
+    guildPending = true
+    if not IsInGroup() then
+        W.status = held() and "held" or "sending"
+    end
+    if guildTimer then
+        return
+    end
+    guildTimer = true
+    C_Timer.After(delay or W.SEND_DELAY, function()
+        guildTimer = false
+        sendGuild()
+    end)
+end
+W.QueueGuild = queueGuild
+
+-- An ask heard on GUILD: your list goes after a short random wait, if you have one, at most once a minute.
+answerGuild = function()
+    if not (inGuild() and W.HasList()) then
+        return
+    end
+    if lastGuildAnswer and GetTime() - lastGuildAnswer < W.GUILD_ANSWER_SECONDS then
+        return
+    end
+    lastGuildAnswer = GetTime()
+    queueGuild(W.Jitter(W.ASK_JITTER))
+end
 
 -- Asks the group for everyone's list (the loot master at a session start; a leader or assist after a /reload),
 -- at most once every ASK_SECONDS; during an encounter it waits for its end.
@@ -445,9 +628,31 @@ askHeld = function()
     ask()
 end
 
+-- An officer asks the guild for everyone's newer list: at most once every GUILD_ASK_SECONDS, kept across logins
+-- (lootmaster.wishlistsAsked). During an encounter it is tried again after HELD_RETRY seconds.
+function W.AskGuild()
+    if not (inGuild() and W.Officer()) then
+        return false
+    end
+    if held() then
+        C_Timer.After(W.HELD_RETRY, W.AskGuild)
+        return false
+    end
+    local set = LM:Settings()
+    local last = tonumber(set.wishlistsAsked) or 0
+    if last > 0 and time() - last < W.GUILD_ASK_SECONDS then
+        return false
+    end
+    set.wishlistsAsked = time()
+    LM.SendGuild(Wire.Encode("X", { "?" }))
+    return true
+end
+
 changed = function()
+    restamp()
     LM:Fire("wishlist")
     queue(false)
+    queueGuild()
 end
 
 -- The window's status line.
@@ -458,6 +663,11 @@ end
 -- Whether your list waits to go (for tests).
 function W.Pending()
     return pending and true or false
+end
+
+-- Whether your list waits to go to the guild (for tests).
+function W.GuildPending()
+    return guildPending
 end
 
 -- Events -------------------------------------------------------------------------------------------------
@@ -488,6 +698,9 @@ events:SetScript("OnEvent", function(_, event)
         if askPending then
             ask()
         end
+        if guildPending then
+            queueGuild()
+        end
     elseif event == "GROUP_ROSTER_UPDATE" then
         local now = IsInGroup() and true or false
         if now and not wasInGroup then
@@ -505,7 +718,7 @@ events:SetScript("OnEvent", function(_, event)
     elseif event == "PLAYER_ENTERING_WORLD" then
         -- a /reload or loading screen: no ENCOUNTER_END may come for an encounter left behind
         inEncounter = encounterRuns()
-        if not inEncounter and (pending or askPending) then
+        if not inEncounter and (pending or askPending or guildPending) then
             retryHeld()
         end
     elseif event == "PLAYER_LOGIN" then
@@ -515,6 +728,13 @@ events:SetScript("OnEvent", function(_, event)
                 ask() -- a /reload in a group: lists heard before are gone, so ask again
             end)
         end
+        -- your list to the guild once, a while after login (spread out), and an officer asks the guild
+        C_Timer.After(W.LOGIN_DELAY + W.Jitter(W.LOGIN_JITTER), function()
+            if W.HasList() then
+                queueGuild(0)
+            end
+        end)
+        C_Timer.After(W.LOGIN_ASK_DELAY, W.AskGuild)
     end
 end)
 

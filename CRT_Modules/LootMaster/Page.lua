@@ -1,6 +1,7 @@
 local ADDON, CRT = ...
 
--- The Loot Master page (/crt loot settings), with four tabs:
+-- The Loot Master page (/crt loot settings), with five tabs (Wishlists, the raiders' saved wishlists, is
+-- LootMaster/WishlistTab.lua, before Settings):
 --   Tonight       My Loot on the left, for everyone: a card that opens your loot popup and All Loot Rolls;
 --                 Master loot on the right, the looter's side: CRT Looting, the session, its buttons, Held
 --                 boss loot, Add from bags and the session's items (LootMaster/Tonight.lua builds both)
@@ -48,6 +49,7 @@ local TEXT = {
     tonight = "Tonight",
     score = "Raider Score",
     filter = "Loot filter",
+    wishlists = "Wishlists",
     settings = "Settings",
     crtLooting = "CRT Looting",
     scoreHelp = "From the Late Tracker's saved nights: everyone starts at 100, a late arrival or a no-show costs points, and points come back every week. The weights are on the Settings tab. Players with no night counted have no score.",
@@ -891,6 +893,12 @@ local TABS = {
     end },
     { key = "settings", label = TEXT.settings, build = buildSettings },
 }
+-- Wishlists: the raiders' saved wishlists (LootMaster/WishlistTab.lua), before Settings
+if LM.BuildWishlistsTab then
+    table.insert(TABS, #TABS, { key = "wishlists", label = TEXT.wishlists, build = function(f)
+        LM.BuildWishlistsTab(f, { heading = heading, refreshers = refreshers })
+    end })
+end
 
 refresh = function()
     if not (page and page:IsVisible()) then

@@ -169,19 +169,18 @@ end
 -- every message until the encounter ends (or LOCKDOWN_RETRY); anything else is dropped, reported once.
 pump = function()
     while queue[1] do
-        local ch = channel()
-        if not ch then
-            while queue[1] do
-                dequeue(false) -- left the group: no one to send to
-            end
-            break
-        end
+        local ch = queue[1].ch or channel() -- ch: a message for the guild (LM.SendGuild)
         local to = queue[1].to
-        if to then
+        if to and ch then
             ch = "WHISPER" -- one group member only (LootMaster/Resync.lua's catch-up)
         end
-        local ok, result = pcall(C_ChatInfo.SendAddonMessage, LM.PREFIX, queue[1].text, ch, to)
-        if ok and (result == THROTTLED or result == CHANNEL_THROTTLED) then
+        local ok, result
+        if ch then
+            ok, result = pcall(C_ChatInfo.SendAddonMessage, LM.PREFIX, queue[1].text, ch, to)
+        end
+        if not ch then
+            dequeue(false) -- left the group: no one to send to
+        elseif ok and (result == THROTTLED or result == CHANNEL_THROTTLED) then
             C_Timer.After(1, pump)
             return
         elseif ok and result == LOCKDOWN then
@@ -236,6 +235,21 @@ local function send(kind, fields)
     sendText(Wire.Encode(kind, fields))
 end
 LM.Send = send
+
+-- A finished message to your guild (the GUILD addon channel), in the same queue: held in an encounter's lockdown,
+-- throttled like the rest. Out of a guild (IsInGuild) nothing is sent. Returns whether it was queued. The
+-- game echoes GUILD addon messages back to the sender too.
+function LM.SendGuild(text)
+    if not (IsInGuild and IsInGuild()) then
+        return false
+    end
+    queue[#queue + 1] = { text = text, ch = "GUILD" }
+    if not sending and not held then
+        sending = true
+        pump()
+    end
+    return true
+end
 
 -- Whether the game holds addon messages now (C_ChatInfo.InChatMessagingLockdown: a boss encounter).
 -- Ordinary combat doesn't. Unreadable is no.
@@ -1050,7 +1064,7 @@ end
 
 local HANDLERS = {}
 
--- Another file's message kind: fn(fields, sender), sender a full Name-Realm.
+-- Another file's message kind: fn(fields, sender, channel), sender a full Name-Realm, channel the chat type.
 function LM.Handle(kind, fn)
     HANDLERS[kind] = fn
 end
@@ -1280,11 +1294,12 @@ HANDLERS.G = function(f, sender)
     end
 end
 
-receive = function(text, sender)
+-- channel: the chat type it came on (CHAT_MSG_ADDON's third argument), nil for a message handed over out of a group.
+receive = function(text, sender, channel)
     local kind, fields = Wire.Decode(text)
     local h = kind and HANDLERS[kind]
     if h then
-        local ok, err = pcall(h, fields, full(sender))
+        local ok, err = pcall(h, fields, full(sender), channel)
         if not ok then
             geterrorhandler()(err)
         end
@@ -1442,7 +1457,7 @@ local waitStarted = false -- the group wait of a fresh login, from its first loa
 events:SetScript("OnEvent", function(_, event, a1, a2, a3, a4, a5)
     if event == "CHAT_MSG_ADDON" then
         if a1 == LM.PREFIX then
-            receive(a2, a4)
+            receive(a2, a4, a3)
         end
     elseif event == "PLAYER_LOGIN" then
         loadAuthority()
