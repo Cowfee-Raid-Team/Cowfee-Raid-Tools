@@ -196,8 +196,8 @@ local UI = { pages = {}, WINDOW_DEFAULTS = { inset = 8, titleHeight = 26 },
   TooltipOwner = function() end,
   PanelButtonWidth = function(w) return math.max(40, math.ceil(w or 0) + 28) end,
 }
--- a list-form help text (UI.AddTooltipText) kept as one string, so the checks can search it
-function UI.HelpRight(target, title, text) if type(text) == "table" then local out = {} for _, i in ipairs(text) do out[#out + 1] = type(i) == "table" and (i[1] .. ": " .. i[2]) or i end text = table.concat(out, " ") end local b = mock("Button", target) helps[title] = text return b end
+-- a list-form help text (UI.AddTooltipText) kept as one string (the real UI.TooltipPlain, theme_stub.js), so the checks can search it
+function UI.HelpRight(target, title, text) if type(text) == "table" then text = CRT_HELP_PLAIN(text) end local b = mock("Button", target) helps[title] = text return b end
 function UI.PanelButton(parent, label, height, onClick)
   local b = mock("Button", parent, "UIPanelButtonTemplate")
   rawset(b, "text", label) rawset(b, "OnClick", onClick)

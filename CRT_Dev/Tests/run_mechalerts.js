@@ -126,10 +126,9 @@ CRT.UI = { Tint = function(r, m, k, a) local c = CRT.PALETTE[k] r[m](r, c[1], c[
   RegisterPage = function() end,
   Show = function() end, SetFrameTitle = function() end, RegisterLayer = function() end, RegisterPreview = function() end,
   SkinTree = function() end, StyleWindow = function() end,
-  -- helpPlain: the text as one string, a list-form text (UI.AddTooltipText) flattened as UI.TooltipPlain does
+  -- helpPlain: the text as one string, a list-form text (UI.AddTooltipText) through the real UI.TooltipPlain (theme_stub.js)
   Help = function(parent, title, text) local b = mock("Button", parent) rawset(b, "helpTitle", title) rawset(b, "helpText", text)
-    local plain = text
-    if type(text) == "table" then local out = {} for _, item in ipairs(text) do out[#out + 1] = type(item) == "table" and (item[1] .. ": " .. item[2]) or item end plain = table.concat(out, "\\n\\n") end
+    local plain = type(text) == "table" and CRT_HELP_PLAIN(text) or text
     rawset(b, "helpPlain", plain) helps[#helps + 1] = b return b end,
   Dropdown = function(parent, label, opts) local r = mock("Row", parent) rawset(r, "label", label) rawset(r, "opts", opts)
     rawset(r, "refresh", function() rawset(r, "value", opts.get()) end)

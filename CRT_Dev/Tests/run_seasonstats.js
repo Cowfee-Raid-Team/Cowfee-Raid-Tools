@@ -86,8 +86,8 @@ local UI = {
   SelectPage = function(_, key) selectedPage = key local p = pages[key] if not p then return end
     if not p.frame then p.frame = mock() p.frame.shown = false p.build(p.frame) end p.frame:Show() end,
   SetTabSelected = function() end, RegisterTab = function() end, SkinScrollBar = function() end, SkinCheckButton = function() end,
-  -- a list-form help text (UI.AddTooltipText) kept as one string, so the checks can search it
-  HelpRight = function(target, title, text) if type(text) == "table" then local out = {} for _, i in ipairs(text) do out[#out + 1] = type(i) == "table" and (i[1] .. ": " .. i[2]) or i end text = table.concat(out, " ") end helps[title] = text local h = mock() h.target = target return h end,
+  -- a list-form help text (UI.AddTooltipText) kept as one string (the real UI.TooltipPlain, theme_stub.js), so the checks can search it
+  HelpRight = function(target, title, text) if type(text) == "table" then text = CRT_HELP_PLAIN(text) end helps[title] = text local h = mock() h.target = target return h end,
   Dropdown = function(parent, label, opts) local row = mock() row.parent = parent row.label, row.opts = label, opts row.refresh = function() row.refreshed = (row.refreshed or 0) + 1 end
     dropdowns[label] = row return row end,
   SortHeaders = function(parent, cols, opts) local s = { cols = cols, opts = opts, refreshed = 0 } s.refresh = function() s.refreshed = s.refreshed + 1 end sorts[#sorts + 1] = s return s end,

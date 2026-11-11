@@ -194,7 +194,7 @@ end
 do
   local page, roster
   -- a list-form text (UI.AddTooltipText) as one string
-  local function helpPlain(t) if type(t) ~= "table" then return tostring(t) end local out = {} for _, i in ipairs(t) do out[#out + 1] = type(i) == "table" and (i[1] .. ": " .. i[2]) or i end return table.concat(out, " ") end
+  local function helpPlain(t) return CRT_HELP_PLAIN(t) end -- the real UI.TooltipPlain (theme_stub.js)
   for _, x in ipairs(lateHelps) do
     if x.helpTitle == "The Late Tracker" then page = x elseif x.helpTitle == "Expected roster" then roster = x end
   end

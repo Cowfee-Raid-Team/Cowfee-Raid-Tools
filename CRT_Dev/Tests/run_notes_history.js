@@ -95,8 +95,9 @@ function StaticPopup_Show(key) return { key = key } end
 local asked
 function StaticPopup_ShowCustomGenericConfirmation(info) asked = info return { info = info } end
 local pages, printed = {}, {}
--- a list-form help text (UI.AddTooltipText, CRT_Core/UI/Panel.lua) as one string, so the checks can search it
-local function flatHelp(t) if type(t) ~= "table" then return t end local out = {} for _, i in ipairs(t) do out[#out + 1] = type(i) == "table" and (i[1] .. ": " .. i[2]) or i end return table.concat(out, " ") end
+-- a list-form help text (UI.AddTooltipText) as one string, the real UI.TooltipPlain (theme_stub.js), so the checks can
+-- search it; a function's text stays a function
+local function flatHelp(t) if type(t) ~= "table" then return t end return CRT_HELP_PLAIN(t) end
 local CRT = {
   Bosses = { OnRouteChange = function() end, RouteIndex = function() end,
     Options = function() return { { key = "raid:r1", label = "Raid One", title = true }, { key = 3470, label = "Nek'zali" }, { key = 3480, label = "Fresh" } } end },

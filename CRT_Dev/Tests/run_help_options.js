@@ -4,6 +4,8 @@
 // string in CRT_Core or CRT_Modules that still packs several options into one text: two or more "Name: " heads at
 // sentence starts (the text's start, after a full stop, ! or ?, or after a line break). Literals joined with ..
 // count as one text, and colour codes are left out first.
+// Not scanned: long strings ([[...]]) and heads after ; or , (only sentence starts count), so a list of choices
+// inside one sentence ("Season picks ...; Mechanic narrows ...") is left to the review.
 // It can't tell a tooltip from a chat line or a sentence that happens to start "Note: ", so ALLOW lists the texts
 // that are fine as they are: [file, a piece of the text, the reason].
 // Usage: node run_help_options.js <addon folder>
@@ -11,9 +13,6 @@ const fs = require('fs');
 const path = require('path');
 
 const ALLOW = [
-  // chat diagnostics, one line of settings each, never a tooltip
-  ['CRT_Modules/Debuffs/Panel.lua', 'Settings: size %d', 'a /crt diagnostics line in chat'],
-  ['CRT_Modules/Debuffs/Panel.lua', 'Look: swipe %s', 'a /crt diagnostics line in chat'],
   // one subject: the Mech Alerts list, explained in order ("Alerts are saved per difficulty: ... On the left: ..."),
   // with no options to pick between
   ['CRT_Modules/Notes/Reminders.lua', 'Alerts are saved per difficulty: Normal/Heroic', 'sentences about one list, not options'],
@@ -62,13 +61,15 @@ function heads(raw) {
   return found;
 }
 
-function lint(sources, allow) {
+// used: the allow entries that kept a flagged text out of bad, by their index in allow
+function lint(sources, allow, used) {
   const bad = [];
   for (const rel of Object.keys(sources)) {
     for (const { line, text } of texts(sources[rel])) {
       const h = heads(text);
       if (h.length < 2) continue;
-      if (allow.some(([f, piece]) => f === rel && text.includes(piece))) continue;
+      const a = allow.findIndex(([f, piece]) => f === rel && text.includes(piece));
+      if (a >= 0) { if (used) used.add(a); continue; }
       bad.push(rel + ':' + line + ': ' + h.length + ' option heads (' + h.join(', ') + ') in one text: ' + text.slice(0, 120));
     }
   }
@@ -90,15 +91,16 @@ function lint(sources, allow) {
       '}',
     ].join('\n'),
   };
-  const got = lint(fixture, [['A.lua', 'Settings: size', 'test']]).map((b) => b.split(': ')[0]);
+  const fixUsed = new Set();
+  const got = lint(fixture, [['A.lua', 'Settings: size', 'test'], ['A.lua', 'not in the fixture', 'test']], fixUsed).map((b) => b.split(': ')[0]);
   const want = ['A.lua:2', 'A.lua:3', 'A.lua:7'];
   const missing = want.filter((w) => !got.includes(w));
   const extra = got.filter((g) => !want.includes(g));
-  if (missing.length || extra.length) {
-    console.log('FAIL the lint on its own fixture: missing ' + JSON.stringify(missing) + ', extra ' + JSON.stringify(extra));
+  if (missing.length || extra.length || !fixUsed.has(0) || fixUsed.has(1)) {
+    console.log('FAIL the lint on its own fixture: missing ' + JSON.stringify(missing) + ', extra ' + JSON.stringify(extra) + ', allow entries used ' + JSON.stringify([...fixUsed]));
     process.exit(1);
   }
-  console.log('ok the lint finds several option heads in one text, joined literals and colour codes included');
+  console.log('ok the lint finds several option heads in one text, joined literals and colour codes included, and knows which allow entries it used');
 }
 
 const root = process.argv[2];
@@ -112,12 +114,13 @@ const walk = (dir) => {
 };
 for (const d of ['CRT_Core', 'CRT_Modules']) walk(path.join(root, d));
 const n = Object.keys(sources).length;
-const bad = lint(sources, ALLOW);
+const used = new Set();
+const bad = lint(sources, ALLOW, used);
 if (n < 50) bad.push('only ' + n + ' Lua files found: is the scan looking in the right folder?');
-// every allow entry still matches something, so the list doesn't keep stale entries
-for (const [f, piece] of ALLOW) {
-  if (!sources[f] || !sources[f].includes(piece)) bad.push('ALLOW entry no longer matches: ' + f + ' "' + piece + '"');
-}
+// every allow entry kept a flagged text out in this run, so the list doesn't keep entries that are no longer needed
+ALLOW.forEach(([f, piece], a) => {
+  if (!used.has(a)) bad.push('ALLOW entry suppressed nothing this run (remove it): ' + f + ' "' + piece + '"');
+});
 if (bad.length) {
   console.log('FAIL a text with several options in one block (use the list form, CRT_Core/UI/Panel.lua UI.AddTooltipText):');
   for (const b of bad) console.log(b);

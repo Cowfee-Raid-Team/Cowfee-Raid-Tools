@@ -9,7 +9,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local panelSrc, mochaSrc, tooltipSrc = ...
+local panelSrc, mochaSrc, tooltipSrc, controlsSrc = ...
 local unpack = unpack or table.unpack -- the harness runs Lua 5.3
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
@@ -58,12 +58,16 @@ local function frame(kind, parent)
     GetParent = function(self) return self.parent end,
     SetSize = function(self, w, h) self.w, self.h = w, h end,
     GetSize = function(self) return self.w, self.h end,
+    SetWidth = function(self, w) self.w = w end, GetWidth = function(self) return self.w or 0 end,
+    SetHeight = function(self, h) self.h = h end, GetHeight = function(self) return self.h or 0 end,
     SetScript = function(self, k, fn) self.scripts[k] = fn end,
     GetScript = function(self, k) return self.scripts[k] end,
     Show = function(self) self.shown = true end, Hide = function(self) self.shown = false end,
     IsShown = function(self) return self.shown end,
   }
-  setmetatable(f, { __index = function(_, k) return m[k] or (type(k) == "string" and k:find("^%u") and function() end) or nil end })
+  -- any other method does nothing; a button template's art (Left, Middle, Right) isn't there
+  local art = { Left = true, Middle = true, Right = true }
+  setmetatable(f, { __index = function(_, k) return m[k] or (type(k) == "string" and k:find("^%u") and not art[k] and function() end) or nil end })
   if parent and parent.children then parent.children[#parent.children + 1] = f end
   return f
 end
@@ -85,6 +89,7 @@ assert(load(mochaSrc, "Themes.lua"))("CowfeeRaidTools", CRT)
 CRT:UseTheme("cowfee")
 assert(load(panelSrc, "Panel.lua"))("CowfeeRaidTools", CRT)
 assert(load(tooltipSrc, "Tooltip.lua"))("CowfeeRaidTools", CRT)
+assert(load(controlsSrc, "Controls.lua"))("CowfeeRaidTools", CRT)
 local UI = CRT.UI
 local M = CRT.PALETTE
 local function look(modern)
@@ -159,6 +164,35 @@ local hb = UI.HeaderButton(page, "Go", function() end, { tipTitle = "Go", tipTex
 hb.scripts.OnEnter(hb)
 check(#GameTooltip.lines == 3 and GameTooltip.lines[3] == "|cff" .. heading .. "B|r: b.", "UI.HeaderButton's tipText takes the list form")
 hb.scripts.OnLeave(hb)
+local function lastIsOption(name, text) return GameTooltip.lines[#GameTooltip.lines] == "|cff" .. heading .. name .. "|r: " .. text end
+-- the slider's label (UI.Slider tipText); the game's slider template, as far as UI.Slider reads it
+MinimalSliderWithSteppersMixin = { Label = { Right = 1 }, Event = { OnValueChanged = 1, OnInteractStart = 2, OnInteractEnd = 3 } }
+CreateMinimalSliderFormatter = function() return function() end end
+C_Timer = C_Timer or { After = function() end }
+local slider = UI.Slider(page, "Size", { min = 1, max = 5, get = function() return 1 end, set = function() end, tipTitle = "Size", tipText = { "A.", { "B", "b." } } })
+check(slider.labelHit ~= nil, "a slider with tipTitle has a hover box on its label")
+if slider.labelHit then
+  slider.labelHit.scripts.OnEnter(slider.labelHit)
+  check(#GameTooltip.lines == 3 and lastIsOption("B", "b.") and near(GameTooltip.colors[3], { 0.85, 0.85, 0.85 }), "UI.Slider's tipText takes the list form: " .. table.concat(GameTooltip.lines, " | "))
+  slider.labelHit.scripts.OnLeave(slider.labelHit)
+end
+-- the preview button's tooltip, in its own 0.8 grey
+local pv = UI.PreviewButton(page, "Preview it", { "help-test" }, { tooltip = { "A.", { "B", "b." } } })
+pv.scripts.OnEnter(pv)
+check(#GameTooltip.lines == 3 and lastIsOption("B", "b.") and near(GameTooltip.colors[3], { 0.8, 0.8, 0.8 }), "UI.PreviewButton's tooltip takes the list form: " .. table.concat(GameTooltip.lines, " | "))
+pv.scripts.OnLeave(pv)
+-- a dropdown option's tooltip (UI.OptionTooltip): a list keeps the game's normal colour, as a string option's does
+NORMAL_FONT_COLOR = { GetRGB = function() return 1, 0.82, 0 end }
+local optTip = { lines = {}, colors = {}, wraps = {}, AddLine = GameTooltip.AddLine }
+GameTooltip_SetTitle = function(t, text) t.title = text end
+GameTooltip_AddNormalLine = function(t, text) t.lines[#t.lines + 1] = text t.colors[#t.lines] = { 1, 0.82, 0 } end
+UI.OptionTooltip(optTip, { label = "Choice", tooltip = { "A.", { "B", "b." } } })
+check(optTip.title == "Choice" and #optTip.lines == 3 and optTip.lines[3] == "|cff" .. heading .. "B|r: b." and near(optTip.colors[1], { 1, 0.82, 0 }) and near(optTip.colors[3], { 1, 0.82, 0 }),
+  "a list-form option tooltip: one paragraph per option, in the game's normal colour")
+local strTip = { lines = {}, colors = {}, wraps = {}, AddLine = GameTooltip.AddLine }
+UI.OptionTooltip(strTip, { label = "Choice", tooltip = "Plain." })
+check(#strTip.lines == 1 and strTip.lines[1] == "Plain." and near(strTip.colors[1], { 1, 0.82, 0 }), "a string option tooltip: the game's normal line, as before")
+NORMAL_FONT_COLOR, GameTooltip_SetTitle, GameTooltip_AddNormalLine = nil, nil, nil
 print("ok help: the list form, one paragraph per option")
 
 -- Tooltip position (CRT_Core/UI/Tooltip.lua; run_tooltip_spots.js tests every spot, mode and area): a (?) keeps
@@ -487,4 +521,5 @@ if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.
 lua.lua_pushstring(L, to_luastring(read('CRT_Core/UI/Panel.lua')));
 lua.lua_pushstring(L, to_luastring(read('CRT_Core/Themes.lua')));
 lua.lua_pushstring(L, to_luastring(read('CRT_Core/UI/Tooltip.lua')));
-if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+lua.lua_pushstring(L, to_luastring(read('CRT_Core/UI/Controls.lua')));
+if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

@@ -298,7 +298,7 @@ do
   tip = {}
   sortButton.OnEnter(sortButton)
   check(tip[2] and tip[2]:find("two rows", 1, true), "Sort grid's tooltip says why: " .. tostring(tip[2]))
-  check(tip[2] and tip[2]:find("Raid Notes > Mech Alerts (pick the mechanic, then its Assign tab)", 1, true), "and where to make one, by its full path: " .. tostring(tip[2]))
+  check(tip[2] and tip[2]:find("Raid Notes > Mech Alerts > Mechanics (pick the boss and the ability, then its Assign tab)", 1, true), "and where to make one, by its full path: " .. tostring(tip[2]))
   -- Sort by's (?): one paragraph per method, in the list form (UI.AddTooltipText), the sides one naming the same path
   local sortHelp
   for _, h in ipairs(groupHelps) do if h.helpTitle == "Sort by" then sortHelp = rawget(h, "helpText") end end
@@ -306,7 +306,7 @@ do
   for _, item in ipairs(type(sortHelp) == "table" and sortHelp or {}) do if type(item) == "table" then items[#items + 1] = item end end
   check(#items == 4 and items[1][1] == "Role blocks" and items[2][1] == "Melee and ranged groups" and items[3][1] == "Spread duplicates" and items[4][1] == "Left and right sides",
     "Sort by's (?) has one item per method, by its on-screen name")
-  check(items[4] and items[4][2]:find("Raid Notes > Mech Alerts (pick the mechanic, then its Assign tab)", 1, true), "the sides method names where its assignment is made")
+  check(items[4] and items[4][2]:find("Raid Notes > Mech Alerts > Mechanics (pick the boss and the ability, then its Assign tab)", 1, true), "the sides method names where its assignment is made")
   sortBy.opts.set("roles")
   check(not side.shown and sortButton.enabled == true, "back to Role blocks")
   -- Sort grid: the same names, rearranged, as an unsaved edit; nobody in the raid moves (SetRaidSubgroup isn't there)

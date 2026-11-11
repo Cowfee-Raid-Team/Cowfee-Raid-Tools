@@ -117,8 +117,8 @@ CRT_UI = {
   end,
   PanelButtonWidth = function(w) return math.max(80, math.ceil(w) + 24) end,
   SkinCheckButton = function() end,
-  -- a list-form help text (UI.AddTooltipText) kept as one string, so the checks can search it
-  Help = function(p, title, text) if type(text) == "table" then local out = {} for _, i in ipairs(text) do out[#out + 1] = type(i) == "table" and (i[1] .. ": " .. i[2]) or i end text = table.concat(out, " ") end helps[title] = text return mock() end,
+  -- a list-form help text (UI.AddTooltipText) kept as one string (the real UI.TooltipPlain, theme_stub.js), so the checks can search it
+  Help = function(p, title, text) if type(text) == "table" then text = CRT_HELP_PLAIN(text) end helps[title] = text return mock() end,
   Dropdown = function() local d = mock() d.refresh = function() end d.Dropdown = mock() return d end,
   Slider = function() local s = mock() s.refresh = function() end return s end,
   SpotPicker = function() local s = mock() s.refresh = function() end return s end, SPOT_PICKER_W = 126, SPOT_PICKER_H = 70, SPOT_PICKER_GAP = 12,

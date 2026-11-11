@@ -61,8 +61,9 @@ local helpTargets, helpCalls = {}, 0 -- UI.HelpRight's target for each (?), by t
 skinCalls = 0
 rowsList = {}
 tooltipSettings = {}
--- a list-form help text (UI.AddTooltipText, CRT_Core/UI/Panel.lua) as one string, so the checks can search it
-local function flatHelp(t) if type(t) ~= "table" then return t end local out = {} for _, i in ipairs(t) do out[#out + 1] = type(i) == "table" and (i[1] .. ": " .. i[2]) or i end return table.concat(out, " ") end
+-- a list-form help text (UI.AddTooltipText) as one string, the real UI.TooltipPlain (theme_stub.js), so the checks can
+-- search it; a function's text stays a function
+local function flatHelp(t) if type(t) ~= "table" then return t end return CRT_HELP_PLAIN(t) end
 local function opts(o) return type(o.options) == "function" and o.options() or o.options end
 local CRT = { db = { timeline = { record = true, minPull = 15, keep = 10, bosses = {}, rows = {}, span = 300, grid = 30, iconSize = 22,
     deathRows = "combined", roles = { TANK = true, HEALER = true, DAMAGER = true }, firstDeaths = 0, overlay = 3, overlayOn = false, hideEmpty = false, nextId = 1 } },

@@ -168,7 +168,7 @@ UI.ResetButtonWidth = function() return 44 end; UI.ResetButton = function(parent
 UI.SetFrameTitle = function(f, t) f.title = t end
 UI.Help = function(parent, title, text) local b = mock("Button", parent) rawset(b, "helpTitle", title) rawset(b, "helpText", text) helps[#helps + 1] = b return b end
 -- a list-form help text (UI.AddTooltipText) as one string
-local function helpPlain(t) if type(t) ~= "table" then return tostring(t) end local out = {} for _, i in ipairs(t) do out[#out + 1] = type(i) == "table" and (i[1] .. ": " .. i[2]) or i end return table.concat(out, " ") end
+local function helpPlain(t) return CRT_HELP_PLAIN(t) end -- the real UI.TooltipPlain (theme_stub.js)
 UI.Dropdown = function(parent, label, opts) local r = mock("Row", parent) rawset(r, "label", label) rawset(r, "opts", opts)
   rawset(r, "refresh", function() rawset(r, "refreshed", (rawget(r, "refreshed") or 0) + 1) end) dropdowns[label] = r return r end
 UI.SoundDropdown = function(parent, label, opts) local o = {} for k, v in pairs(opts) do o[k] = v end
