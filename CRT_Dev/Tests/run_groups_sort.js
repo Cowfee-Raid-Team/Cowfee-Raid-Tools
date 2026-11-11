@@ -262,11 +262,13 @@ check("sides, 20: the first row in groups 1-2, the second in 3-4, everyone else 
   for _, k in ipairs(row2) do assert(at[k] == 3 or at[k] == 4, k .. " in 3-4: " .. tostring(at[k])) end
   assert(total(s) == 20 and used(s) == 4, "20 fit groups 1-4")
   assert(names(members(s, map, 1)) == "Rmage1,Tank1,Heal1,Mrogue1,Rmage2", "group 1 in grid order: " .. names(members(s, map, 1)))
+  local left = #members(s, map, 1) + #members(s, map, 2)
+  assert(left == 10 and #members(s, map, 3) + #members(s, map, 4) == 10, "the rest even the sides out, 10 and 10: " .. left)
   local ok = stable("sides", R20, { rows = { row1, row2 } })
   assert(ok, "the same on a second sort")
 end)
 
-check("sides, 13: rows of three, the rest fill from group 1", function()
+check("sides, 13: rows of three, the rest balance between the two sides", function()
   local map = byKey(R13)
   local row1 = { "Ha-Area52", "Ma-Area52", "Re-Area52" }
   local row2 = { "Hb-Area52", "Tk-Area52", "Rh-Area52" }
@@ -275,7 +277,18 @@ check("sides, 13: rows of three, the rest fill from group 1", function()
   for _, k in ipairs(row1) do assert(at[k] == 1 or at[k] == 2, k .. " in 1-2") end
   for _, k in ipairs(row2) do assert(at[k] == 3 or at[k] == 4, k .. " in 3-4") end
   assert(names(members(s, map, 1)) == "Ha,Ma,Re,Ra,Rb", "group 1: the row, then the rest in grid order: " .. names(members(s, map, 1)))
+  assert(names(members(s, map, 2)) == "Rc,Rd", "group 2: " .. names(members(s, map, 2)))
+  assert(names(members(s, map, 3)) == "Tk,Hb,Rh,Mb,Rf" and names(members(s, map, 4)) == "Rg", "groups 3-4: " .. names(members(s, map, 3)) .. " / " .. names(members(s, map, 4)))
   assert(stable("sides", R13, { rows = { row1, row2 } }), "the same on a second sort")
+end)
+
+check("sides: a full first row sends everyone else to the second side", function()
+  local map = byKey(R20)
+  local row1 = {}
+  for i = 1, 10 do row1[i] = R20[i].key end
+  local s = Sort.Arrange("sides", R20, { rows = { row1, {} } })
+  for i = 11, 20 do local g = groupOf(s)[R20[i].key] assert(g == 3 or g == 4, R20[i].key .. " on the second side: " .. tostring(g)) end
+  assert(stable("sides", R20, { rows = { row1, {} } }), "the same on a second sort")
 end)
 
 -- Sort.Read --------------------------------------------------------------------------------------------------------
@@ -300,10 +313,10 @@ check("Sort.Read: slot order, the role a slot shows (by hand first), class, spec
 end)
 
 -- The Left and right sides list ------------------------------------------------------------------------------------
-local function blockText(name, rows)
+local function blockText(name, rows, mech)
   local b = { name = name, rows = {} }
   for i, r in ipairs(rows) do b.rows[i] = { label = r[1], text = "", tokens = r[2], casts = "all" } end
-  return table.concat(A.Lines(b, {}), "\\n")
+  return table.concat(A.Lines(b, {}, { mech = mech }), "\\n")
 end
 check("sides list: only blocks with exactly two rows of players, as Boss: name, in route order", function()
   Bosses:Register({ encounterID = 3470, name = "Boss One", season = "sample" })
@@ -316,20 +329,24 @@ check("sides list: only blocks with exactly two rows of players, as Boss: name, 
     "", blockText("One Empty", { { "Left", { "Solex", "healer" } }, { "Middle", {} }, { "Right", { "Abu" } } }),
   }, "\\n")
   local two = table.concat({ "EncounterID:3420;Difficulty:Mythic;Name:Boss Two",
-    blockText("Orbs", { { "Odd", { "Rixxy" } }, { "Even", { "Cheo", "Demon Hunter" } } }) }, "\\n")
+    blockText("Orbs", { { "Odd", { "Rixxy" } }, { "Even", { "Cheo", "Demon Hunter" } } }),
+    "", blockText("Feast Sides", { { "Left", { "Solex" } }, { "Right", { "Abu" } } }, 4321) }, "\\n")
   CRT.db.notes.list = { [1] = { raw = two, encounterID = 3420, difficulty = "Mythic", name = "Boss Two" },
     [2] = { raw = one, encounterID = 3470, difficulty = "Mythic", name = "Boss One" },
     [3] = { raw = blockText("Mine", { { "A", { "Solex" } }, { "B", { "Abu" } } }), encounterID = 3470, difficulty = "Mythic", personal = true } }
   local list = Sort.SideBlocks()
   local labels = {}
   for _, b in ipairs(list) do labels[#labels + 1] = b.label end
-  assert(table.concat(labels, "|") == "Boss One: Left Right|Boss One: One Empty|Boss Two: Orbs", table.concat(labels, "|"))
+  assert(table.concat(labels, "|") == "Boss One: Left Right|Boss One: One Empty|Boss Two: Orbs|Boss Two: Spell4321", table.concat(labels, "|"))
   assert(table.concat(list[1].rows[1], ",") == "Solex,Rixxy" and table.concat(list[1].rows[2], ",") == "Abu,Cheo", "the rows' names")
   assert(table.concat(list[2].rows[1], ",") == "Solex", "a role word is left out of a row: " .. table.concat(list[2].rows[1], ","))
   assert(table.concat(list[3].rows[2], ",") == "Cheo", "a class is left out: " .. table.concat(list[3].rows[2], ","))
   -- its rows as the grid's players: by name alone or Name-Realm; names not in the grid left out
   local rows = Sort.SideRows(list[1], { { key = "Solex-Area52" }, { key = "Abu-KelThuzad" }, { key = "Cheo-Area52" } })
   assert(table.concat(rows[1], ",") == "Solex-Area52" and table.concat(rows[2], ",") == "Abu-KelThuzad,Cheo-Area52", "rows: " .. table.concat(rows[1], ",") .. " / " .. table.concat(rows[2], ","))
+  -- a bare name two grid players share (other realms) names neither
+  local amb = Sort.SideRows(list[1], { { key = "Solex-Area52" }, { key = "Solex-Other" }, { key = "Abu-Other" } })
+  assert(#amb[1] == 0 and table.concat(amb[2], ",") == "Abu-Other", "ambiguous: " .. table.concat(amb[1], ",") .. " / " .. table.concat(amb[2], ","))
   CRT.db.notes.list = {}
   assert(#Sort.SideBlocks() == 0, "none without notes")
 end)
@@ -340,7 +357,7 @@ check("changes: who is new in each group, groups with no one new skipped, in gro
   local after = { { key = "c", name = "Cee", subgroup = 1 }, { key = "a", name = "Ay", subgroup = 1 }, { key = "b", name = "Bee", subgroup = 4 },
     { key = "d", name = "Dee", subgroup = 3 }, { key = "e", name = "Eee", subgroup = 4 }, { key = "f", name = "Eff", subgroup = 2 } }
   local lines = Sort.ChangeLines(before, after)
-  assert(table.concat(lines, "|") == "<Group 1 Changes>: Cee|<Group 2 Changes>: Eff|<Group 4 Changes>: Bee, Eee", table.concat(lines, "|"))
+  assert(table.concat(lines, "|") == "[CRT] <Group 1 Changes>: Cee|[CRT] <Group 2 Changes>: Eff|[CRT] <Group 4 Changes>: Bee, Eee", table.concat(lines, "|"))
   assert(#Sort.ChangeLines(before, { { key = "a", name = "Ay", subgroup = 1 }, { key = "c", name = "Cee", subgroup = 2 } }) == 0, "nothing changed: no lines")
 end)
 
@@ -354,9 +371,10 @@ check("changes: a long line splits under the 255-character chat limit, every nam
   end
   local lines = Sort.ChangeLines(before, after)
   assert(#lines > 1, "split: " .. #lines)
-  assert(lines[1]:find("^<Group 1 Changes>: ") ~= nil, "starts with the group")
+  assert(lines[1]:find("^%[CRT%] <Group 1 Changes>: ") ~= nil, "starts with the tag and the group")
   local joined = table.concat(lines, " ")
-  for _, l in ipairs(lines) do assert(#l <= 255, "too long: " .. #l) end
+  for _, l in ipairs(lines) do assert(#l <= 255, "too long: " .. #l) assert(l:sub(1, 6) == "[CRT] ", "every line tagged: " .. l) end
+  assert(#lines[1] > 225, "the first line uses the room it has: " .. #lines[1])
   for _, n in ipairs(all) do assert(joined:find(n .. ",", 1, true) or joined:find(n .. "$"), "kept: " .. n) end
 end)
 
@@ -374,8 +392,16 @@ local function arrange(slots)
     timers = {}
     for _, fn in ipairs(list) do fn() end
   end
-  timers = {}
+  -- what is left: the spaced chat lines (and stall checks that find nothing to do)
+  for _ = 1, 20 do
+    local list = timers
+    timers = {}
+    for _, fn in ipairs(list) do fn() end
+  end
 end
+local function flush() for _ = 1, 20 do local list = timers timers = {} for _, fn in ipairs(list) do fn() end end end
+local spaced = {}
+C_Timer.After = function(delay, fn) spaced[#spaced + 1] = delay timers[#timers + 1] = fn end
 local function grid(list) local s = {} for i = 1, 40 do s[i] = list[i] or "" end return s end
 local function sixRaid()
   raid = { { "Aa", 1, "MAGE", "DAMAGER" }, { "Bb", 1, "MAGE", "DAMAGER" }, { "Cc", 2, "MAGE", "DAMAGER" }, { "Dd", 2, "MAGE", "DAMAGER" },
@@ -403,7 +429,31 @@ check("arrange, post on: one post when every move is done, a line per changed gr
   assert(not postedEarly, "nothing posted before the last move")
   local msgs = {}
   for _, m in ipairs(sent) do msgs[#msgs + 1] = m.msg assert(m.channel == "RAID", "to raid chat: " .. tostring(m.channel)) end
-  assert(table.concat(msgs, "|") == "<Group 1 Changes>: Cc|<Group 2 Changes>: Bb, Ee-Other|<Group 4 Changes>: Dd, Ff", table.concat(msgs, "|"))
+  assert(table.concat(msgs, "|") == "[CRT] <Group 1 Changes>: Cc|[CRT] <Group 2 Changes>: Bb, Ee-Other|[CRT] <Group 4 Changes>: Dd, Ff", table.concat(msgs, "|"))
+end)
+
+check("arrange: the lines go 0.4 s apart", function()
+  sixRaid()
+  CRT.db.groups.postChanges = true
+  spaced = {}
+  arrange(TARGET)
+  local gaps = {}
+  for _, d in ipairs(spaced) do if d == 0.4 or d == 0.8 then gaps[#gaps + 1] = d end end
+  assert(#sent == 3 and table.concat(gaps, ",") == "0.4,0.8", "spaced: " .. table.concat(gaps, ","))
+end)
+
+check("arrange, chat held by the game (messaging lockdown): held, sent when it ends", function()
+  sixRaid()
+  CRT.db.groups.postChanges = true
+  local locked = true
+  C_ChatInfo.InChatMessagingLockdown = function() return locked end
+  arrange(TARGET)
+  assert(#sent == 0, "held: " .. #sent)
+  locked = false
+  applyFrame.scripts.OnEvent(applyFrame, "ENCOUNTER_END")
+  flush()
+  assert(#sent == 3, "sent when the lockdown ends: " .. #sent)
+  C_ChatInfo.InChatMessagingLockdown = nil
 end)
 
 check("arrange, post on, nobody moves: nothing posted", function()
@@ -413,24 +463,84 @@ check("arrange, post on, nobody moves: nothing posted", function()
   assert(#sent == 0, "nothing posted: " .. #sent)
 end)
 
-check("arrange, post on, during a boss encounter: nothing posted", function()
+check("arrange, post on, during a boss encounter: held, then sent once when it ends", function()
   sixRaid()
   CRT.db.groups.postChanges = true
   encounter = true
   arrange(TARGET)
-  encounter = false
   assert(raid[3][2] == 1, "still moved")
-  assert(#sent == 0, "nothing posted: " .. #sent)
+  assert(#sent == 0, "nothing posted during the encounter: " .. #sent)
+  applyFrame.scripts.OnEvent(applyFrame, "PLAYER_REGEN_ENABLED")
+  flush()
+  assert(#sent == 0, "still the encounter: still held")
+  encounter = false
+  applyFrame.scripts.OnEvent(applyFrame, "ENCOUNTER_END")
+  flush()
+  assert(#sent == 3 and sent[1].msg == "[CRT] <Group 1 Changes>: Cc", "sent after it: " .. #sent)
+  applyFrame.scripts.OnEvent(applyFrame, "PLAYER_REGEN_ENABLED")
+  flush()
+  assert(#sent == 3, "only once")
 end)
 
-check("arrange, post on, combat starts: stopped, nothing posted", function()
+-- a stop part-way: the first move lands (Bb into group 2), then the stop
+local function startAndStop(stop)
   sixRaid()
   CRT.db.groups.postChanges = true
-  sent = {}
+  sent, timers = {}, {}
   CRT.Apply:Start(TARGET)
-  applyFrame.scripts.OnEvent(applyFrame, "PLAYER_REGEN_DISABLED")
+  stop()
+end
+
+check("arrange stopped by combat: the groups that changed, held until combat ends", function()
+  startAndStop(function()
+    combat = true
+    applyFrame.scripts.OnEvent(applyFrame, "PLAYER_REGEN_DISABLED")
+  end)
   timers = {}
-  assert(#sent == 0, "nothing posted: " .. #sent)
+  assert(#sent == 0, "nothing in combat: " .. #sent)
+  -- the raid moves on while you wait: the post is still the raid as it stood when it stopped
+  raid[2][2] = 3
+  combat = false
+  applyFrame.scripts.OnEvent(applyFrame, "PLAYER_REGEN_ENABLED")
+  flush()
+  local msgs = {}
+  for _, m in ipairs(sent) do msgs[#msgs + 1] = m.msg end
+  assert(table.concat(msgs, "|") == "[CRT] <Group 2 Changes>: Bb", "the first move, as it stood when it stopped: " .. table.concat(msgs, "|"))
+end)
+
+check("arrange stopped by combat, then a new Arrange: the held post is dropped", function()
+  startAndStop(function()
+    combat = true
+    applyFrame.scripts.OnEvent(applyFrame, "PLAYER_REGEN_DISABLED")
+  end)
+  timers = {}
+  combat = false
+  sixRaid()
+  CRT.db.groups.postChanges = false
+  CRT.Apply:Start(TARGET) -- post off this time: nothing of its own either
+  for _ = 1, 50 do applyFrame.scripts.OnEvent(applyFrame, "GROUP_ROSTER_UPDATE") flush() end
+  applyFrame.scripts.OnEvent(applyFrame, "PLAYER_REGEN_ENABLED")
+  flush()
+  assert(#sent == 0, "dropped: " .. #sent)
+end)
+
+check("arrange stopped by a stall: posts at once what did change", function()
+  sixRaid()
+  CRT.db.groups.postChanges = true
+  sent, timers = {}, {}
+  local realSet = SetRaidSubgroup
+  local moves = 0
+  SetRaidSubgroup = function(i, g) moves = moves + 1 if moves == 1 then realSet(i, g) end end -- only the first move lands
+  SwapRaidSubgroup = function() end
+  CRT.Apply:Start(TARGET)
+  applyFrame.scripts.OnEvent(applyFrame, "GROUP_ROSTER_UPDATE")
+  for _ = 1, 10 do flush() end -- the next moves never report back: three stalls
+  SetRaidSubgroup = realSet
+  SwapRaidSubgroup = function(i, j) raid[i][2], raid[j][2] = raid[j][2], raid[i][2] end
+  local stopped = false
+  for _, m in ipairs(printed) do if m:find("isn't accepting", 1, true) then stopped = true end end
+  assert(stopped, "it stopped on the stalls")
+  assert(#sent == 1 and sent[1].msg == "[CRT] <Group 2 Changes>: Bb", "the one change: " .. tostring(sent[1] and sent[1].msg))
   CRT.db.groups.postChanges = false
 end)
 

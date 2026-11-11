@@ -40,12 +40,12 @@ local TEXT = {
     editHelp = "Click a slot to choose a name, drag to move or swap. Right-click a name to invite that player, clear the slot or set their role. A role you set shows a small dot on its icon and wins over the game's role.",
     sortBy = "Sort by",
     sortGrid = "Sort grid",
-    sortHelp = "Sort grid rearranges the grid only, like an edit by hand. Nobody moves in the raid until you click Arrange Groups.\n\nRole blocks: tanks first, then melee, then ranged, with one healer in each group.\n\nMelee and ranged groups: tanks and melee fill the first groups, ranged the next ones. Healers are spread one per group.\n\nSpread duplicates: players of the same class, then of the same spec, go in different groups. Tanks and healers are spread too.\n\nLeft and right sides: pick an assignment with two rows from the Assign tab. The first row goes to groups 1 and 2, the second to groups 3 and 4, and everyone else after them.",
+    sortHelp = "Sort grid rearranges the grid only, like an edit by hand. Nobody moves in the raid until you click Arrange Groups.\n\nRole blocks: tanks first, then melee, then ranged, with one healer in each group.\n\nMelee and ranged groups: tanks and melee fill the first groups, ranged the next ones. Healers are spread one per group.\n\nSpread duplicates: players of the same class, then of the same spec, go in different groups. Tanks and healers are spread too.\n\nLeft and right sides: pick an assignment with two rows from the Assign tab. The first row goes to groups 1 and 2, the second to groups 3 and 4. Everyone else is split between the two sides to even them out.",
     side = "Assignment",
     noSidesWhy = "No assignment this season has two rows of players. Make one on Mech Alerts' Assign tab.",
     emptyGrid = "The grid is empty.",
     postChanges = "Post group changes to raid chat",
-    postHelp = "When Arrange Groups is done, posts one line to raid chat for each group with someone new in it, such as \"<Group 1 Changes>: Name, Name\". Nothing is posted when nobody moved, in combat or during a boss encounter.",
+    postHelp = "When Arrange Groups is done, posts one line to raid chat for each group with someone new in it, such as \"[CRT] <Group 1 Changes>: Name, Name\". If it stops part-way, it posts the groups that did change. Nothing is posted when nobody moved. In combat or during a boss encounter, the post waits until it ends.",
 }
 
 local ROLE_TEXTURE = "Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES"

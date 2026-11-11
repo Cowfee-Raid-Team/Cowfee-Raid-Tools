@@ -22,7 +22,8 @@ local TEXT = {
     spread = "Spread duplicates",
     sides = "Left and right sides",
     noSides = "No two-row assignments",
-    sideLabel = "%s: %s", -- boss: the assignment's name
+    sideLabel = "%s: %s", -- boss: the mechanic (or the assignment's name)
+    prefix = "[CRT] ", -- before every group changes line
     changes = "<Group %d Changes>: %s",
 }
 Sort.TEXT = TEXT
@@ -38,6 +39,7 @@ Sort.DEFAULT = "roles"
 
 local GROUP_SIZE, MAX_GROUPS = 5, 8
 local NUM_SLOTS = GROUP_SIZE * MAX_GROUPS
+local CHAT_LIMIT = 255 -- the most a chat line can hold, the prefix included
 
 function Sort.Valid(method)
     for _, m in ipairs(Sort.METHODS) do
@@ -307,9 +309,10 @@ local function spread(players)
     return toSlots(players, at, rank)
 end
 
--- Left and right sides: the first row's players in groups 1-2, the second row's in 3-4 (in grid order), then everyone
--- else in the seats left from group 1. A player in both rows counts in the first. More than two groups hold go with
--- everyone else.
+-- Left and right sides: the first row's players in groups 1-2, the second row's in 3-4 (in grid order); everyone else
+-- evens the two sides out (Alex, 2026-11-11): the first of them in grid order to the side with fewer, the rest to the
+-- other, so on a sorted grid the same ones go to the same side; past both sides' 10 seats, from group 5. A player in
+-- both rows counts in the first; more than a side's 10 seats go with everyone else.
 local function sides(players, rows)
     local side = {}
     for r = 2, 1, -1 do
@@ -349,9 +352,25 @@ local function sides(players, rows)
     table.sort(rest, function(a, b)
         return a.index < b.index
     end)
+    -- how many of the rest go left: as many as make the sides even (an odd one goes left), within each side's seats
+    local leftFree, rightFree = free[1] + free[2], free[3] + free[4]
+    local leftHas, rightHas = 2 * GROUP_SIZE - leftFree, 2 * GROUP_SIZE - rightFree
+    local toLeft = math.ceil((rightHas - leftHas + #rest) / 2)
+    toLeft = math.max(0, math.min(toLeft, #rest, leftFree))
+    if #rest - toLeft > rightFree then
+        toLeft = math.min(#rest, leftFree, #rest - rightFree)
+    end
     local tag = {}
-    for _, p in ipairs(rest) do
-        seat(p, 1, MAX_GROUPS)
+    for i, p in ipairs(rest) do
+        local placed
+        if i <= toLeft then
+            placed = seat(p, 1, 2)
+        else
+            placed = seat(p, 3, 4)
+        end
+        if not placed then
+            seat(p, 5, MAX_GROUPS)
+        end
         tag[p] = "rest"
     end
     for _, p in ipairs(players) do
@@ -395,8 +414,22 @@ local function isPlayer(token)
     return not (lower:match("^g%d$") or lower:match("^grp%d$") or lower:match("^group%d$"))
 end
 
+-- A block's mechanic as a name: its spell's name when the block names one by its spell (for:, MechNote.Key), else the
+-- block's heading, which is the mechanic's name unless renamed (a mechanic named by name is kept in lower case).
+local function mechanicName(block, key)
+    local spell = tonumber(block.mech or "")
+    local Notes = CRT.Notes
+    if spell and Notes and Notes.SpellInfo then
+        local ok, info = pcall(Notes.SpellInfo, Notes, spell)
+        if ok and info and type(info.name) == "string" and info.name ~= "" then
+            return info.name
+        end
+    end
+    return block.name or key
+end
+
 -- The current season's assignment blocks (the Assign tab's, Notes/Assign.lua) with exactly two rows that name players,
--- in the route's order: { id, label ("<Boss>: <name>"), rows = { { names }, { names } } }. Each boss's block is read
+-- in the route's order: { id, label ("<Boss>: <mechanic>"), rows = { { names }, { names } } }. Each boss's block is read
 -- from the shared note its Mythic pull runs (Notes:FindForEncounter). A row of only role, group or class words is not
 -- a row of players; those words are left out of a row.
 function Sort.SideBlocks()
@@ -429,7 +462,7 @@ function Sort.SideBlocks()
                     end
                     if #rows == 2 then
                         out[#out + 1] = { id = def.encounterID .. ":" .. key,
-                            label = string.format(TEXT.sideLabel, def.name, block.name or key), rows = rows }
+                            label = string.format(TEXT.sideLabel, def.name, mechanicName(block, key)), rows = rows }
                     end
                 end
             end
@@ -439,20 +472,21 @@ function Sort.SideBlocks()
 end
 
 -- A side block's two rows as the keys of the grid's players they name. A block writes names without their realms
--- (Notes/Assign.lua), so a name matches a grid player by name alone, or by Name-Realm. Names not in the grid are left out.
+-- (Notes/Assign.lua), so a name matches a grid player by Name-Realm, or by name alone when only one grid player has it
+-- (as Groups.MakeLookup). Names not in the grid, or that two grid players share, are left out.
 function Sort.SideRows(block, players)
-    local byName = {}
+    local byKey, byBase = {}, {}
     for _, p in ipairs(players) do
-        byName[p.key:lower()] = p.key
-        local base = p.key:lower():match("^[^-]+")
-        if base then
-            byName[base] = (byName[base] == nil) and p.key or byName[base]
-        end
+        local lower = p.key:lower()
+        byKey[lower] = p.key
+        local base = lower:match("^[^-]+") or lower
+        byBase[base] = (byBase[base] == nil) and p.key or false
     end
     local rows = { {}, {} }
     for r = 1, 2 do
         for _, name in ipairs(block and block.rows and block.rows[r] or {}) do
-            local key = byName[name:lower()]
+            local lower = name:lower()
+            local key = byKey[lower] or byBase[lower]
             if key then
                 rows[r][#rows[r] + 1] = key
             end
@@ -476,24 +510,25 @@ function Sort.Changes(before, after)
     return out
 end
 
--- Splits a line longer than one chat message at the commas, as the ready check report does.
-local function chunks(line)
+-- Splits a line longer than max at the commas, as the ready check report does.
+local function chunks(line, max)
     local Report = CRT.RaidReport
     if Report and Report.Chunks then
-        return Report.Chunks(line)
+        return Report.Chunks(line, max)
     end
     return { line }
 end
 
--- The chat lines for the changes, in group order: "<Group N Changes>: Name, Name", each split under the chat limit.
--- None when nothing changed.
+-- The chat lines for the changes, in group order: "[CRT] <Group N Changes>: Name, Name", each split at the commas so
+-- every line, the prefix included, fits the chat limit. None when nothing changed.
 function Sort.ChangeLines(before, after)
     local changes = Sort.Changes(before, after)
     local out = {}
     for g = 1, MAX_GROUPS do
         if changes[g] then
-            for _, part in ipairs(chunks(string.format(TEXT.changes, g, table.concat(changes[g], ", ")))) do
-                out[#out + 1] = part
+            local line = string.format(TEXT.changes, g, table.concat(changes[g], ", "))
+            for _, part in ipairs(chunks(line, CHAT_LIMIT - #TEXT.prefix)) do
+                out[#out + 1] = TEXT.prefix .. part
             end
         end
     end

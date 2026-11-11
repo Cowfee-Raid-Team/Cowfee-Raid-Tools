@@ -7,8 +7,10 @@ CRT.Apply = Apply
 local MAX_STEPS = 150
 local STEP_TIMEOUT = 1.5
 local MAX_STALLS = 3
+local CHAT_GAP = 0.4 -- seconds between two group changes lines, as the Gear Checker spaces its posts (GC.CHAT_GAP)
 
 local run -- state of the apply in progress, nil when idle
+local held -- group changes lines waiting for combat, an encounter or the game's chat lockdown to end, or nil
 
 local function inCombat(unit)
     local ok, value = pcall(UnitAffectingCombat, unit)
@@ -165,34 +167,75 @@ local function nextMove(members, target, failed)
     end
 end
 
--- In combat or a boss encounter (Notes.Busy, which asks the game), or in combat when the notes aren't loaded.
+-- Whether chat must wait: combat or a boss encounter (Notes.Busy, which asks the game; in combat when the notes aren't
+-- loaded), or the game holds chat messages (C_ChatInfo.InChatMessagingLockdown, as GearChecker/Data.lua asks it).
 local function busy()
     local Notes = CRT.Notes
     if Notes and Notes.Busy then
-        return Notes.Busy()
+        if Notes.Busy() then
+            return true
+        end
+    elseif InCombatLockdown() then
+        return true
     end
-    return InCombatLockdown()
+    if C_ChatInfo and C_ChatInfo.InChatMessagingLockdown then
+        local ok, locked = pcall(C_ChatInfo.InChatMessagingLockdown)
+        return ok and locked == true
+    end
+    return false
 end
 
--- Post group changes to raid chat (CRTDB.groups.postChanges): once Arrange Groups is done, one line per group with
--- someone new in it (Groups/Sort.lua's ChangeLines: "<Group N Changes>: Name, Name"), against the groups everyone was
--- in when it started (before). Only in a raid, never in combat or a boss encounter.
+-- Sends lines to raid chat, the first now and the rest CHAT_GAP apart, only in a raid.
 -- C_ChatInfo.SendChatMessage(message, chatType), else the older global (warcraft.wiki.gg), in pcall.
-local function postChanges(before, members)
-    local Sort = CRT.GroupSort
-    if not (before and Sort and CRT.db.groups.postChanges) or not IsInRaid() or busy() then
+local function sendLines(lines)
+    local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
+    if not send or not IsInRaid() then
         return
     end
-    local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
-    if not send then
+    for i, line in ipairs(lines) do
+        if i == 1 then
+            pcall(send, line, "RAID")
+        else
+            C_Timer.After((i - 1) * CHAT_GAP, function()
+                if IsInRaid() then
+                    pcall(send, line, "RAID")
+                end
+            end)
+        end
+    end
+end
+
+-- Post group changes to raid chat (CRTDB.groups.postChanges): when Arrange Groups is done, or stops part-way, one line
+-- per group with someone new in it (Groups/Sort.lua's ChangeLines: "[CRT] <Group N Changes>: Name, Name"), the groups
+-- everyone was in when it started (before) against the raid as it stands now (members). In combat, a boss encounter or
+-- the game's chat lockdown the lines are held, sent once that ends (PLAYER_REGEN_ENABLED, ENCOUNTER_END), and dropped
+-- if another Arrange starts first (Alex, 2026-11-11).
+local function postChanges(before, members)
+    local Sort = CRT.GroupSort
+    if not (before and Sort and CRT.db.groups.postChanges) or not IsInRaid() then
         return
     end
     local after = {}
     for _, m in ipairs(members) do
         after[#after + 1] = { key = m.key, name = Groups.Display(m.name), subgroup = m.subgroup }
     end
-    for _, line in ipairs(Sort.ChangeLines(before, after)) do
-        pcall(send, line, "RAID")
+    local lines = Sort.ChangeLines(before, after)
+    if #lines == 0 then
+        return
+    end
+    if busy() then
+        held = lines
+        return
+    end
+    sendLines(lines)
+end
+
+-- Held lines go once nothing holds chat any more.
+local function sendHeld()
+    if held and not busy() then
+        local lines = held
+        held = nil
+        sendLines(lines)
     end
 end
 
@@ -201,6 +244,7 @@ local function finish(members, reason)
     run = nil
     if reason then
         CRT:Print("Stopped: " .. reason .. ".")
+        postChanges(state.before, members or readRaid())
         return
     end
 
@@ -293,6 +337,7 @@ function Apply:Start(slots)
     for _, m in ipairs(members) do
         before[m.key] = m.subgroup
     end
+    held = nil -- a post an earlier Arrange holds is dropped
     run = { target = target, failed = {}, steps = 0, stalls = 0, waiting = false, before = before }
     step()
 end
@@ -347,7 +392,13 @@ end
 local events = CreateFrame("Frame")
 events:RegisterEvent("GROUP_ROSTER_UPDATE")
 events:RegisterEvent("PLAYER_REGEN_DISABLED")
+events:RegisterEvent("PLAYER_REGEN_ENABLED")
+events:RegisterEvent("ENCOUNTER_END")
 events:SetScript("OnEvent", function(_, event)
+    if event == "PLAYER_REGEN_ENABLED" or event == "ENCOUNTER_END" then
+        sendHeld()
+        return
+    end
     if not run then
         return
     end

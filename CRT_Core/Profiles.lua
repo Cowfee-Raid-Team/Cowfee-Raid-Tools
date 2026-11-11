@@ -57,7 +57,7 @@ Profiles.SHARE = {
     roleCache = false,
     specCache = false,
     macros = false, -- the macros the addon made in this account's macro list
-    groups = { presets = false, nextId = false, working = false, keepChanges = true, source = true, roles = false, sortMethod = true, postChanges = true }, -- roles: guild roster data
+    groups = { presets = false, nextId = false, working = false, keepChanges = true, source = true, roles = false, sortMethod = true, postChanges = false }, -- roles: guild roster data; postChanges: whether you post to raid chat is your own (Alex, 2026-11-11)
     consumables = { enabled = true, notStarter = true, lowMinutes = true, categoryOrder = true, itemOrder = true, extra = false, learned = false, position = true },
     readycheck = {
         tab = false, auto = true, onPull = true, raidsOnly = true, notLFR = true, include = true, buffLock = true,
