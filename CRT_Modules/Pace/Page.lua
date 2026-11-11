@@ -263,6 +263,7 @@ local function build(pf)
         end,
         set = function(id)
             selected, offset = id, 0
+            Pace:RefreshPreview() -- the pace preview follows the page's boss
             refresh()
         end })
     bossRow:SetPoint("TOPLEFT", 8, -40)

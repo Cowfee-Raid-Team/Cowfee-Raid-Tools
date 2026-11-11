@@ -20,6 +20,11 @@ local UI = CRT.UI
 local BAR_W, BAR_H = 220, 16
 local ROW_H = 40
 local TICK_EVERY = 0.2
+-- The preview's sample bars, one row per boss unit (health and tick in percent): the first ahead, the second behind.
+local SAMPLES = {
+    { health = 50, tick = 60 },
+    { health = 40, tick = 50 },
+}
 
 local frame, handle
 local bars = {}
@@ -222,26 +227,29 @@ local function rememberAll()
 end
 
 -- A name that needs no secret: kept from this session (not in a rehearsal), else the boss file's for the unit.
-local function knownName(unit)
-    local kept = not run.rehearsal and run.encounterID and names[run.encounterID] and names[run.encounterID][unit]
+-- ctx is the pull's run, or the preview's own context.
+local function knownName(unit, ctx)
+    ctx = ctx or run
+    local kept = not ctx.rehearsal and ctx.encounterID and names[ctx.encounterID] and names[ctx.encounterID][unit]
     if kept then
         return kept
     end
-    local own = run.def and type(run.def.units) == "table" and run.def.units[unit]
+    local own = ctx.def and type(ctx.def.units) == "table" and ctx.def.units[unit]
     if type(own) == "string" and own ~= "" then
         return own
     end
 end
 
 -- Step 5: the boss's name, with the unit's number when the plan has several units; else the unit token.
-local function fallbackName(unit)
-    if not run.bossName then
+local function fallbackName(unit, ctx)
+    ctx = ctx or run
+    if not ctx.bossName then
         return unit
-    elseif #run.units == 1 then
-        return run.bossName
+    elseif #ctx.units == 1 then
+        return ctx.bossName
     end
     local n = unit:match("^boss(%d+)$")
-    return n and (run.bossName .. " " .. n) or run.bossName
+    return n and (ctx.bossName .. " " .. n) or ctx.bossName
 end
 
 local function setLabel(b, unit)
@@ -378,28 +386,74 @@ function Pace:Stop()
     end
 end
 
--- Previews: a sample bar, half way, with the tick at 60%, named for the boss the Pace page shows.
+-- The units the preview shows for a boss: the distinct units of the plan in use (the one the Pace page lists), else
+-- the units the boss file names, else one bar. A boss file's units are in unit order.
+local function previewUnits(id, plan, def)
+    local units = Pace.Units(plan)
+    if #units == 0 and def and type(def.units) == "table" then
+        for _, u in ipairs(Pace.UNITS) do
+            if def.units[u] ~= nil then
+                units[#units + 1] = u
+            end
+        end
+    end
+    if #units == 0 then
+        units[1] = "boss1"
+    end
+    return units
+end
+
+-- One sample bar: its value, tick and AHEAD or BEHIND, from SAMPLES (the last row repeats past its end).
+local function drawSample(b, i)
+    local s = SAMPLES[math.min(i, #SAMPLES)]
+    b.bar:SetValue(s.health)
+    b.tick:ClearAllPoints()
+    b.tick:SetPoint("CENTER", b.bar, "LEFT", BAR_W * s.tick / 100, 0)
+    b.tick:Show()
+    b.state:SetText(string.format("should be %.0f%%", s.tick))
+    b.ahead:SetAlpha(s.health >= s.tick and 1 or 0)
+    b.behind:SetAlpha(s.health >= s.tick and 0 or 1)
+    b:SetAlpha(1)
+end
+
+-- Draws the preview for the boss the Pace page shows. Names go through the live bars' naming (knownName and
+-- fallbackName), with a context for that boss instead of a pull's run.
+local function drawPreview()
+    local id = Pace.PageBoss and Pace:PageBoss()
+    local def = id and CRT.Bosses and CRT.Bosses:Get(id) or nil
+    local plan = id and Pace:Plan(id) or nil
+    local units = previewUnits(id, plan, def)
+    local ctx = { encounterID = id, plan = plan, units = units, def = def, rehearsal = true,
+        bossName = def and def.name or "Boss" }
+    layout(units)
+    for i, unit in ipairs(units) do
+        local b = bar(i)
+        b.label:SetText(knownName(unit, ctx) or fallbackName(unit, ctx))
+        drawSample(b, i)
+    end
+    frame:Show()
+end
+
+-- Previews: sample bars, one per boss unit of the boss the Pace page shows, redrawn when the page's boss or plan changes.
 UI:RegisterPreview("pace", function(on)
     previewOn = on and true or false
     build()
     handle:SetShown(previewOn)
     if previewOn then
-        layout({ "boss1" })
-        local b = bar(1)
-        local id = Pace.PageBoss and Pace:PageBoss()
-        local def = id and CRT.Bosses and CRT.Bosses:Get(id)
-        b.label:SetText(def and def.name or "Boss")
-        b.bar:SetValue(50)
-        b.tick:ClearAllPoints()
-        b.tick:SetPoint("CENTER", b.bar, "LEFT", BAR_W * 0.6, 0)
-        b.tick:Show()
-        b.state:SetText("should be 60%")
-        b.ahead:SetAlpha(1)
-        b.behind:SetAlpha(0)
-        frame:Show()
+        drawPreview()
     elseif not run then
         frame:Hide()
     end
+end)
+
+-- The Pace page calls this when its boss changes; the plan changing redraws too.
+function Pace:RefreshPreview()
+    if previewOn and not run then
+        drawPreview()
+    end
+end
+Pace:OnChange(function()
+    Pace:RefreshPreview()
 end)
 
 local events = CreateFrame("Frame")
