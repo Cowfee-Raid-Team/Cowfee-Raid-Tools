@@ -123,9 +123,12 @@ local rbox = find("WowScrollBoxList", before + 1)
 local rbar = find("MinimalScrollBar", before + 1)
 local rarea = rbox and rbox.parent
 check(rarea and rarea.clips == true and rarea ~= area, "raider: the rows sit in their own clipping frame")
-local titles = {}
-for _, fs in ipairs(rarea and rarea.regions or {}) do if fs.text then titles[#titles + 1] = fs.text end end
+local titles, wishHeading = {}, nil
+for _, fs in ipairs(rarea and rarea.regions or {}) do
+  if fs.text == "Wishlist" then wishHeading = fs elseif fs.text then titles[#titles + 1] = fs.text end
+end
 check(#titles == 6 and titles[1] == "Name", "raider: the six column headings are in the clipping frame (got " .. #titles .. ")")
+check(wishHeading ~= nil and wishHeading.shown == false, "raider: the Wishlist heading is there, hidden for a raider who keeps no lists")
 local fixed = true
 for _, fs in ipairs(rarea and rarea.regions or {}) do
   local p = fs.points[1]

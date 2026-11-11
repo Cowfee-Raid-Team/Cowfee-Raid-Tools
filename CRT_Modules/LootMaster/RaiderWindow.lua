@@ -2,7 +2,8 @@ local ADDON, CRT = ...
 
 -- The raider window: what everyone answered and rolled for each item, read only. It is the session you
 -- were sent (LM.incoming) and its copy of everyone's answers (inc.view), in the same order the looter
--- sees (the answer's weight, then the roll; Raider Score is never shown to raiders). Nothing here
+-- sees (the answer's weight, then the roll; Raider Score is never shown to raiders). The loot master, the leader
+-- and raid assists also see a Wishlist column, and the wishlist rank breaks ties among equal answers. Nothing here
 -- changes anything: no menus, no awards. Open it from the popup's title bar or /crt loot answers, or
 -- with your popup from My Loot (Loot Master > Tonight's card) and /crt loot (LM:OpenMyLoot, below); it
 -- stays until the session ends. A pop-out made by UI.Window; its place is kept in CRTDB
@@ -25,6 +26,13 @@ local COLS = {
     { key = "ilvl", x = 436, w = 50, title = "iLvl" },
     { key = "gear", x = 490, w = 100, title = "Gear" },
 }
+-- For the loot master, the leader and raid assists (LootMaster/Wishlist.lua's W.Sees), a Wishlist column after
+-- Answer: Answer narrows and the columns after it move right (WISH_COLS), so it still fits the window.
+local WISH = { key = "wish", w = 92, title = "Wishlist" }
+local WISH_COLS = {
+    name = { 4, 140 }, role = { 148, 46 }, response = { 198, 120 }, wish = { 322, WISH.w },
+    roll = { 418, 50 }, ilvl = { 472, 50 }, gear = { 526, 100 },
+}
 
 local TEXT = {
     title = "Loot",
@@ -45,6 +53,9 @@ local TEXT = {
 local ROLE_TEXT = { T = "Tank", H = "Heal", D = "DPS", N = "" }
 
 local win, list, header, tabs
+local headings = {} -- the column headings, by key
+local wishShown = false -- the columns are laid out with Wishlist
+local layout = 0 -- bumped when wishShown changes, so each row moves its cells once
 local ticker -- refreshes the window while it is shown
 local refresh
 local REFRESH_SECONDS = 1
@@ -76,6 +87,45 @@ local function classColor(file)
     return file and (C_ClassColor and C_ClassColor.GetClassColor(file) or RAID_CLASS_COLORS[file]) or nil
 end
 
+-- Where a column sits now: x, width (nil for Wishlist while it is hidden).
+local function colPlace(key)
+    if wishShown then
+        local p = WISH_COLS[key]
+        return p[1], p[2]
+    end
+    for _, c in ipairs(COLS) do
+        if c.key == key then
+            return c.x, c.w
+        end
+    end
+    return nil
+end
+
+-- Moves a row's cells (or, with no row, the headings) to the layout in use.
+local function placeCells(cells, gear, diff)
+    for key, fs in pairs(cells) do
+        local x, w = colPlace(key)
+        fs:ClearAllPoints()
+        if x then
+            fs:SetPoint(gear and "LEFT" or "TOPLEFT", x, 0)
+            if gear then
+                fs:SetWidth(w)
+            end
+            fs:Show()
+        else
+            fs:Hide()
+        end
+    end
+    if gear then
+        local gx = colPlace("gear")
+        for i, t in ipairs(gear) do
+            LM.PlaceGearIcon(t, gx + (i - 1) * 20)
+        end
+        diff:ClearAllPoints()
+        diff:SetPoint("LEFT", gx + 44, 0)
+    end
+end
+
 local function answerText(r, view)
     if r.state == "nocrt" then
         return UI.WarnText(TEXT.nocrt)
@@ -105,6 +155,11 @@ local function initRow(row, r)
                 row.cols[c.key] = fs
             end
         end
+        local wish = row:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+        wish:SetJustifyH("LEFT")
+        wish:SetWordWrap(false)
+        wish:Hide()
+        row.cols.wish = wish
         row.gear = {}
         for i = 1, 2 do
             row.gear[i] = LM.GearIcon(row, COLS[6].x + (i - 1) * 20)
@@ -113,6 +168,11 @@ local function initRow(row, r)
         row.diff:SetPoint("LEFT", COLS[6].x + 44, 0)
         row.me = row:CreateTexture(nil, "BACKGROUND")
         row.me:SetAllPoints()
+        row.layout = 0
+    end
+    if row.layout ~= layout then
+        row.layout = layout
+        placeCells(row.cols, row.gear, row.diff)
     end
     local inc = shownSession()
     local cc = classColor(r.class)
@@ -120,6 +180,7 @@ local function initRow(row, r)
     row.cols.name:SetTextColor(cc and cc.r or 0.85, cc and cc.g or 0.85, cc and cc.b or 0.85)
     row.cols.role:SetText(ROLE_TEXT[r.role or "N"] or "")
     row.cols.response:SetText(inc and answerText(r, inc.view) or "")
+    row.cols.wish:SetText(wishShown and LM.Wishlist.Cell(r.wish) or "")
     row.cols.roll:SetText(r.roll and tostring(r.roll) or "")
     row.cols.ilvl:SetText(r.ilvl and string.format("%.0f", r.ilvl) or "")
     local item = inc and inc.items[current]
@@ -176,7 +237,13 @@ local function build()
         local h = area:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
         h:SetPoint("TOPLEFT", col.x, 0)
         h:SetText(col.title)
+        headings[col.key] = h
     end
+    local h = area:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
+    h:SetPoint("TOPLEFT", WISH_COLS.wish[1], 0)
+    h:SetText(WISH.title)
+    h:Hide()
+    headings.wish = h
     local box = CreateFrame("Frame", nil, area, "WowScrollBoxList")
     box:SetPoint("TOPLEFT", 0, -L.headingH)
     box:SetPoint("BOTTOMRIGHT", 0, 0)
@@ -254,10 +321,23 @@ refresh = function() -- declared above, for the ticker
     else
         header.info:SetText(it.ilvl and string.format(TEXT.itemLevel, it.ilvl) or "")
     end
-    list:SetDataProvider(CreateDataProvider(view:Rows(current)), ScrollBoxConstants and ScrollBoxConstants.RetainScrollPosition)
+    -- the Wishlist column for those who keep the lists (W.Sees); the headings move when that changes
+    local W = LM.Wishlist
+    local sees = W ~= nil and W.Sees() and true or false
+    if sees ~= wishShown then
+        wishShown = sees
+        layout = layout + 1
+        placeCells(headings)
+    end
+    local rows = view:Rows(current, nil, sees and W.RankFor or nil)
+    list:SetDataProvider(CreateDataProvider(rows), ScrollBoxConstants and ScrollBoxConstants.RetainScrollPosition)
 end
 
 LM:OnChange(function(what, how)
+    if what == "wishlist" or what == "authority" then
+        refresh() -- a list heard, or who may run loot changed (the column shows or hides)
+        return
+    end
     if what ~= "incoming" or not win then
         return
     end

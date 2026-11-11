@@ -84,6 +84,7 @@ Profiles.SHARE = {
     lootmaster = {
         window = true, popup = true, answers = true, bossLoot = true, lootingPrompt = true, responseSeconds = true, score = true,
         noRoll = true, tooltipMode = true, tooltipSpot = true, itemTooltip = true, showAllItems = true, enableInParty = true, filter = true,
+        wishlistWindow = true, -- the My wishlist window's place, boss and Only my class (the list is per character, not a setting)
         awardMessage = false, awardChannel = false, -- what you post, and where
         authority = false, -- who you trust to run loot stays yours
         sort = false,
@@ -143,7 +144,7 @@ Profiles.POSITIONS = {
     "notes.window.width", "notes.window.height", "notes.assignments.width", "notes.assignments.height",
     "notes.personal.width", "notes.personal.height",
     "qol.lowHealth.position", "qol.breakTimer.position",
-    "lootmaster.window", "lootmaster.popup", "lootmaster.answers", "lootmaster.bossLoot", "lootmaster.lootingPrompt", "team.popup",
+    "lootmaster.window", "lootmaster.popup", "lootmaster.answers", "lootmaster.bossLoot", "lootmaster.lootingPrompt", "lootmaster.wishlistWindow", "team.popup",
     "gearChecker.popout", "timeline.popout", "markers.position", "pace.position",
     "alerts.bars.position", "alerts.bars.positionV", "alerts.areas.icons.position", "alerts.areas.texts.position", "alerts.areas.circles.position",
     "alerts.areas.timeline.position", "interrupts.whoWindow",

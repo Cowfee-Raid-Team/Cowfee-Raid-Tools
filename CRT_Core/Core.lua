@@ -279,6 +279,9 @@ local defaults = {
         answers = {}, -- the raider window's place and size
         bossLoot = {}, -- the leader's Boss loot window's place and size
         lootingPrompt = {}, -- the place of the leader's "Use CRT Looting in this instance?" (its on state is per character, CRTDBChar.lootmaster.looting)
+        -- the My wishlist window's place and size, the boss picked (boss: an encounter ID or "all") and Only my class
+        -- (classOnly); the wishlist itself is per character, CRTDBChar.lootmaster.wishlist (LootMaster/Wishlist.lua)
+        wishlistWindow = {},
         responseSeconds = 60,
         score = { show = true, late = 5, per10 = 1, noShow = 15, recover = 5, weeks = 8 },
         awardMessage = "%i awarded to %p for %r with a %v roll.",

@@ -43,6 +43,7 @@ end
 -- item's tooltip and hands its clicks to the row, so picking a row and its menu work over the icon too.
 --   local t = LM.GearIcon(row, x)       -- the icon; t.hit is the button over it
 --   LM.SetGear(t, g, ownItemString)     -- g = { id, ilvl, itemString } or nil; ownItemString only on your own row
+--   LM.PlaceGearIcon(t, x)              -- moves the icon and its button
 -- The tooltip is the gear engine's (CRT.Gear.ShowTooltip): the exact item once the raider's G part brought
 -- its item string, else the item by its ID; both with an "Equipped at item level" line. On your own row your
 -- real equipped piece is used.
@@ -81,6 +82,14 @@ function LM.GearIcon(row, x)
     end)
     t.hit = b
     return t
+end
+
+-- Moves a gear icon and the button over it to x (a window whose columns move: All Loot Rolls' Wishlist column).
+function LM.PlaceGearIcon(t, x)
+    t:ClearAllPoints()
+    t:SetPoint("LEFT", x, 0)
+    t.hit:ClearAllPoints()
+    t.hit:SetPoint("LEFT", x, 0)
 end
 
 function LM.SetGear(t, g, own)
