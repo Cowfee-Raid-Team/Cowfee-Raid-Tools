@@ -10,6 +10,11 @@ const fs = require('fs');
 const path = require('path');
 const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
+// Page.lua places its Settings tab from SettingsLayout.lua: that file goes in front of it, in its own block
+function pageWithLayout(f, src) {
+  if (!f.endsWith('LootMaster/Page.lua')) return src;
+  return 'do\n' + fs.readFileSync(path.join(dir, 'CRT_Modules/LootMaster/SettingsLayout.lua'), 'utf8') + '\nend\n' + src;
+}
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
@@ -117,7 +122,8 @@ CRT_UI = {
   end,
   PanelButtonWidth = function(w) return math.max(80, math.ceil(w) + 24) end,
   SkinCheckButton = function() end,
-  Help = function(p, title, text) helps[title] = text return mock() end,
+  -- a list-form help text (UI.AddTooltipText) kept as one string (the real UI.TooltipPlain, theme_stub.js), so the checks can search it
+  Help = function(p, title, text) if type(text) == "table" then text = CRT_HELP_PLAIN(text) end helps[title] = text return mock() end,
   Dropdown = function() local d = mock() d.refresh = function() end d.Dropdown = mock() return d end,
   Slider = function() local s = mock() s.refresh = function() end return s end,
   SpotPicker = function() local s = mock() s.refresh = function() end return s end, SPOT_PICKER_W = 126, SPOT_PICKER_H = 70, SPOT_PICKER_GAP = 12,
@@ -421,6 +427,6 @@ const files = ['CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/Comm.l
   'CRT_Modules/LootMaster/RaiderWindow.lua', 'CRT_Modules/LootMaster/Tonight.lua'];
 for (const f of files) {
   const p = path.join(dir, f);
-  lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));
+  lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? pageWithLayout(f, fs.readFileSync(p, 'utf8')) : 'error("missing ' + f + '")'));
 }
 if (lua.lua_pcall(L, files.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

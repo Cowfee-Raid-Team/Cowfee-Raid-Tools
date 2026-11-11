@@ -86,6 +86,7 @@ g "previews" && { node run_previews.js "$WA" 2>&1 | tail -30; echo "exit ${PIPES
 g "help" && { node run_help.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "tooltip spots" && { node run_tooltip_spots.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "help icons sit right" &&{ node run_help.js "$WA" lint 2>&1 | tail -140; echo "exit ${PIPESTATUS[0]}"; }
+g "help one paragraph per option" && { node run_help_options.js "$WA" 2>&1 | tail -80; echo "exit ${PIPESTATUS[0]}"; }
 g "themes" && { node run_themes.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "menu" && { node run_menu.js "$WA" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "addon" && { node run_addon.js "$WA" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
@@ -115,6 +116,7 @@ g "notes links" && { node run_notes_links.js "$WA/CRT_Modules/Notes/Parse.lua" "
 g "note targets" && { node run_note_targets.js "$WA/CRT_Core/MarkerText.lua" "$WA/CRT_Modules/Notes/Parse.lua" "$WA/CRT_Core/Integrations/NoteTargets.lua" "$WA/CRT_Core/Integrations/NSRT.lua" "$WA/CRT_Core/Integrations/MRT.lua" 2>&1 | tail -10; echo "exit ${PIPESTATUS[0]}"; }
 g "alerts personalwin" &&{ node run_alerts_personalwin.js "$WA/CRT_Data/Bosses/Registry.lua" "$WA/CRT_Dev/Tests/SamplePack/Season.lua" "$WA/CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua" "$WA/CRT_Modules/Alerts/Rules.lua" "$WA/CRT_Modules/Alerts/Engine.lua" "$WA/CRT_Modules/Notes/Parse.lua" "$WA/CRT_Modules/Notes/Data.lua" "$WA/CRT_Modules/Notes/Engine.lua" "$WA/CRT_Modules/Notes/Window.lua" "$WA/CRT_Modules/Interrupts/NoteBlock.lua" "$WA/CRT_Modules/Timeline/Data.lua" "$WA/CRT_Modules/Timeline/Database.lua" "$WA/CRT_Modules/Timeline/Reference.lua" "$WA/CRT_Modules/Alerts/Reminders.lua" 2>&1 | tail -10; echo "exit ${PIPESTATUS[0]}"; }
 g "note window perf" && { node run_note_window_perf.js "$WA/CRT_Modules/Alerts/Rules.lua" "$WA/CRT_Modules/Alerts/Engine.lua" "$WA/CRT_Modules/Notes/Parse.lua" "$WA/CRT_Modules/Notes/Data.lua" "$WA/CRT_Modules/Notes/Engine.lua" "$WA/CRT_Modules/Groups/Data.lua" "$WA/CRT_Modules/Notes/Window.lua" 2>&1 | tail -10; echo "exit ${PIPESTATUS[0]}"; }
+g "note highlights" && { node run_note_highlights.js "$W" 2>&1 | tail -100; echo "exit ${PIPESTATUS[0]}"; }
 g "alerts rehearsal" && { node run_alerts_rehearsal.js "$WA/CRT_Data/Bosses/Registry.lua" "$WA/CRT_Dev/Tests/SamplePack/Season.lua" "$WA/CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua" "$WA/CRT_Modules/Groups/Data.lua" "$WA/CRT_Modules/Alerts/Rules.lua" "$WA/CRT_Modules/Alerts/Engine.lua" "$WA/CRT_Core/Sound/Engine.lua" "$WA/CRT_Modules/Alerts/Speech.lua" "$WA/CRT_Modules/Notes/Parse.lua" "$WA/CRT_Modules/Notes/Data.lua" "$WA/CRT_Modules/Notes/Engine.lua" "$WA/CRT_Modules/Notes/Window.lua" "$WA/CRT_Modules/Timeline/Data.lua" "$WA/CRT_Modules/Timeline/Database.lua" "$WA/CRT_Modules/Timeline/Reference.lua" "$WA/CRT_Modules/Alerts/Roster.lua" "$WA/CRT_Modules/Alerts/Reminders.lua" "$WA/CRT_Modules/Alerts/Areas.lua" "$WA/CRT_Modules/Alerts/Bars.lua" "$WA/CRT_Modules/Alerts/Icons.lua" 2>&1 | tail -20; echo "exit ${PIPESTATUS[0]}"; }
 g "reference types" && { node run_reftypes.js "$W" 2>&1 | tail -2; }
 g "ability labels" && { node run_ability_labels.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }
@@ -146,6 +148,7 @@ g "lootmaster tonight" && { node run_lootmaster_tonight.js "$W" 2>&1 | tail -30;
 g "lootmaster add and end" && { node run_lootmaster_addend.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster persist" && { node run_lootmaster_persist.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "RollOnLoot only in the auto-pass gate" && { bad=$(grep -rlnE "RollOnLoot|ConfirmLootRoll" --include=*.lua --exclude-dir=.claude --exclude-dir=node_modules "$W" | sed 's#\\#/#g' | grep -vE "$NOT_TESTS" | grep -v "/LootMaster/AutoPass\.lua$" | grep -v "/Dev/LootProbe\.lua$"); if [ -n "$bad" ]; then echo "FAIL RollOnLoot or ConfirmLootRoll outside CRT_Modules/LootMaster/AutoPass.lua (CRT_Dev/Dev/LootProbe.lua is exempt):"; echo "$bad"; else echo "all passed"; fi; }
+g "lootmaster layout" && { node run_lootmaster_layout.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster score" && { node run_lootmaster_score.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster ui" && { node run_lootmaster_ui.js "$W" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
 g "lootmaster windows" && { node run_lootmaster_windows.js "$W" 2>&1 | tail -8; echo "exit ${PIPESTATUS[0]}"; }

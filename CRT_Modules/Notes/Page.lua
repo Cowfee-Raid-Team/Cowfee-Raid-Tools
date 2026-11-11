@@ -23,9 +23,16 @@ local TEXT = {
     difficulty = "Difficulty",
     allDifficulties = "All",
     otherDifficulty = "Other",
-    kindHelp = "Shared: the raid's notes, one per guild. A share from your guild replaces its note for that boss; one from another guild or a pickup group is kept apart. The newest share is the note in use and runs on the pull.\n\nPersonal: your own lines for a boss, kept on this computer. They run on every pull alongside the shared note, and a share never touches them.",
+    kindHelp = {
+        { "Shared", "the raid's notes, one per guild. A share from your guild replaces its note for that boss; one from another guild or a pickup group is kept apart. The newest share is the note in use and runs on the pull." },
+        { "Personal", "your own lines for a boss, kept on this computer. They run on every pull alongside the shared note, and a share never touches them." },
+    },
     noteText = "Note text",
-    renderHelp = "The note shows as it reads in the game. Click it to see the raw text. Edit it and Save to see it rendered again. Unsaved changes stay in the raw text.\n\nIf you can't change the raid note, the raw text is read-only. Press Escape to go back.\n\nThe personal note works the same way.\n\nPop out editor opens the note's lines in a window. Drag players, roles, groups and classes onto its assignment lines, and players onto its invite list. Timers stay as they are. Only the names change.\n\nHistory keeps the note's last 5 earlier versions. Compare one with the note now, or restore it.",
+    renderHelp = {
+        "The note shows as it reads in the game. Click it to see the raw text. Edit it and Save to see it rendered again. Unsaved changes stay in the raw text.\n\nIf you can't change the raid note, the raw text is read-only. Press Escape to go back.\n\nThe personal note works the same way.",
+        { "Pop out editor", "opens the note's lines in a window. Drag players, roles, groups and classes onto its assignment lines, and players onto its invite list. Timers stay as they are. Only the names change." },
+        { "History", "keeps the note's last 5 earlier versions. Compare one with the note now, or restore it." },
+    },
     popOut = "Pop out editor",
     history = "History (%d)",
     historyLabel = "History",
@@ -602,7 +609,12 @@ local function buildNotes(pf)
     local listLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     listLabel:SetPoint("TOPLEFT", 8, -14)
     listLabel:SetText("Notes")
-    UI.HelpRight(listLabel, "Raid notes", "Import a note and share it with the raid before the pull; its timers count down from the start of the fight, and its other text goes to the Assignments window. Notes Settings has the windows and sharing; Alert Settings has where your lines show; Mech Alerts has boss mechanic alerts.")
+    UI.HelpRight(listLabel, "Raid notes", {
+        "Import a note and share it with the raid before the pull; its timers count down from the start of the fight, and its other text goes to the Assignments window.",
+        { "Mech Alerts", "boss mechanic alerts." },
+        { "Alert Settings", "where your lines show." },
+        { "Notes Settings", "the windows and sharing." },
+    })
     -- Shared and Personal: which notes the list shows
     for i, kind in ipairs({ "shared", "personal" }) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
@@ -982,7 +994,11 @@ local function buildNotes(pf)
     local runLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     runLabel:SetPoint("TOPLEFT", RIGHT_X, top)
     runLabel:SetText("Try it")
-    UI.HelpRight(runLabel, "Try it", "Test run starts the selected note now, as if the boss was pulled. Next phase starts the next phase, intermissions included. Stop ends it.")
+    UI.HelpRight(runLabel, "Try it", {
+        { "Test run", "starts the selected note now, as if the boss was pulled." },
+        { "Next phase", "starts the next phase, intermissions included." },
+        { "Stop", "ends it." },
+    })
 
     local testRun = makeButton(pf, "Test run", 100)
     testRun:SetPoint("TOPLEFT", RIGHT_X, top - 24)

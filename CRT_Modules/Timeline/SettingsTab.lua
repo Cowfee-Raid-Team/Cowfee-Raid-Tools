@@ -41,10 +41,20 @@ local TOOLTIPS_Y = DEATHS_Y - HEADING_GAP - DROPDOWN_TO_CHECKS - CHECKS_TO_SLIDE
 
 local TEXT = {
     hideEmpty = "Hide rows with no casts in this pull",
-    viewHelp = "How much time is visible at once (the mouse wheel zooms too), how often the time axis is labelled, and how big the cast icons are. Auto labels the axis more often as you zoom in. Hide rows with no casts leaves out a recorded pull's rows with no cast in that pull, for every boss.",
+    viewHelp = {
+        { "Seconds visible", "how much time is visible at once (the mouse wheel zooms too)." },
+        { "Axis labels every", "how often the time axis is labelled. Auto labels the axis more often as you zoom in." },
+        { "Icon size", "how big the cast icons are." },
+        { "Hide rows with no casts in this pull", "leaves out a recorded pull's rows with no cast in that pull, for every boss." },
+    },
     personalSize = "Personal note size",
     personalSizeHelp = "The size of your own notes' flags on the Personal notes row, and that row's height. It changes only your own notes' flags: raid note flags stay as they are.\n\nUntil you move it, it follows Icon size.",
-    deathsHelp = "Whether deaths share one row or each player gets a row, which roles show, and whether only the first few deaths show (0 shows all). Overlay pulls is how many pulls the Deaths from the last pulls checkbox covers on the Review tab; the number there changes it too.",
+    deathsHelp = {
+        { "Death rows", "whether deaths share one row or each player gets a row." },
+        { "Tanks, Healers and Damage", "which roles show." },
+        { "First deaths only", "whether only the first few deaths show (0 shows all)." },
+        { "Overlay pulls", "how many pulls the Deaths from the last pulls checkbox covers on the Review tab; the number there changes it too." },
+    },
 }
 
 local GRIDS = {
@@ -246,7 +256,12 @@ function SettingsTab.Build(f, ctx)
     -- every tooltip on the Review tab, docked or popped out
     local tipHeading = label(f, "Tooltips")
     tipHeading:SetPoint("TOPLEFT", f, "TOPLEFT", RIGHT_X, TOOLTIPS_Y)
-    UI.HelpRight(tipHeading, "Tooltips", "Where the Timeline's tooltips open, such as a cast's or a reminder's when you hover it, on this page or in its pop-out. Use the general setting follows General Settings. Outside the window puts it just past the edge of the window you are in, on the spot you click in the box below; clicking a spot picks it, and clicking it again goes back to each tooltip on its own side. Follow the cursor keeps the tooltip at your mouse.")
+    UI.HelpRight(tipHeading, "Tooltips", {
+        "Where the Timeline's tooltips open, such as a cast's or a reminder's when you hover it, on this page or in its pop-out.",
+        { "Use the general setting", "follows General Settings." },
+        { "Outside the window", "puts it just past the edge of the window you are in, on the spot you click in the box below; clicking a spot picks it, and clicking it again goes back to each tooltip on its own side." },
+        { "Follow the cursor", "keeps the tooltip at your mouse." },
+    })
     local position = UI.TooltipPositionSetting(f, "timeline", { labelWidth = 120, width = 150 })
     position.row:SetPoint("TOPLEFT", f, "TOPLEFT", RIGHT_X, TOOLTIPS_Y - HEADING_GAP)
     controls[#controls + 1] = position

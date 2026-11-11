@@ -39,6 +39,23 @@ local function greyLabel(row, on)
     end
 end
 
+-- A choice's tooltip in the open list: its label, then its text in the game's normal colour, as
+-- GameTooltip_AddNormalLine writes it. A list-form text (UI.AddTooltipText, UI/Panel.lua) keeps that colour, with
+-- one paragraph per option.
+function UI.OptionTooltip(tooltip, option)
+    GameTooltip_SetTitle(tooltip, option.label)
+    if type(option.tooltip) == "table" then
+        local c = NORMAL_FONT_COLOR
+        local r, g, b = 1, 0.82, 0
+        if c and c.GetRGB then
+            r, g, b = c:GetRGB()
+        end
+        UI.AddTooltipText(tooltip, option.tooltip, r, g, b)
+    else
+        GameTooltip_AddNormalLine(tooltip, option.tooltip)
+    end
+end
+
 -- One choice in the open list (or a submenu), as a radio or a tick box, with its greying, tooltip and decoration.
 local function addChoice(menu, option, opts)
     local radio
@@ -68,8 +85,7 @@ local function addChoice(menu, option, opts)
     end
     if option.tooltip and radio and radio.SetTooltip then
         radio:SetTooltip(function(tooltip)
-            GameTooltip_SetTitle(tooltip, option.label)
-            GameTooltip_AddNormalLine(tooltip, option.tooltip)
+            UI.OptionTooltip(tooltip, option)
         end)
     end
     if opts.decorate then
@@ -236,7 +252,7 @@ function UI.SoundHelp()
     return string.format(UI.SOUND_HELP_VOICES, Sound:VoiceNames()) .. "\n\n" .. UI.SOUND_HELP_FILES
 end
 -- your own files and Play; UI.SOUND_HELP is the whole text without the voices (a harness without Sound/Voices.lua)
-UI.SOUND_HELP_FILES = "Your own .ogg or .mp3 files go in the CowfeeRaidTools_Media addon's Sounds folder: Quality of Life > Sounds shows how, with a Test button for each file.\n\nPlay in the list plays the sound on your sound channel (General Settings)."
+UI.SOUND_HELP_FILES = "Your own .ogg or .mp3 files go in the CowfeeRaidTools_Media addon's Sounds folder: Quality of Life > Sounds shows how, with a Test button for each file.\n\nPlay in the list plays the sound on your sound channel (General Settings > Appearance > Sound channel)."
 UI.SOUND_HELP = "Game sounds, sounds shared by other addons, and your own files.\n\n" .. UI.SOUND_HELP_FILES
 
 function UI.SoundDropdown(parent, text, opts)
@@ -685,9 +701,7 @@ function UI.Slider(parent, text, opts)
         hit:SetScript("OnEnter", function(self)
             UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, UI.TOOLTIP_KEEP)
             GameTooltip:SetText(opts.tipTitle, 1, 1, 1)
-            if opts.tipText then
-                GameTooltip:AddLine(opts.tipText, 0.85, 0.85, 0.85, true)
-            end
+            UI.AddTooltipText(GameTooltip, opts.tipText)
             GameTooltip:Show()
         end)
         hit:SetScript("OnLeave", function()

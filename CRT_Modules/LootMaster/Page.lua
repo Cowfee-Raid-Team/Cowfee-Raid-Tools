@@ -37,15 +37,20 @@ local L = {
     tooltipTop = -328, tooltipLabel = 110, tooltipPick = 160, tooltipPairGap = 2,
     -- Items a raider can't use, under Sync Master Loot (which ends near -410), its long line wrapped in two
     specsTop = -416,
-    -- CRT Looting, in the third column under Loot authority's Add row (which ends near -440)
-    lootingTop = -446,
+    -- CRT Looting starts under Loot authority's Add row; the third column's places are in SettingsLayout.lua
 }
 L.col3W = UI.PAGE_W - L.col3 - 8 -- the third column, to the page's right margin
 L.col2W = L.col3 - L.col2 - 12 -- the second column, with a gap before the third
 
 local TEXT = {
     title = "Loot Master",
-    help = "Run the loot: the raid leader gives each boss item out from one window, and every raider with CRT answers from a popup. On Tonight, My Loot opens your popup; Master loot is the looter's side. Loot filter picks which items open a session; Settings has the raiders' buttons. /crt loot test tries it with sample items.",
+    help = {
+        "Run the loot: the raid leader gives each boss item out from one window, and every raider with CRT answers from a popup.",
+        { "Tonight", "My Loot opens your popup; Master loot is the looter's side." },
+        { "Loot filter", "picks which items open a session." },
+        { "Settings", "has the raiders' buttons." },
+        "/crt loot test tries it with sample items.",
+    },
     tonight = "Tonight",
     score = "Raider Score",
     filter = "Loot filter",
@@ -55,14 +60,34 @@ local TEXT = {
     scoreHelp = "From the Late Tracker's saved nights: everyone starts at 100, a late arrival or a no-show costs points, and points come back every week. The weights are on the Settings tab. Players with no night counted have no score.",
     scoreEmpty = "No Late Tracker nights in the time counted yet.",
     responses = "Response buttons",
-    responsesHelp = "The buttons raiders see, in this order. Weight sorts the looter's list, higher first. Click the colour to change it; Icon adds one of the game's loot icons. At most 8; the last one (Pass) weighs 0 and can't be removed, only renamed. Every answer gets a roll, and an item can be given for any answer. Raiders always see the leader's set.",
+    responsesHelp = {
+        "The buttons raiders see, in this order. Click the colour to change it.",
+        { "Weight", "sorts the looter's list, higher first." },
+        { "Icon", "adds one of the game's loot icons." },
+        "At most 8; the last one (Pass) weighs 0 and can't be removed, only renamed. Every answer gets a roll, and an item can be given for any answer. Raiders always see the leader's set.",
+    },
     add = "Add", reset = "Defaults",
     looting = "Looting",
     lootingHelp = "How long raiders have to answer an item before its popup closes.",
     responseTime = "Time to answer",
     scoreSettings = "Raider Score",
-    scoreSettingsHelp = "For each night counted where a player was expected: a no-show costs the No-show points, a late arrival the Late points plus Per 10 min for every full ten minutes. Each penalty shrinks by Back each week. Only the last weeks you pick count.",
+    scoreSettingsHelp = {
+        "For each night counted where a player was expected:",
+        { "No-show", "the points a no-show costs." },
+        { "Late", "the points a late arrival costs, plus Per 10 min for every full ten minutes." },
+        { "Back each week", "how much each penalty shrinks every week." },
+        { "Count the last", "only the last weeks you pick count." },
+    },
     showScore = "Show the Score column",
+    tieOrder = "Order equal answers by",
+    tieOrderHelp = {
+        "How the Master Loot Window orders players who gave the same answer.",
+        { "Wishlist, then Raider Score", "a Big upgrade first, then the higher score, then the higher roll. This is the default." },
+        { "Raider Score, then wishlist", "the higher score first, then the better wishlist rank, then the roll." },
+        { "Wishlist only", "the wishlist rank, then the roll." },
+        { "Raider Score only", "the score, then the roll." },
+        "A header you click in the loot window still sorts first.",
+    },
     authority = "Loot authority",
     authorityHelp = "Who may run loot: start a session, give items out, show popups again, roll again and end it. Everyone else gets the raider window only. Raiders accept a session only from the raid leader or a name on the leader's list, so your list counts while you lead.",
     authorityLeader = "The raid leader",
@@ -87,7 +112,15 @@ local TEXT = {
     noRoll = "If no roll, %v is",
     preview = "Preview:",
     tooltip = "Tooltips",
-    tooltipHelp = "Tooltip position is where every Loot Master tooltip opens: on this page, in both loot windows, the popup and Boss loot. Use the general setting follows General Settings. Outside the window puts it just past the edge of the window you are in, on the spot you click in the box beside it.\n\nItem tabs is where an item's tooltip opens when you hover its icon in the Master Loot Window and All Loot Rolls. Same as above follows Tooltip position. Next to the window puts it on the side of the window you click in the box beside it; a corner puts it flush with that corner of the window.\n\nClicking a spot also picks it in the dropdown. For Tooltip position, clicking the lit spot again goes back to each tooltip on its own side.",
+    tooltipHelp = {
+        "Tooltip position is where every Loot Master tooltip opens: on this page, in both loot windows, the popup and Boss loot.",
+        { "Use the general setting", "follows General Settings." },
+        { "Outside the window", "puts it just past the edge of the window you are in, on the spot you click in the box beside it. Clicking the lit spot again goes back to each tooltip on its own side." },
+        "Item tabs is where an item's tooltip opens when you hover its icon in the Master Loot Window and All Loot Rolls.",
+        { "Same as above", "follows Tooltip position." },
+        { "Next to the window", "puts it on the side of the window you click in the box beside it; a corner puts it flush with that corner of the window." },
+        "Clicking a spot also picks it in the dropdown.",
+    },
     lootWindow = "Master Loot Window",
     itemTabs = "Item tabs",
     channels = {
@@ -581,6 +614,11 @@ local function buildTooltips(f)
 end
 
 local function buildSettings(f)
+    -- the third column's places (Raider Score, Order equal answers by, Loot authority, CRT Looting)
+    local col3 = LM.SettingsLayout.Column3(UI.PAGE_W, {
+        sliderLabel = L.sliderLabel, sliderW = L.sliderW, authorityRows = L.authorityRows, tabH = UI.PAGE_H + L.body,
+    })
+    local at = col3.rects
     heading(f, L.col1, -8, TEXT.responses, TEXT.responsesHelp)
     for _, c in ipairs({ { TEXT.colLabel, 66 }, { TEXT.colWeight, 66 + L.label + 10 }, { TEXT.colIcon, 66 + L.label + 10 + L.weight + 10 } }) do
         local h = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
@@ -640,8 +678,8 @@ local function buildSettings(f)
     showAll.label:SetWidth(L.col2W - 30) -- two lines, inside the column
     showAll.label:SetJustifyH("LEFT")
 
-    heading(f, L.col3, L.lootingTop, TEXT.crtLooting, TEXT.partyHelp)
-    check(f, L.col3 - 2, L.lootingTop - 20, TEXT.enableInParty, function()
+    heading(f, L.col3, col3.lootingTop, TEXT.crtLooting, TEXT.partyHelp)
+    check(f, L.col3 + at.lootCheck.x, at.lootCheck.y, TEXT.enableInParty, function()
         return LM:Settings().enableInParty
     end, function(on)
         LM:Settings().enableInParty = on
@@ -756,8 +794,8 @@ local function buildSettings(f)
         preview.update(message:GetText())
     end
 
-    heading(f, L.col3, -8, TEXT.scoreSettings, TEXT.scoreSettingsHelp)
-    check(f, L.col3 - 2, -28, TEXT.showScore, function()
+    heading(f, L.col3, at.scoreHead.y, TEXT.scoreSettings, TEXT.scoreSettingsHelp)
+    check(f, L.col3 + at.showCheck.x, at.showCheck.y, TEXT.showScore, function()
         return LM:Settings().score.show
     end, function(on)
         LM:Settings().score.show = on
@@ -766,14 +804,12 @@ local function buildSettings(f)
             fn()
         end
     end)
-    local y = -56
-    for _, spec in ipairs({
+    for i, spec in ipairs({
         { TEXT.late, "late" }, { TEXT.per10, "per10" }, { TEXT.noShow, "noShow" }, { TEXT.recover, "recover" },
     }) do
-        slider(f, L.col3, y, spec[1], spec[2])
-        y = y - 32
+        slider(f, L.col3, at["slider" .. i].y, spec[1], spec[2])
     end
-    slider(f, L.col3, y, TEXT.weeks, "weeks", function(v)
+    slider(f, L.col3, at.slider5.y, TEXT.weeks, "weeks", function(v)
         return v .. " wk"
     end)
 
@@ -788,23 +824,41 @@ local function buildSettings(f)
         LM:SendAuthority()
         refresh()
     end
-    local ay = y - 48
+    -- Order equal answers by: its heading and (?), and under them the dropdown, as wide as its longest choice. The
+    -- dropdown has no label of its own; its row starts 5 left of the column for its gap, so the box lines up.
+    heading(f, L.col3, at.tieHead.y, TEXT.tieOrder, TEXT.tieOrderHelp)
+    local tie = UI.Dropdown(f, "", {
+        labelWidth = 0, width = col3.tiePick,
+        options = LM.TIE_CHOICES,
+        get = function()
+            local v = LM:Settings().tieOrder
+            return LM.TIE_ORDERS[v] and v or LM.TIE_ORDER_DEFAULT
+        end,
+        set = function(v)
+            LM:Settings().tieOrder = v
+            LM:Fire("wishlist") -- an open Master Loot Window redraws its rows
+        end,
+    })
+    tie:SetPoint("TOPLEFT", L.col3 - 5, at.tieRow.y)
+    refreshers[#refreshers + 1] = tie.refresh
+
+    local ay = col3.authorityTop
     heading(f, L.col3, ay, TEXT.authority, TEXT.authorityHelp)
-    check(f, L.col3 - 2, ay - 20, TEXT.authorityLeader, function()
+    check(f, L.col3 - 2, ay - 18, TEXT.authorityLeader, function()
         return auth().leader ~= false
     end, function(on)
         auth().leader = on
         changed()
     end)
     local also = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    also:SetPoint("TOPLEFT", L.col3, ay - 50)
+    also:SetPoint("TOPLEFT", L.col3, ay - 46)
     also:SetTextColor(0.7, 0.7, 0.7)
     also:SetText(TEXT.authorityAlso)
     local rows = {}
     for i = 1, L.authorityRows do
         local r = CreateFrame("Frame", nil, f)
         r:SetSize(260, 18)
-        r:SetPoint("TOPLEFT", L.col3 + 8, ay - 66 - (i - 1) * 18)
+        r:SetPoint("TOPLEFT", L.col3 + 8, ay - 60 - (i - 1) * 18)
         r.text = r:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         r.text:SetPoint("LEFT")
         r.remove = CreateFrame("Button", nil, r, "UIPanelCloseButton")

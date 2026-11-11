@@ -368,7 +368,7 @@ for word, page in pairs(WORDS) do
   check(help:find("/crt " .. word .. "|r", 1, true) ~= nil, "/crt help lists /crt " .. word)
 end
 -- /crt interrupts: the optional module is off on a fresh install, so the word says so and opens General Settings;
--- switched on, its page is in the menu after Pace and the word opens it
+-- switched on, its page is the first in the menu's Modules group and the word opens it
 do
   check(CRT.Slash.words.interrupts ~= nil, "/crt interrupts is registered")
   check(help:find("/crt interrupts|r", 1, true) ~= nil, "/crt help lists /crt interrupts")
@@ -377,9 +377,9 @@ do
   local out = slash("interrupts")
   check(shownPages[before + 1] == "settings" and out:find("Enable Interrupts", 1, true) ~= nil, "/crt interrupts while off opens General Settings: " .. out)
   CRT.Interrupts:SetEnabled(true)
-  local after, pace = nil, nil
-  for _, g in ipairs(UI.MenuGroups()) do for i, k in ipairs(g.keys) do if k == "interrupts" then after = g.keys[i - 1] end end end
-  check(after == "pace", "the Interrupts page is in the menu after Pace, got " .. tostring(after))
+  local group, at = nil, nil
+  for _, g in ipairs(UI.MenuGroups()) do for i, k in ipairs(g.keys) do if k == "interrupts" then group, at = g.label, i end end end
+  check(group == "Modules" and at == 1, "the Interrupts page is first in Modules, got " .. tostring(group) .. " " .. tostring(at))
   before = #shownPages
   slash("interrupts")
   check(shownPages[before + 1] == "interrupts", "/crt interrupts opens the page once it is on")

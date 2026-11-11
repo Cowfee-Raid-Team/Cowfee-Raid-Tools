@@ -21,19 +21,24 @@ CRT.TimelineHealerPanel = Panel
 local TEXT = {
     moved = "You moved %d cast%s from the raid note.",
     movedTitle = "Your moved casts",
-    movedHelp = "Your alerts use your times; the raid note is unchanged.\n\nReset mine puts every cast back at the raid "
-        .. "note's time. Send to raid lead sends your times to the raid leader and assistants, who can accept them into "
-        .. "the raid note.",
+    movedHelp = {
+        "Your alerts use your times; the raid note is unchanged.",
+        { "Reset mine", "puts every cast back at the raid note's time." },
+        { "Send to raid lead", "sends your times to the raid leader and assistants, who can accept them into the raid note." },
+    },
     reset = "Reset mine",
     send = "Send to raid lead",
     proposed = "Proposed changes (%d)",
     proposedMore = "Proposed changes (%d, the first %d shown)",
     autoAccept = "Accept healers' cooldown changes automatically",
     autoTitle = "Proposed changes",
-    autoHelp = "Healers can move their own cooldowns on Healer CDs and send them to you. Accept writes the new time "
-        .. "into the raid note; then share the note as usual. Decline drops it; nothing is sent back.\n\n"
-        .. "With the box ticked, a change from a group member about their own line is accepted at once. A change "
-        .. "to a line you changed since always waits.",
+    autoHelp = {
+        "Healers can move their own cooldowns on Healer CDs and send them to you.",
+        { "Accept", "writes the new time into the raid note; then share the note as usual." },
+        { "Decline", "drops it; nothing is sent back." },
+        "With the box ticked, a change from a group member about their own line is accepted at once. A change "
+            .. "to a line you changed since always waits.",
+    },
     proposal = "%s \194\183 %s %s to %s",
     stale = " \194\183 changed since",
     staleTip = "That line of the raid note changed since this was sent, so it can't be accepted.",

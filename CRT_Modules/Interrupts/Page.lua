@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- The Interrupts page, after Pace in the menu, shown only while Enable Interrupts is on (General Settings). Two tabs:
+-- The Interrupts page, first in the menu's Modules group, shown only while Enable Interrupts is on (General Settings). Two tabs:
 --   Assignments  the boss and difficulty (every kick setup, Interrupts:Bosses) with Edit setup beside it (your own
 --                setup, Interrupts/SetupEditor.lua), the status bar (which list is in use and your kick), the Kick
 --                list heading (its (?) is how the numbers are worked out: the setup, read-only), the kick rows
@@ -31,7 +31,12 @@ CRT.InterruptsPage = Page
 
 local TEXT = {
     title = "Interrupts",
-    help = "Kick numbers above a boss's adds, a reminder before your own kick, and the raid leader's kick list.\n\nSome bosses number their adds by timing: the game hides every add's name and spells in a raid fight, so an add is known by when its first cast starts. Others number by raid marker: each group kicks the add with its marker, in turn.\n\nNumbers only show for adds whose nameplate is on your screen.",
+    help = {
+        "Kick numbers above a boss's adds, a reminder before your own kick, and the raid leader's kick list.\n\nSome bosses number their adds by timing, others by raid marker.",
+        { "By timing", "the game hides every add's name and spells in a raid fight, so an add is known by when its first cast starts." },
+        { "By raid marker", "each group kicks the add with its marker, in turn." },
+        "Numbers only show for adds whose nameplate is on your screen.",
+    },
     assignments = "Assignments",
     settings = "Settings",
     boss = "Boss",
@@ -60,7 +65,12 @@ local TEXT = {
     writeEmpty = "The kick list is empty, so the raid note \"%s\" has no kick block now.",
     writeNothing = "The kick list is empty: nothing to write.",
     test = "Test on trash",
-    testHelp = "Tries the boss shown on trash. By timing: any pack is numbered by the order its mobs start casting, the first two 1, the next two 2, and so on. By raid marker: mark a mob with a group's marker, and its number moves on with each cast. Turns off when you change zone.",
+    testHelp = {
+        "Tries the boss shown on trash.",
+        { "By timing", "any pack is numbered by the order its mobs start casting, the first two 1, the next two 2, and so on." },
+        { "By raid marker", "mark a mob with a group's marker, and its number moves on with each cast." },
+        "Turns off when you change zone.",
+    },
     testReminder = "Test reminder",
     how = "How the numbers are worked out",
     howHelp = "The boss's kick setup. A setup by timing is as CRT ships it: if a hotfix moves the adds, numbers stop showing or land on the wrong adds until CRT is updated.",
@@ -90,7 +100,12 @@ local TEXT = {
     box = "Box",
     number = "Number",
     reminder = "Reminder",
-    reminderHelp = "Your interrupt's icon with your kick. By timing, it counts down the last 5 seconds before your pair's first cast. By raid marker, it says Your kick next when your add's cast is yours. Move it with Preview reminder icon.",
+    reminderHelp = {
+        "Your interrupt's icon with your kick.",
+        { "By timing", "it counts down the last 5 seconds before your pair's first cast." },
+        { "By raid marker", "it says Your kick next when your add's cast is yours." },
+        "Move it with Preview reminder icon.",
+    },
     reminderOn = "Count down before my kick",
     sound = "Sound",
     reminderSize = "Size",
@@ -100,17 +115,17 @@ local TEXT = {
     ok = "OK",
     cancel = "Cancel",
     confirm = "Interrupts",
-    slashOff = "Interrupts is switched off. Tick Enable Interrupts on General Settings first.",
+    slashOff = "Interrupts is switched off. Tick Enable Interrupts on General Settings > Appearance first.",
     soundNone = "None",
     -- the Settings tab's previews: both displays, the number box, the reminder
     previewAll = "Preview kick displays",
     previewAllTip = "Shows a sample number box and the reminder on screen, so you can check the box and drag the reminder into place. Other previews stay as they are.",
     previewBox = "Preview number box",
     previewBoxTip = "Shows a sample number box in the middle of the screen, at its height above the plate, in your colours.",
-    previewBoxOff = "Turn on Interrupts (Enable Interrupts on General Settings) to preview the number box.",
+    previewBoxOff = "Turn on Interrupts (Enable Interrupts on General Settings > Appearance) to preview the number box.",
     previewBoxNoBoss = "No boss has a kick setup, so there is no number to show.",
     previewReminder = "Preview reminder icon",
-    previewReminderTip = "Shows the reminder with its drag box so you can drag it into place. Test reminder on the Kick list tab plays a test countdown instead.",
+    previewReminderTip = "Shows the reminder with its drag box so you can drag it into place. Test reminder on the Assignments tab plays a test countdown instead.",
 }
 -- The preview keys: Interrupts/Plates.lua's number box and Interrupts/Reminder.lua's reminder.
 local PREVIEW_BOX, PREVIEW_REMINDER = "interrupts-box", "interrupts-reminder"

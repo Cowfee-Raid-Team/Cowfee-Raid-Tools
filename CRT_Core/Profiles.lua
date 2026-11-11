@@ -83,7 +83,7 @@ Profiles.SHARE = {
     },
     loot = true, -- Loot History's settings only (the history is in CRTLootDB), Tooltip position and spot among them
     lootmaster = {
-        window = true, popup = true, answers = true, bossLoot = true, lootingPrompt = true, responseSeconds = true, score = true,
+        window = true, popup = true, answers = true, bossLoot = true, lootingPrompt = true, responseSeconds = true, score = true, tieOrder = true,
         noRoll = true, tooltipMode = true, tooltipSpot = true, itemTooltip = true, showAllItems = true, enableInParty = true, filter = true,
         wishlistWindow = true, -- the My wishlist window's place, boss and Only my class (the list is per character, not a setting)
         wishlists = false, wishlistsAsked = false, wishlistsTab = false, -- raiders' saved wishlists are data; the tab's view is page state
@@ -121,6 +121,8 @@ Profiles.SHARE = {
     interrupts = { enabled = false, accept = true, plates = true, reminder = true, own = false, shared = false, use = false, kicks = false, setups = false,
         test = false, whoWindow = true, -- whoWindow: the Who has it pop-out's place, a window position
         playersFrom = false }, -- the Players panel's source: a Raid Groups layout's id is this client's own
+    -- the look's settings travel; switching the module on stays each raider's own, as Enable Interrupts does
+    highlights = { enabled = false, name = true, group = true, glow = true },
     alerts = {
         bars = true, areas = true, noteLines = true, customColors = true, cooldownFilter = true,
         special = true, -- your special alerts' on/off and Show as choices
@@ -197,6 +199,7 @@ local SECTIONS = {
     readycheck = "Ready Check", debuffs = "Debuffs", notes = "Raid Notes", qol = "Quality of Life", loot = "Loot History",
     lootmaster = "Loot Master", gearChecker = "Gear Checker", sound = "Sounds", late = "Late Tracker", tattle = "Tattlebot",
     timeline = "Timeline", markers = "Markers", pace = "Pace", interrupts = "Interrupts", alerts = "Alerts", team = "Team raids",
+    highlights = "Assignment highlights",
 }
 
 -- The top-level keys a profile holds: every key in the defaults, except the shared caches.

@@ -38,7 +38,12 @@ local TEXT = {
     removeRow = "Remove this row",
     quickFill = "Quick fill",
     helpTitle = "Assignment",
-    help = "Drag a player, role, group or class from the right onto a row to add it. Drag a name from one row to another to move it. Click x on a name to remove it.\n\nEach row has its label and the text its timer lines show (empty: the label). On picks the casts it is on: all of them, the ones you tick, or Rotate across the rows: the rows set to Rotate take the casts in turn.\n\nQuick fill: click a row, then click names on the right to add them to it.\n\nEach row with players gets one timer line per cast it is on, for those players, so their countdowns show. The tag beside a row says how many.",
+    help = {
+        "Drag a player, role, group or class from the right onto a row to add it. Drag a name from one row to another to move it. Click x on a name to remove it.\n\nEach row has its label and the text its timer lines show (empty: the label).",
+        { "On", "picks the casts a row is on: all of them, the ones you tick, or Rotate across the rows, where the rows set to Rotate take the casts in turn." },
+        { "Quick fill", "click a row, then click names on the right to add them to it." },
+        "Each row with players gets one timer line per cast it is on, for those players, so their countdowns show. The tag beside a row says how many.",
+    },
     tagOne = "1 line",
     tag = "%d lines",
     tagTip = "Timer lines of %s",

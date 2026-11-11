@@ -175,9 +175,7 @@ function UI.PreviewButton(parent, label, keys, opts)
     b:SetScript("OnEnter", function(self)
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
         GameTooltip:SetText(label, 1, 1, 1)
-        if opts.tooltip then
-            GameTooltip:AddLine(opts.tooltip, 0.8, 0.8, 0.8, true)
-        end
+        UI.AddTooltipText(GameTooltip, opts.tooltip, 0.8, 0.8, 0.8)
         local ok, reason = usable()
         if not ok and reason then
             local r, g, bl = UI.Color("warn")
@@ -535,9 +533,10 @@ end
 
 UI.MENU_GROUPS = {
     { label = TEXT.general, "settings", "qol" },
-    { label = TEXT.bosses, "timeline", "notes", "pace", "interrupts" },
+    { label = TEXT.bosses, "timeline", "notes", "pace" },
     { label = TEXT.raidAdmin, "readycheck", "groups", "gearcheck", "late" },
-    { label = TEXT.modules, "lootmaster", "loot", "requests", "seasonstats", "tattle" },
+    -- the optional modules each raider switches on (General Settings > Modules) come first
+    { label = TEXT.modules, "interrupts", "highlights", "lootmaster", "loot", "requests", "seasonstats", "tattle" },
 }
 
 function UI:IsModern()
@@ -1668,8 +1667,9 @@ function UI:SetTabSelected(b, selected)
 end
 
 -- A small help icon that shows an explanation as a tooltip, used for every bit of extra context so the
--- pages stay compact. text is a string, with paragraphs split on blank lines, or a function returning
--- one, for text that changes (title may be a function too). Pages make it with UI.HelpRight (below), which places it.
+-- pages stay compact. text is a string, with paragraphs split on blank lines, a list with one paragraph per
+-- option (UI.AddTooltipText, below), or a function returning either, for text that changes (title may be a
+-- function too). Pages make it with UI.HelpRight (below), which places it.
 -- Classic draws the game's gold "i" from the Appearances tab (MainHelpPlateButton in
 -- Blizzard_HelpPlate.xml: the "i", the ring and the additive hover glow) at HELP_SCALE, keeping the
 -- template's offsets, without inheriting its 64 px frame or its pulse. Modern draws a thin accent ring
@@ -1700,6 +1700,75 @@ local function paintHelp(b)
     h.letter:SetShown(modern)
     UI.Tint(h.letter, "SetTextColor", (modern and h.hover) and "background" or "accent")
 end
+
+-- A tooltip's body text, written once for every tooltip that takes one: UI.Help (and so UI.HelpRight and a
+-- title strip's SetHelp), UI.HeaderButton's and UI.Slider's tipText, UI.PreviewButton's tooltip and a dropdown
+-- option's tooltip. text is a string, with paragraphs split on blank lines, or a list for a text that explains
+-- several options (the crt-ui-elements catalog's Help row): in it a string is a paragraph, split the same way,
+-- and a { name, text } pair is one option, its own paragraph after a blank line, the name in the theme's
+-- heading colour, then ": " and the text. A paragraph after an option gets a blank line too, so a closing note
+-- stands apart. Either may come from a function, read each time the tooltip opens. r, g, b is the body colour
+-- (UI.TOOLTIP_BODY by default). Since it draws them, UI.HeaderButton's and UI.Slider's tipText and UI.PreviewButton's
+-- tooltip split a plain string on blank lines too, one tooltip line per paragraph, as UI.Help always did.
+--   { "Sort grid rearranges the grid only.", { "Role blocks", "tanks first, ..." }, { "Spread duplicates", "..." } }
+UI.TOOLTIP_BODY = { 0.85, 0.85, 0.85 }
+
+local function addParagraphs(tooltip, s, r, g, b)
+    for paragraph in (s .. "\n\n"):gmatch("(.-)\n\n") do
+        if paragraph ~= "" then
+            tooltip:AddLine(paragraph, r, g, b, true)
+        end
+    end
+end
+
+function UI.AddTooltipText(tooltip, text, r, g, b)
+    if type(text) == "function" then
+        text = text()
+    end
+    if r == nil then
+        r, g, b = UI.TOOLTIP_BODY[1], UI.TOOLTIP_BODY[2], UI.TOOLTIP_BODY[3]
+    end
+    if type(text) ~= "table" then
+        if text ~= nil and text ~= "" then
+            addParagraphs(tooltip, tostring(text), r, g, b)
+        end
+        return
+    end
+    local afterOption = false
+    for i, item in ipairs(text) do
+        if type(item) == "table" then
+            if i > 1 then
+                tooltip:AddLine(" ")
+            end
+            tooltip:AddLine(UI.HeadingText(tostring(item[1])) .. ": " .. tostring(item[2] or ""), r, g, b, true)
+            afterOption = true
+        elseif item ~= "" then
+            if afterOption then
+                tooltip:AddLine(" ")
+            end
+            addParagraphs(tooltip, tostring(item), r, g, b)
+            afterOption = false
+        end
+    end
+end
+
+-- The same text as one plain string (paragraphs on blank lines, an option as "name: text"), for a place that
+-- needs a string, such as a test or a chat line.
+-- [tooltip plain] CRT_Dev/Tests/theme_stub.js loads the code from here to [/tooltip plain] into harnesses (CRT_HELP_PLAIN).
+function UI.TooltipPlain(text)
+    if type(text) == "function" then
+        text = text()
+    end
+    if type(text) ~= "table" then
+        return text ~= nil and tostring(text) or ""
+    end
+    local out = {}
+    for _, item in ipairs(text) do
+        out[#out + 1] = type(item) == "table" and (tostring(item[1]) .. ": " .. tostring(item[2] or "")) or tostring(item)
+    end
+    return table.concat(out, "\n\n")
+end
+-- [/tooltip plain]
 
 local function helpTexture(b, layer, file, size, x, y)
     local t = b:CreateTexture(nil, layer)
@@ -1741,12 +1810,7 @@ function UI.Help(parent, title, text)
         -- right of the (?), whatever Tooltip position says (UI/Tooltip.lua's UI.TOOLTIP_KEEP)
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, UI.TOOLTIP_KEEP)
         GameTooltip:SetText(type(title) == "function" and title() or title, 1, 1, 1)
-        local body = type(text) == "function" and text() or text or ""
-        for paragraph in (body .. "\n\n"):gmatch("(.-)\n\n") do
-            if paragraph ~= "" then
-                GameTooltip:AddLine(paragraph, 0.85, 0.85, 0.85, true)
-            end
-        end
+        UI.AddTooltipText(GameTooltip, text)
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function(self)
@@ -1951,9 +2015,7 @@ function UI.HeaderButton(parent, label, onClick, opts)
         b:SetScript("OnEnter", function(self)
             UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
             GameTooltip:SetText(opts.tipTitle, 1, 1, 1)
-            if opts.tipText then
-                GameTooltip:AddLine(opts.tipText, 0.85, 0.85, 0.85, true)
-            end
+            UI.AddTooltipText(GameTooltip, opts.tipText)
             GameTooltip:Show()
         end)
         b:SetScript("OnLeave", function()
@@ -2077,7 +2139,11 @@ function UI:MakeThemeButton(parent)
         end, { "TOPRIGHT", lb, "BOTTOMRIGHT", 0, -2 })
     end, {
         flatH = 18, classicH = 18,
-        tipTitle = "Theme", tipText = "Pick the theme: Default: Blizzard is the game's own look; the others are flat, in their own colors.",
+        tipTitle = "Theme", tipText = {
+            "Pick the theme.",
+            { "Default: Blizzard", "the game's own look." },
+            { "The others", "flat, in their own colors." },
+        },
     })
     self.lookButton = lb
     return lb

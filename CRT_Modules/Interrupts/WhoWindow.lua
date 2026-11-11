@@ -14,7 +14,12 @@ local TEXT = {
     title = "Who has it",
     button = "Who has it (%d of %d)",
     buttonNone = "Who has it",
-    help = "Each player on the kick list once, and whether their CRT has Interrupts on, from the Addon check on General Settings. Green: on. Orange: an older CRT, or Interrupts off. Red: no CRT.",
+    help = {
+        "Each player on the kick list once, and whether their CRT has Interrupts on, from General Settings > Addon check.",
+        { "Green", "on." },
+        { "Orange", "an older CRT, or Interrupts off." },
+        { "Red", "no CRT." },
+    },
     more = "and %d more",
     check = "Check now",
     noNames = "No names on the list yet.",

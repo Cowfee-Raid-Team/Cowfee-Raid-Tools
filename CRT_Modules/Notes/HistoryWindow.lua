@@ -16,7 +16,12 @@ local Diff = CRT.NoteDiff
 local TEXT = {
     title = "History: %s",
     helpTitle = "History",
-    help = "The note's last 5 earlier versions, newest first. Each row is the note as it was just before a change: when it changed, how, and who changed it.\n\nCompare shows what changed between that version and the note now: + lines were added since, - lines were removed.\n\nRestore puts that version back as the note's text. The text now is kept here first, so you can restore it again to undo. Only your copy changes: click Share to raid to send it.\n\nHistory stays on this computer. It is never shared or exported.",
+    help = {
+        "The note's last 5 earlier versions, newest first. Each row is the note as it was just before a change: when it changed, how, and who changed it.",
+        { "Compare", "shows what changed between that version and the note now: + lines were added since, - lines were removed." },
+        { "Restore", "puts that version back as the note's text. The text now is kept here first, so you can restore it again to undo. Only your copy changes: click Share to raid to send it." },
+        "History stays on this computer. It is never shared or exported.",
+    },
     when = "When",
     how = "How",
     lines = "Lines",
