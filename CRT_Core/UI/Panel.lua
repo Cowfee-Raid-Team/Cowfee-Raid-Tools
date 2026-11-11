@@ -1635,8 +1635,9 @@ function UI:SetTabSelected(b, selected)
 end
 
 -- A small help icon that shows an explanation as a tooltip, used for every bit of extra context so the
--- pages stay compact. text is a string, with paragraphs split on blank lines, or a function returning
--- one, for text that changes (title may be a function too). Pages make it with UI.HelpRight (below), which places it.
+-- pages stay compact. text is a string, with paragraphs split on blank lines, a list with one paragraph per
+-- option (UI.AddTooltipText, below), or a function returning either, for text that changes (title may be a
+-- function too). Pages make it with UI.HelpRight (below), which places it.
 -- Classic draws the game's gold "i" from the Appearances tab (MainHelpPlateButton in
 -- Blizzard_HelpPlate.xml: the "i", the ring and the additive hover glow) at HELP_SCALE, keeping the
 -- template's offsets, without inheriting its 64 px frame or its pulse. Modern draws a thin accent ring
