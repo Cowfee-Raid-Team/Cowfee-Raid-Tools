@@ -106,7 +106,7 @@ CRT_Modules\Notes\EditorAssign.lua
 CRT_Modules\Notes\Page.lua
 CRT_Modules\Highlights\Data.lua
 CRT_Modules\Highlights\Changes.lua
-CRT_Modules\Highlights\Page.lua
+CRT_Modules\Highlights\Settings.lua
 CRT_Modules\Late\Data.lua
 CRT_Modules\Late\Page.lua
 CRT_Modules\Tattlebot\Database.lua

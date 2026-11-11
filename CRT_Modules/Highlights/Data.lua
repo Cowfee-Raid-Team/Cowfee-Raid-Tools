@@ -1,10 +1,11 @@
 local ADDON, CRT = ...
 
--- Assignment highlights: an optional module (off until the player ticks Use assignment highlights on its page,
--- Highlights/Page.lua, or on General Settings). In the raid note windows (Notes/Window.lua: the timers window and the
--- assignments window) a line that names you or your raid group gets a band behind it in the theme's accent, and the
--- name or group word in the accent colour. When a new version of the same note changes what you do, the line glows
--- for a few seconds with a tag saying what changed: Added, Removed or Moved (Highlights/Changes.lua).
+-- Assignment highlights: on by default, switched on Raid Notes > Notes Settings > Highlights (Highlights/Settings.lua) or
+-- General Settings > Modules. In the note windows ticked there (the assignments window by default; the timers and
+-- personal note windows once ticked: Notes/Window.lua) a line that names you or your raid group gets a band behind it
+-- in the theme's accent, and the name or group word in the accent colour. When a new version of the same note changes
+-- your part, the line glows for a few seconds with a tag saying what changed: Added, Removed or Moved
+-- (Highlights/Changes.lua).
 -- This file reads who you are and which words name you:
 --   H:Spans(line)          the word starts in a line of free text to paint, or nil when the line is not about you
 --   H:TagSpans(tags)       the same for a timer's tags (by index)
@@ -48,6 +49,19 @@ end
 
 function H:GlowOn()
     return self:Active() and H.Settings().glow and true or false
+end
+
+-- Whether one note window shows highlights: "assignments", "timers" or "personal" (highlights.windows), while the
+-- module is on. "preview": the module's own preview, which shows whatever the windows are set to.
+function H:WindowOn(key)
+    if not self:Active() then
+        return false
+    end
+    if key == "preview" then
+        return true
+    end
+    local windows = H.Settings().windows
+    return type(windows) == "table" and windows[key] == true
 end
 
 -- Your name in lower case, without its realm: read once it can be (out of a fight it always can), then kept.

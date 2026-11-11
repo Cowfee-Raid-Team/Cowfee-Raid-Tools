@@ -121,7 +121,7 @@ Profiles.SHARE = {
         test = false, whoWindow = true, -- whoWindow: the Who has it pop-out's place, a window position
         playersFrom = false }, -- the Players panel's source: a Raid Groups layout's id is this client's own
     -- the look's settings travel; switching the module on stays each raider's own, as Enable Interrupts does
-    highlights = { enabled = false, name = true, group = true, glow = true },
+    highlights = { enabled = false, name = true, group = true, glow = true, windows = true },
     alerts = {
         bars = true, areas = true, noteLines = true, customColors = true, cooldownFilter = true,
         special = true, -- your special alerts' on/off and Show as choices

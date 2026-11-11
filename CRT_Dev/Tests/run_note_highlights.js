@@ -169,13 +169,14 @@ local CRT = {
       nextId = 2, trustedOnly = true, active = 1, showOutsideRaid = true,
       window = { shown = true, locked = true, hidePassed = true, onlyMe = false, fontSize = 14, alpha = 100, bgAlpha = 50, width = 900, height = 3000 },
       assignments = { shown = true, locked = true, fontSize = 14, alpha = 100, bgAlpha = 50, width = 500, height = 600 },
-      personal = { shown = false, locked = true, fontSize = 14, alpha = 100, bgAlpha = 50, width = 500, height = 800 },
-      personalText = "",
+      personal = { shown = true, locked = true, fontSize = 14, alpha = 100, bgAlpha = 50, width = 500, height = 800 },
+      personalText = "Heal CDs: Cheoeqar\\nOthers: Rixxy",
       alert = { enabled = false, seconds = 10, tts = false, ttsSeconds = 3, ttsVolume = 100, ttsRate = 0, iconPosition = "left" },
     },
     alerts = { bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20 },
       reminders = {}, phases = {}, overrides = {}, nextId = 1 },
-    highlights = { enabled = false, name = true, group = true, glow = true },
+    -- the timers window ticked here, so the checks before "which windows" cover it too
+    highlights = { enabled = false, name = true, group = true, glow = true, windows = { assignments = true, timers = true, personal = false } },
   },
   UI = { RegisterLayer = function() end,
     RegisterPreview = function(_, key, fn) previews[key] = fn end,
@@ -332,6 +333,40 @@ local function kindOf(row) return glowing(row) and row.glowKind or nil end
 local function tagColour(row, key)
   local c, p = row and row.tag and row.tag.textColor, CRT.PALETTE[key]
   return c ~= nil and math.abs(c[1] - p[1]) < 1e-6 and math.abs(c[2] - p[2]) < 1e-6 and math.abs(c[3] - p[3]) < 1e-6
+end
+
+-- which windows: the assignments window as by default; the timers and personal note windows only once ticked
+do
+  local Wn = S.windows
+  Wn.timers, Wn.personal = false, false
+  NW:Changed()
+  step()
+  local timersText, personalText = NW:Get("window"):DrawnText(), NW:Get("personal"):DrawnText()
+  local bands = false
+  for _, key in ipairs({ "window", "personal" }) do for _, row in ipairs(rowsOf(key)) do if banded(row) then bands = true end end end
+  check(not bands and banded(rowWith("assignments", "Kicks G3")), "windows: only the assignments window shows bands as set by default")
+  S.enabled = false
+  NW:Changed()
+  step()
+  check(NW:Get("window"):DrawnText() == timersText and NW:Get("personal"):DrawnText() == personalText,
+    "windows: the timer and personal note windows draw exactly as with the module off until ticked")
+  S.enabled = true
+  Wn.personal = true
+  NW:Changed()
+  step()
+  local heal = rowWith("personal", "Heal CDs")
+  check(banded(heal) and heal.text.text:find(accent .. "Cheoeqar|r", 1, true) ~= nil and not banded(rowWith("personal", "Others")),
+    "personal note ticked: your line is banded, your name in the accent; others not")
+  CRT.db.notes.personalText = "Heal CDs: Cheoeqar\\nOthers: Rixxy\\nSoak: Cheoeqar"
+  Notes:Fire()
+  clock = clock + 0.5
+  NW:RefreshAll()
+  check(kindOf(rowWith("personal", "Soak")) == "added" and not glowing(heal), "personal note ticked: a line you added says Added")
+  CRT.db.notes.personalText = "Heal CDs: Cheoeqar\\nOthers: Rixxy"
+  Wn.timers, Wn.personal = true, false
+  NW:Changed()
+  step()
+  check(banded(rowWith("window", "Spell31884")), "timer window ticked: its bands are back")
 end
 
 -- only other names changed on your line: no change to your assignment
@@ -567,26 +602,35 @@ H:ResetGroup()
 NW:Changed()
 step()
 
--- page -------------------------------------------------------------------------------------------------
+-- settings: Raid Notes > Notes Settings > Highlights (Highlights/Settings.lua) -----------------------------
+check(pages.highlights == nil, "settings: no page of its own in the menu")
 local pf = newObj("Frame", UIParent)
-check(pages.highlights ~= nil and pages.highlights.title == "Assignment highlights", "page: registered as Assignment highlights")
-pages.highlights.build(pf)
-local P = pf
-check(P.enable and P.enable.label.text == "Use assignment highlights" and P.enable.label.help and P.enable.label.help.text ~= "", "page: the switch with its (?)")
+local P = CRT.HighlightsSettings.Build(pf, 10, -10, 244)
+check(P.enable and P.enable.label.text == "Use assignment highlights" and P.enable.help and P.enable.help.text ~= "", "settings: the switch with its (?)")
+local function greyed(c) return c.enabled == false and c.label.textColor and c.label.textColor[1] == 0.5 end
 S.enabled = false
-pf.scripts.OnShow(pf)
-check(P.name.enabled == false and P.group.enabled == false and P.glow.enabled == false and P.name.label.font == "CRTFontDisableSmall",
-  "page: the three options greyed while the switch is off")
-check(P.preview.enabled == false, "page: Preview highlights greyed while the switch is off")
+P.refresh()
+local allGrey = true
+for _, key in ipairs({ "name", "group", "glow", "assignments", "timers", "personal" }) do
+  if not (P.options[key] and greyed(P.options[key])) then allGrey = false end
+end
+check(allGrey, "settings: every option, the three windows included, greyed while the switch is off")
+check(P.preview.enabled == false, "settings: Preview highlights greyed while the switch is off")
 P.enable:SetChecked(true)
 P.enable.scripts.OnClick(P.enable)
-check(S.enabled == true and P.name.enabled and P.group.enabled and P.glow.enabled and P.name.label.font == "CRTFontSmall", "page: ticking the switch turns the module on and the options back")
-P.preview.refresh()
-check(P.preview.enabled == true and P.preview.keys[1] == H.PREVIEW_KEY, "page: Preview highlights works once it is on")
-P.group:SetChecked(false)
-P.group.scripts.OnClick(P.group)
-check(S.group == false, "page: Highlight my group sets its setting")
+check(S.enabled == true and P.options.name.enabled and P.options.timers.enabled and P.options.name.label.textColor[1] == 1, "settings: ticking the switch turns the module on and the options back")
+check(P.preview.enabled == true and P.preview.keys[1] == H.PREVIEW_KEY, "settings: Preview highlights works once it is on")
+P.options.group:SetChecked(false)
+P.options.group.scripts.OnClick(P.options.group)
+check(S.group == false, "settings: Highlight my group sets its setting")
 S.group = true
+S.windows.personal = false
+P.refresh()
+check(P.options.assignments:GetChecked() == true and P.options.personal:GetChecked() == false, "settings: the window checks follow the saved windows")
+P.options.personal:SetChecked(true)
+P.options.personal.scripts.OnClick(P.options.personal)
+check(S.windows.personal == true, "settings: Personal note sets its window")
+S.windows.personal = false
 
 for _, e in ipairs(errors) do fails = fails + 1 print("FAIL error " .. e) end
 return offText .. "\\n=====\\n" .. offAgain, "", passes, fails
@@ -598,13 +642,21 @@ function run(mode, withModule) {
   lua.lua_pushstring(L, to_luastring(mode));
   const files = ['CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua',
     'CRT_Modules/Notes/Engine.lua', 'CRT_Modules/Groups/Data.lua', 'CRT_Modules/Notes/Window.lua'];
-  if (withModule) files.push('CRT_Modules/Highlights/Data.lua', 'CRT_Modules/Highlights/Changes.lua', 'CRT_Modules/Highlights/Page.lua');
+  if (withModule) files.push('CRT_Modules/Highlights/Data.lua', 'CRT_Modules/Highlights/Changes.lua', 'CRT_Modules/Highlights/Settings.lua');
   for (const f of files) { lua.lua_pushstring(L, to_luastring(f)); lua.lua_pushstring(L, to_luastring(read(f))); }
   if (lua.lua_pcall(L, 1 + files.length * 2, 4, 0) !== lua.LUA_OK) throw new Error(mode + ': ' + lua.lua_tojsstring(L, -1));
   return { text: lua.lua_tojsstring(L, -4), passes: lua.lua_tonumber(L, -2), fails: lua.lua_tonumber(L, -1) };
 }
 
 let failed = 0;
+{
+  const core = read('CRT_Core/Core.lua');
+  const m = /\n\s*highlights = (\{[^\r\n]*\}),?\r?\n/.exec(core);
+  const def = m ? m[1].replace(/\s+/g, ' ') : '';
+  const want = '{ enabled = true, name = true, group = true, glow = true, windows = { assignments = true, timers = false, personal = false } }';
+  if (def === want) console.log('ok defaults: on, for the assignments window only (Core.lua)');
+  else { failed++; console.log('FAIL defaults in Core.lua: ' + def); }
+}
 try {
   const bare = run('bare', false);
   const mod = run('module', true);

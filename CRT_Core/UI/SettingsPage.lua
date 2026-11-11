@@ -525,16 +525,16 @@ local function buildLeft(pf)
         end
     end)
     UI.HelpRight(interrupts, TEXT.interrupts, TEXT.interruptsHelp)
-    -- the same saved switch as the module's own page (Highlights/Data.lua, Highlights/Page.lua); its (?) is the page's
-    local highlights = checkbox(pf, x, -348, CRT.HighlightsPage and CRT.HighlightsPage.TEXT.enable or "Use assignment highlights", function()
+    -- the same saved switch as Raid Notes > Notes Settings > Highlights (Highlights/Settings.lua); its words and (?) are that section's
+    local highlights = checkbox(pf, x, -348, CRT.HighlightsSettings and CRT.HighlightsSettings.TEXT.enable or "Use assignment highlights", function()
         return CRT.NoteHighlights and CRT.NoteHighlights:Enabled()
     end, function(on)
         if CRT.NoteHighlights then
             CRT.NoteHighlights:SetEnabled(on)
         end
     end)
-    if CRT.HighlightsPage then
-        UI.HelpRight(highlights, CRT.HighlightsPage.TEXT.enable, CRT.HighlightsPage.TEXT.enableHelp)
+    if CRT.HighlightsSettings then
+        UI.HelpRight(highlights, CRT.HighlightsSettings.TEXT.enable, CRT.HighlightsSettings.TEXT.enableHelp)
     end
 
     x = MIDDLE_X

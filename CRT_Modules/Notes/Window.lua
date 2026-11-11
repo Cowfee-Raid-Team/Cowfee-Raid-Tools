@@ -191,10 +191,6 @@ local function restText(item, spans)
     return "  " .. label .. "  " .. names(item, spans), missing
 end
 
-local function timerLine(item, seconds)
-    return timeText(Engine:IsMine(item), seconds) .. (restText(item))
-end
-
 -- A line of free text: names class colored, your own name in gold, and the line marked with ">" when it
 -- names you or your role, or (an assignment line) your class. A line with no colon is treated as a heading,
 -- unless noHeading. Raid marker codes become their icons, never names. spans (assignment highlights,
@@ -231,7 +227,8 @@ local function textLine(line, noHeading, spans)
     return colored
 end
 
--- The text of lines of free text, one line each. With hl (the assignments window), also per line whether it is
+-- The text of lines of free text, one line each. With hl (a window key for Highlights/Data.lua's WindowOn:
+-- "assignments", or "preview" for the module's sample), also per line whether it is
 -- marked for assignment highlights (Highlights/Data.lua), while that module is
 -- on: marks, keys (the line as written) and ids (the line's identity across versions, Highlights/Data.lua's LineId).
 -- sampleGroup: the module's preview sample, matched on its own group.
@@ -239,7 +236,7 @@ local function textRows(lines, hl, sampleGroup)
     local out, marks, keys, ids = {}, {}, {}, {}
     local Kicks = CRT.InterruptNote
     local H = hl and CRT.NoteHighlights
-    if not (H and H:Active()) then
+    if not (H and H:WindowOn(hl)) then
         H, marks, keys, ids = nil, nil, nil, nil
     end
     local nextId = H and H.IdCounter()
@@ -295,18 +292,22 @@ end
 
 -- A free text line of the personal note: markdown, then the names and ">" as textLine gives them. A
 -- heading or divider is shown as it is; a line markdown changed is never taken as a colon-less heading.
-local function personalLine(line)
+-- H (assignment highlights, while the personal window shows them): also returns whether the line is about you.
+local function personalLine(line, H)
     if line == "" then
-        return ""
+        return "", false
     end
     local md, whole = markdownLine(line)
     if whole then
-        return CRT.MarkerText(md)
+        return CRT.MarkerText(md), false
     end
+    local spans = H and H:Spans(md) or nil
     -- a bullet or bold line keeps its own look: never the gold of a line with no colon
-    return textLine(md, md ~= line)
+    return textLine(md, md ~= line, spans), spans ~= nil
 end
-NoteWindow.PersonalLine = personalLine
+NoteWindow.PersonalLine = function(line)
+    return (personalLine(line))
+end
 
 local function splitLines(text)
     local lines = {}
@@ -360,7 +361,7 @@ local function timersRebuild(record, note, onlyMe, as, running)
     -- assignment highlights (Highlights/Data.lua), while on: the tags that are your name or group, each line's
     -- identity, and the whole note for its changes (every timer, shown or not: Highlights/Changes.lua)
     local H = not as and CRT.NoteHighlights or nil
-    if H and not H:Active() then
+    if H and not H:WindowOn("timers") then
         H = nil
     end
     local whole, nextId = H and {} or nil, H and H.IdCounter()
@@ -529,7 +530,7 @@ local function assignmentsText()
     -- Assignment highlights' preview (Highlights/Data.lua): its sample note, over the note in use
     local H = CRT.NoteHighlights
     if previewing.highlights and H then
-        local text, marks, keys, ids = textRows(H.SampleLines(), true, H:SampleGroup())
+        local text, marks, keys, ids = textRows(H.SampleLines(), "preview", H:SampleGroup())
         return text, "Assignments (sample)", true, marks, keys, ids, "sample"
     end
     local _, record, note = Notes:Active()
@@ -542,7 +543,7 @@ local function assignmentsText()
         end
     end
     if lines and #lines > 0 then
-        local text, marks, keys, ids = textRows(lines, true)
+        local text, marks, keys, ids = textRows(lines, "assignments")
         return text, "Assignments: " .. record.name, true, marks, keys, ids, ids and CRT.NoteHighlights.NoteKey(record)
     end
     if previewing.assignments then
@@ -844,17 +845,35 @@ end
 -- "time:…;ph:…" lines, the timed-line format of shared raid notes) shows as a heading with the boss's name
 -- and difficulty and its timed lines by phase, "0:34 [icon] Spell" (marked ">" when they name you), then
 -- its other lines. Free text gets the markdown above. The personal note never runs alerts.
-local function personalNoteBlock(text)
+-- hl: assignment highlights, while the personal window shows them (Highlights/Data.lua's WindowOn "personal"): then
+-- also returns, per line shown, whether it is about you, its identity and what it says (as textRows does).
+local function personalNoteBlock(text, hl)
     local Parser = CRT.NoteParser
+    local H = hl and CRT.NoteHighlights
+    if not (H and H:WindowOn("personal")) then
+        H = nil
+    end
+    local out, marks, ids, raws = {}, {}, {}, {}
+    local nextId = H and H.IdCounter()
+    -- one line shown; id and raw (a line you typed, or a timer) only for a line highlights may mark
+    local function add(x, marked, id, raw)
+        out[#out + 1] = x
+        if H and id then
+            local n = #out
+            marks[n], ids[n], raws[n] = marked, nextId(id), raw
+        end
+    end
+    local function typedLine(line)
+        local x, marked = personalLine(line, H)
+        add(x, marked, H and line ~= "" and H.LineId(line) or nil, line)
+    end
     local note = Parser and Parser.Parse(text or "")
     if not note or (not note.encounterID and not note.name and #note.timers == 0) then
-        local out = {}
         for _, line in ipairs(splitLines(text)) do
-            out[#out + 1] = personalLine(line)
+            typedLine(line)
         end
-        return table.concat(out, "\n")
+        return table.concat(out, "\n"), marks, ids, raws
     end
-    local out = {}
     if note.name or note.difficulty then
         out[#out + 1] = gold(note.name or "")
             .. (note.difficulty and ("|cffaaaaaa (" .. note.difficulty .. ")|r") or "")
@@ -876,24 +895,27 @@ local function personalNoteBlock(text)
             shownPh = t.ph
             out[#out + 1] = gold("Phase " .. tostring(t.ph or 1))
         end
-        out[#out + 1] = timerLine(t, t.time or 0)
+        local spans = H and H:TagSpans(t.tags) or nil
+        add(timeText(Engine:IsMine(t), t.time or 0) .. (restText(t, spans)), spans ~= nil, H and H.TimerId(t), H and H.TimerKey(t))
     end
     local lines = {}
     for _, line in ipairs(note.lines or {}) do
-        lines[#lines + 1] = personalLine(line)
+        lines[#lines + 1] = line
     end
     while #lines > 0 and lines[#lines] == "" do
         lines[#lines] = nil
     end
     if #lines > 0 then
         out[#out + 1] = ""
-        for _, l in ipairs(lines) do
-            out[#out + 1] = l
+        for _, line in ipairs(lines) do
+            typedLine(line)
         end
     end
-    return table.concat(out, "\n")
+    return table.concat(out, "\n"), marks, ids, raws
 end
-NoteWindow.PersonalNoteBlock = personalNoteBlock
+NoteWindow.PersonalNoteBlock = function(text)
+    return (personalNoteBlock(text))
+end
 
 -- The personal window's kept state: what was typed and its lines, the reminders block, and the lines shown.
 local personal = { typedCache = {}, sample = {}, lines = {} }
@@ -912,7 +934,20 @@ local function personalBuild(_, force)
     local typed = Notes:Personal()
     if force or k.typed ~= typed or k.version ~= contentVersion or k.alerts ~= (A and A.version) or k.classes ~= classVersion() then
         k.typed, k.version, k.alerts, k.classes = typed, contentVersion, A and A.version, classVersion()
-        k.typedLines = #splitLines(typed) > 0 and textLines(k.typedCache, personalNoteBlock(typed)) or nil
+        k.typedLines, k.hlFull = nil, nil
+        if #splitLines(typed) > 0 then
+            local text, marks, ids, raws = personalNoteBlock(typed, true)
+            k.typedLines = textLines(k.typedCache, text)
+            -- assignment highlights (Highlights/Data.lua): each line's mark and identity, and the whole note
+            local H, whole = CRT.NoteHighlights, {}
+            for i, line in ipairs(k.typedLines) do
+                line.hl, line.hlId = marks[i] or nil, ids[i]
+                if ids[i] then
+                    whole[#whole + 1] = { id = ids[i], marked = marks[i], text = raws[i], raw = raws[i] }
+                end
+            end
+            k.hlFull = H and H:WindowOn("personal") and H.Full("personal", whole) or nil
+        end
         local ok, block = pcall(remindersBlock)
         if not ok then
             failed(block)
@@ -952,7 +987,7 @@ local function personalBuild(_, force)
         out[i] = nil
     end
     if n > 0 then
-        return out, "Personal note", true
+        return out, "Personal note", true, k.hlFull
     end
     if previewing.personal then
         return textLines(k.sample, "Your personal note shows here.\nWrite it on the Raid Notes page."), "Personal note (sample)", true

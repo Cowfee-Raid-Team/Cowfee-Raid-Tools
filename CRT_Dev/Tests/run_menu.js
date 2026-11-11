@@ -106,7 +106,7 @@ local want = {
   { "Bosses", "timeline", "notes", "pace" },
   { "Raid Admin", "readycheck", "groups", "gearcheck", "late" },
   -- the optional modules first (Alex, 2026-11-11): interrupts only while Enable Interrupts is on
-  { "Modules", "interrupts", "highlights", "lootmaster", "loot", "requests", "seasonstats", "tattle" },
+  { "Modules", "interrupts", "lootmaster", "loot", "requests", "seasonstats", "tattle" },
 }
 check(#UI.MENU_GROUPS == #want, "four menu groups, got " .. #UI.MENU_GROUPS)
 for i, w in ipairs(want) do
