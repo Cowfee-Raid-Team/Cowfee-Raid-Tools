@@ -69,7 +69,11 @@ local function addChoice(menu, option, opts)
     if option.tooltip and radio and radio.SetTooltip then
         radio:SetTooltip(function(tooltip)
             GameTooltip_SetTitle(tooltip, option.label)
-            GameTooltip_AddNormalLine(tooltip, option.tooltip)
+            if type(option.tooltip) == "table" then
+                UI.AddTooltipText(tooltip, option.tooltip) -- the list form (UI/Panel.lua)
+            else
+                GameTooltip_AddNormalLine(tooltip, option.tooltip)
+            end
         end)
     end
     if opts.decorate then
@@ -685,9 +689,7 @@ function UI.Slider(parent, text, opts)
         hit:SetScript("OnEnter", function(self)
             UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, UI.TOOLTIP_KEEP)
             GameTooltip:SetText(opts.tipTitle, 1, 1, 1)
-            if opts.tipText then
-                GameTooltip:AddLine(opts.tipText, 0.85, 0.85, 0.85, true)
-            end
+            UI.AddTooltipText(GameTooltip, opts.tipText)
             GameTooltip:Show()
         end)
         hit:SetScript("OnLeave", function()

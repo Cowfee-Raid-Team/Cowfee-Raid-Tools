@@ -74,9 +74,9 @@ hooksecurefunc = function(t, name, hook)
 end
 local tip = { lines = {} }
 GameTooltip = {
-  SetOwner = function(self, owner, anchor) self.owner, self.anchor = owner, anchor self.lines = {} end,
+  SetOwner = function(self, owner, anchor) self.owner, self.anchor = owner, anchor self.lines = {} self.colors = {} self.wraps = {} end,
   SetText = function(self, text) self.title = text end,
-  AddLine = function(self, text, r, g, b, wrap) self.lines[#self.lines + 1] = text end,
+  AddLine = function(self, text, r, g, b, wrap) self.lines[#self.lines + 1] = text self.colors[#self.lines] = { r, g, b } self.wraps[#self.lines] = wrap end,
   Show = function(self) self.shown = true end, Hide = function(self) self.shown = false end,
 }
 
@@ -126,6 +126,40 @@ live.scripts.OnEnter(live)
 check(GameTooltip.lines[1] == "Count 2", "a function's text is read each time")
 live.scripts.OnLeave(live)
 print("ok help: the tooltip is unchanged")
+
+-- the list form: a string is a paragraph, a { name, text } pair one option, after a blank line, its name in the
+-- heading colour; a paragraph after an option stands apart too
+local heading = UI.Hex("heading")
+local opts = UI.Help(page, "Sort by", { "Intro.\\n\\nSecond intro.", { "Role blocks", "tanks first." }, { "Spread duplicates", "classes apart." }, "Closing." })
+opts.scripts.OnEnter(opts)
+local L = GameTooltip.lines
+local want = { "Intro.", "Second intro.", " ", "|cff" .. heading .. "Role blocks|r: tanks first.", " ", "|cff" .. heading .. "Spread duplicates|r: classes apart.", " ", "Closing." }
+local same = #L == #want
+for i = 1, #want do same = same and L[i] == want[i] end
+check(same, "the list form: paragraphs, then each option after a blank line with its name in the heading colour: " .. table.concat(L, " | "))
+check(GameTooltip.wraps[4] == true and near(GameTooltip.colors[4], { 0.85, 0.85, 0.85 }), "an option's text is the body colour, wrapped")
+opts.scripts.OnLeave(opts)
+local first = UI.Help(page, "Options first", function() return { { "On", "yes." }, { "Off", "no." } } end)
+first.scripts.OnEnter(first)
+check(#GameTooltip.lines == 3 and GameTooltip.lines[1] == "|cff" .. heading .. "On|r: yes." and GameTooltip.lines[2] == " ", "an option first: no blank line under the title; a function may return a list")
+first.scripts.OnLeave(first)
+-- the same renderer for any tooltip with body text
+GameTooltip:SetOwner(page, "ANCHOR_RIGHT")
+UI.AddTooltipText(GameTooltip, { "A.", { "B", "b." } }, 1, 0, 0)
+check(#GameTooltip.lines == 3 and near(GameTooltip.colors[1], { 1, 0, 0 }) and near(GameTooltip.colors[3], { 1, 0, 0 }), "UI.AddTooltipText takes the body colour")
+GameTooltip:SetOwner(page, "ANCHOR_RIGHT")
+UI.AddTooltipText(GameTooltip, "Plain.\\n\\nTwo.")
+check(#GameTooltip.lines == 2 and near(GameTooltip.colors[1], { 0.85, 0.85, 0.85 }), "a plain string: one line per paragraph, the body grey by default")
+GameTooltip:SetOwner(page, "ANCHOR_RIGHT")
+UI.AddTooltipText(GameTooltip, nil)
+check(#GameTooltip.lines == 0, "no text: no lines")
+check(UI.TooltipPlain({ "A.", { "B", "b." } }) == "A.\\n\\nB: b." and UI.TooltipPlain("x") == "x", "UI.TooltipPlain: the same text as one plain string")
+-- the header button, the slider label and the preview button take the list form too
+local hb = UI.HeaderButton(page, "Go", function() end, { tipTitle = "Go", tipText = { "A.", { "B", "b." } } })
+hb.scripts.OnEnter(hb)
+check(#GameTooltip.lines == 3 and GameTooltip.lines[3] == "|cff" .. heading .. "B|r: b.", "UI.HeaderButton's tipText takes the list form")
+hb.scripts.OnLeave(hb)
+print("ok help: the list form, one paragraph per option")
 
 -- Tooltip position (CRT_Core/UI/Tooltip.lua; run_tooltip_spots.js tests every spot, mode and area): a (?) keeps
 -- its tooltip right of it (ANCHOR_RIGHT, UI.TOOLTIP_KEEP) whatever is picked: auto, a spot, or the game's tooltip spot
