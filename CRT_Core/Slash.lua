@@ -61,7 +61,7 @@ local function printHelp()
     print("  |cffffd100/crt break 10|r - a 10 minute break timer (any minutes, 0 cancels); from a raid leader or assistant it reaches the whole raid")
     print("  |cffffd100/crt qol|r - open the Quality of Life page (low health and debuffs)")
     print("  |cffffd100/crt settings|r - open General Settings: window, fonts, sound, minimap button, layers, profiles")
-    print("  |cffffd100/crt team|r - tonight's team, as on General Settings > Team raids")
+    print("  |cffffd100/crt team|r - tonight's team, as on General Settings > Appearance > Team raids")
     print("  |cffffd100/crt minimap|r - show or hide the minimap button")
     print("  |cffffd100/crt lowhp off|r, |cffffd100on|r, |cffffd100info|r, |cffffd100stop|r - turn the experimental low-health alert off or on, print its diagnostics, or stop any sound it is playing")
     print("  |cffffd100/crt perf|r - this addon's CPU use since the last /reload, from the game's profiler")
@@ -276,7 +276,7 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
     elseif msg == "settings" then
         CRT.UI:Show("settings")
     elseif msg == "team" then
-        -- the same status line as General Settings > Team raids (Team.lua)
+        -- the same status line as General Settings > Appearance > Team raids (Team.lua)
         CRT:Print(CRT.Team.StatusLine())
     elseif msg == "minimap" then
         local hide = not CRT.db.minimap.hide

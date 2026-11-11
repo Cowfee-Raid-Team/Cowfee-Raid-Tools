@@ -73,8 +73,20 @@ local TEXT = {
     teamLocked = "Set by %s (raid leader). You can change or remove it after you leave the group.",
     -- the game's lock icon (Blizzard_GroupFinder's LFGFrame.xml uses this file), inline before the line
     teamLockIcon = "|TInterface\\LFGFrame\\UI-LFG-ICON-LOCK:14:14|t ",
-    teamHelp = "Pick which team tonight's raid is: Pug, or one of your teams. Season Stats keeps each team's pulls apart, and Tattlebot and the Late Tracker can record team raids only: any team but Pug. Add team at the bottom of the list adds your own. A new raid group starts on the team you had last.\n\nWhen you join a new raid group, CRT asks which team it is. The raid leader can push the team to everyone in the raid with CRT, with Push to raid or the popup's Save and push. Raiders can't change it then until they leave the group.\n\nRemove team deletes one of your teams and its Season Stats, after two warnings. Pug can't be removed.\n\nMerge team moves one of your teams' Season Stats, Tattlebot pulls and raid nights into another team or Pug, and takes it off your list. Before teams, the pulls from before you had teams of your own, can be merged into one of your teams the same way. Names that differ only in case, spaces or punctuation are one team; when two such teams are saved, CRT asks once whether to merge them.\n\nParties, solo play and finder groups are never team raids.",
-    help = "A profile holds everything the addon saves: settings, window positions, layouts, notes, consumables lists and history. Each character remembers its own; new characters start on the one under New characters. Switching, copying or resetting a profile reloads your interface.\n\nExport gives the whole profile as text, for your own characters: Import saves it as a new profile.\n\nExport settings only gives just settings and window positions, for raiders (where your reports go, whose notes and loot leaders you trust and your own sound files stay yours): Import shows what differs and applies it to this profile, after saving your settings for Undo last import. Keep my window positions keeps where your windows are and the size of your note windows.",
+    teamHelp = {
+        "Pick which team tonight's raid is: Pug, or one of your teams. Season Stats keeps each team's pulls apart, and Tattlebot and the Late Tracker can record team raids only: any team but Pug. A new raid group starts on the team you had last.",
+        { "Add team", "at the bottom of the list, adds your own." },
+        { "Push to raid", "when you join a new raid group, CRT asks which team it is. The raid leader can push the team to everyone in the raid with CRT, with Push to raid or the popup's Save and push. Raiders can't change it then until they leave the group." },
+        { "Remove team", "deletes one of your teams and its Season Stats, after two warnings. Pug can't be removed." },
+        { "Merge team", "moves one of your teams' Season Stats, Tattlebot pulls and raid nights into another team or Pug, and takes it off your list. Before teams, the pulls from before you had teams of your own, can be merged into one of your teams the same way. Names that differ only in case, spaces or punctuation are one team; when two such teams are saved, CRT asks once whether to merge them." },
+        "Parties, solo play and finder groups are never team raids.",
+    },
+    help = {
+        "A profile holds everything the addon saves: settings, window positions, layouts, notes, consumables lists and history. Each character remembers its own; new characters start on the one under New characters. Switching, copying or resetting a profile reloads your interface.",
+        { "Export", "the whole profile as text, for your own characters. Import saves it as a new profile." },
+        { "Export settings only", "just settings and window positions, for raiders (where your reports go, whose notes and loot leaders you trust and your own sound files stay yours). Import shows what differs and applies it to this profile, after saving your settings for Undo last import." },
+        { "Keep my window positions", "keeps where your windows are and the size of your note windows." },
+    },
 }
 
 local page
@@ -433,7 +445,11 @@ end
 local function buildLeft(pf)
     local x = LEFT_X
 
-    heading(pf, x, -44, "Window", "The theme button in the title bar picks the look. Window Scale applies when you let go or press Enter (Ctrl + mouse wheel over the window works too). Background opacity is how solid every window's background is: 100% is solid, lower lets the game show through, down to 30%. Text and buttons never fade. The raider loot popup always stays solid.")
+    heading(pf, x, -44, "Window", {
+        "The theme button in the title bar picks the look.",
+        { "Window scale", "applies when you let go or press Enter (Ctrl + mouse wheel over the window works too)." },
+        { "Background opacity", "how solid every window's background is: 100% is solid, lower lets the game show through, down to 30%. Text and buttons never fade. The raider loot popup always stays solid." },
+    })
     add(UI.Slider(pf, "Window scale", {
         min = UI.MIN_SCALE,
         max = UI.MAX_SCALE,
@@ -471,7 +487,12 @@ local function buildLeft(pf)
         end,
     }), x, -120)
 
-    heading(pf, x, -164, "Text", "The font, outline and size of the addon's text, note windows included. Default is the game's font in Default: Blizzard and Arial Narrow in the other themes; fonts shared by other addons are listed too. Text size is the body size (8 to 22 pt); headings and small text follow it. Note windows keep their own size and can get their own font on Raid Notes.")
+    heading(pf, x, -164, "Text", {
+        "The font, outline and size of the addon's text, note windows included.",
+        { "Font", "Default is the game's font in Default: Blizzard and Arial Narrow in the other themes; fonts shared by other addons are listed too." },
+        { "Text size", "the body size (8 to 22 pt); headings and small text follow it." },
+        "Note windows keep their own size and can get their own font on Raid Notes > Notes Settings.",
+    })
     add(UI.Dropdown(pf, "Font", {
         options = fontChoices,
         labelWidth = LABEL_W,
@@ -527,7 +548,7 @@ local function buildLeft(pf)
     UI.HelpRight(interrupts, TEXT.interrupts, TEXT.interruptsHelp)
 
     x = MIDDLE_X
-    heading(pf, x, -44, "Sound", "Every sound the addon plays uses this game sound channel and follows its volume and mute. The low-health pulse and text to speech have their own volume, on Quality of Life and Raid Notes.")
+    heading(pf, x, -44, "Sound", "Every sound the addon plays uses this game sound channel and follows its volume and mute. Text to speech has its own volume, on Raid Notes > Alert Settings > Configuration (Note callout/assignments), and the game's low-health pulse its own in the game's Options > Accessibility > Combat Audio Alerts.")
     add(UI.Dropdown(pf, "Sound channel", {
         options = CRT.SOUND_CHANNELS,
         labelWidth = LABEL_W,
@@ -555,7 +576,13 @@ local function buildLeft(pf)
         CRT.MinimapButton:SetHidden(not on)
     end)
 
-    heading(pf, x, -246, "Tooltips", "Where the addon's tooltips open. Outside the window: just past the edge of the window you are in, such as the main window or a pop-out, on the spot you click in the box below. Game's tooltip spot: where the game shows its own tooltips, or wherever your UI addon moved them. Follow the cursor: at your mouse.\n\nClicking a spot also picks Outside the window. With no spot lit, each tooltip opens on its own side, beside the button, row or icon under your mouse; click the lit spot again to go back to that. Something outside the addon's windows, such as the minimap button, opens its tooltip beside itself.\n\nLoot History, Loot Master and the Timeline have their own Tooltip position on their Settings tabs, and the debuff panel on Quality of Life > Debuffs. It follows this one until you change it there.\n\nThe button on the Encounter Journal always keeps its tooltip by it.")
+    heading(pf, x, -246, "Tooltips", {
+        "Where the addon's tooltips open.",
+        { "Outside the window", "just past the edge of the window you are in, such as the main window or a pop-out, on the spot you click in the box below." },
+        { "Game's tooltip spot", "where the game shows its own tooltips, or wherever your UI addon moved them." },
+        { "Follow the cursor", "at your mouse." },
+        "Clicking a spot also picks Outside the window. With no spot lit, each tooltip opens on its own side, beside the button, row or icon under your mouse; click the lit spot again to go back to that. Something outside the addon's windows, such as the minimap button, opens its tooltip beside itself.\n\nLoot History, Loot Master and the Timeline have their own Tooltip position, on Loot History > Settings, Loot Master > Settings and Timeline > Settings, and the debuff panel on Quality of Life > Debuffs. It follows this one until you change it there.\n\nThe button on the Encounter Journal always keeps its tooltip by it.",
+    })
     -- the dropdown, and its spot picker under it (UI/Tooltip.lua)
     local tooltips = UI.TooltipPositionSetting(pf, nil, { labelWidth = LABEL_W, width = CONTROL_W })
     tooltips.row:SetPoint("TOPLEFT", x, -264)
@@ -647,7 +674,13 @@ end
 local function buildRight(pf)
     local x = RIGHT_X
 
-    heading(pf, x, -44, "Layers", "Which layer each group of windows is drawn in, from Background (under everything) to Tooltip (over everything); a higher layer covers a lower one, the game's windows included.\n\nAlerts: the note callout, alert bars, icons, critical alerts text, circles, the alert timeline and the low-health banner. Raid windows: the ready check window, your consumables bar and the debuff panel. Pop-up windows: text to copy, imports and the Late Tracker roster.\n\nMixed means the group's windows differ; picking one puts them all in it.")
+    heading(pf, x, -44, "Layers", {
+        "Which layer each group of windows is drawn in, from Background (under everything) to Tooltip (over everything); a higher layer covers a lower one, the game's windows included.",
+        { "Alerts", "the note callout, alert bars, icons, critical alerts text, circles, the alert timeline and the low-health banner." },
+        { "Raid windows", "the ready check window, your consumables bar and the debuff panel." },
+        { "Pop-up windows", "text to copy, imports and the Late Tracker roster." },
+        "Mixed means the group's windows differ; picking one puts them all in it.",
+    })
     for i, group in ipairs(UI.LAYER_GROUPS) do
         add(UI.Dropdown(pf, group.label, {
             options = function()
@@ -837,7 +870,15 @@ end
 
 local CHECK = {
     heading = "Who runs CRT",
-    help = "Asks everyone in your group which version of Cowfee Raid Tools they run and which optional modules they have switched on, and lists the answers. The group is asked when you open this tab and each time you press Check.\n\nGreen is your version, orange an older one, red No CRT: no answer within a few seconds. A dash means that player's CRT is too old to report that module. A CRT from before the Addon check shows only its version, with blank modules.\n\nModule and Show narrow the list, so you can see before a pull who would miss a shared note, pace plan or kick list. The game blocks addon messages during a boss fight, so check before the pull.\n\nAnnounce posts who is missing CRT or on an older version, with the download link, where Announce to says: only to you, to the group's chat, as a raid warning (the raid leader or an assistant) or to officer chat. Click a red or orange row to whisper that player the same.",
+    help = {
+        "Asks everyone in your group which version of Cowfee Raid Tools they run and which optional modules they have switched on, and lists the answers. The group is asked when you open this tab and each time you press Check.",
+        { "Green", "your version." },
+        { "Orange", "an older one." },
+        { "Red", "No CRT: no answer within a few seconds." },
+        "A dash means that player's CRT is too old to report that module. A CRT from before the Addon check shows only its version, with blank modules.",
+        { "Module and Show", "narrow the list, so you can see before a pull who would miss a shared note, pace plan or kick list. The game blocks addon messages during a boss fight, so check before the pull." },
+        { "Announce", "posts who is missing CRT or on an older version, with the download link, where Announce to says: only to you, to the group's chat, as a raid warning (the raid leader or an assistant) or to officer chat. Click a red or orange row to whisper that player the same." },
+    },
     check = "Check",
     announce = "Announce",
     announceTo = "Announce to",

@@ -240,7 +240,7 @@ function UI.SoundHelp()
     return string.format(UI.SOUND_HELP_VOICES, Sound:VoiceNames()) .. "\n\n" .. UI.SOUND_HELP_FILES
 end
 -- your own files and Play; UI.SOUND_HELP is the whole text without the voices (a harness without Sound/Voices.lua)
-UI.SOUND_HELP_FILES = "Your own .ogg or .mp3 files go in the CowfeeRaidTools_Media addon's Sounds folder: Quality of Life > Sounds shows how, with a Test button for each file.\n\nPlay in the list plays the sound on your sound channel (General Settings)."
+UI.SOUND_HELP_FILES = "Your own .ogg or .mp3 files go in the CowfeeRaidTools_Media addon's Sounds folder: Quality of Life > Sounds shows how, with a Test button for each file.\n\nPlay in the list plays the sound on your sound channel (General Settings > Appearance > Sound channel)."
 UI.SOUND_HELP = "Game sounds, sounds shared by other addons, and your own files.\n\n" .. UI.SOUND_HELP_FILES
 
 function UI.SoundDropdown(parent, text, opts)

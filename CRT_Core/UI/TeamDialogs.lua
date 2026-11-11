@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- The team dialogs (CRT.TeamDialogs), shared by General Settings > Team raids and the new raid group popup
+-- The team dialogs (CRT.TeamDialogs), shared by General Settings > Appearance > Team raids and the new raid group popup
 -- (TeamPopup.lua): one UI.Window dialog on the popups layer, in one of three modes.
 --   add      Add team: a name box, [Add] [Cancel]. The name goes through Team:AddTeam (TeamList.lua); a refused one
 --            shows why in red under the box. Added, done(name) runs, so the caller picks it.
