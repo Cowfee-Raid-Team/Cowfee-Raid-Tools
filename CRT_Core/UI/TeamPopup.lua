@@ -30,8 +30,15 @@ local TEXT = {
     savePush = "Save and push to raid",
     save = "Save",
     later = "Later",
-    help = "Which team tonight's raid is. Season Stats keeps each team's pulls apart; Tattlebot and the Late Tracker count any team but Pug as a team raid.\n\nLater keeps the team you had last (Pug if you never picked one) and doesn't ask again in this group. You can change it on General Settings > Team raids.",
-    leaderHelp = "Use Loot Master? Yes turns CRT Looting on for this raid, as Loot Master > Tonight's Turn on does: now if you are in the raid instance, else when you enter it. No leaves it off.\n\nSave and push to raid sets the team for everyone in the raid with CRT. They can't change it until they leave the group.",
+    help = {
+        "Which team tonight's raid is. Season Stats keeps each team's pulls apart; Tattlebot and the Late Tracker count any team but Pug as a team raid.",
+        { "Later", "keeps the team you had last (Pug if you never picked one) and doesn't ask again in this group. You can change it on General Settings > Appearance > Team raids." },
+    },
+    leaderHelp = {
+        { "Yes", "turns CRT Looting on for this raid, as Loot Master > Tonight's Turn on does: now if you are in the raid instance, else when you enter it." },
+        { "No", "leaves it off." },
+        { "Save and push to raid", "sets the team for everyone in the raid with CRT. They can't change it until they leave the group." },
+    },
 }
 P.TEXT = TEXT
 

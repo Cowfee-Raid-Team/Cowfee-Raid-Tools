@@ -167,6 +167,8 @@ UI.RegisterPreview = function(_, key, fn) previews[key] = fn end
 UI.ResetButtonWidth = function() return 44 end; UI.ResetButton = function(parent, fn) local b = mock("Button", parent) rawset(b, "onReset", fn) rawset(b, "isReset", true) return b end
 UI.SetFrameTitle = function(f, t) f.title = t end
 UI.Help = function(parent, title, text) local b = mock("Button", parent) rawset(b, "helpTitle", title) rawset(b, "helpText", text) helps[#helps + 1] = b return b end
+-- a list-form help text (UI.AddTooltipText) as one string
+local function helpPlain(t) return CRT_HELP_PLAIN(t) end -- the real UI.TooltipPlain (theme_stub.js)
 UI.Dropdown = function(parent, label, opts) local r = mock("Row", parent) rawset(r, "label", label) rawset(r, "opts", opts)
   rawset(r, "refresh", function() rawset(r, "refreshed", (rawget(r, "refreshed") or 0) + 1) end) dropdowns[label] = r return r end
 UI.SoundDropdown = function(parent, label, opts) local o = {} for k, v in pairs(opts) do o[k] = v end
@@ -1514,7 +1516,7 @@ do
   typeInto(w.idEdit, "shadow")
   assert(bookCalls == 2, "read again on the next open")
   local helped
-  for _, h in ipairs(helps) do if h.helpTitle == "Icon" and tostring(h.helpText):find("spell name", 1, true) and tostring(h.helpText):find("close spelling", 1, true) then helped = true end end
+  for _, h in ipairs(helps) do if h.helpTitle == "Icon" and helpPlain(h.helpText):find("spell name", 1, true) and helpPlain(h.helpText):find("close spelling", 1, true) then helped = true end end
   assert(helped, "Icon help names the lookup")
   -- clearing the box hides the list
   typeInto(w.idEdit, "")
@@ -2130,7 +2132,7 @@ do
     if h.helpTitle == "Speak at" then atHelp = h end
     if h.helpTitle == "Count down from" then countHelp = h end
   end
-  assert(atHelp and tostring(atHelp.helpText):find("after the count", 1, true) and rawget(atHelp, "crtHelpTarget") == w.speakAt, "Speak at has a (?) right of it on the count")
+  assert(atHelp and helpPlain(atHelp.helpText):find("after the count", 1, true) and rawget(atHelp, "crtHelpTarget") == w.speakAt, "Speak at has a (?) right of it on the count")
   assert(countHelp and tostring(countHelp.helpText) == CRT.AlertFields.TEXT.countDownHelp
     and rawget(countHelp, "crtHelpTarget") == w.countFrom, "Count down from has a (?) right of its slider, the one shared text")
   local function top(m) local pt = m.pts[#m.pts] return pt[#pt] end

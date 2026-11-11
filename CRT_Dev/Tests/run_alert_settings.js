@@ -49,7 +49,8 @@ check("every setting is whole: key, tab, kind, label, meaning, default, where it
     if f.range then
       assert(f.range.min < f.range.max and f.range.step > 0 and f.default >= f.range.min and f.default <= f.range.max, at .. ": its range")
     end
-    if f.help then assert(type(f.help) == "string" and f.help ~= "", at .. ": its (?)") end
+    -- a string, or the list form with one paragraph per option (UI.AddTooltipText)
+    if f.help then assert((type(f.help) == "string" and f.help ~= "") or (type(f.help) == "table" and #f.help > 0), at .. ": its (?)") end
   end
   assert(F.BY_KEY.countFrom.range == CRT.AlertReminders.COUNT_FROM and F.BY_KEY.speakBefore.range == CRT.AlertReminders.SPEAK_BEFORE,
     "the ranges are the reminders' own (Alerts/Reminders.lua)")

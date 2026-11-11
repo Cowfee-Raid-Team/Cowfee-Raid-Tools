@@ -45,7 +45,11 @@ local Areas = CRT.AlertAreas
 
 local TEXT = {
     mode = "Mode",
-    modeHelp = "Standalone shows your alerts on this timeline only. Add to the game's timeline puts them on the game's boss timeline too. Replace the game's timeline hides the game's one, so only this one shows. In combat, Replace waits until combat ends.",
+    modeHelp = {
+        { "Standalone", "shows your alerts on this timeline only." },
+        { "Add to the game's timeline", "puts them on the game's boss timeline too." },
+        { "Replace the game's timeline", "hides the game's one, so only this one shows. In combat, Replace waits until combat ends." },
+    },
     standalone = "Standalone",
     add = "Add to the game's timeline",
     replace = "Replace the game's timeline",

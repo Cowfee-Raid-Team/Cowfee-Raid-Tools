@@ -40,11 +40,22 @@ local TEXT = {
     editHelp = "Click a slot to choose a name, drag to move or swap. Right-click a name to invite that player, clear the slot or set their role. A role you set shows a small dot on its icon and wins over the game's role.",
     sortBy = "Sort by",
     sortGrid = "Sort grid",
-    sortHelp = "Sort grid rearranges the grid only, like an edit by hand. Nobody moves in the raid until you click Arrange Groups.\n\nRole blocks: tanks first, then melee, then ranged, with one healer in each group.\n\nMelee and ranged groups: tanks and melee fill the first groups, ranged the next ones. Healers are spread one per group.\n\nSpread duplicates: players of the same class, then of the same spec, go in different groups. Tanks and healers are spread too.\n\nLeft and right sides: pick an assignment with two rows from the Assign tab. The first row goes to groups 1 and 2, the second to groups 3 and 4. Everyone else is split between the two sides to even them out.",
+    sortHelp = {
+        "Sort grid rearranges the grid only, like an edit by hand. Nobody moves in the raid until you click Arrange Groups.",
+        { "Role blocks", "tanks first, then melee, then ranged, with one healer in each group." },
+        { "Melee and ranged groups", "tanks and melee fill the first groups, ranged the next ones. Healers are spread one per group." },
+        { "Spread duplicates", "players of the same class, then of the same spec, go in different groups. Tanks and healers are spread too." },
+        { "Left and right sides", "pick an assignment with two rows of players, made on Raid Notes > Mech Alerts > Mechanics (pick the boss and the ability, then its Assign tab). The first row goes to groups 1 and 2, the second to groups 3 and 4. Everyone else is split between the two sides to even them out." },
+    },
     side = "Assignment",
-    noSidesWhy = "No assignment this season has two rows of players. Make one on Mech Alerts' Assign tab.",
+    noSidesWhy = "No assignment this season has two rows of players. Make one on Raid Notes > Mech Alerts > Mechanics (pick the boss and the ability, then its Assign tab).",
     emptyGrid = "The grid is empty.",
     postChanges = "Post group changes to raid chat",
+    extraBody = "In your group, in raid group %d, but not in this layout.", -- a player beside the grid
+    extraClick = "Click",
+    extraClickBody = "put them in the first empty slot of that group.",
+    extraDrag = "Drag",
+    extraDragBody = "drop them on any slot.",
     postHelp = "When Arrange Groups is done, posts one line to raid chat for each group with someone new in it, such as \"[CRT] <Group 1 Changes>: Name, Name\". If it stops part-way, it posts the groups that did change. Nothing is posted when nobody moved. In combat or during a boss encounter, the post waits until it ends.",
 }
 
@@ -560,8 +571,11 @@ local function extraButton(i)
     b:SetScript("OnEnter", function(self)
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_LEFT")
         GameTooltip:SetText(Groups.Display(self.entry.key), Groups.ClassColor(self.entry.key, self.entry.class))
-        GameTooltip:AddLine("In your group, in raid group " .. (self.entry.subgroup or 1) .. ", but not in this layout.", 0.85, 0.85, 0.85, true)
-        GameTooltip:AddLine("Click: put them in the first empty slot of that group. Drag: drop them on any slot.", 1, 0.82, 0, true)
+        UI.AddTooltipText(GameTooltip, {
+            string.format(TEXT.extraBody, self.entry.subgroup or 1),
+            { TEXT.extraClick, TEXT.extraClickBody },
+            { TEXT.extraDrag, TEXT.extraDragBody },
+        })
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function()

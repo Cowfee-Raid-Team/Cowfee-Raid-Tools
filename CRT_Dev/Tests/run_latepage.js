@@ -193,12 +193,14 @@ end
 -- the (?)s say a raider's tracker records only when it starts a night itself, and that a pushed roster becomes theirs
 do
   local page, roster
+  -- a list-form text (UI.AddTooltipText) as one string
+  local function helpPlain(t) return CRT_HELP_PLAIN(t) end -- the real UI.TooltipPlain (theme_stub.js)
   for _, x in ipairs(lateHelps) do
     if x.helpTitle == "The Late Tracker" then page = x elseif x.helpTitle == "Expected roster" then roster = x end
   end
-  check(page and tostring(page.helpText):find("A raider's tracker records only when their own schedule or Start raid now runs.", 1, true),
+  check(page and helpPlain(page.helpText):find("A raider's tracker records only when their own schedule or Start raid now runs.", 1, true),
     "the page's (?) has the raider caveat")
-  check(roster and tostring(roster.helpText):find("pushes a note with their roster, it becomes your active layout", 1, true),
+  check(roster and helpPlain(roster.helpText):find("pushes a note with their roster, it becomes your active layout", 1, true),
     "the expected roster's (?) says a pushed roster becomes yours")
 end
 if fails > 0 then error(fails .. " late page checks failed") end

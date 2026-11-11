@@ -897,7 +897,10 @@ local function buildHistory(f)
     })
     mechDropdown:SetPoint("LEFT", seasonDropdown, "RIGHT", 16, 0)
     controls[#controls + 1] = mechDropdown
-    UI.HelpRight(mechDropdown, "History filters", "Season picks what is added up: every saved night, or the current one. Mechanic narrows Totals, each night and the export to one mechanic: each player's damage from it, the pulls it hit them in, and the average per hit.")
+    UI.HelpRight(mechDropdown, "History filters", {
+        { "Season", "picks what is added up: every saved night, or the current one." },
+        { "Mechanic", "narrows Totals, each night and the export to one mechanic: each player's damage from it, the pulls it hit them in, and the average per hit." },
+    })
     -- Team raids or all raids: shown only once a pull that wasn't a team raid is saved
     local showDropdown = UI.Dropdown(f, "Show", {
         options = SHOW_OPTIONS,
@@ -912,7 +915,11 @@ local function buildHistory(f)
         end,
     })
     showDropdown:SetPoint("LEFT", mechDropdown, "RIGHT", 40, 0)
-    local showHelp = UI.HelpRight(showDropdown, "Show", "Team raids keeps to the pulls that were team raids: tonight's team at the pull wasn't Pug (General Settings > Team raids). A night with no team pull is left out. All raids adds the pulls recorded with Only record team raids off. Pulls from before this update are team raids.")
+    local showHelp = UI.HelpRight(showDropdown, "Show", {
+        { "Team raids", "keeps to the pulls that were team raids: tonight's team at the pull wasn't Pug (General Settings > Appearance > Team raids). A night with no team pull is left out." },
+        { "All raids", "adds the pulls recorded with Only record team raids off, on the Settings tab." },
+        "Pulls from before this update are team raids.",
+    })
     local showRefresh = showDropdown.refresh
     showDropdown.refresh = function()
         local on = Tattle:HasOtherNights()
@@ -1038,7 +1045,7 @@ local function buildSettings(f)
     local autoPost = makeCheck(f, 28, -80, "Post after each pull", "autoPost", trackingOn)
     UI.HelpRight(autoPost.label, "Post after each pull", "Posts the pull's report right after it is read, to the channel below, only if you are the raid leader, so a raid full of this addon posts once. Everyone else sees it in their own chat.")
     local onlyTeam = makeCheck(f, 28, -104, "Only record team raids", "onlyTeam", trackingOn)
-    UI.HelpRight(onlyTeam.label, "Only record team raids", "Records a pull only when it is a team raid: tonight's team isn't Pug (General Settings > Team raids). Other pulls are not read, saved or posted. Turned off, every pull is recorded and marked as a team raid or not, and History can show either.")
+    UI.HelpRight(onlyTeam.label, "Only record team raids", "Records a pull only when it is a team raid: tonight's team isn't Pug (General Settings > Appearance > Team raids). Other pulls are not read, saved or posted. Turned off, every pull is recorded and marked as a team raid or not, and History can show either.")
 
     local postTo = UI.Dropdown(f, "Post to", {
         options = OUTPUTS,
@@ -1098,7 +1105,12 @@ local function buildMechanics(f)
     })
     bossDropdown:SetPoint("TOPLEFT", 8, -8)
     controls[#controls + 1] = bossDropdown
-    UI.HelpRight(bossDropdown, "Tracked mechanics", "Last fight lists every spell that damaged the group in the last fight: tick the ones to track and press Add checked. A boss shows the mechanics that ship with the addon; Your own spells lists the ones you added. All the IDs of one mechanic count as one line in reports.")
+    UI.HelpRight(bossDropdown, "Tracked mechanics", {
+        { "Last fight", "every spell that damaged the group in the last fight: tick the ones to track and press Add checked." },
+        { "A boss", "the mechanics that ship with the addon." },
+        { "Your own spells", "the ones you added." },
+        "All the IDs of one mechanic count as one line in reports.",
+    })
 
     local count = label(f, "", "CRTFontSmall")
     count:SetPoint("TOPRIGHT", -12, -16)
@@ -1233,7 +1245,11 @@ local function build(pf)
 
     local title = label(pf, "Tattlebot", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
-    UI.HelpRight(title, "Tattlebot", "After each boss pull, once you are out of combat, Tattlebot reads the game's damage meter and keeps the damage each player took from the mechanics in its list, and the pulls it hit them in. Tonight shows tonight's pulls; History keeps every night, with an export for Discord.")
+    UI.HelpRight(title, "Tattlebot", {
+        "After each boss pull, once you are out of combat, Tattlebot reads the game's damage meter and keeps the damage each player took from the mechanics in its list, and the pulls it hit them in.",
+        { "Tonight", "tonight's pulls." },
+        { "History", "every night, with an export for Discord." },
+    })
 
     for i, tab in ipairs(TABS) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")

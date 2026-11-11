@@ -79,19 +79,22 @@ local TEXT = {
     discard = "Close the note editor without saving your changes?",
     discardButton = "Discard",
     helpTitle = "Note editor",
-    help = "Drag a player, role, group or class from the right onto an assignment line (\"Label: names\") to add "
-        .. "it. Drag a name from one line to another to move it. Click x to remove it. Escape cancels a drag.\n\n"
-        .. "The invite list takes players only. Removing a player leaves their slot empty, so the others keep "
-        .. "their groups.\n\n"
-        .. "Quick fill: click a line, then click names on the right to add them to it.\n\n"
-        .. "Players from picks the players listed on the right: your current group, this note's invite list, or a "
-        .. "saved Raid Groups layout. A note linked to a layout shows that layout first, and picks it when you're "
-        .. "not in a group.\n\n"
-        .. "Timers are shown as the note has them and can't be changed here, except that a timer line listing the "
-        .. "same players as an assignment line follows it: change the line's names and the timer line gets them "
-        .. "too. Only names change. Raw text shows the note as it will be saved.\n\n"
-        .. "Add assignment adds a heading and rows of players, with timer lines from one of the boss's mechanics, "
-        .. "typed times, or none. Click a row of an assignment first to change that one.",
+    help = {
+        "Drag a player, role, group or class from the right onto an assignment line (\"Label: names\") to add "
+            .. "it. Drag a name from one line to another to move it. Click x to remove it. Escape cancels a drag.\n\n"
+            .. "The invite list takes players only. Removing a player leaves their slot empty, so the others keep "
+            .. "their groups.",
+        { "Quick fill", "click a line, then click names on the right to add them to it." },
+        { "Players from", "picks the players listed on the right: your current group, this note's invite list, or a "
+            .. "saved Raid Groups layout. A note linked to a layout shows that layout first, and picks it when you're "
+            .. "not in a group." },
+        "Timers are shown as the note has them and can't be changed here, except that a timer line listing the "
+            .. "same players as an assignment line follows it: change the line's names and the timer line gets them "
+            .. "too. Only names change.",
+        { "Raw text", "shows the note as it will be saved." },
+        { "Add assignment", "adds a heading and rows of players, with timer lines from one of the boss's mechanics, "
+            .. "typed times, or none. Click a row of an assignment first to change that one." },
+    },
     kickHelpTitle = "Kick order",
     kickHelp = "The raid note's kick list, one row per group. The number on a name is its kick.\n\n"
         .. "Drag players onto a group. Drop a name on another name to put it there. A group takes as many names as "

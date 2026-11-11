@@ -274,7 +274,14 @@ local function build(pf)
     local lookTitle = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     lookTitle:SetPoint("TOPLEFT", LOOK_X, -8)
     lookTitle:SetText("Look")
-    UI.HelpRight(lookTitle, "Look", "Each debuff has a dark frame, a yellow countdown and its stacks; a debuff you can dispel gets a frame in its dispel colour.\n\nTimer: the countdown on the icon or beside it. Swipe numbers puts the game's countdown on the swipe instead.\n\nSwipe: a dark shade grows over the icon as it runs out; Bright edge lights its edge.\n\nBorder size: the frame's width; 0 has none.\n\nGrow: which end of the drag bar the row fills from, Left to right or Right to left.\n\nPress Preview debuffs to see each change.")
+    UI.HelpRight(lookTitle, "Look", {
+        "Each debuff has a dark frame, a yellow countdown and its stacks; a debuff you can dispel gets a frame in its dispel colour.",
+        { "Timer", "the countdown on the icon or beside it. Swipe numbers puts the game's countdown on the swipe instead." },
+        { "Swipe", "a dark shade grows over the icon as it runs out; Bright edge lights its edge." },
+        { "Border size", "the frame's width; 0 has none." },
+        { "Grow", "which end of the drag bar the row fills from, Left to right or Right to left." },
+        "Press Preview debuffs to see each change.",
+    })
 
     local timer = lookDropdown(pf, -26, "Timer", "timerPosition", Debuffs.TIMER_POSITIONS)
     local nudgeX = nudgeBox(pf, timer, "Nudge X", "timerX")
@@ -310,7 +317,15 @@ local function build(pf)
     UI.HelpRight(spacing, "Spacing", "The gap between two debuffs' borders. The border's width is added on top, so borders never overlap; at 0 they touch. The glow adds no space.")
     lookDropdown(pf, -168, "Grow", "grow", Debuffs.GROW_DIRECTIONS, Debuffs.Grow, Debuffs.SetGrow)
     local glow = lookCheck(pf, "Glow on dispellable debuffs", -204, "dispelGlow", LOOK_X - 4, nil, Debuffs.SetDispelGlow)
-    UI.HelpRight(glow.label, "Glow on dispellable debuffs", "A dispellable debuff always gets a frame in its colour: Magic blue, Poison green, Curse purple, Disease brown, Bleed in the game's bleed colour. The glow adds a soft light in the same colour around that frame. Both need a border size above 0.")
+    UI.HelpRight(glow.label, "Glow on dispellable debuffs", {
+        "A dispellable debuff always gets a frame in its colour.",
+        { "Magic", "blue." },
+        { "Poison", "green." },
+        { "Curse", "purple." },
+        { "Disease", "brown." },
+        { "Bleed", "the game's bleed colour." },
+        "The glow adds a soft light in the same colour around that frame. Both need a border size above 0.",
+    })
 
     -- Tooltips on hover (Panel.lua), and where they open: the panel's own Tooltip position (UI/Tooltip.lua).
     local tips = lookCheck(pf, TEXT.tooltips, TOOLTIP_Y, "tooltips", LOOK_X - 4, nil, Debuffs.SetTooltips)

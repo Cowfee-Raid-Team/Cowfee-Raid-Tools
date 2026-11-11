@@ -39,13 +39,21 @@ local TEXT = {
         .. "Note callout/assignments under Configuration has the same switch, with when, how loud and how fast it reads.",
 
     colours = "Colours",
-    coloursHelp = "Each alert shows in the colour of its ability type, as on the Timeline: dispel blue, soak pink, Mythic only orange.\n\n"
-        .. "Tick Use custom colours to use your own bar, ring and alert colours instead. Unticked, they stay saved.\n\n"
-        .. "A colour the raid leader put on a raid note line always shows.",
+    coloursHelp = {
+        "Each alert shows in the colour of its ability type, as on the Timeline.",
+        { "Dispel", "blue." },
+        { "Soak", "pink." },
+        { "Mythic only", "orange." },
+        "Tick Use custom colours to use your own bar, ring and alert colours instead. Unticked, they stay saved.\n\n"
+            .. "A colour the raid leader put on a raid note line always shows.",
+    },
     custom = "Use custom colours",
 
     tryIt = "Try it",
-    tryHelp = "Preview alerts shows the note callout and every alert area with samples, so you can drag them into place; the cog on each opens its settings here. Test all areas counts three test alerts down in each.",
+    tryHelp = {
+        { "Preview alerts", "shows the note callout and every alert area with samples, so you can drag them into place; the cog on each opens its settings here." },
+        { "Test all areas", "counts three test alerts down in each." },
+    },
     previews = "Preview alerts",
     previewsTip = "Shows the note callout and the five alert areas with samples, so you can drag them into place. Other previews stay as they are.",
     onScreen = "On screen now: %s",

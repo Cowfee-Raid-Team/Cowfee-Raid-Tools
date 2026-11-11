@@ -71,10 +71,12 @@ local TEXT = {
     iconSpell = "Spell",
     iconID = "Icon ID",
     iconHelpTitle = CRT.AlertFields.TEXT.icon,
-    iconHelp = "Spell: type the spell's ID. The alert shows its icon and, with no text, its name.\n\n"
-        .. "Icon ID: type an icon's file ID to show that icon instead.\n\n"
-        .. "Or type a spell name (3 letters or more) to search this boss's abilities and your own "
-        .. "spells (a close spelling works too), then click one or press Enter for the top match.",
+    iconHelp = {
+        { "Spell", "type the spell's ID. The alert shows its icon and, with no text, its name." },
+        { "Icon ID", "type an icon's file ID to show that icon instead." },
+        "Or type a spell name (3 letters or more) to search this boss's abilities and your own "
+            .. "spells (a close spelling works too), then click one or press Enter for the top match.",
+    },
     text = CRT.AlertFields.TEXT.text,
     color = CRT.AlertFields.TEXT.color,
     colorDefault = "Default",

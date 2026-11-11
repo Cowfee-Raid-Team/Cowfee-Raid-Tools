@@ -20,9 +20,15 @@ CRT.NoteAlertShare = W
 
 local TEXT = {
     exportTitle = "Export Mech Alerts",
-    exportHelp = "Pick a boss, then tick the alerts to share: your Mech Alerts and your special alert choices. The box at the bottom holds the code of the ticked ones, selected: press Ctrl+C to copy it. Your friend pastes it in Import on Mech Alerts. Nothing is sent over chat.",
+    exportHelp = "Pick a boss, then tick the alerts to share: your Mech Alerts and your special alert choices. The box at the bottom holds the code of the ticked ones, selected: press Ctrl+C to copy it. Your friend pastes it in Raid Notes > Mech Alerts > Import. Nothing is sent over chat.",
     importTitle = "Import Mech Alerts",
-    importHelp = "Paste a code from Export in the box. The list shows each alert in it.\n\nNew: you don't have it.\nReplaces yours: your alert for the same ability (or the same text) on that boss and difficulty is changed to this one.\nSame as yours: nothing would change.\n\nTick the ones you want, then Import.",
+    importHelp = {
+        "Paste a code from Export in the box. The list shows each alert in it.",
+        { "New", "you don't have it." },
+        { "Replaces yours", "your alert for the same ability (or the same text) on that boss and difficulty is changed to this one." },
+        { "Same as yours", "nothing would change." },
+        "Tick the ones you want, then Import.",
+    },
     boss = "Boss",
     allBosses = "All bosses",
     mechAlert = "Mech Alert",

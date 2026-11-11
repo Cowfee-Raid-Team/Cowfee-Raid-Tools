@@ -59,7 +59,12 @@ local TEXT = {
     bannerMany = "%d group lists have timer lines under their rows (%s). Make one an Assign block?",
     bannerMake = "Make an Assign block",
     bannerLater = "Not now",
-    timersHelp = "None: only the heading and the rows go in the note, for names with no timers. Typed times: type the times below. A mechanic: its casts on the boss's ability timeline for this note's difficulty; each row gets a timer line on the casts it is on.\n\nAssignment picks the block to edit: a new one, one the note has, or a group list with timer lines under it (such as a pasted note) to make into a block.",
+    timersHelp = {
+        { "None (names only)", "only the heading and the rows go in the note, for names with no timers." },
+        { "Typed times", "type the times below." },
+        { "A mechanic", "its casts on the boss's ability timeline for this note's difficulty; each row gets a timer line on the casts it is on." },
+        { "Assignment", "picks the block to edit: a new one, one the note has, or a group list with timer lines under it (such as a pasted note) to make into a block." },
+    },
 }
 EA.TEXT = TEXT
 

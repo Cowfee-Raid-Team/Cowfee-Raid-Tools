@@ -8,6 +8,9 @@
 // the harness already has it; CRT_TOOLTIP(CRT, UI) loads only that, for a harness with no other CRT.UI. CRT_THEME also loads
 // CRT_Core/MarkerText.lua (CRT.MarkerText and CRT.MarkerCodes), which the .toc loads right after Themes.lua; CRT_MARKERS(CRT)
 // loads only that.
+// It also defines CRT_HELP_PLAIN(text), the real UI.TooltipPlain (Panel.lua, between its [tooltip plain] markers): a
+// list-form help text (UI.AddTooltipText) as one string, for checks that search a (?)'s text. CRT_THEME puts it on UI
+// as UI.TooltipPlain when the harness has none.
 // Usage, in a harness: const themeLua = require('./theme_stub'); put themeLua(where) before the Lua source, then call
 // CRT_THEME(CRT, CRT.UI) before loading the module files. where is the addon folder, a file in it, or a list of files
 // (the harness's arguments): the folder holding CRT_Core/Themes.lua is found from them.
@@ -34,14 +37,26 @@ function helperBlock(root) {
   return panel.slice(panel.indexOf('\n', start) + 1, end);
 }
 
+// UI.TooltipPlain from CRT_Core/UI/Panel.lua, between its [tooltip plain] markers.
+function plainBlock(root) {
+  const panel = fs.readFileSync(path.join(root, 'CRT_Core/UI/Panel.lua'), 'utf8');
+  const start = panel.indexOf('-- [tooltip plain]');
+  const end = panel.indexOf('-- [/tooltip plain]');
+  if (start < 0 || end < start) throw new Error('theme_stub: the [tooltip plain] markers are missing from Panel.lua');
+  return panel.slice(panel.indexOf('\n', start) + 1, end);
+}
+
 module.exports = function themeLua(where) {
   const root = findRoot(where);
   const src = fs.readFileSync(path.join(root, 'CRT_Core/Themes.lua'), 'utf8');
   const helpers = helperBlock(root);
+  const plain = plainBlock(root);
   const tooltip = fs.readFileSync(path.join(root, 'CRT_Core/UI/Tooltip.lua'), 'utf8');
   const markers = fs.readFileSync(path.join(root, 'CRT_Core/MarkerText.lua'), 'utf8');
-  for (const s of [src, helpers, tooltip, markers]) if (s.includes(']====]')) throw new Error('theme_stub: a source holds the long-string closer');
+  for (const s of [src, helpers, plain, tooltip, markers]) if (s.includes(']====]')) throw new Error('theme_stub: a source holds the long-string closer');
   return `
+-- CRT_HELP_PLAIN(text): the real UI.TooltipPlain, a list-form help text as one string
+CRT_HELP_PLAIN = assert(load("local UI = {} " .. [====[${plain}]====] .. " return UI.TooltipPlain", "Panel.lua UI.TooltipPlain"))()
 -- CRT_TOOLTIP(CRT, UI): the real CRT_Core/UI/Tooltip.lua onto UI (by default CRT.UI); it reads CRT.db when a tooltip opens
 function CRT_TOOLTIP(CRT, UI)
   UI = UI or CRT.UI
@@ -86,6 +101,7 @@ function CRT_THEME(CRT, UI)
     for fs, build in pairs(themedTexts) do fs:SetText(build()) end
     for _, fn in ipairs(hooks) do fn() end
   end
+  UI.TooltipPlain = UI.TooltipPlain or CRT_HELP_PLAIN
   -- the real CRT_Core/UI/Tooltip.lua (UI.TooltipOwner) onto UI, reading CRT.db when a tooltip opens
   if not UI.TooltipOwner then
     CRT_TOOLTIP(CRT, UI)
