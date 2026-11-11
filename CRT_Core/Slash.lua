@@ -212,6 +212,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         -- dev aura <spellID>, on [spellID], off, show: what an addon can read of a debuff on the group (Dev/AuraProbe.lua)
     elseif CRT.LowHealthProbe and CRT.LowHealthProbe:Command(msg) then
         -- dev lowhp (on), off, show: what an addon sees of your health going under the low-health threshold (Dev/LowHealthProbe.lua)
+    elseif CRT.BattleResProbe and CRT.BattleResProbe:Command(msg) then
+        -- dev brez: what an addon can read of the shared battle res charges, secret or not (Dev/BattleResProbe.lua)
     elseif CRT.InstantReleaseTest and CRT.InstantReleaseTest:Command(msg) then
         -- dev autorelease (status), now, arm, off: test Instantly release after wipe outside a raid (Dev/InstantReleaseTest.lua)
     elseif CRT.ShieldBarDev and CRT.ShieldBarDev:Command(msg) then
