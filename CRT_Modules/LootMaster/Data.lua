@@ -935,6 +935,7 @@ LM.SORT_VALUES = {
     note = function(r) return r.note and r.note:lower() end,
     roll = function(r) return r.roll end,
     score = function(r) return r.score end,
+    wish = function(r) return r.wishOrder end,
 }
 
 -- Sorts rows by one column (dir 1 low to high, -1 high to low); rows without a value go last, and ties
@@ -1084,18 +1085,26 @@ function Session:Row(name, index)
     }
 end
 
--- Every player's row for an item: response weight, then Raider Score (score(name), higher first), then
--- roll, then name.
-function Session:Rows(index, score)
+-- Every player's row for an item: response weight, then wishlist rank (wish(name, itemString), the rank on
+-- their wishlist: LootMaster/Wishlist.lua's W.RankFor; r.wish, r.wishOrder), then Raider Score (score(name),
+-- higher first), then roll, then name. Without wish no row has a rank, so the order is as before.
+function Session:Rows(index, score, wish)
     local rows = {}
+    local item = self.items[index]
+    local order = LM.Wishlist and LM.Wishlist.Order
     for _, name in ipairs(self.order) do
         local r = self:Row(name, index)
         r.score = score and score(name) or nil
+        r.wish = wish and item and wish(name, item.itemString) or nil
+        r.wishOrder = (r.wish and order) and order(r.wish) or 0
         rows[#rows + 1] = r
     end
     table.sort(rows, function(a, b)
         if a.weight ~= b.weight then
             return a.weight > b.weight
+        end
+        if a.wishOrder ~= b.wishOrder then
+            return a.wishOrder > b.wishOrder
         end
         if (a.score or 0) ~= (b.score or 0) then
             return (a.score or 0) > (b.score or 0)

@@ -1,7 +1,8 @@
 local ADDON, CRT = ...
 
 -- The looter's window, the Master Loot Window: the session's items as tabs down the left, and for the chosen item every raider's
--- row, sorted by the response's weight, then Raider Score, then roll (Session:Rows). Right-click a row to
+-- row, sorted by the response's weight, then the raider's wishlist rank, then Raider Score, then roll
+-- (Session:Rows); the Wishlist column shows each raider's rank for the item (LootMaster/Wishlist.lua). Right-click a row to
 -- award the item for a response, show the raider's popup again, ask them to roll again, or clear their
 -- answer; right-click an item tab to do that for everyone who still needs it. A pop-out made by
 -- UI.Window: drag it, resize it from the corner, Reset puts it back; its place is kept in CRTDB
@@ -22,17 +23,19 @@ local COLS = {
     { key = "name", x = 4, w = 130, title = "Name" },
     { key = "role", x = 138, w = 40, title = "Role" },
     { key = "response", x = 182, w = 160, title = "Response" },
-    { key = "ilvl", x = 346, w = 48, title = "iLvl" },
-    { key = "gear", x = 398, w = 92, title = "Gear" },
-    { key = "note", x = 494, w = 170, title = "Note" },
-    { key = "roll", x = 668, w = 60, title = "Roll" },
-    { key = "score", x = 732, w = 50, title = "Score" },
+    { key = "wish", x = 346, w = 92, title = "Wishlist" }, -- the raider's wishlist rank (LootMaster/Wishlist.lua)
+    { key = "ilvl", x = 442, w = 48, title = "iLvl" },
+    { key = "gear", x = 494, w = 92, title = "Gear" },
+    { key = "note", x = 590, w = 120, title = "Note" },
+    { key = "roll", x = 714, w = 60, title = "Roll" },
+    { key = "score", x = 778, w = 50, title = "Score" },
 }
+local GEAR_X = 494 -- the gear column's x, for its icons
 
 local TEXT = {
     title = "Master Loot Window",
     test = "TEST",
-    help = "Every raider's answer for the item picked on the left, best first: the answer's weight, then Raider Score, then the roll. Right-click a raider to give them the item, show their popup again, roll again for them, or clear their answer. Ctrl- or Shift-click picks several raiders first. Right-click an item on the left to do that for everyone who still needs it.",
+    help = "Every raider's answer for the item picked on the left, best first: the answer's weight, then their wishlist rank, then Raider Score, then the roll. Wishlist shows the rank the raider gave the item in their wishlist, or Not listed (no list, or no CRT). Right-click a raider to give them the item, show their popup again, roll again for them, or clear their answer. Ctrl- or Shift-click picks several raiders first. Right-click an item on the left to do that for everyone who still needs it.",
     answered = "%d of %d answered",
     awarded = "Given to %s for %s",
     endSession = "End session",
@@ -162,7 +165,7 @@ local function initRow(row, r)
             end
         end
         row.gear = {}
-        local gx = COLS[5].x
+        local gx = GEAR_X
         for i = 1, 2 do
             row.gear[i] = LM.GearIcon(row, gx + (i - 1) * 20)
         end
@@ -236,6 +239,7 @@ local function initRow(row, r)
     cols.name:SetTextColor(cc and cc.r or 0.85, cc and cc.g or 0.85, cc and cc.b or 0.85)
     cols.role:SetText(ROLE_TEXT[r.role or "N"] or "")
     cols.response:SetText(responseCell(r, LM.current))
+    cols.wish:SetText(LM.Wishlist and LM.Wishlist.Cell(r.wish) or "")
     cols.ilvl:SetText(r.ilvl and string.format("%.0f", r.ilvl) or "")
     local item = LM.current and LM.current.items[current]
     for i, t in ipairs(row.gear) do
@@ -401,7 +405,7 @@ local function refresh()
     local answered, expected = s:AnswerCount(current)
     local count = string.format(TEXT.answered, answered, expected)
     header.answered:SetText((expected > 0 and answered >= expected) and UI:IsModern() and UI.GoodText(count) or count) -- not a theme colour
-    local rows = s:Rows(current, LM.Score)
+    local rows = s:Rows(current, LM.Score, LM.Wishlist and LM.Wishlist.RankFor or nil)
     local sort = CRT.db.lootmaster.sort
     if sort.looterKey then
         LM.SortRows(rows, sort.looterKey, sort.looterDir or 1)
@@ -417,7 +421,7 @@ LM:OnChange(function(what)
         wipe(selected)
         refresh()
         win:Show()
-    elseif what == "session" or what == "scores" then
+    elseif what == "session" or what == "scores" or what == "wishlist" then
         refresh()
     elseif what == "ended" and win then
         win:Hide()
