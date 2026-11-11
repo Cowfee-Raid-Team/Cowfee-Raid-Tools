@@ -279,6 +279,28 @@ do
   end
   CRT.Interrupts = nil
 end
+-- Appearance > Modules: Use assignment highlights, the same saved switch as the module's own page (Highlights/Data.lua, stood in for)
+do
+  local on
+  CRT.NoteHighlights = { Enabled = function() return on == true end, SetEnabled = function(_, v) on = v end }
+  local cb
+  for _, fr in ipairs(frames) do
+    local l = rawget(fr, "label")
+    if fr.kind == "CheckButton" and type(l) == "table" and rawget(l, "text") == "Use assignment highlights" then cb = fr end
+  end
+  if not cb then
+    print("FAIL General Settings has a Use assignment highlights checkbox")
+  else
+    cb:SetChecked(true) cb.OnClick(cb)
+    if on ~= true then print("FAIL Use assignment highlights switches the module on") end
+    cb:SetChecked(false) cb.OnClick(cb)
+    if on ~= false then print("FAIL Use assignment highlights switches the module off") end
+    on = true
+    cb.refresh()
+    if cb:GetChecked() ~= true then print("FAIL Use assignment highlights follows the saved switch") end
+  end
+  CRT.NoteHighlights = nil
+end
 -- every (?) on the page is UI.HelpRight's: HELP_GAP right of its target, or of its text's right edge
 do
   local helps, titled = 0, false

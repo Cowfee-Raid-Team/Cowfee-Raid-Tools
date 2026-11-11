@@ -1,7 +1,8 @@
 local ADDON, CRT = ...
 
--- The Assignment highlights page (Highlights/Data.lua), in the side menu's last group, Modules. Settings only, so no
--- tabs: Use assignment highlights (the module's switch, off by default), then Highlight my name, Highlight my group
+-- The Assignment highlights page (Highlights/Data.lua), in the side menu's Modules group after Interrupts. Settings
+-- only, so no tabs: Use assignment highlights (the module's switch, off by default; General Settings > Modules has the
+-- same switch), then Highlight my name, Highlight my group
 -- and Glow when a line with me changes, greyed while the switch is off, and Preview highlights.
 
 local UI = CRT.UI
@@ -80,8 +81,7 @@ local function build(pf)
 
     local enable = checkRow(pf, 6, TOP, TEXT.enable)
     enable:SetScript("OnClick", function(self)
-        H.Settings().enabled = self:GetChecked() and true or false
-        H:Changed()
+        H:SetEnabled(self:GetChecked())
         refresh()
     end)
     enable.refresh = function()
