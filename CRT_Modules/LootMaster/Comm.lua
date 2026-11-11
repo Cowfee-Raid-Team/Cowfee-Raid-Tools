@@ -237,14 +237,20 @@ local function send(kind, fields)
 end
 LM.Send = send
 
--- Guild messages (LM.SendGuild) wait in a queue of their own, so a throttled guild channel (ChannelThrottle is per
--- channel) or a long wishlist never holds the group's loot messages: each queue sends on its own. The guild's
--- throttle waits a second; the lockdown holds it until LOCKDOWN_RETRY or the group queue's resume; NotInGuild
--- (Enum.SendAddonMessageResult 10, warcraft.wiki.gg API_C_ChatInfo.SendAddonMessage, read 2026-11-11: you left
--- the guild) drops what waits without a word, as leaving the group does; anything else is dropped, reported once.
+-- Guild messages (LM.SendGuild) wait in a queue of their own. The game's allowance for addon messages is per prefix
+-- across every chat type (warcraft.wiki.gg API_C_ChatInfo.SendAddonMessage, read 2026-11-11: about 10 at once, one
+-- more each second; past it AddonMessageThrottle on every channel), and both queues use LM.PREFIX. So the guild's
+-- queue sends only while the group's is empty, not sending and not held (else it looks again in a second), and at
+-- most one message every GUILD_GAP seconds: the allowance refills between them, and the group's loot messages find
+-- it nearly full. A throttle waits GUILD_GAP; the lockdown holds it until LOCKDOWN_RETRY or ENCOUNTER_END; NotInGuild
+-- (Enum.SendAddonMessageResult 10: you left the guild) drops what waits without a word, as leaving the group does;
+-- anything else is dropped, reported once.
+local GUILD_GAP = 2 -- seconds between two guild messages
+LM.GUILD_GAP = GUILD_GAP
 local NOT_IN_GUILD = RESULT.NotInGuild or 10
 local guildQueue = {}
 local guildSending, guildHeld = false, false
+local guildCooling = false -- a guild message went less than GUILD_GAP ago; its timer pumps again
 
 local guildPump
 local function guildResume()
@@ -255,31 +261,53 @@ local function guildResume()
 end
 
 guildPump = function()
-    while guildQueue[1] do
-        local ok, result = pcall(C_ChatInfo.SendAddonMessage, LM.PREFIX, guildQueue[1], "GUILD")
-        if ok and (result == THROTTLED or result == CHANNEL_THROTTLED) then
-            C_Timer.After(1, guildPump)
-            return
-        elseif ok and result == LOCKDOWN then
-            if not guildHeld then
-                guildHeld = true
-                C_Timer.After(LOCKDOWN_RETRY, guildResume)
-            end
-            return
-        elseif ok and result == NOT_IN_GUILD then
-            guildQueue = {} -- left the guild: no one to send to
-        else
-            if not ok or not (result == nil or result == true or result == SUCCESS) then
-                local key = "guild " .. tostring(ok and result or "error")
-                if not warned[key] then
-                    warned[key] = true
-                    CRT:Print("Loot Master: a guild message could not be sent (" .. tostring(ok and result or "error") .. ").")
-                end
-            end
-            table.remove(guildQueue, 1)
-        end
+    if guildCooling then
+        return
     end
-    guildSending = false
+    if not guildQueue[1] then
+        guildSending = false
+        return
+    end
+    if queue[1] or sending or held then
+        C_Timer.After(1, guildPump) -- the group's messages go first
+        return
+    end
+    local ok, result = pcall(C_ChatInfo.SendAddonMessage, LM.PREFIX, guildQueue[1], "GUILD")
+    if ok and (result == THROTTLED or result == CHANNEL_THROTTLED) then
+        C_Timer.After(GUILD_GAP, guildPump)
+        return
+    elseif ok and result == LOCKDOWN then
+        if not guildHeld then
+            guildHeld = true
+            C_Timer.After(LOCKDOWN_RETRY, guildResume)
+        end
+        return
+    elseif ok and result == NOT_IN_GUILD then
+        guildQueue = {} -- left the guild: no one to send to
+    else
+        if not ok or not (result == nil or result == true or result == SUCCESS) then
+            local key = "guild " .. tostring(ok and result or "error")
+            if not warned[key] then
+                warned[key] = true
+                CRT:Print("Loot Master: a guild message could not be sent (" .. tostring(ok and result or "error") .. ").")
+            end
+        end
+        table.remove(guildQueue, 1)
+    end
+    -- one every GUILD_GAP, even when the next is queued later
+    guildCooling = true
+    C_Timer.After(GUILD_GAP, function()
+        guildCooling = false
+        guildPump()
+    end)
+    if not guildQueue[1] then
+        guildSending = false
+    end
+end
+
+-- For tests: a harness that drops its timers empties the guild's queue and its cooldown too.
+function LM.ResetGuildQueue()
+    guildQueue, guildSending, guildHeld, guildCooling = {}, false, false, false
 end
 
 -- A finished message to your guild (the GUILD addon channel). Out of a guild (IsInGuild) nothing is sent. Returns

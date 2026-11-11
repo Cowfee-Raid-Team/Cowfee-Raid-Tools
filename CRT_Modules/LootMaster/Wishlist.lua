@@ -2,7 +2,8 @@ local ADDON, CRT = ...
 
 -- Loot Master wishlists: each raider keeps a ranked list of the items they want (Alex, 2026-11-11, Issue #1263),
 -- and the loot master and raid assists see it in their loot windows when an item drops. The list, its message and
--- who keeps what, plus the small drawing helpers the wishlist windows share (W.ItemIcon, W.QualityColor, W.CellTip). The Encounter Journal's right-click menu and the item tooltip line are in
+-- who keeps what, plus the small drawing helpers the wishlist windows share (W.ItemIcon, W.QualityColor, W.CellTip,
+-- W.AddAgeLines). The Encounter Journal's right-click menu and the item tooltip line are in
 -- LootMaster/WishlistJournal.lua, the My wishlist window in LootMaster/WishlistWindow.lua, the Wishlist column in
 -- LootMaster/Window.lua (the Master Loot Window) and RaiderWindow.lua (All Loot Rolls, for assists).
 --
@@ -279,9 +280,27 @@ function W.AgeLine(days)
     return days == 0 and TEXT.fromToday or days == 1 and TEXT.fromDay or TEXT.fromDays:format(days)
 end
 
--- The roll windows' Wishlist cell tooltip: a button over the cell that shows how old a saved list's rank is, and
--- hands its clicks to the row (so picking a row and its menu work over it). Hidden when the rank is from a list heard
--- this login, so the row's own tooltip shows there then.
+-- Whether a player's rank for an item comes from a saved copy (so it has an age to show).
+function W.HasAge(name, item, rank)
+    return rank ~= nil and W.RankAge(name, item) ~= nil
+end
+
+-- Adds a saved rank's lines to a tooltip a row already shows (the Master Loot Window's): "Wishlist: Big upgrade" in
+-- the rank's colour, then "From a list made N days ago.". Returns whether it added anything.
+function W.AddAgeLines(tip, name, item, rank)
+    local days = rank and W.RankAge(name, item)
+    if not days then
+        return false
+    end
+    tip:AddLine(TEXT.tooltip:format(W.Label(rank)), CRT.UI.Color(W.RANK_COLOR[rank] or "muted"))
+    tip:AddLine(W.AgeLine(days), 1, 1, 1)
+    return true
+end
+
+-- All Loot Rolls' Wishlist cell tooltip (its rows have no tooltip, highlight or click of their own; the Master Loot
+-- Window's do, so it adds W.AddAgeLines to the row's tooltip instead): a button over the cell that shows how old a
+-- saved list's rank is, and hands its clicks to the row. Hidden when there is no age to show, so the mouse reaches
+-- the row itself then.
 function W.CellTip(row, cell)
     local b = CreateFrame("Button", nil, row)
     b:SetAllPoints(cell)

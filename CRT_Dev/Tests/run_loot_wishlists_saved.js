@@ -57,11 +57,29 @@ local OFFICERS = { Gild = true }
 IsInGuild = function() return GUILD[ME] == true end
 C_GuildInfo = { CanEditOfficerNote = function() return OFFICERS[ME] == true end }
 local timers = {}
+local ALLOW, THROTTLED_ON = nil, {} -- the prefix's allowance, when modelled, and the code-3 answers per channel
 C_Timer = { After = function(s, fn) timers[#timers+1] = { s = s, fn = fn } end, NewTicker = function(s, fn) return { Cancel = function() end } end }
+-- Timers one at a time, in order, each advancing the clock and refilling the allowance by its delay (one a second,
+-- at most 10); returns the delays run.
+local function runPaced(limit)
+  local delays = {}
+  for _ = 1, limit or 200 do
+    if #timers == 0 then break end
+    local e = table.remove(timers, 1)
+    NOW = NOW + e.s
+    if ALLOW then ALLOW = math.min(10, ALLOW + e.s) end
+    delays[#delays + 1] = e.s
+    e.fn()
+  end
+  return delays
+end
 local function runTimers() for _ = 1, 6 do local t = timers timers = {} for _, e in ipairs(t) do e.fn() end end end
 local outbox, LOCKED, RESULTS = {}, false, {} -- RESULTS[channel]: what the game answers there instead of sending
 C_ChatInfo = { RegisterAddonMessagePrefix = function() end, InChatMessagingLockdown = function() return LOCKED end,
-  SendAddonMessage = function(p, text, ch) local r = RESULTS[ch] if r then return r end outbox[#outbox+1] = { text = text, ch = ch } return 0 end }
+  SendAddonMessage = function(p, text, ch)
+    -- the prefix's allowance, when modelled (ALLOW: messages left), shared by every chat type: past it, code 3 anywhere
+    if ALLOW then if ALLOW < 1 then THROTTLED_ON[ch] = (THROTTLED_ON[ch] or 0) + 1 return 3 end ALLOW = ALLOW - 1 end
+    local r = RESULTS[ch] if r then return r end outbox[#outbox+1] = { text = text, ch = ch } return 0 end }
 local frames = {}
 local function onEvent(event, ...) for _, f in ipairs(frames) do if f.events[event] and f.fn then f.fn(f, event, ...) end end end
 function CreateFrame()
@@ -97,6 +115,8 @@ assert(load(savedSrc, "WishlistSaved.lua"))("CowfeeRaidTools", CRT)
 assert(load(viewsSrc, "WishlistViews.lua"))("CowfeeRaidTools", CRT)
 local V = W.Views
 check(type(W.Keep) == "function" and type(V) == "table", "the saved copies and the views load")
+-- drops what the timers would do (as the old harness did), the guild queue's cooldown with it
+local function clearTimers() timers = {} LM.ResetGuildQueue() end
 local function msg(text, sender, ch) onEvent("CHAT_MSG_ADDON", LM.PREFIX, text, ch or "RAID", sender) end
 local function deliver(box, sender, ch) for _, m in ipairs(box) do msg(type(m) == "table" and m.text or m, sender, ch or (type(m) == "table" and m.ch)) end end
 local function take() local box = outbox outbox = {} return box end
@@ -177,7 +197,7 @@ CLOCK = 1790000000
 
 -- 3. The guild: a list on change, debounced; with a group it goes to both
 GROUP_SAVE = GROUP GROUP = nil
-be("Quick") take() timers = {}
+be("Quick") take() clearTimers()
 W.Set(201, "big") W.Set(202, "small") W.Set(203, "off")
 eq(#outbox, 0, "guild: not at once")
 eq(W.GuildPending(), true, "guild: the change waits")
@@ -228,7 +248,7 @@ W.Forget("Stranger-Elsewhere")
 be("Arrow") -- a plain raider ignores lists on any channel
 deliver(W.Encode("abd", { { id = 4243, rank = "big" } }), "Quick-Sargeras", "GUILD")
 eq(store()["Quick-Sargeras"].items[4243], nil, "stray: a plain raider keeps nothing from the guild")
-be("Lone") GROUP_SAVE = GROUP GROUP = nil take() timers = {}
+be("Lone") GROUP_SAVE = GROUP GROUP = nil take() clearTimers()
 W.Set(301, "big") runTimers()
 eq(#take(), 0, "no guild: nothing sent anywhere")
 eq(W.StatusText(), "Sends when you join a group.", "no guild: wording as before")
@@ -237,33 +257,65 @@ eq(#take(), 0, "no guild: nothing queued")
 eq(W.AskGuild(), false, "no guild: no ask")
 GROUP = GROUP_SAVE
 
--- 4b. Two queues: a throttled guild channel never holds the group's loot messages; NotInGuild drops quietly
-be("Quick") take() timers = {}
+-- 4b. Two queues, one allowance: the prefix's allowance is shared by every chat type, so the guild's queue waits
+-- for the group's and trickles at LM.GUILD_GAP; a throttled guild channel never holds the group; NotInGuild is quiet
+be("Quick") take() clearTimers()
 RESULTS.GUILD = 8 -- ChannelThrottle, on GUILD only
-for i = 1, 20 do LM.SendGuild("X|ab:" .. string.format("%02d", i) .. "/20|1,b") end
+LM.SendGuild("X|ab:01/01|1,b")
 LM.Send("K", { "hello" })
 eq(#on(outbox, "RAID"), 1, "queues: a group message goes while the guild channel is throttled")
 eq(#on(outbox, "GUILD"), 0, "queues: the guild's wait")
 RESULTS.GUILD = nil
-runTimers()
-eq(#on(take(), "GUILD"), 20, "queues: the guild's go once the throttle lifts, every part")
+runPaced()
+eq(#on(take(), "GUILD"), 1, "queues: the guild's go once the throttle lifts")
+-- a 20-part guild list with the allowance modelled: one at once, then one every GUILD_GAP
+ALLOW, THROTTLED_ON = 10, {}
+for i = 1, 20 do LM.SendGuild("X|ab:" .. string.format("%02d", i) .. "/20|1,b") end
+eq(#on(outbox, "GUILD"), 1, "paced: one guild part at once, not a burst")
+LM.Send("K", { "hello" })
+eq(#on(outbox, "RAID"), 1, "paced: a group message queued during a guild burst goes at once")
+runPaced(3)
+for i = 1, 8 do LM.Send("K", { "loot" .. i }) end
+eq(#on(outbox, "RAID"), 9, "paced: a loot burst in the middle of the trickle all goes")
+local delays = runPaced()
+eq(#on(take(), "GUILD"), 20, "paced: every guild part goes")
+eq(THROTTLED_ON.RAID or 0, 0, "paced: no group message throttled by guild traffic")
+local allGap = #delays > 0
+for _, d in ipairs(delays) do if d ~= LM.GUILD_GAP then allGap = false end end
+eq(allGap, true, "paced: the guild's parts " .. LM.GUILD_GAP .. " s apart (" .. #delays .. " waits)")
+eq(LM.GUILD_GAP >= 1, true, "paced: at least one second apart, so the allowance refills")
+ALLOW = nil
+-- the group's queue held (the lockdown): the guild's waits for it, then follows
+RESULTS.RAID = 11
+LM.Send("K", { "held" })
+RESULTS.RAID = nil
+LM.SendGuild("X|?")
+eq(#on(outbox, "GUILD"), 0, "group first: the guild waits while the group's messages are held")
+onEvent("ENCOUNTER_END", 1, "Boss", 16, 20, 1)
+eq(#on(outbox, "RAID"), 1, "group first: the group's go when the encounter ends")
+runPaced(5)
+eq(#on(take(), "GUILD"), 1, "group first: then the guild's")
+clearTimers()
 local printed = 0
 local realPrint = CRT.Print
 CRT.Print = function() printed = printed + 1 end
-RESULTS.GUILD = 10 -- NotInGuild: you left the guild
+LM.SendGuild("X|?") take() -- one goes; the next two wait for its cooldown
+RESULTS.GUILD = 10 -- NotInGuild: you left the guild meanwhile
 LM.SendGuild("X|?") LM.SendGuild("X|?")
+runTimers()
 RESULTS.GUILD = nil
 runTimers()
 eq(#take(), 0, "not in guild: what waits for the guild is dropped")
 eq(printed, 0, "not in guild: without a word")
 RESULTS.GUILD = 9 -- GeneralError: reported once
-LM.SendGuild("X|?") LM.SendGuild("X|?")
+LM.SendGuild("X|?") LM.SendGuild("X|?") runTimers()
 RESULTS.GUILD = nil
+clearTimers()
 eq(printed, 1, "another failure: reported once")
 CRT.Print = realPrint
 
 -- 5. The encounter hold applies to the guild too
-be("Quick") GROUP_SAVE = GROUP GROUP = nil take() timers = {}
+be("Quick") GROUP_SAVE = GROUP GROUP = nil take() clearTimers()
 onEvent("ENCOUNTER_START", 1, "Boss", 16, 20)
 W.Set(205, "big") runTimers()
 eq(#on(take(), "GUILD"), 0, "hold: nothing on GUILD during an encounter")
@@ -279,7 +331,7 @@ eq(#on(take(), "GUILD"), 1, "hold: tried again and sent once the lockdown lifts"
 GROUP = GROUP_SAVE
 
 -- 6. Login: your list once, jittered; an officer asks, rate limited
-be("Quick") GROUP_SAVE = GROUP GROUP = nil take() timers = {} jitters = {}
+be("Quick") GROUP_SAVE = GROUP GROUP = nil take() clearTimers() jitters = {}
 onEvent("PLAYER_LOGIN")
 local loginTimer
 for _, t in ipairs(timers) do if t.s >= W.LOGIN_DELAY then loginTimer = t end end
@@ -290,10 +342,10 @@ runTimers()
 local loginSent = on(take(), "GUILD")
 eq(#loginSent, 1, "login: your list goes to the guild once")
 check(loginSent[1] and loginSent[1].text:find("^X|%x+:01/01|") ~= nil, "login: as one X list")
-be("Arrow") CHARS.Arrow.lootmaster = nil timers = {}
+be("Arrow") CHARS.Arrow.lootmaster = nil clearTimers()
 onEvent("PLAYER_LOGIN") runTimers()
 eq(#on(take(), "GUILD"), 0, "login: no list, nothing sent")
-be("Gild") CRT.db.lootmaster.wishlistsAsked = 0 timers = {}
+be("Gild") CRT.db.lootmaster.wishlistsAsked = 0 clearTimers()
 onEvent("PLAYER_LOGIN")
 local askTimer
 for _, t in ipairs(timers) do if t.s == W.LOGIN_ASK_DELAY then askTimer = t end end
@@ -310,7 +362,7 @@ CLOCK = CLOCK + 1
 eq(W.AskGuild(), true, "ask: again after ten minutes")
 take()
 -- the guild's rank data late: the ask waits for the guild's events, still once per login
-be("Gild") CRT.db.lootmaster.wishlistsAsked = 0 OFFICERS.Gild = nil timers = {} take()
+be("Gild") CRT.db.lootmaster.wishlistsAsked = 0 OFFICERS.Gild = nil clearTimers() take()
 onEvent("PLAYER_LOGIN") runTimers()
 local function asksIn(box) local k = 0 for _, m in ipairs(box) do if m.text == "X|?" and m.ch == "GUILD" then k = k + 1 end end return k end
 eq(asksIn(take()), 0, "late rank: no officer rank read yet, no ask")
@@ -322,10 +374,10 @@ eq(asksIn(take()), 1, "late rank: asked once the guild's data says officer")
 CRT.db.lootmaster.wishlistsAsked = 0
 onEvent("GUILD_ROSTER_UPDATE") onEvent("PLAYER_GUILD_UPDATE")
 eq(asksIn(take()), 0, "late rank: once per login")
-be("Quick") timers = {}
+be("Quick") clearTimers()
 eq(W.AskGuild(), false, "ask: a raider who isn't an officer doesn't ask")
 -- the answers: every raider with a list, after a short random wait, at most once a minute
-be("Quick") take() timers = {} jitters = {}
+be("Quick") take() clearTimers() jitters = {}
 msg("X|?", "Gild-Sargeras", "GUILD")
 eq(jitters[1], W.ASK_JITTER, "answer: a random wait of up to " .. W.ASK_JITTER .. " s")
 eq(timers[1] and timers[1].s, W.ASK_JITTER, "answer: waits that long")
@@ -587,6 +639,17 @@ cellRow.scripts.OnClick = function(_, b) clicked = b end
 cellRow.GetScript = function(self, name) return self.scripts[name] end
 tip.scripts.OnClick(tip, "RightButton")
 eq(clicked, "RightButton", "cell: its clicks go to the row")
+-- the Master Loot Window's rows have their own tooltip and highlight: the age goes into that tooltip
+local lines = {}
+local tipMock = { AddLine = function(_, text) lines[#lines + 1] = text end }
+eq(W.AddAgeLines(tipMock, "Quick-Sargeras", 11, "big"), true, "row tooltip: a saved rank adds its lines")
+eq(lines[1], "Wishlist: Big upgrade", "row tooltip: the rank")
+eq(lines[2], "From a list made 2 days ago.", "row tooltip: the age")
+eq(W.HasAge("Quick-Sargeras", 11, "big"), true, "row tooltip: HasAge says so")
+W.lists["Quick-Sargeras"] = { items = { [11] = "big" }, at = 0 }
+eq(W.AddAgeLines(tipMock, "Quick-Sargeras", 11, "big"), false, "row tooltip: none for a list heard this login")
+eq(W.HasAge("Quick-Sargeras", 11, "big"), false, "row tooltip: HasAge says no")
+W.lists = {}
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
@@ -605,4 +668,11 @@ for (const f of ['CRT_Modules/LootMaster/WishlistTab.lua', 'CRT_Modules/LootMast
   const src = fs.readFileSync(path.join(dir, f), 'utf8');
   if (/local function qualityColor|GetItemQualityColor|"BackdropTemplate"/.test(src)) { console.log('FAIL ' + f + ' draws its own item icon or quality colour'); process.exitCode = 1; }
   else console.log('ok ' + f + ' uses the shared item icon');
+}
+// the Master Loot Window adds the age to its row's own tooltip (keeping the row's highlight and note tooltip), never
+// covers the cell with a button of its own
+{
+  const win = fs.readFileSync(path.join(dir, 'CRT_Modules/LootMaster/Window.lua'), 'utf8');
+  if (!/AddAgeLines\(GameTooltip/.test(win) || /CellTip\(/.test(win)) { console.log('FAIL Window.lua: the age is not in the row tooltip'); process.exitCode = 1; }
+  else console.log('ok Window.lua: the age goes into the row tooltip');
 }
