@@ -94,12 +94,21 @@ local function placeTag(w, row)
     row.tag:SetPoint("LEFT", row.text, "TOPRIGHT", TAG_GAP, -(w.lineH or 14) / 2)
 end
 
+-- A glow stopped early (its row put away, no longer fitting, the module off) ends as a finished one does: the line
+-- keeps no room for a tag, and a ghost goes at the next draw.
 local function stopGlow(row)
     if row.glowAnim then
         row.glowAnim:Stop()
         row.tagAnim:Stop()
         row.glow:Hide()
         row.tag:Hide()
+    end
+    local line = row.line
+    if line and line.hlTag then
+        line.hlTag = nil
+        if line.hlGhost then
+            line.hlDone = true
+        end
     end
 end
 

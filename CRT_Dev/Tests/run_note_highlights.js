@@ -114,7 +114,15 @@ function methods.GetFont(o) return "font", rawget(o, "size") or 14 end
 function methods.SetWordWrap(o, v) o.wrap = v end
 function methods.GetUnboundedStringWidth(o) return measureW(o) end
 function methods.GetStringWidth(o) return measureW(o) end
-function methods.GetStringHeight(o) return measureH(o) end
+-- with a height set, the text is cut to the lines that fit, and only those are measured
+function methods.GetStringHeight(o)
+  local h, set = measureH(o), rawget(o, "height")
+  if o.kind == "FontString" and set then
+    local size = fontSize(o)
+    return math.min(h, math.floor(set / size) * size)
+  end
+  return h
+end
 function methods.SetSize(o, w, h)
   o.width, o.height = w, h
   if o.scripts.OnSizeChanged then o.scripts.OnSizeChanged(o, w, h) end
@@ -361,7 +369,7 @@ do
   Notes:Fire()
   clock = clock + 0.5
   NW:RefreshAll()
-  check(kindOf(rowWith("personal", "Soak")) == "added" and not glowing(heal), "personal note ticked: a line you added says Added")
+  check(banded(rowWith("personal", "Soak")) and not anyGlow("personal"), "personal note ticked: a line you add is banded, with no glow for your own save")
   CRT.db.notes.personalText = "Heal CDs: Cheoeqar\\nOthers: Rixxy"
   Wn.timers, Wn.personal = true, false
   NW:Changed()
@@ -452,6 +460,36 @@ local tagged = rowWith("assignments", "Group 4")
 local tp = tagged.tag and tagged.tag.points[1]
 check(glowing(tagged) and tp and tp[1] == "LEFT" and tp[2] == tagged.text and tp[3] == "TOPRIGHT" and tp[5] == -7,
   "tag: after the line's text, centred on its first line")
+
+-- a row reused for a longer line grows to fit it (never cut to the height it had)
+do
+  local before = rowWith("assignments", "Group 4")
+  edit("Group 4: stack right with Cheoeqar", "Group 4: stack right with Cheoeqar, then run along the far wall past the door and wait")
+  local grown = rowWith("assignments", "far wall")
+  check(grown ~= nil and grown.text:GetStringHeight() == 28 and grown.text:GetHeight() == 28 and banded(grown),
+    "height: a row given a longer line grows to two lines" .. (grown == before and " (the same row)" or ""))
+  edit("Group 4: stack right with Cheoeqar, then run along the far wall past the door and wait", "Group 4: stack right with Cheoeqar")
+  stopGlows()
+end
+-- a line with no colon: other names changing in it is no change for you
+edit("Cheoeqarson goes home", "Cheoeqar and Rixxy stack left")
+stopGlows()
+edit("Cheoeqar and Rixxy stack left", "Cheoeqar and Gadios stack left")
+check(banded(rowWith("assignments", "Gadios stack left")) and not anyGlow("assignments"), "no glow: other names changed in a line with no colon")
+edit("Cheoeqar and Gadios stack left", "Cheoeqarson goes home")
+stopGlows()
+-- a ghost reads as the line did: marker codes as their icons
+edit("Group 4: stack right with Cheoeqar", "Group 4: stack right\\n{star} Soak 5: Cheoeqar")
+stopGlows()
+edit("\\n{star} Soak 5: Cheoeqar", "")
+local starGhost = rowWith("assignments", "Soak 5")
+check(starGhost ~= nil and starGhost.line.hlGhost and starGhost.text.text:find("|T", 1, true) ~= nil and not starGhost.text.text:find("{star}", 1, true),
+  "Removed: a ghost shows the line as it read, its marker as an icon")
+if starGhost then H.HideRow(starGhost) end
+check(starGhost ~= nil and starGhost.line.hlDone == true and starGhost.line.hlTag == nil, "Removed: a ghost whose glow is stopped goes too")
+step()
+edit("Group 4: stack right", "Group 4: stack right with Cheoeqar")
+stopGlows()
 
 -- heights: a row's band and glow cover exactly its text, at any font size, wrapped lines too
 local function bandHeight(row, region)
@@ -605,11 +643,34 @@ step()
 -- settings: Raid Notes > Notes Settings > Highlights (Highlights/Settings.lua) -----------------------------
 check(pages.highlights == nil, "settings: no page of its own in the menu")
 local pf = newObj("Frame", UIParent)
-local P = CRT.HighlightsSettings.Build(pf, 10, -10, 244)
+-- the Notes Settings tab's helpers, stood in for: its check box (greyed under enabledIf), heading and refresh
+local pageControls = {}
+local pageHelpers = {
+  check = function(parent, x, y, label, enabledIf, getter, setter)
+    local c = newObj("CheckButton", parent)
+    c.label = newObj("FontString", parent)
+    c.label.text = label
+    c.scripts.OnClick = function(self) setter(self:GetChecked() and true or false) end
+    c.refresh = function()
+      c:SetChecked(getter() and true or false)
+      if enabledIf then
+        local on = enabledIf()
+        c:SetEnabled(on)
+        c.label:SetTextColor(on and 1 or 0.5, on and 1 or 0.5, on and 1 or 0.5)
+      end
+    end
+    pageControls[#pageControls + 1] = c
+    return c, c.label
+  end,
+  heading = function(parent, x, y, text) local fs = newObj("FontString", parent) fs.text = text return fs end,
+}
+pageHelpers.refresh = function() for _, c in ipairs(pageControls) do c.refresh() end end
+local P = CRT.HighlightsSettings.Build(pf, 10, -10, 244, pageHelpers)
+pageControls[#pageControls + 1] = P
 check(P.enable and P.enable.label.text == "Use assignment highlights" and P.enable.help and P.enable.help.text ~= "", "settings: the switch with its (?)")
 local function greyed(c) return c.enabled == false and c.label.textColor and c.label.textColor[1] == 0.5 end
 S.enabled = false
-P.refresh()
+pageHelpers.refresh()
 local allGrey = true
 for _, key in ipairs({ "name", "group", "glow", "assignments", "timers", "personal" }) do
   if not (P.options[key] and greyed(P.options[key])) then allGrey = false end
@@ -625,11 +686,14 @@ P.options.group.scripts.OnClick(P.options.group)
 check(S.group == false, "settings: Highlight my group sets its setting")
 S.group = true
 S.windows.personal = false
-P.refresh()
+pageHelpers.refresh()
 check(P.options.assignments:GetChecked() == true and P.options.personal:GetChecked() == false, "settings: the window checks follow the saved windows")
 P.options.personal:SetChecked(true)
 P.options.personal.scripts.OnClick(P.options.personal)
 check(S.windows.personal == true, "settings: Personal note sets its window")
+local gh = CRT.HighlightsSettings.TEXT.generalHelp
+check(type(gh) == "string" and gh:find("Raid Notes > Notes Settings > Highlights", 1, true) ~= nil and not gh:find("below", 1, true),
+  "settings: General Settings' (?) names Raid Notes > Notes Settings > Highlights")
 S.windows.personal = false
 
 for _, e in ipairs(errors) do fails = fails + 1 print("FAIL error " .. e) end

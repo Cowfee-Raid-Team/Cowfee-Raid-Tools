@@ -555,7 +555,7 @@ local function buildLeft(pf)
         end
     end)
     if CRT.HighlightsSettings then
-        UI.HelpRight(highlights, CRT.HighlightsSettings.TEXT.enable, CRT.HighlightsSettings.TEXT.enableHelp)
+        UI.HelpRight(highlights, CRT.HighlightsSettings.TEXT.enable, CRT.HighlightsSettings.TEXT.generalHelp)
     end
 
     x = MIDDLE_X

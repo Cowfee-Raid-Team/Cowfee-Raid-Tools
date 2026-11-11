@@ -35,8 +35,8 @@ function H:Enabled()
     return CRT.db ~= nil and CRT.db.highlights ~= nil and CRT.db.highlights.enabled == true
 end
 
--- The one switch, for the module's page and General Settings > Modules alike: both read highlights.enabled when they
--- show, so they stay in step.
+-- The one switch, for Raid Notes > Notes Settings > Highlights and General Settings > Modules alike: both read
+-- highlights.enabled when they show, so they stay in step.
 function H:SetEnabled(on)
     CRT.db.highlights.enabled = on and true or false
     self:Changed()
@@ -52,7 +52,7 @@ function H:GlowOn()
 end
 
 -- Whether one note window shows highlights: "assignments", "timers" or "personal" (highlights.windows), while the
--- module is on. "preview": the module's own preview, which shows whatever the windows are set to.
+-- module is on. "preview": the module's own preview, which shows its bands whatever the window ticks are.
 function H:WindowOn(key)
     if not self:Active() then
         return false
@@ -245,9 +245,30 @@ end
 
 -- A line's identity across two versions of a note, so a change can say what happened to you: a timer by its phase,
 -- time and spell or text (its names left out); an assignment line by its label, the words before its colon, in lower
--- case ("Soak 1"); any other line by its text. Two lines of the same identity are told apart by IdCounter.
+-- case ("Soak 1"); any other line by its words without the names in it (yours and every name in the class cache, the
+-- names the windows colour) and its group words, so other names changing in it never make it another line. A name
+-- the addon has never seen stays in, so changing one can still read as Moved: a known limit. Two lines of the same
+-- identity are told apart by IdCounter.
 function H.TimerId(item)
     return table.concat({ tostring(item.ph or 1), tostring(item.time or 0), tostring(item.spellId or item.text or "") }, ":")
+end
+
+-- Short names the addon knows, lower case: the class cache (CRT.db.classCache), made again only when it changes.
+local known, knownFrom, knownVersion = {}, nil, nil
+local function knownNames()
+    local cache = CRT.db and CRT.db.classCache or {}
+    local G = CRT.Groups
+    local version = G and G.classVersion or 0
+    if cache ~= knownFrom or version ~= knownVersion then
+        known, knownFrom, knownVersion = {}, cache, version
+        for key in pairs(cache) do
+            local short = tostring(key):match("^[^-]+")
+            if short then
+                known[short:lower()] = true
+            end
+        end
+    end
+    return known
 end
 
 function H.LineId(line)
@@ -255,7 +276,25 @@ function H.LineId(line)
     if label and label ~= "" then
         return "label:" .. label:lower()
     end
-    return "text:" .. line
+    local words = {}
+    for word in line:gmatch("[%w\128-\255]+") do
+        words[#words + 1] = word
+    end
+    local names, me = knownNames(), H:MyName()
+    local kept, i = {}, 1
+    while i <= #words do
+        local lower = words[i]:lower()
+        local _, used = groupOf(words[i], words[i + 1])
+        if used then
+            i = i + used
+        else
+            if lower ~= me and not names[lower] then
+                kept[#kept + 1] = lower
+            end
+            i = i + 1
+        end
+    end
+    return "text:" .. table.concat(kept, " ")
 end
 
 -- Numbers repeats of an identity in note order: "label:soak 1#1", "label:soak 1#2".
@@ -285,7 +324,7 @@ function H.NoteKey(record)
 end
 
 -- The preview ---------------------------------------------------------------------------------------------------
--- "Preview highlights" (Page.lua) shows the assignments window with a sample note that names you and your group
+-- "Preview highlights" (Settings.lua) shows the assignments window with a sample note that names you and your group
 -- (group 1 out of a raid), its lines marked, and one of each change: a line you were added to, a line you moved to,
 -- and a ghost of a line you were taken off (Changes.lua's preview).
 

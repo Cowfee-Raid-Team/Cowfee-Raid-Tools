@@ -561,7 +561,8 @@ local function assignmentsBuild()
     for i, line in ipairs(lines) do
         line.hl, line.hlId = marks and marks[i] or nil, ids and ids[i] or nil
         if whole and line.hlId then
-            whole[#whole + 1] = { id = line.hlId, marked = line.hl, text = keys[i], raw = keys[i] }
+            -- a ghost of it reads as it was drawn (marker icons and all); raw is what it says
+            whole[#whole + 1] = { id = line.hlId, marked = line.hl, text = line.x, raw = keys[i] }
         end
     end
     return lines, heading, hasContent, whole and CRT.NoteHighlights.Full(noteKey, whole) or nil
@@ -846,33 +847,28 @@ end
 -- and difficulty and its timed lines by phase, "0:34 [icon] Spell" (marked ">" when they name you), then
 -- its other lines. Free text gets the markdown above. The personal note never runs alerts.
 -- hl: assignment highlights, while the personal window shows them (Highlights/Data.lua's WindowOn "personal"): then
--- also returns, per line shown, whether it is about you, its identity and what it says (as textRows does).
+-- also returns, per line shown, whether it is about you.
 local function personalNoteBlock(text, hl)
     local Parser = CRT.NoteParser
     local H = hl and CRT.NoteHighlights
     if not (H and H:WindowOn("personal")) then
         H = nil
     end
-    local out, marks, ids, raws = {}, {}, {}, {}
-    local nextId = H and H.IdCounter()
-    -- one line shown; id and raw (a line you typed, or a timer) only for a line highlights may mark
-    local function add(x, marked, id, raw)
+    local out, marks = {}, {}
+    -- one line shown, and whether highlights mark it
+    local function add(x, marked)
         out[#out + 1] = x
-        if H and id then
-            local n = #out
-            marks[n], ids[n], raws[n] = marked, nextId(id), raw
-        end
+        marks[#out] = H and marked or nil
     end
     local function typedLine(line)
-        local x, marked = personalLine(line, H)
-        add(x, marked, H and line ~= "" and H.LineId(line) or nil, line)
+        add(personalLine(line, H))
     end
     local note = Parser and Parser.Parse(text or "")
     if not note or (not note.encounterID and not note.name and #note.timers == 0) then
         for _, line in ipairs(splitLines(text)) do
             typedLine(line)
         end
-        return table.concat(out, "\n"), marks, ids, raws
+        return table.concat(out, "\n"), marks
     end
     if note.name or note.difficulty then
         out[#out + 1] = gold(note.name or "")
@@ -896,7 +892,7 @@ local function personalNoteBlock(text, hl)
             out[#out + 1] = gold("Phase " .. tostring(t.ph or 1))
         end
         local spans = H and H:TagSpans(t.tags) or nil
-        add(timeText(Engine:IsMine(t), t.time or 0) .. (restText(t, spans)), spans ~= nil, H and H.TimerId(t), H and H.TimerKey(t))
+        add(timeText(Engine:IsMine(t), t.time or 0) .. (restText(t, spans)), spans ~= nil)
     end
     local lines = {}
     for _, line in ipairs(note.lines or {}) do
@@ -911,7 +907,7 @@ local function personalNoteBlock(text, hl)
             typedLine(line)
         end
     end
-    return table.concat(out, "\n"), marks, ids, raws
+    return table.concat(out, "\n"), marks
 end
 NoteWindow.PersonalNoteBlock = function(text)
     return (personalNoteBlock(text))
@@ -934,19 +930,15 @@ local function personalBuild(_, force)
     local typed = Notes:Personal()
     if force or k.typed ~= typed or k.version ~= contentVersion or k.alerts ~= (A and A.version) or k.classes ~= classVersion() then
         k.typed, k.version, k.alerts, k.classes = typed, contentVersion, A and A.version, classVersion()
-        k.typedLines, k.hlFull = nil, nil
+        k.typedLines = nil
         if #splitLines(typed) > 0 then
-            local text, marks, ids, raws = personalNoteBlock(typed, true)
+            local text, marks = personalNoteBlock(typed, true)
             k.typedLines = textLines(k.typedCache, text)
-            -- assignment highlights (Highlights/Data.lua): each line's mark and identity, and the whole note
-            local H, whole = CRT.NoteHighlights, {}
+            -- assignment highlights (Highlights/Data.lua): each line's band. No change glow here: what changes your
+            -- personal note is your own typing (the orchestrator, 2026-11-11), so the window passes no whole note
             for i, line in ipairs(k.typedLines) do
-                line.hl, line.hlId = marks[i] or nil, ids[i]
-                if ids[i] then
-                    whole[#whole + 1] = { id = ids[i], marked = marks[i], text = raws[i], raw = raws[i] }
-                end
+                line.hl = marks[i] or nil
             end
-            k.hlFull = H and H:WindowOn("personal") and H.Full("personal", whole) or nil
         end
         local ok, block = pcall(remindersBlock)
         if not ok then
@@ -987,7 +979,7 @@ local function personalBuild(_, force)
         out[i] = nil
     end
     if n > 0 then
-        return out, "Personal note", true, k.hlFull
+        return out, "Personal note", true
     end
     if previewing.personal then
         return textLines(k.sample, "Your personal note shows here.\nWrite it on the Raid Notes page."), "Personal note (sample)", true
@@ -1057,10 +1049,10 @@ local function layoutRows(w)
             text:SetPoint("TOPLEFT", to, at, x, y)
             text:SetWidth(math.max(1, width - (row.hlRoom or 0)))
         end
-        -- the row is as tall as its text at the window's font and size (wrapped lines too), set on the font string
-        -- itself so whatever is anchored to it (the next row, a highlight band) follows: never a fixed height
+        -- the row is as tall as its text at the window's font and size, wrapped lines too: the font string sizes
+        -- itself to its text (a set height would cut a longer text short), and whatever is anchored to it (the next
+        -- row, a highlight band) follows. A new font sets every text again (drawLines), so it is measured anew.
         local rowH = math.max(lineH, math.ceil(text:GetStringHeight() or 0))
-        text:SetHeight(rowH)
         used = used + row.gap * lineH + rowH
         fits = fits and used <= height + 0.5
         text:SetShown(fits)
@@ -1094,13 +1086,14 @@ local function drawLines(w, lines)
     for i = #order, 1, -1 do
         local row = order[i]
         if row.line[mark] ~= pass then
+            -- its band and glow go first, while it still knows its line (a glow stopped early clears the line's tag)
+            if row.band or row.glow then
+                H.HideRow(row)
+            end
             bound[row.line] = nil
             row.line = nil
             row.time:Hide()
             row.text:Hide()
-            if row.band or row.glow then
-                H.HideRow(row)
-            end
             row.hlRoom = nil
             free[#free + 1] = row
             relayout = true

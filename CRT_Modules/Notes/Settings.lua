@@ -289,7 +289,8 @@ local function build(pf)
 
     -- Highlights: assignment highlights' own section (Highlights/Settings.lua), under Notes list
     if CRT.HighlightsSettings then
-        controls[#controls + 1] = CRT.HighlightsSettings.Build(pf, x, top - HIGHLIGHTS_Y, FOURTH_W)
+        controls[#controls + 1] = CRT.HighlightsSettings.Build(pf, x, top - HIGHLIGHTS_Y, FOURTH_W,
+            { check = makeCheck, heading = heading, refresh = refresh })
     end
 
     pf:SetScript("OnShow", refresh)
