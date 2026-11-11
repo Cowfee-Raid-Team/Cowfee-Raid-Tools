@@ -611,7 +611,12 @@ CRT.db.lootmaster.wishlistsTab.boss = 777
 drops.View.opts.set("detail")
 eq(drops.Boss.opts.get(), 1, "detail: a boss not in this season reads as the first")
 check(#rows.detail > 0, "detail: and shows its items")
-check(helps["Raiders' wishlists"]:find("Team: everyone you keep", 1, true) ~= nil and not helps["Raiders' wishlists"]:find("everyone kept", 1, true), "help: the Team wording")
+local help = helps["Raiders' wishlists"]
+eq(type(help), "table", "help: the list form, one paragraph per option")
+local heads = {}
+for _, part in ipairs(help) do if type(part) == "table" then heads[#heads + 1] = part[1] end end
+eq(table.concat(heads, ","), "Bosses,Boss detail,Raiders,Team", "help: a paragraph for each view and the Team filter")
+check(help[#help][2]:find("everyone you keep", 1, true) == 1, "help: the Team wording")
 
 -- 9. The shared drawing helpers, and the roll windows' Wishlist cell: a saved list's age on hover
 check(type(W.ItemIcon) == "function" and type(W.QualityColor) == "function" and type(W.CellTip) == "function", "shared: the icon, quality colour and cell helpers")

@@ -34,7 +34,14 @@ local L = {
 
 local TEXT = {
     title = "Raiders' wishlists",
-    help = "The wishlists raiders made in the Adventure Guide or with /crt wishlist. Guild officers, the loot master, the raid leader and raid assists keep a copy of each list they hear, saved between sessions. Raiders send their list to the guild when it changes and a little after they log in, so it arrives without a group.\n\nBosses counts the wants for each boss's items: Big upgrade, Small upgrade and Off spec. Value adds them up: Big 3, Small 1, Off 0.5. Click a boss to see its items.\n\nBoss detail lists who wants each item.\n\nRaiders shows each raider's wants per boss as Big/Small/Off, and how old their list is.\n\nTeam: everyone you keep, the players in your raid now, or the Raid Groups layout in use (Use This Group).",
+    -- the list form (UI.AddTooltipText): one paragraph per view and the Team filter
+    help = {
+        "The wishlists raiders made in the Adventure Guide or with /crt wishlist. Guild officers, the loot master, the raid leader and raid assists keep a copy of each list they hear, saved between sessions. Raiders send their list to the guild when it changes and a little after they log in, so it arrives without a group.",
+        { "Bosses", "the wants for each boss's items, as Big upgrade, Small upgrade and Off spec. Value adds them up as Big 3, Small 1 and Off 0.5. Click a boss to see its items." },
+        { "Boss detail", "who wants each item, by rank." },
+        { "Raiders", "each raider's wants per boss as Big/Small/Off, and how old their list is." },
+        { "Team", "everyone you keep, the players in your raid now, or the Raid Groups layout in use (Use This Group)." },
+    },
     notKeeper = "Only officers and raid assists keep raiders' lists.",
     notKeeperHelp = "Raiders' wishlists are kept by guild officers (a rank that can edit officer notes), the loot master, the raid leader and raid assists.\n\nYour own list is My wishlist, on the Tonight tab.",
     view = "View",
