@@ -61,11 +61,13 @@ local helpTargets, helpCalls = {}, 0 -- UI.HelpRight's target for each (?), by t
 skinCalls = 0
 rowsList = {}
 tooltipSettings = {}
+-- a list-form help text (UI.AddTooltipText, CRT_Core/UI/Panel.lua) as one string, so the checks can search it
+local function flatHelp(t) if type(t) ~= "table" then return t end local out = {} for _, i in ipairs(t) do out[#out + 1] = type(i) == "table" and (i[1] .. ": " .. i[2]) or i end return table.concat(out, " ") end
 local function opts(o) return type(o.options) == "function" and o.options() or o.options end
 local CRT = { db = { timeline = { record = true, minPull = 15, keep = 10, bosses = {}, rows = {}, span = 300, grid = 30, iconSize = 22,
     deathRows = "combined", roles = { TANK = true, HEALER = true, DAMAGER = true }, firstDeaths = 0, overlay = 3, overlayOn = false, hideEmpty = false, nextId = 1 } },
-  UI = { Tint = function() end, OnTheme = function() end, SkinScrollBar = function() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title, text) helpCalls = helpCalls + 1 helps[title] = text return mock() end,
-    HelpRight = function(target, title, text) helps[title] = text helpTargets[title] = target return mock() end, HELP_GAP = 4, HELP_SIZE = 20,
+  UI = { Tint = function() end, OnTheme = function() end, SkinScrollBar = function() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title, text) helpCalls = helpCalls + 1 helps[title] = flatHelp(text) return mock() end,
+    HelpRight = function(target, title, text) helps[title] = flatHelp(text) helpTargets[title] = target return mock() end, HELP_GAP = 4, HELP_SIZE = 20,
     Dropdown = function(parent, text, o) local m = mock() m.opts, m.text, m.parent = o, text, parent dropdowns[#dropdowns+1] = m rawset(m, "refresh", function() end) return m end,
     -- as wide as the real row: its label, the gap, the bar and the value (CRT_Core/UI/Controls.lua)
     Slider = function(_, text, o) local m = mock() m.opts, m.text = o, text sliders[#sliders+1] = m rawset(m, "refresh", function() end)

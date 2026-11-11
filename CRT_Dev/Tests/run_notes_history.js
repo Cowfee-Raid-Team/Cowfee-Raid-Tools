@@ -95,6 +95,8 @@ function StaticPopup_Show(key) return { key = key } end
 local asked
 function StaticPopup_ShowCustomGenericConfirmation(info) asked = info return { info = info } end
 local pages, printed = {}, {}
+-- a list-form help text (UI.AddTooltipText, CRT_Core/UI/Panel.lua) as one string, so the checks can search it
+local function flatHelp(t) if type(t) ~= "table" then return t end local out = {} for _, i in ipairs(t) do out[#out + 1] = type(i) == "table" and (i[1] .. ": " .. i[2]) or i end return table.concat(out, " ") end
 local CRT = {
   Bosses = { OnRouteChange = function() end, RouteIndex = function() end,
     Options = function() return { { key = "raid:r1", label = "Raid One", title = true }, { key = 3470, label = "Nek'zali" }, { key = 3480, label = "Fresh" } } end },
@@ -139,7 +141,7 @@ function CRT.UI.Window(name, opts)
   f.content = CreateFrame("Frame", nil, f)
   f.strip = CreateFrame("Frame", nil, f)
   f.strip.SetTitle = function(self, t) rawset(f, "title", t) end
-  f.strip.SetHelp = function(self, title, text) rawset(f, "helpTitle", title) rawset(f, "helpText", text) end
+  f.strip.SetHelp = function(self, title, text) rawset(f, "helpTitle", title) rawset(f, "helpText", flatHelp(text)) end
   rawset(f, "CloseButton", CreateFrame("Button", nil, f))
   if opts.kind == "popout" then rawset(f, "reset", CreateFrame("Button", nil, f)) end
   f.Place = function() end

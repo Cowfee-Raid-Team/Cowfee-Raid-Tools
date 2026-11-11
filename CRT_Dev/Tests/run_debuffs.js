@@ -180,7 +180,8 @@ CRT.UI = {
   ResetButtonWidth = function() return 44 end, ResetButton = function() return mock("Button") end,
   Slider = function(p, text, opts) local r = mock("Slider") rawset(r, "opts", opts) rawset(r, "refresh", function() end) sliders[text] = r return r end,
   Dropdown = function(p, text, opts) local r = mock("Dropdown") rawset(r, "opts", opts) rawset(r, "refresh", function() end) dropdowns[text] = r return r end,
-  Help = function(p, title, text) local h = mock("Help") helps[title] = text return h end,
+  -- a list-form help text (UI.AddTooltipText) kept as one string, so the checks can search it
+  Help = function(p, title, text) if type(text) == "table" then local out = {} for _, i in ipairs(text) do out[#out + 1] = type(i) == "table" and (i[1] .. ": " .. i[2]) or i end text = table.concat(out, " ") end local h = mock("Help") helps[title] = text return h end,
   SPOT_PICKER_GAP = 12, SPOT_PICKER_W = 126, HELP_GAP = 4, HELP_SIZE = 20,
   SpotPicker = function(p, opts) local r = mock("SpotPicker") rawset(r, "opts", opts) rawset(r, "refresh", function() end) spotPickers[#spotPickers + 1] = r return r end,
 }

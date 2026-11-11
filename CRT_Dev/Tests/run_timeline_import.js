@@ -196,7 +196,8 @@ local UI = { pages = {}, WINDOW_DEFAULTS = { inset = 8, titleHeight = 26 },
   TooltipOwner = function() end,
   PanelButtonWidth = function(w) return math.max(40, math.ceil(w or 0) + 28) end,
 }
-function UI.HelpRight(target, title, text) local b = mock("Button", target) helps[title] = text return b end
+-- a list-form help text (UI.AddTooltipText) kept as one string, so the checks can search it
+function UI.HelpRight(target, title, text) if type(text) == "table" then local out = {} for _, i in ipairs(text) do out[#out + 1] = type(i) == "table" and (i[1] .. ": " .. i[2]) or i end text = table.concat(out, " ") end local b = mock("Button", target) helps[title] = text return b end
 function UI.PanelButton(parent, label, height, onClick)
   local b = mock("Button", parent, "UIPanelButtonTemplate")
   rawset(b, "text", label) rawset(b, "OnClick", onClick)
@@ -1089,7 +1090,7 @@ check("window: rows: a click anywhere ticks a line or group, a tooltip with the 
   bad.OnLeave(bad)
   assert(not tip.shown, "gone on leave")
   -- the (?) of Tick every line says a group box ticks all its lines
-  assert(Win.TEXT.tickAllHelp:find("group box", 1, true), "the group box in the (?)")
+  assert(helps[Win.TEXT.tickAll]:find("group box", 1, true), "the group box in the (?)")
   fresh()
 end)
 

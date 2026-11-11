@@ -126,7 +126,11 @@ CRT.UI = { Tint = function(r, m, k, a) local c = CRT.PALETTE[k] r[m](r, c[1], c[
   RegisterPage = function() end,
   Show = function() end, SetFrameTitle = function() end, RegisterLayer = function() end, RegisterPreview = function() end,
   SkinTree = function() end, StyleWindow = function() end,
-  Help = function(parent, title, text) local b = mock("Button", parent) rawset(b, "helpTitle", title) rawset(b, "helpText", text) helps[#helps + 1] = b return b end,
+  -- helpPlain: the text as one string, a list-form text (UI.AddTooltipText) flattened as UI.TooltipPlain does
+  Help = function(parent, title, text) local b = mock("Button", parent) rawset(b, "helpTitle", title) rawset(b, "helpText", text)
+    local plain = text
+    if type(text) == "table" then local out = {} for _, item in ipairs(text) do out[#out + 1] = type(item) == "table" and (item[1] .. ": " .. item[2]) or item end plain = table.concat(out, "\\n\\n") end
+    rawset(b, "helpPlain", plain) helps[#helps + 1] = b return b end,
   Dropdown = function(parent, label, opts) local r = mock("Row", parent) rawset(r, "label", label) rawset(r, "opts", opts)
     rawset(r, "refresh", function() rawset(r, "value", opts.get()) end)
     dropdowns[label] = r return r end,
@@ -598,7 +602,7 @@ check("mech raid note: Save as Raid note writes one line per cast", function()
   assert(d.opts.get() == "mine" and p.forDrop and p.forDrop.label == "For", "Only me, and a For dropdown")
   assert(p.forDrop.opts.enabledIf() == false, "For greyed while Only me")
   assert(p.noteStatus.text == "", "no status line")
-  assert(p.saveAsHelp.helpText:find("raid note for the difficulty on show", 1, true) and p.saveAsHelp.helpText:find("Share the note", 1, true), "its (?) says what it does")
+  assert(p.saveAsHelp.helpPlain:find("raid note for the difficulty on show", 1, true) and p.saveAsHelp.helpPlain:find("Share the note", 1, true), "its (?) says what it does")
   -- an existing note for the boss: kept, with its free text
   noteStore[1] = { raw = "EncounterID:9001;Difficulty:Mythic;Name:Test Boss\\nTanks: Abu\\ntime:5;text:Other;", encounterID = 9001, difficulty = "Mythic" }
   noteNext = 2
@@ -1085,7 +1089,7 @@ check("mech: every (?) is right of what it explains", function()
   end
   -- the editor's (?) texts: one copy (Alerts/Fields.lua), #1243
   local FT = CRT.AlertFields.TEXT
-  assert(atHelp and atHelp.helpText == FT.speakAtHelp and tostring(atHelp.helpText):find("after the count", 1, true), "Speak at: the shared (?)")
+  assert(atHelp and atHelp.helpText == FT.speakAtHelp and atHelp.helpPlain:find("after the count", 1, true), "Speak at: the shared (?)")
   assert(countHelp and countHelp.helpText == FT.countDownHelp, "Count down from: the shared (?), right of its slider")
 end)
 
@@ -2728,7 +2732,7 @@ check("mech: alerts per difficulty group", function()
   for _, h in ipairs(helps) do
     -- a (?) whose text changes (a special alert's own help) gives it from a function
     -- (the Shield bar section's Any time it goes up is a checkbox, not a difficulty)
-    local text = (type(h.helpText) == "function" and h.helpText() or h.helpText or ""):gsub("Any time", "")
+    local text = (type(h.helpText) == "function" and h.helpText() or h.helpPlain or ""):gsub("Any time", "")
     assert(not text:find("Any", 1, true), "no help names Any: " .. tostring(text))
   end
   assert(diff.opts.get() == "mythic" and f.rows[1].name.text == "Real Name", "the boss's first timeline's group")
@@ -3122,7 +3126,7 @@ check("mech special (" .. LOOK .. "): the tab opens on Special every time; Make 
   -- the toggle's (?) says what each is for
   local help
   for _, h in ipairs(helps) do if h.helpTitle == "Mechanics" then help = h end end
-  assert(help and help.helpText:find("prepared alerts", 1, true) and help.helpText:find("your own reminders", 1, true), "its (?)")
+  assert(help and help.helpPlain:find("prepared alerts", 1, true) and help.helpPlain:find("your own reminders", 1, true), "its (?)")
   CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
   noSpecial()
   assert(#errors == 0, tostring(errors[1]))
@@ -3485,7 +3489,7 @@ check("mech special (" .. LOOK .. "): a roles alert's Who, a time before the pul
     if h.helpTitle == "Who" then who = h end
     if h.helpTitle == "When" then when = h end
   end
-  assert(who and who.helpText:find("Roles:", 1, true), "Who's (?) says what roles do")
+  assert(who and who.helpPlain:find("Roles:", 1, true), "Who's (?) says what roles do")
   assert(when and when.helpText:find("before the pull", 1, true) and when.helpText:find("pull timer", 1, true), "When's (?) says what a minus does")
   -- the icon on each row: the entry's (every number is a spell in this harness, so its texture), its row's spell, or none
   assert(s.rows[1].icon.shown and s.rows[1].icon.texture == "tex135000", "the entry's icon: " .. tostring(s.rows[1].icon.texture))
