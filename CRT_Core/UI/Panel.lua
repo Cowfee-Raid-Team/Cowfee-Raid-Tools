@@ -1677,7 +1677,8 @@ end
 -- and a { name, text } pair is one option, its own paragraph after a blank line, the name in the theme's
 -- heading colour, then ": " and the text. A paragraph after an option gets a blank line too, so a closing note
 -- stands apart. Either may come from a function, read each time the tooltip opens. r, g, b is the body colour
--- (UI.TOOLTIP_BODY by default).
+-- (UI.TOOLTIP_BODY by default). Since it draws them, UI.HeaderButton's and UI.Slider's tipText and UI.PreviewButton's
+-- tooltip split a plain string on blank lines too, one tooltip line per paragraph, as UI.Help always did.
 --   { "Sort grid rearranges the grid only.", { "Role blocks", "tanks first, ..." }, { "Spread duplicates", "..." } }
 UI.TOOLTIP_BODY = { 0.85, 0.85, 0.85 }
 
@@ -1722,6 +1723,7 @@ end
 
 -- The same text as one plain string (paragraphs on blank lines, an option as "name: text"), for a place that
 -- needs a string, such as a test or a chat line.
+-- [tooltip plain] CRT_Dev/Tests/theme_stub.js loads the code from here to [/tooltip plain] into harnesses (CRT_HELP_PLAIN).
 function UI.TooltipPlain(text)
     if type(text) == "function" then
         text = text()
@@ -1735,6 +1737,7 @@ function UI.TooltipPlain(text)
     end
     return table.concat(out, "\n\n")
 end
+-- [/tooltip plain]
 
 local function helpTexture(b, layer, file, size, x, y)
     local t = b:CreateTexture(nil, layer)
@@ -2105,7 +2108,11 @@ function UI:MakeThemeButton(parent)
         end, { "TOPRIGHT", lb, "BOTTOMRIGHT", 0, -2 })
     end, {
         flatH = 18, classicH = 18,
-        tipTitle = "Theme", tipText = "Pick the theme: Default: Blizzard is the game's own look; the others are flat, in their own colors.",
+        tipTitle = "Theme", tipText = {
+            "Pick the theme.",
+            { "Default: Blizzard", "the game's own look." },
+            { "The others", "flat, in their own colors." },
+        },
     })
     self.lookButton = lb
     return lb

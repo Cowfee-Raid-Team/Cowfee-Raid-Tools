@@ -36,7 +36,14 @@ local Gear = CRT.Gear
 
 local TEXT = {
     title = "Gear Checker",
-    help = "Shows everyone's gear and what to fix: red for a missing enchant or gem, orange for an item %d or more item levels under their average, and a small square for a season check or an extra filter (blue is just to know). A tag like H4 is the item's upgrade track and rank. Pick a filter to see only those items, and right-click a player to send them their issues. Extra filters adds more filters.",
+    -- %d in an item's text is GC.LOW_ILVL (gearHelp)
+    help = {
+        "Shows everyone's gear and what to fix.",
+        { "Red", "a missing enchant or gem." },
+        { "Orange", "an item %d or more item levels under their average." },
+        { "A small square", "a season check or an extra filter; blue is just to know." },
+        "A tag like H4 is the item's upgrade track and rank. Pick a filter to see only those items, and right-click a player to send them their issues. Extra filters adds more filters.",
+    },
     refresh = "Refresh (%d/%d have CRT)",
     popOut = "Pop out",
     dock = "Dock",
@@ -916,13 +923,22 @@ function P.ToggleExtra()
     UI:SkinTree(win)
 end
 
+-- The page's (?) text, with the low item level rule from GC.LOW_ILVL.
+local function gearHelp()
+    local out = {}
+    for i, item in ipairs(TEXT.help) do
+        out[i] = type(item) == "table" and { item[1], string.format(item[2], GC.LOW_ILVL) } or item
+    end
+    return out
+end
+
 local function buildBody(body)
     -- the Extra filters button: a chip's look, after the chips (P.LayChips places it)
     P.extraButton = makeChip(body, { key = "extraFilters", label = TEXT.extra })
     P.extraButton:SetScript("OnClick", function()
         P.ToggleExtra()
     end)
-    UI.HelpRight(P.extraButton, TEXT.title, string.format(TEXT.help, GC.LOW_ILVL))
+    UI.HelpRight(P.extraButton, TEXT.title, gearHelp())
 
     P.popButton = UI.PanelButton(body, TEXT.popOut, L.buttonH, function()
         P.TogglePopout()

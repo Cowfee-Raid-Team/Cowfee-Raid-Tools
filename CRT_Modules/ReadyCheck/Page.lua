@@ -334,7 +334,14 @@ local function buildWindow(f)
     local cols = label(f, "Columns: drag a heading to move it, click it to show or hide it.")
     cols:SetPoint("TOPLEFT", 8, WINDOW_COLUMNS_Y)
     cols:SetWordWrap(false)
-    UI.HelpRight(cols, "The ready check window", "A table of every player's ready answer, consumables and raid buffs. It opens on a ready check (or with /crt check) and closes after the time set here, or on a right-click. Shift-click a heading to post who is missing that to raid chat.\n\nAn icon means they have it, a gold number is minutes left on a flask, x is missing, and ? means the game hid their buffs. Durability and weapon oils show only for players running CRT.")
+    UI.HelpRight(cols, "The ready check window", {
+        "A table of every player's ready answer, consumables and raid buffs. It opens on a ready check (or with /crt check) and closes after the time set here, or on a right-click. Shift-click a heading to post who is missing that to raid chat.",
+        { "An icon", "they have it." },
+        { "A gold number", "minutes left on a flask." },
+        { "x", "missing." },
+        { "?", "the game hid their buffs." },
+        "Durability and weapon oils show only for players running CRT.",
+    })
 
     -- The same table the window draws, with sample players, in edit mode.
     local box = CreateFrame("Frame", nil, f, "BackdropTemplate")

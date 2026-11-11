@@ -74,9 +74,9 @@ local TEXT = {
     -- the game's lock icon (Blizzard_GroupFinder's LFGFrame.xml uses this file), inline before the line
     teamLockIcon = "|TInterface\\LFGFrame\\UI-LFG-ICON-LOCK:14:14|t ",
     teamHelp = {
-        "Pick which team tonight's raid is: Pug, or one of your teams. Season Stats keeps each team's pulls apart, and Tattlebot and the Late Tracker can record team raids only: any team but Pug. A new raid group starts on the team you had last.",
+        "Pick which team tonight's raid is: Pug, or one of your teams. Season Stats keeps each team's pulls apart, and Tattlebot and the Late Tracker can record team raids only: any team but Pug. A new raid group starts on the team you had last, and when you join a new raid group, CRT asks which team it is.",
         { "Add team", "at the bottom of the list, adds your own." },
-        { "Push to raid", "when you join a new raid group, CRT asks which team it is. The raid leader can push the team to everyone in the raid with CRT, with Push to raid or the popup's Save and push. Raiders can't change it then until they leave the group." },
+        { "Push to raid", "sets the team for everyone in the raid with CRT. Only the raid leader can push it, here or with the popup's Save and push. Raiders can't change it then until they leave the group." },
         { "Remove team", "deletes one of your teams and its Season Stats, after two warnings. Pug can't be removed." },
         { "Merge team", "moves one of your teams' Season Stats, Tattlebot pulls and raid nights into another team or Pug, and takes it off your list. Before teams, the pulls from before you had teams of your own, can be merged into one of your teams the same way. Names that differ only in case, spaces or punctuation are one team; when two such teams are saved, CRT asks once whether to merge them." },
         "Parties, solo play and finder groups are never team raids.",
@@ -885,7 +885,7 @@ local CHECK = {
         "Asks everyone in your group which version of Cowfee Raid Tools they run and which optional modules they have switched on, and lists the answers. The group is asked when you open this tab and each time you press Check.",
         { "Green", "your version." },
         { "Orange", "an older one." },
-        { "Red", "No CRT: no answer within a few seconds." },
+        { "Red", "No CRT, when no answer comes within a few seconds." },
         "A dash means that player's CRT is too old to report that module. A CRT from before the Addon check shows only its version, with blank modules.",
         { "Module and Show", "narrow the list, so you can see before a pull who would miss a shared note, pace plan or kick list. The game blocks addon messages during a boss fight, so check before the pull." },
         { "Announce", "posts who is missing CRT or on an older version, with the download link, where Announce to says: only to you, to the group's chat, as a raid warning (the raid leader or an assistant) or to officer chat. Click a red or orange row to whisper that player the same." },

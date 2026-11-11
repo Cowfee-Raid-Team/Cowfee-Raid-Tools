@@ -45,10 +45,10 @@ local TEXT = {
         { "Role blocks", "tanks first, then melee, then ranged, with one healer in each group." },
         { "Melee and ranged groups", "tanks and melee fill the first groups, ranged the next ones. Healers are spread one per group." },
         { "Spread duplicates", "players of the same class, then of the same spec, go in different groups. Tanks and healers are spread too." },
-        { "Left and right sides", "pick an assignment with two rows of players, made on Raid Notes > Mech Alerts (pick the mechanic, then its Assign tab). The first row goes to groups 1 and 2, the second to groups 3 and 4. Everyone else is split between the two sides to even them out." },
+        { "Left and right sides", "pick an assignment with two rows of players, made on Raid Notes > Mech Alerts > Mechanics (pick the boss and the ability, then its Assign tab). The first row goes to groups 1 and 2, the second to groups 3 and 4. Everyone else is split between the two sides to even them out." },
     },
     side = "Assignment",
-    noSidesWhy = "No assignment this season has two rows of players. Make one on Raid Notes > Mech Alerts (pick the mechanic, then its Assign tab).",
+    noSidesWhy = "No assignment this season has two rows of players. Make one on Raid Notes > Mech Alerts > Mechanics (pick the boss and the ability, then its Assign tab).",
     emptyGrid = "The grid is empty.",
     postChanges = "Post group changes to raid chat",
     extraBody = "In your group, in raid group %d, but not in this layout.", -- a player beside the grid

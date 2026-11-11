@@ -317,7 +317,15 @@ local function build(pf)
     UI.HelpRight(spacing, "Spacing", "The gap between two debuffs' borders. The border's width is added on top, so borders never overlap; at 0 they touch. The glow adds no space.")
     lookDropdown(pf, -168, "Grow", "grow", Debuffs.GROW_DIRECTIONS, Debuffs.Grow, Debuffs.SetGrow)
     local glow = lookCheck(pf, "Glow on dispellable debuffs", -204, "dispelGlow", LOOK_X - 4, nil, Debuffs.SetDispelGlow)
-    UI.HelpRight(glow.label, "Glow on dispellable debuffs", "A dispellable debuff always gets a frame in its colour: Magic blue, Poison green, Curse purple, Disease brown, Bleed in the game's bleed colour. The glow adds a soft light in the same colour around that frame. Both need a border size above 0.")
+    UI.HelpRight(glow.label, "Glow on dispellable debuffs", {
+        "A dispellable debuff always gets a frame in its colour.",
+        { "Magic", "blue." },
+        { "Poison", "green." },
+        { "Curse", "purple." },
+        { "Disease", "brown." },
+        { "Bleed", "the game's bleed colour." },
+        "The glow adds a soft light in the same colour around that frame. Both need a border size above 0.",
+    })
 
     -- Tooltips on hover (Panel.lua), and where they open: the panel's own Tooltip position (UI/Tooltip.lua).
     local tips = lookCheck(pf, TEXT.tooltips, TOOLTIP_Y, "tooltips", LOOK_X - 4, nil, Debuffs.SetTooltips)
