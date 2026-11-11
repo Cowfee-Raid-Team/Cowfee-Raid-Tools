@@ -1,8 +1,8 @@
 local ADDON, CRT = ...
 
 -- The Notes Settings tab of the Raid Notes page (Notes/Page.lua builds it into its tab): one column for each
--- of the three note windows (timers, assignments, personal note), who to accept shared notes from and how the
--- Notes tab lists them. The note callout (its timing, look and voice) and where your note lines show are on
+-- of the three note windows (timers, assignments, personal note), who to accept shared notes from, how the
+-- Notes tab lists them, and assignment highlights (Highlights/Settings.lua builds its section). The note callout (its timing, look and voice) and where your note lines show are on
 -- the Alert Settings tab (Notes/AlertsTab.lua, Notes/Alert.lua). Unlocked windows can be dragged and resized by
 -- hand, and their position and size are saved per player.
 
@@ -87,6 +87,7 @@ local COLUMN_ROWS_Y = 92 -- the rows after Show, Locked and Keep up when empty, 
 local FONT_GAP = 88      -- the font list, under the first slider: the three sliders 28 apart and a gap
 local FONT_ROW_Y = COLUMN_ROWS_Y + 2 * ROW_H + FONT_GAP -- the timers column's font list, under its heading
 local PREVIEW_ROW_Y = FONT_ROW_Y + 36   -- the window preview buttons, under the font list
+local HIGHLIGHTS_Y = 160 -- the fourth column's Highlights section, under Notes list
 
 local WHITE = { 1, 1, 1 }
 local GREY = { 0.5, 0.5, 0.5 }
@@ -285,6 +286,12 @@ local function build(pf)
     })
     styleRow:SetPoint("TOPLEFT", x, top - 114)
     controls[#controls + 1] = styleRow
+
+    -- Highlights: assignment highlights' own section (Highlights/Settings.lua), under Notes list
+    if CRT.HighlightsSettings then
+        controls[#controls + 1] = CRT.HighlightsSettings.Build(pf, x, top - HIGHLIGHTS_Y, FOURTH_W,
+            { check = makeCheck, heading = heading, refresh = refresh })
+    end
 
     pf:SetScript("OnShow", refresh)
     Notes:OnChange(refresh)

@@ -95,20 +95,42 @@ function methods.SetStartDelay(o, d) o.delay = d end
 function methods.Play(o) o.playing = true o.plays = (rawget(o, "plays") or 0) + 1 end
 function methods.Stop(o) o.playing = false end
 function methods.IsPlaying(o) return rawget(o, "playing") or false end
-function methods.SetText(o, t) o.text = t end
+-- Text is measured at its font object's size (half the size a character, the size a line), wrapped to its width. A
+-- font string's own height, when none is set, is measured when its text or width is set, as the game's are: a new
+-- size on its font object alone leaves it as it was.
+local function fontSize(o) local f = rawget(o, "font") return type(f) == "table" and rawget(f, "size") or 14 end
+local function measureW(o) return #plain(o.text) * fontSize(o) / 2 end
+local function measureH(o)
+  local w = measureW(o)
+  if w == 0 then return 0 end
+  local lines = 1
+  if rawget(o, "wrap") ~= false and (rawget(o, "width") or 0) > 0 then lines = math.ceil(w / o.width) end
+  return lines * fontSize(o)
+end
+function methods.SetText(o, t) o.text = t o.autoH = measureH(o) end
 function methods.GetText(o) return o.text end
-function methods.GetFont() return "font", 14 end
+function methods.SetFont(o, _, size) o.size = size end
+function methods.GetFont(o) return "font", rawget(o, "size") or 14 end
 function methods.SetWordWrap(o, v) o.wrap = v end
-function methods.GetUnboundedStringWidth(o) return #plain(o.text) * 7 end
-function methods.GetStringWidth(o) return #plain(o.text) * 7 end
-function methods.GetStringHeight(o) return #plain(o.text) > 0 and 14 or 0 end
+function methods.GetUnboundedStringWidth(o) return measureW(o) end
+function methods.GetStringWidth(o) return measureW(o) end
+-- with a height set, the text is cut to the lines that fit, and only those are measured
+function methods.GetStringHeight(o)
+  local h, set = measureH(o), rawget(o, "height")
+  if o.kind == "FontString" and set then
+    local size = fontSize(o)
+    return math.min(h, math.floor(set / size) * size)
+  end
+  return h
+end
 function methods.SetSize(o, w, h)
   o.width, o.height = w, h
   if o.scripts.OnSizeChanged then o.scripts.OnSizeChanged(o, w, h) end
 end
-function methods.SetWidth(o, w) o.width = w end
+function methods.SetWidth(o, w) o.width = w if o.kind == "FontString" then o.autoH = measureH(o) end end
+function methods.SetHeight(o, h) o.height = h end
 function methods.GetWidth(o) return o.width or 0 end
-function methods.GetHeight(o) return o.height or 0 end
+function methods.GetHeight(o) return rawget(o, "height") or rawget(o, "autoH") or 0 end
 function methods.ClearAllPoints(o) o.points = {} end
 function methods.SetPoint(o, p, to, rel, x, y) o.points[#o.points + 1] = { p, to, rel, x, y } end
 function methods.GetPoint() return "CENTER", nil, "CENTER", 0, 0 end
@@ -155,13 +177,14 @@ local CRT = {
       nextId = 2, trustedOnly = true, active = 1, showOutsideRaid = true,
       window = { shown = true, locked = true, hidePassed = true, onlyMe = false, fontSize = 14, alpha = 100, bgAlpha = 50, width = 900, height = 3000 },
       assignments = { shown = true, locked = true, fontSize = 14, alpha = 100, bgAlpha = 50, width = 500, height = 600 },
-      personal = { shown = false, locked = true, fontSize = 14, alpha = 100, bgAlpha = 50, width = 500, height = 800 },
-      personalText = "",
+      personal = { shown = true, locked = true, fontSize = 14, alpha = 100, bgAlpha = 50, width = 500, height = 800 },
+      personalText = "Heal CDs: Cheoeqar\\nOthers: Rixxy",
       alert = { enabled = false, seconds = 10, tts = false, ttsSeconds = 3, ttsVolume = 100, ttsRate = 0, iconPosition = "left" },
     },
     alerts = { bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20 },
       reminders = {}, phases = {}, overrides = {}, nextId = 1 },
-    highlights = { enabled = false, name = true, group = true, glow = true },
+    -- the timers window ticked here, so the checks before "which windows" cover it too
+    highlights = { enabled = false, name = true, group = true, glow = true, windows = { assignments = true, timers = true, personal = false } },
   },
   UI = { RegisterLayer = function() end,
     RegisterPreview = function(_, key, fn) previews[key] = fn end,
@@ -299,62 +322,223 @@ NW:Changed()
 step()
 check(drawn() ~= offAgain, "module on: the windows draw differently from off")
 
--- glow -----------------------------------------------------------------------------------------------
+-- changes --------------------------------------------------------------------------------------------
 check(not anyGlow("assignments"), "glow: switching the module on glows nothing")
 local function edit(from, to)
   local r = CRT.db.notes.list[1]
   r.raw = r.raw:gsub(from, to)
   Notes:Fire()
+  -- a moment later, inside the glow (a ghost lasts as long as its glow)
+  clock = clock + 0.5
+  NW:RefreshAll()
+end
+local function stopGlows()
+  for _, key in ipairs({ "window", "assignments" }) do
+    for _, row in ipairs(rowsOf(key)) do if row.glowAnim then row.glowAnim:Stop() end end
+  end
+end
+local function kindOf(row) return glowing(row) and row.glowKind or nil end
+local function tagColour(row, key)
+  local c, p = row and row.tag and row.tag.textColor, CRT.PALETTE[key]
+  return c ~= nil and math.abs(c[1] - p[1]) < 1e-6 and math.abs(c[2] - p[2]) < 1e-6 and math.abs(c[3] - p[3]) < 1e-6
+end
+
+-- which windows: the assignments window as by default; the timers and personal note windows only once ticked
+do
+  local Wn = S.windows
+  Wn.timers, Wn.personal = false, false
+  NW:Changed()
+  step()
+  local timersText, personalText = NW:Get("window"):DrawnText(), NW:Get("personal"):DrawnText()
+  local bands = false
+  for _, key in ipairs({ "window", "personal" }) do for _, row in ipairs(rowsOf(key)) do if banded(row) then bands = true end end end
+  check(not bands and banded(rowWith("assignments", "Kicks G3")), "windows: only the assignments window shows bands as set by default")
+  S.enabled = false
+  NW:Changed()
+  step()
+  check(NW:Get("window"):DrawnText() == timersText and NW:Get("personal"):DrawnText() == personalText,
+    "windows: the timer and personal note windows draw exactly as with the module off until ticked")
+  S.enabled = true
+  Wn.personal = true
+  NW:Changed()
+  step()
+  local heal = rowWith("personal", "Heal CDs")
+  check(banded(heal) and heal.text.text:find(accent .. "Cheoeqar|r", 1, true) ~= nil and not banded(rowWith("personal", "Others")),
+    "personal note ticked: your line is banded, your name in the accent; others not")
+  CRT.db.notes.personalText = "Heal CDs: Cheoeqar\\nOthers: Rixxy\\nSoak: Cheoeqar"
+  Notes:Fire()
+  clock = clock + 0.5
+  NW:RefreshAll()
+  check(banded(rowWith("personal", "Soak")) and not anyGlow("personal"), "personal note ticked: a line you add is banded, with no glow for your own save")
+  CRT.db.notes.personalText = "Heal CDs: Cheoeqar\\nOthers: Rixxy"
+  Wn.timers, Wn.personal = true, false
+  NW:Changed()
+  step()
+  check(banded(rowWith("window", "Spell31884")), "timer window ticked: its bands are back")
+end
+
+-- only other names changed on your line: no change to your assignment
+edit("Soak 1: Cheoeqar Gadios", "Soak 1: Cheoeqar Djaztech")
+check(not anyGlow("assignments"), "no glow: only other names changed on your line")
+edit("Soak 2: Rixxy Djaztech", "Soak 2: Rixxy Teronhorefnd")
+check(not anyGlow("assignments"), "no glow: a changed line about others")
+
+-- Added
+edit("Soak 2: Rixxy Teronhorefnd", "Soak 2: Rixxy Cheoeqar")
+local added = rowWith("assignments", "Soak 2")
+check(kindOf(added) == "added" and added.tag.text == H.TEXT.added and tagColour(added, "good") and added.tag.shown and added.tagAnim:IsPlaying(),
+  "Added: a line you were put on glows with Added in the good colour")
+check(not glowing(rowWith("assignments", "Soak 1")) and not glowing(rowWith("assignments", "Kicks G3")), "Added: your other lines stay still")
+local total = 0
+for _, a in ipairs(added.glowAnim.anims) do total = total + (a.duration or 0) end
+check(math.abs(total - H.GLOW_SECONDS) < 1e-6 and H.GLOW_SECONDS >= 2.5 and H.GLOW_SECONDS <= 3.5, "glow: about 3 seconds of pulses")
+stopGlows()
+
+-- Removed, the line still there
+edit("Soak 2: Rixxy Cheoeqar", "Soak 2: Rixxy Teronhorefnd")
+local removed = rowWith("assignments", "Soak 2")
+check(kindOf(removed) == "removed" and removed.tag.text == H.TEXT.removed and tagColour(removed, "bad") and not banded(removed),
+  "Removed: a line you were taken off glows with Removed in the bad colour, with no band")
+stopGlows()
+
+-- Removed, the line gone: a muted ghost of it, at its place, until its glow ends
+edit("Soak 1: Cheoeqar Djaztech\\n", "")
+local ghost = rowWith("assignments", "Soak 1: Cheoeqar Djaztech")
+check(ghost ~= nil and ghost.line.hlGhost and kindOf(ghost) == "removed" and tagColour(ghost, "bad")
+  and ghost.text.text:find("|cff" .. CRT.UI.Hex("muted"), 1, true) == 1, "Removed: a line gone shows as a muted ghost with Removed")
+check(rowsOf("assignments")[1] == ghost, "Removed: the ghost stands where the line was")
+ghost.glowAnim:Stop()
+ghost.glowAnim.scripts.OnFinished()
+step()
+check(rowWith("assignments", "Soak 1: Cheoeqar Djaztech") == nil, "Removed: the ghost goes once its glow ends")
+
+-- Moved: off one line and onto another in one change
+edit("Soak 2: Rixxy Teronhorefnd", "Soak 1: Cheoeqar Gadios\\nSoak 2: Rixxy Teronhorefnd")
+check(kindOf(rowWith("assignments", "Soak 1")) == "added", "Added: a new line naming you")
+stopGlows()
+do
+  local r = CRT.db.notes.list[1]
+  r.raw = r.raw:gsub("Soak 1: Cheoeqar Gadios", "Soak 1: Gadios Djaztech"):gsub("Soak 2: Rixxy Teronhorefnd", "Soak 2: Rixxy Cheoeqar")
+  Notes:Fire()
   step()
 end
-edit("Soak 1: Cheoeqar Gadios", "Soak 1: Cheoeqar Djaztech")
-local changed = rowWith("assignments", "Soak 1")
-check(glowing(changed), "glow: a line with you that the new note changed")
-check(changed and changed.tag and changed.tag.shown and changed.tag.text == H.TEXT.changed and changed.tagAnim:IsPlaying(), "glow: the changed tag shows and fades with it")
-check(changed and changed.tag.textColor and math.abs(changed.tag.textColor[1] - CRT.PALETTE.warn[1]) < 1e-6, "glow: the tag in the theme's warn colour")
-check(not glowing(rowWith("assignments", "Kicks G3")), "glow: an unchanged line with you stays still")
-local total = 0
-for _, a in ipairs(changed.glowAnim.anims) do total = total + (a.duration or 0) end
-check(math.abs(total - H.GLOW_SECONDS) < 1e-6 and H.GLOW_SECONDS >= 2.5 and H.GLOW_SECONDS <= 3.5, "glow: about 3 seconds of pulses")
-changed.glowAnim:Stop()
-changed.glowAnim.scripts.OnFinished()
-edit("Soak 2: Rixxy Djaztech", "Soak 2: Rixxy Teronhorefnd")
-check(not anyGlow("assignments"), "glow: a changed line about others never glows")
+local moved = rowWith("assignments", "Soak 2")
+check(kindOf(moved) == "moved" and moved.tag.text == H.TEXT.moved and tagColour(moved, "warn"), "Moved: the line you moved to glows with Moved in the warn colour")
+check(not glowing(rowWith("assignments", "Soak 1")) and not (rowWith("assignments", "Soak 1: Cheoeqar") and rowWith("assignments", "Soak 1: Cheoeqar").line.hlGhost),
+  "Moved: the line you left shows no Removed, and the moved line no Added")
+stopGlows()
 edit("time:10;ph:1;tag:Cheoeqar;spellid:31884;", "time:12;ph:1;tag:Cheoeqar;spellid:31884;")
-check(glowing(rowWith("window", "Spell31884")), "glow: a changed timer for you glows in the timers window")
+check(kindOf(rowWith("window", "Spell31884")) == "moved", "Moved: your timer at a new time says Moved in the timers window")
 check(not glowing(rowWith("window", "Stack left")), "glow: an unchanged timer for your group stays still")
+stopGlows()
+
 -- the window closed and opened again: its first draw glows nothing
 CRT.db.notes.assignments.shown = false
 step()
-edit("Kicks G3: Rixxy Gadios", "Kicks G3: Rixxy Djaztech")
+edit("Group 4: stack right", "Group 4: stack right with Cheoeqar")
 CRT.db.notes.assignments.shown = true
 NW:Changed()
 step()
-local kick2 = rowWith("assignments", "Kicks G3")
-check(banded(kick2) and not glowing(kick2), "glow: none on the first display after the window opens again")
+local g4 = rowWith("assignments", "Group 4")
+check(banded(g4) and not glowing(g4), "glow: none on the first display after the window opens again")
 S.glow = false
 NW:Changed()
 step()
-edit("Kicks G3: Rixxy Djaztech", "Kicks G3: Gadios Djaztech")
-check(not anyGlow("assignments") and banded(rowWith("assignments", "Kicks G3")), "Glow when a line with me changes off: the band but no glow")
+edit("Group 4: stack right with Cheoeqar", "Group 4: stack right")
+edit("Soak 1: Gadios Djaztech", "Soak 1: Gadios Cheoeqar")
+check(not anyGlow("assignments") and banded(rowWith("assignments", "Soak 1")), "Glow when a line with me changes off: the band but no glow")
 local aw = NW:Get("assignments")
 check(rowWith("assignments", "Kicks G3").text.width == 500 - 16, "Glow off: a marked line keeps no room for the tag")
 S.glow = true
 NW:Changed()
 step()
 local roomRow = rowWith("assignments", "Kicks G3")
-check(H.Room(aw) > 0 and roomRow.text.width == 500 - 16 - H.Room(aw) and rowWith("assignments", "Soak 2").text.width == 500 - 16,
-  "tag room: a marked line's text leaves room at its end for the changed tag; other lines keep the whole width")
-
-local function stopGlows()
-  for _, key in ipairs({ "window", "assignments" }) do
-    for _, row in ipairs(rowsOf(key)) do if row.glowAnim then row.glowAnim:Stop() end end
-  end
-end
-edit("Kicks G3: Gadios Djaztech", "Kicks G3: Rixxy Gadios")
-local tagged = rowWith("assignments", "Kicks G3")
+check(H.Room(aw) > 0 and roomRow.text.width == 500 - 16 - H.Room(aw) and rowWith("assignments", "Group 4").text.width == 500 - 16,
+  "tag room: a marked line's text leaves room at its end for the tag; other lines keep the whole width")
+edit("Group 4: stack right", "Group 4: stack right with Cheoeqar")
+local tagged = rowWith("assignments", "Group 4")
 local tp = tagged.tag and tagged.tag.points[1]
-check(glowing(tagged) and tp and tp[1] == "TOPLEFT" and tp[2] == tagged.text and tp[3] == "TOPRIGHT", "tag room: the changed tag sits after the line's text, not over it")
+check(glowing(tagged) and tp and tp[1] == "LEFT" and tp[2] == tagged.text and tp[3] == "TOPRIGHT" and tp[5] == -7,
+  "tag: after the line's text, centred on its first line")
+
+-- a row reused for a longer line grows to fit it (never cut to the height it had)
+do
+  local before = rowWith("assignments", "Group 4")
+  edit("Group 4: stack right with Cheoeqar", "Group 4: stack right with Cheoeqar, then run along the far wall past the door and wait")
+  local grown = rowWith("assignments", "far wall")
+  check(grown ~= nil and grown.text:GetStringHeight() == 28 and grown.text:GetHeight() == 28 and banded(grown),
+    "height: a row given a longer line grows to two lines" .. (grown == before and " (the same row)" or ""))
+  edit("Group 4: stack right with Cheoeqar, then run along the far wall past the door and wait", "Group 4: stack right with Cheoeqar")
+  stopGlows()
+end
+-- a line with no colon: other names changing in it is no change for you
+edit("Cheoeqarson goes home", "Cheoeqar and Rixxy stack left")
+stopGlows()
+edit("Cheoeqar and Rixxy stack left", "Cheoeqar and Gadios stack left")
+check(banded(rowWith("assignments", "Gadios stack left")) and not anyGlow("assignments"), "no glow: other names changed in a line with no colon")
+edit("Cheoeqar and Gadios stack left", "Cheoeqarson goes home")
+stopGlows()
+-- a ghost reads as the line did: marker codes as their icons
+edit("Group 4: stack right with Cheoeqar", "Group 4: stack right\\n{star} Soak 5: Cheoeqar")
+stopGlows()
+edit("\\n{star} Soak 5: Cheoeqar", "")
+local starGhost = rowWith("assignments", "Soak 5")
+check(starGhost ~= nil and starGhost.line.hlGhost and starGhost.text.text:find("|T", 1, true) ~= nil and not starGhost.text.text:find("{star}", 1, true),
+  "Removed: a ghost shows the line as it read, its marker as an icon")
+if starGhost then H.HideRow(starGhost) end
+check(starGhost ~= nil and starGhost.line.hlDone == true and starGhost.line.hlTag == nil, "Removed: a ghost whose glow is stopped goes too")
+step()
+edit("Group 4: stack right", "Group 4: stack right with Cheoeqar")
+stopGlows()
+
+-- heights: a row's band and glow cover exactly its text, at any font size, wrapped lines too
+local function bandHeight(row, region)
+  local top, bottom
+  for _, p in ipairs(region.points) do
+    if p[1] == "TOPLEFT" then top = p elseif p[1] == "BOTTOMRIGHT" then bottom = p end
+  end
+  if not (top and bottom) or bottom[2] ~= row.text then return nil end
+  -- the band's top is on the text, or on the time cell the text sits level with
+  local tp1 = row.text.points[1]
+  local level = top[2] == row.text or (top[2] == row.time and tp1 and tp1[2] == row.time and tp1[5] == 0)
+  if not level then return nil end
+  return row.text:GetHeight() + top[5] - bottom[5]
+end
+local function heightsAt(size, what)
+  local checked, bad = 0, nil
+  for _, key in ipairs({ "window", "assignments" }) do
+    for _, row in ipairs(rowsOf(key)) do
+      local want = math.max(size, row.text:GetStringHeight())
+      if row.text.shown and row.text:GetHeight() ~= want then bad = bad or (key .. " row " .. plain(row.text.text) .. " is " .. row.text:GetHeight() .. " for " .. want) end
+      if banded(row) then
+        checked = checked + 1
+        local h = bandHeight(row, row.band)
+        if h ~= want then bad = bad or (key .. " band " .. tostring(h) .. " for " .. want) end
+      end
+      if glowing(row) then
+        local h = bandHeight(row, row.glow)
+        if h ~= want then bad = bad or (key .. " glow " .. tostring(h) .. " for " .. want) end
+      end
+    end
+  end
+  check(checked >= 4 and bad == nil, what .. (bad and (": " .. bad) or ""))
+end
+edit("Soak 1: Gadios Cheoeqar", "Soak 1: Gadios Cheoeqar\\nSoak 9: Cheoeqar and then a long walk around the left side of the room")
+local long = rowWith("assignments", "a long walk")
+check(long and long.text:GetStringHeight() == 28 and glowing(long), "height: the long line wraps to two lines at 14 pt")
+heightsAt(14, "height at 14 pt: every band and glow covers exactly its row's text, the wrapped line too")
+CRT.db.notes.assignments.fontSize, CRT.db.notes.window.fontSize = 22, 22
+Notes:Fire()
+step()
+long = rowWith("assignments", "a long walk")
+check(long and long.text:GetStringHeight() >= 44, "height: the long line still wraps at 22 pt")
+heightsAt(22, "height at 22 pt: every band and glow covers exactly its row's text, the wrapped line too")
+local tp22 = long.tag.points[1]
+check(tp22 and tp22[1] == "LEFT" and tp22[5] == -11, "tag: centred on the first line at 22 pt")
+CRT.db.notes.assignments.fontSize, CRT.db.notes.window.fontSize = 14, 14
+Notes:Fire()
+step()
+heightsAt(14, "height back at 14 pt: the rows and bands follow the font back")
 stopGlows()
 
 -- lines coming into view are not changes
@@ -387,10 +571,10 @@ check(banded(rowWith("assignments", "Soak 1")) and not anyGlow("assignments") an
 Notes:SetActive(1)
 step()
 check(not anyGlow("assignments") and not anyGlow("window"), "glow: none when switching back to the first note")
-CRT.db.notes.list[3] = { raw = CRT.db.notes.list[1].raw:gsub("Kicks G3: Rixxy Gadios", "Kicks G3: Djaztech Gadios"), name = "Big Boss", encounterID = 3470, difficulty = "Mythic" }
+CRT.db.notes.list[3] = { raw = CRT.db.notes.list[1].raw:gsub("Soak 2: Rixxy Cheoeqar", "Soak 2: Rixxy Djaztech"), name = "Big Boss", encounterID = 3470, difficulty = "Mythic" }
 Notes:SetActive(3)
 step()
-check(glowing(rowWith("assignments", "Kicks G3")) and not glowing(rowWith("assignments", "Soak 1")), "glow: the same boss's note shared again as a new record glows your changed line")
+check(kindOf(rowWith("assignments", "Soak 2")) == "removed" and not glowing(rowWith("assignments", "Soak 1")), "glow: the same boss's note shared again as a new record shows your change")
 Notes:SetActive(1)
 step()
 stopGlows()
@@ -416,7 +600,7 @@ NW:Changed()
 step()
 check(keyCalls == 0, "module off: no timer key is worked out")
 local keysLeft = false
-for _, row in ipairs(rowsOf("assignments")) do if row.line.hlKey or row.line.hl then keysLeft = true end end
+for _, row in ipairs(rowsOf("assignments")) do if row.line.hlId or row.line.hl then keysLeft = true end end
 check(not keysLeft, "module off: no line keeps a mark or a key")
 H.TimerKey = timerKey
 S.enabled = true
@@ -430,7 +614,11 @@ previews[H.PREVIEW_KEY](true)
 local w = NW:Get("assignments")
 check(w.frame.shown and tostring(w.frame.strings[1].text):find("sample", 1, true) ~= nil, "preview: the assignments window shows the sample")
 check(banded(rowWith("assignments", "Soak 1: Cheoeqar")) and banded(rowWith("assignments", "Kicks G3")), "preview: the sample's lines with you and your group are marked")
-check(glowing(rowWith("assignments", "Soak 1: Cheoeqar")) and not banded(rowWith("assignments", "Soak 2")), "preview: the line with you glows once; others unchanged")
+check(kindOf(rowWith("assignments", "Soak 1: Cheoeqar")) == "added" and kindOf(rowWith("assignments", "Kicks G3")) == "moved" and not banded(rowWith("assignments", "Soak 2")),
+  "preview: Added and Moved on the sample's lines; others unchanged")
+local sghost = rowWith("assignments", "Soak 3: Cheoeqar")
+check(sghost and sghost.line.hlGhost and kindOf(sghost) == "removed" and rowsOf("assignments")[4] == sghost and not glowing(rowWith("assignments", "Group 3")),
+  "preview: a Removed ghost under Soak 2; the group line only banded")
 previews[H.PREVIEW_KEY](false)
 check(not w.frame.shown, "preview off: the window goes back to hidden")
 CRT.db.notes.assignments.shown = true
@@ -452,26 +640,61 @@ H:ResetGroup()
 NW:Changed()
 step()
 
--- page -------------------------------------------------------------------------------------------------
+-- settings: Raid Notes > Notes Settings > Highlights (Highlights/Settings.lua) -----------------------------
+check(pages.highlights == nil, "settings: no page of its own in the menu")
 local pf = newObj("Frame", UIParent)
-check(pages.highlights ~= nil and pages.highlights.title == "Assignment highlights", "page: registered as Assignment highlights")
-pages.highlights.build(pf)
-local P = pf
-check(P.enable and P.enable.label.text == "Use assignment highlights" and P.enable.label.help and P.enable.label.help.text ~= "", "page: the switch with its (?)")
+-- the Notes Settings tab's helpers, stood in for: its check box (greyed under enabledIf), heading and refresh
+local pageControls = {}
+local pageHelpers = {
+  check = function(parent, x, y, label, enabledIf, getter, setter)
+    local c = newObj("CheckButton", parent)
+    c.label = newObj("FontString", parent)
+    c.label.text = label
+    c.scripts.OnClick = function(self) setter(self:GetChecked() and true or false) end
+    c.refresh = function()
+      c:SetChecked(getter() and true or false)
+      if enabledIf then
+        local on = enabledIf()
+        c:SetEnabled(on)
+        c.label:SetTextColor(on and 1 or 0.5, on and 1 or 0.5, on and 1 or 0.5)
+      end
+    end
+    pageControls[#pageControls + 1] = c
+    return c, c.label
+  end,
+  heading = function(parent, x, y, text) local fs = newObj("FontString", parent) fs.text = text return fs end,
+}
+pageHelpers.refresh = function() for _, c in ipairs(pageControls) do c.refresh() end end
+local P = CRT.HighlightsSettings.Build(pf, 10, -10, 244, pageHelpers)
+pageControls[#pageControls + 1] = P
+check(P.enable and P.enable.label.text == "Use assignment highlights" and P.enable.help and P.enable.help.text ~= "", "settings: the switch with its (?)")
+local function greyed(c) return c.enabled == false and c.label.textColor and c.label.textColor[1] == 0.5 end
 S.enabled = false
-pf.scripts.OnShow(pf)
-check(P.name.enabled == false and P.group.enabled == false and P.glow.enabled == false and P.name.label.font == "CRTFontDisableSmall",
-  "page: the three options greyed while the switch is off")
-check(P.preview.enabled == false, "page: Preview highlights greyed while the switch is off")
+pageHelpers.refresh()
+local allGrey = true
+for _, key in ipairs({ "name", "group", "glow", "assignments", "timers", "personal" }) do
+  if not (P.options[key] and greyed(P.options[key])) then allGrey = false end
+end
+check(allGrey, "settings: every option, the three windows included, greyed while the switch is off")
+check(P.preview.enabled == false, "settings: Preview highlights greyed while the switch is off")
 P.enable:SetChecked(true)
 P.enable.scripts.OnClick(P.enable)
-check(S.enabled == true and P.name.enabled and P.group.enabled and P.glow.enabled and P.name.label.font == "CRTFontSmall", "page: ticking the switch turns the module on and the options back")
-P.preview.refresh()
-check(P.preview.enabled == true and P.preview.keys[1] == H.PREVIEW_KEY, "page: Preview highlights works once it is on")
-P.group:SetChecked(false)
-P.group.scripts.OnClick(P.group)
-check(S.group == false, "page: Highlight my group sets its setting")
+check(S.enabled == true and P.options.name.enabled and P.options.timers.enabled and P.options.name.label.textColor[1] == 1, "settings: ticking the switch turns the module on and the options back")
+check(P.preview.enabled == true and P.preview.keys[1] == H.PREVIEW_KEY, "settings: Preview highlights works once it is on")
+P.options.group:SetChecked(false)
+P.options.group.scripts.OnClick(P.options.group)
+check(S.group == false, "settings: Highlight my group sets its setting")
 S.group = true
+S.windows.personal = false
+pageHelpers.refresh()
+check(P.options.assignments:GetChecked() == true and P.options.personal:GetChecked() == false, "settings: the window checks follow the saved windows")
+P.options.personal:SetChecked(true)
+P.options.personal.scripts.OnClick(P.options.personal)
+check(S.windows.personal == true, "settings: Personal note sets its window")
+local gh = CRT.HighlightsSettings.TEXT.generalHelp
+check(type(gh) == "string" and gh:find("Raid Notes > Notes Settings > Highlights", 1, true) ~= nil and not gh:find("below", 1, true),
+  "settings: General Settings' (?) names Raid Notes > Notes Settings > Highlights")
+S.windows.personal = false
 
 for _, e in ipairs(errors) do fails = fails + 1 print("FAIL error " .. e) end
 return offText .. "\\n=====\\n" .. offAgain, "", passes, fails
@@ -483,13 +706,57 @@ function run(mode, withModule) {
   lua.lua_pushstring(L, to_luastring(mode));
   const files = ['CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua',
     'CRT_Modules/Notes/Engine.lua', 'CRT_Modules/Groups/Data.lua', 'CRT_Modules/Notes/Window.lua'];
-  if (withModule) files.push('CRT_Modules/Highlights/Data.lua', 'CRT_Modules/Highlights/Page.lua');
+  if (withModule) files.push('CRT_Modules/Highlights/Data.lua', 'CRT_Modules/Highlights/Changes.lua', 'CRT_Modules/Highlights/Settings.lua');
   for (const f of files) { lua.lua_pushstring(L, to_luastring(f)); lua.lua_pushstring(L, to_luastring(read(f))); }
   if (lua.lua_pcall(L, 1 + files.length * 2, 4, 0) !== lua.LUA_OK) throw new Error(mode + ': ' + lua.lua_tojsstring(L, -1));
   return { text: lua.lua_tojsstring(L, -4), passes: lua.lua_tonumber(L, -2), fails: lua.lua_tonumber(L, -1) };
 }
 
 let failed = 0;
+{
+  const core = read('CRT_Core/Core.lua');
+  const m = /\n\s*highlights = (\{[^\r\n]*\}),?\r?\n/.exec(core);
+  const def = m ? m[1].replace(/\s+/g, ' ') : '';
+  const want = '{ enabled = true, name = true, group = true, glow = true, windows = { assignments = true, timers = false, personal = false }, migrated = 1 }';
+  if (def === want) console.log('ok defaults: on, for the assignments window only, already switched on once (Core.lua)');
+  else { failed++; console.log('FAIL defaults in Core.lua: ' + def); }
+}
+// The one-time switch-on (Alex, 2026-11-11: "Merge, switch on once"): CRT.SwitchOnHighlightsOnce from Core.lua, run on
+// its own, and called before the defaults fill in highlights.windows.
+{
+  const core = read('CRT_Core/Core.lua').replace(/\r\n/g, '\n');
+  const start = core.indexOf('function CRT.SwitchOnHighlightsOnce(');
+  const end = start < 0 ? -1 : core.indexOf('\nend\n', start);
+  const call = core.indexOf('CRT.SwitchOnHighlightsOnce(CRTDB)');
+  const defaultsAt = core.indexOf('copyDefaults(defaults, CRTDB)');
+  const say = (ok, what) => { if (ok) console.log('ok ' + what); else { failed++; console.log('FAIL ' + what); } };
+  say(start >= 0 && end > start, 'switch on once: Core.lua has CRT.SwitchOnHighlightsOnce');
+  say(call >= 0 && defaultsAt > call, 'switch on once: runs at load, before the defaults fill in highlights.windows');
+  if (start >= 0 && end > start) {
+    const src = 'local CRT = {}\n' + core.slice(start, end + 5) + `
+local out = {}
+local function add(ok, what) out[#out + 1] = (ok and "ok " or "FAIL ") .. what end
+-- a build#006 profile: its saved default, off, and no windows yet
+local old = { highlights = { enabled = false, name = true, group = true, glow = true } }
+add(CRT.SwitchOnHighlightsOnce(old) == true and old.highlights.enabled == true and old.highlights.migrated == 1, "switch on once: a build#006 profile is switched on")
+old.highlights.enabled = false -- the player turns it off again
+add(CRT.SwitchOnHighlightsOnce(old) == false and old.highlights.enabled == false, "switch on once: never runs twice, so turning it off again stays off")
+-- turned off after this build: windows saved, so it stays off
+local mine = { highlights = { enabled = false, name = true, group = true, glow = true, windows = { assignments = true } } }
+add(CRT.SwitchOnHighlightsOnce(mine) == false and mine.highlights.enabled == false and mine.highlights.migrated == 1, "switch on once: a profile with windows saved and off stays off")
+-- a fresh profile: nothing saved, the defaults bring it on with the flag
+local fresh = {}
+add(CRT.SwitchOnHighlightsOnce(fresh) == false and fresh.highlights == nil, "switch on once: a fresh profile is left to the defaults")
+return table.concat(out, "\\n")
+`;
+    const L2 = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L2);
+    if (lauxlib.luaL_loadstring(L2, to_luastring(src)) !== lua.LUA_OK || lua.lua_pcall(L2, 0, 1, 0) !== lua.LUA_OK) {
+      failed++; console.log('FAIL switch on once: ' + lua.lua_tojsstring(L2, -1));
+    } else {
+      for (const line of lua.lua_tojsstring(L2, -1).split('\n')) { if (line.startsWith('FAIL')) failed++; console.log(line); }
+    }
+  }
+}
 try {
   const bare = run('bare', false);
   const mod = run('module', true);

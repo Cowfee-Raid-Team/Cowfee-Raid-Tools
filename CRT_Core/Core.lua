@@ -477,10 +477,12 @@ local defaults = {
         plates = { on = true, all = true, size = 50, font = 24, offset = 20,
             mineBox = { 0, 1, 0, 1 }, mineText = { 1, 0, 0, 1 }, box = { 1, 0, 0, 1 }, text = { 1, 1, 1, 1 } }, -- saved, the player's to change: not a theme colour
         reminder = { on = true, sound = "none", size = 48 } },
-    -- Assignment highlights (Highlights/): enabled is the module's one switch, off until the player ticks Use assignment
-    -- highlights on its page, as Interrupts is. name and group mark the raid note lines that name you or your raid
-    -- group; glow makes a line with you in it glow when a new note changes it.
-    highlights = { enabled = false, name = true, group = true, glow = true },
+    -- Assignment highlights (Highlights/; settings on Raid Notes > Notes Settings and General Settings > Modules): enabled
+    -- is the one switch, on from a fresh install. name and group mark the raid note lines that name you or your raid
+    -- group; glow makes a line glow when a new version of the note changes your part (Added, Removed, Moved). windows
+    -- says which note windows show them: the assignments window by default; the timers and personal note windows only
+    -- once ticked (Alex, 2026-11-11). migrated: CRT.SwitchOnHighlightsOnce has run (a fresh profile never needs it).
+    highlights = { enabled = true, name = true, group = true, glow = true, windows = { assignments = true, timers = false, personal = false }, migrated = 1 },
     alerts = {
         bars = { shown = true, noteLines = true, cap = 5, ahead = 20, width = 240, height = 20, spacing = 4, border = "none", font = "Friz Quadrata", fontSize = 13,
             barColor = { 0.44, 0.31, 0.22, 1 }, bgColor = { 0, 0, 0, 0.6 }, textColor = { 0.95, 0.90, 0.84, 1 }, showType = true }, -- saved, the player's to change: not a theme colour
@@ -807,6 +809,24 @@ function CRT.SeedCalloutLook(db)
     alert.outline = CALLOUT_OUTLINES[outline] and outline or ""
 end
 
+-- Assignment highlights, once (Alex, 2026-11-11: "Merge, switch on once"). build#006 saved highlights.enabled = false,
+-- its default then, into every profile it loaded, before highlights.windows existed. A profile like that is switched
+-- on once; one with windows saved and off was turned off by its player and stays off. highlights.migrated records that
+-- it ran, so it never runs again and a player who turns highlights off afterwards stays off. Runs before the defaults
+-- fill in windows. Returns true when it switched highlights on.
+function CRT.SwitchOnHighlightsOnce(db)
+    local h = type(db) == "table" and db.highlights
+    if type(h) ~= "table" or h.migrated ~= nil then
+        return false
+    end
+    h.migrated = 1
+    if h.enabled == false and h.windows == nil then
+        h.enabled = true
+        return true
+    end
+    return false
+end
+
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
 frame:SetScript("OnEvent", function(self, event, arg1)
@@ -831,6 +851,7 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         end
         CRT.ReadOldTooltipSettings(CRTDB)
         local seedCallout = CRT.CalloutNeedsLook(CRTDB) -- before the defaults fill in its size
+        CRT.SwitchOnHighlightsOnce(CRTDB) -- before the defaults fill in highlights.windows
         copyDefaults(defaults, CRTDB)
         CRT:UseTheme(CRT:ResolveTheme(CRTDB.ui))
         -- once: the old default of axis labels every 30 seconds becomes Auto, which follows the zoom

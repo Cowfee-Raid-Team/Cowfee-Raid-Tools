@@ -279,7 +279,7 @@ do
   end
   CRT.Interrupts = nil
 end
--- Appearance > Modules: Use assignment highlights, the same saved switch as the module's own page (Highlights/Data.lua, stood in for)
+-- Appearance > Modules: Use assignment highlights, the same saved switch as Raid Notes > Notes Settings > Highlights (Highlights/Data.lua, stood in for)
 do
   local on
   CRT.NoteHighlights = { Enabled = function() return on == true end, SetEnabled = function(_, v) on = v end }

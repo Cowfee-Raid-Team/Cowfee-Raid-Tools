@@ -536,7 +536,7 @@ UI.MENU_GROUPS = {
     { label = TEXT.bosses, "timeline", "notes", "pace" },
     { label = TEXT.raidAdmin, "readycheck", "groups", "gearcheck", "late" },
     -- the optional modules each raider switches on (General Settings > Modules) come first
-    { label = TEXT.modules, "interrupts", "highlights", "lootmaster", "loot", "requests", "seasonstats", "tattle" },
+    { label = TEXT.modules, "interrupts", "lootmaster", "loot", "requests", "seasonstats", "tattle" },
 }
 
 function UI:IsModern()
