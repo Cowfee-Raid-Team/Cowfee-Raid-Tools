@@ -672,14 +672,31 @@ local function greyed(c) return c.enabled == false and c.label.textColor and c.l
 S.enabled = false
 pageHelpers.refresh()
 local allGrey = true
-for _, key in ipairs({ "name", "group", "glow", "assignments", "timers", "personal" }) do
+for _, key in ipairs({ "name", "group", "glow" }) do
   if not (P.options[key] and greyed(P.options[key])) then allGrey = false end
 end
-check(allGrey, "settings: every option, the three windows included, greyed while the switch is off")
+check(allGrey, "settings: every option greyed while the switch is off")
+check(P.options.assignments == nil and P.options.timers == nil and P.options.personal == nil, "settings: the window boxes are not in the section any more")
+-- the per-window Use highlights boxes, as Notes/Settings.lua puts them in each column
+local winShown = { assignments = true, timers = true, personal = true }
+local WC = {}
+for _, key in ipairs({ "assignments", "timers", "personal" }) do
+  WC[key] = CRT.HighlightsSettings.WindowCheck(pf, 0, 0, key, function() return winShown[key] end, pageHelpers, 100)
+  check(WC[key].label.text == "Use highlights" and WC[key].help and WC[key].help.text ~= "", "window check " .. key .. ": labelled, with its (?)")
+end
+check(WC.personal.help.text:find("bands only", 1, true) ~= nil and WC.assignments.help.text:find("Use assignment highlights", 1, true) ~= nil,
+  "window check: the (?) says personal shows bands only and names the main switch")
+pageHelpers.refresh()
+check(greyed(WC.assignments) and greyed(WC.timers) and greyed(WC.personal), "window checks: greyed while the main switch is off")
 check(P.preview.enabled == false, "settings: Preview highlights greyed while the switch is off")
 P.enable:SetChecked(true)
 P.enable.scripts.OnClick(P.enable)
-check(S.enabled == true and P.options.name.enabled and P.options.timers.enabled and P.options.name.label.textColor[1] == 1, "settings: ticking the switch turns the module on and the options back")
+check(S.enabled == true and P.options.name.enabled and WC.timers.enabled and P.options.name.label.textColor[1] == 1, "settings: ticking the switch turns the module on and the options back, the window boxes too")
+winShown.timers = false
+pageHelpers.refresh()
+check(greyed(WC.timers) and WC.assignments.enabled, "window check: greyed while its window is hidden")
+winShown.timers = true
+pageHelpers.refresh()
 check(P.preview.enabled == true and P.preview.keys[1] == H.PREVIEW_KEY, "settings: Preview highlights works once it is on")
 P.options.group:SetChecked(false)
 P.options.group.scripts.OnClick(P.options.group)
@@ -687,13 +704,15 @@ check(S.group == false, "settings: Highlight my group sets its setting")
 S.group = true
 S.windows.personal = false
 pageHelpers.refresh()
-check(P.options.assignments:GetChecked() == true and P.options.personal:GetChecked() == false, "settings: the window checks follow the saved windows")
-P.options.personal:SetChecked(true)
-P.options.personal.scripts.OnClick(P.options.personal)
-check(S.windows.personal == true, "settings: Personal note sets its window")
-local gh = CRT.HighlightsSettings.TEXT.generalHelp
-check(type(gh) == "string" and gh:find("Raid Notes > Notes Settings > Highlights", 1, true) ~= nil and not gh:find("below", 1, true),
-  "settings: General Settings' (?) names Raid Notes > Notes Settings > Highlights")
+check(WC.assignments:GetChecked() == true and WC.personal:GetChecked() == false, "settings: the window checks follow the saved windows")
+WC.personal:SetChecked(true)
+WC.personal.scripts.OnClick(WC.personal)
+check(S.windows.personal == true, "settings: Personal note's box sets its window")
+WC.timers:SetChecked(true)
+WC.timers.scripts.OnClick(WC.timers)
+check(S.windows.timers == true, "settings: the timers box sets the timers window")
+S.windows.timers = false
+check(CRT.HighlightsSettings.TEXT.generalHelp == nil, "settings: no General Settings text is left")
 S.windows.personal = false
 
 for _, e in ipairs(errors) do fails = fails + 1 print("FAIL error " .. e) end
