@@ -279,7 +279,7 @@ do
   end
   CRT.Interrupts = nil
 end
--- Appearance > Modules: Use assignment highlights, the same saved switch as Raid Notes > Notes Settings > Highlights (Highlights/Data.lua, stood in for)
+-- Modules no longer holds Use assignment highlights: its switch is on Raid Notes > Notes Settings > Highlights
 do
   local on
   CRT.NoteHighlights = { Enabled = function() return on == true end, SetEnabled = function(_, v) on = v end }
@@ -288,16 +288,8 @@ do
     local l = rawget(fr, "label")
     if fr.kind == "CheckButton" and type(l) == "table" and rawget(l, "text") == "Use assignment highlights" then cb = fr end
   end
-  if not cb then
-    print("FAIL General Settings has a Use assignment highlights checkbox")
-  else
-    cb:SetChecked(true) cb.OnClick(cb)
-    if on ~= true then print("FAIL Use assignment highlights switches the module on") end
-    cb:SetChecked(false) cb.OnClick(cb)
-    if on ~= false then print("FAIL Use assignment highlights switches the module off") end
-    on = true
-    cb.refresh()
-    if cb:GetChecked() ~= true then print("FAIL Use assignment highlights follows the saved switch") end
+  if cb then
+    print("FAIL General Settings no longer has a Use assignment highlights checkbox (it is on Notes Settings)")
   end
   CRT.NoteHighlights = nil
 end

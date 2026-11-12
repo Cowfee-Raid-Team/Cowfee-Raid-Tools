@@ -2,9 +2,9 @@ local ADDON, CRT = ...
 
 -- Assignment highlights' settings (Highlights/Data.lua), a section of Raid Notes > Notes Settings: Notes/Settings.lua
 -- calls Build for its place, with its own check box, heading and refresh, so the section looks and greys like the rest
--- of the tab. Use assignment highlights (the one switch; General Settings > Modules has the same one), then Highlight
--- my name, Highlight my group, Glow when my assignment changes and which note windows show them, greyed while the
--- switch is off, and Preview highlights.
+-- of the tab. Use assignment highlights (the one switch), then Highlight my name, Highlight my group and Glow when my
+-- assignment changes, greyed while the switch is off, and Preview highlights. Which note windows show them is a
+-- Use highlights box in each window's column (WindowCheck, called by Notes/Settings.lua).
 
 local UI = CRT.UI
 local H = CRT.NoteHighlights
@@ -13,15 +13,14 @@ local H = CRT.NoteHighlights
 local TEXT = {
     title = "Highlights",
     enable = "Use assignment highlights",
-    enableHelp = "In the note windows ticked below, the lines that name you or your raid group get a band behind them, with your name or group in the theme's accent colour.\n\nWhen a new version of the same note changes your part, the line glows for a few seconds and says Added, Removed or Moved. A line you were taken off that is gone shows faded for those seconds. The personal note shows the bands only: you write it yourself.\n\nLines about others stay as they are.",
-    -- the same switch on General Settings > Modules (UI/SettingsPage.lua), where nothing is below it
-    generalHelp = "In the note windows you tick on Raid Notes > Notes Settings > Highlights, the lines that name you or your raid group get a band behind them, with your name or group in the theme's accent colour.\n\nWhen a new version of the same note changes your part, the line glows for a few seconds and says Added, Removed or Moved.\n\nThe same switch as on Raid Notes > Notes Settings > Highlights, where its other options are.",
+    enableHelp = "In the note windows whose Use highlights box is ticked (one in each window's column above), the lines that name you or your raid group get a band behind them, with your name or group in the theme's accent colour.\n\nWhen a new version of the same note changes your part, the line glows for a few seconds and says Added, Removed or Moved. A line you were taken off that is gone shows faded for those seconds. The personal note shows the bands only: you write it yourself.\n\nLines about others stay as they are.",
+    -- the box in each note window's column (windowCheck below)
+    windowLabel = "Use highlights",
+    windowHelp = "Marks the lines that name you or your raid group in this window, with a band behind them.\n\nThe glow and the Added, Removed or Moved words show too when your part changes.\n\nGreyed out while the main switch is off: Raid Notes > Notes Settings > Highlights > Use assignment highlights.",
+    windowHelpPersonal = "Marks the lines that name you or your raid group in this window, with a band behind them. The personal note shows the bands only, with no glow, because you write it yourself.\n\nGreyed out while the main switch is off: Raid Notes > Notes Settings > Highlights > Use assignment highlights.",
     name = "Highlight my name",
     group = "Highlight my group (G3, group 3)",
     glow = "Glow when my assignment changes",
-    assignments = "Assignments window",
-    timers = "Timer window",
-    personal = "Personal note",
     preview = "Preview highlights",
     previewTip = "Shows the assignments window with a sample note that names you and your group, with one Added, Moved and Removed line. Other previews stay as they are.",
     previewOff = "Tick Use assignment highlights first.",
@@ -38,9 +37,6 @@ local OPTIONS = {
     { field = "name", label = TEXT.name },
     { field = "group", label = TEXT.group },
     { field = "glow", label = TEXT.glow },
-    { window = "assignments", label = TEXT.assignments },
-    { window = "timers", label = TEXT.timers },
-    { window = "personal", label = TEXT.personal },
 }
 
 local function enabled()
@@ -85,20 +81,13 @@ local function build(pf, x, top, width, page)
 
     for i, opt in ipairs(OPTIONS) do
         local check, label = page.check(pf, x - 4 + INDENT, top - 20 - i * ROW_H, opt.label, enabled, function()
-            if opt.window then
-                return windows()[opt.window] == true
-            end
             return H.Settings()[opt.field] and true or false
         end, function(on)
-            if opt.window then
-                windows()[opt.window] = on
-            else
-                H.Settings()[opt.field] = on
-            end
+            H.Settings()[opt.field] = on
             changed()
         end)
         label:SetWidth(width - CHECK_W - INDENT)
-        section.options[opt.window or opt.field] = check
+        section.options[opt.field] = check
     end
 
     preview = UI.PreviewButton(pf, TEXT.preview, { H.PREVIEW_KEY }, { tooltip = TEXT.previewTip, enabledIf = function()
@@ -110,4 +99,22 @@ local function build(pf, x, top, width, page)
     return section
 end
 
-CRT.HighlightsSettings = { TEXT = TEXT, Build = build }
+-- The Use highlights box in a note window's column (Notes/Settings.lua), bound to CRTDB.highlights.windows[window]
+-- (assignments, timers or personal). Greyed while shown() says the window is hidden, or the main switch is off.
+-- page: the same helpers as Build. labelWidth: room for the label and its (?). Returns the check box.
+local function windowCheck(pf, x, y, window, shown, page, labelWidth)
+    local check, label = page.check(pf, x, y, TEXT.windowLabel, function()
+        return enabled() and shown()
+    end, function()
+        return windows()[window] == true
+    end, function(on)
+        windows()[window] = on
+        H:Changed()
+        page.refresh()
+    end)
+    label:SetWidth(labelWidth - UI.HELP_SIZE - UI.HELP_GAP) -- room for its (?)
+    UI.HelpRight(check, TEXT.windowLabel, window == "personal" and TEXT.windowHelpPersonal or TEXT.windowHelp)
+    return check
+end
+
+CRT.HighlightsSettings = { TEXT = TEXT, Build = build, WindowCheck = windowCheck }

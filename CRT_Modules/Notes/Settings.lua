@@ -74,16 +74,17 @@ local FOURTH_W = UI.PAGE_W - 8 - FOURTH_X
 local TOP, ALL_H = -14, 56
 -- Each window's preview key, as Notes/Window.lua registers it.
 local WINDOWS = {
-    { key = "window", title = TEXT.timers, preview = "note-timers", previewLabel = TEXT.previewTimers },
-    { key = "assignments", title = TEXT.assignments, preview = "note-assignments", previewLabel = TEXT.previewAssignments },
-    { key = "personal", title = TEXT.personal, preview = "note-personal", previewLabel = TEXT.previewPersonal },
+    -- highlights: the window's key in CRTDB.highlights.windows
+    { key = "window", highlights = "timers", title = TEXT.timers, preview = "note-timers", previewLabel = TEXT.previewTimers },
+    { key = "assignments", highlights = "assignments", title = TEXT.assignments, preview = "note-assignments", previewLabel = TEXT.previewAssignments },
+    { key = "personal", highlights = "personal", title = TEXT.personal, preview = "note-personal", previewLabel = TEXT.previewPersonal },
 }
 local ALL_PREVIEWS = { WINDOWS[1].preview, WINDOWS[2].preview, WINDOWS[3].preview }
--- A column's rows, from its heading down (buildColumn): Show, Locked and Keep up when empty 24 apart, the
+-- A column's rows, from its heading down (buildColumn): Show, Use highlights, Locked and Keep up when empty 24 apart, the
 -- timers window's two more, then the sliders and the font list. Each window's preview button sits
 -- under the timers column's last row, so the three line up.
 local ROW_H = 24
-local COLUMN_ROWS_Y = 92 -- the rows after Show, Locked and Keep up when empty, under the heading
+local COLUMN_ROWS_Y = 116 -- the rows after Show, Use highlights, Locked and Keep up when empty, under the heading
 local FONT_GAP = 88      -- the font list, under the first slider: the three sliders 28 apart and a gap
 local FONT_ROW_Y = COLUMN_ROWS_Y + 2 * ROW_H + FONT_GAP -- the timers column's font list, under its heading
 local PREVIEW_ROW_Y = FONT_ROW_Y + 36   -- the window preview buttons, under the font list
@@ -171,6 +172,15 @@ local function heading(parent, x, y, text)
     return fs
 end
 
+local function refresh()
+    if not page or not page:IsShown() then
+        return
+    end
+    for _, control in ipairs(controls) do
+        control.refresh()
+    end
+end
+
 local function buildColumn(pf, index, def, top)
     local x = 8 + (index - 1) * COLUMN_W
     local title = heading(pf, x, top, def.title)
@@ -183,8 +193,13 @@ local function buildColumn(pf, index, def, top)
         return Notes:WindowSettings(def.key).shown and true or false
     end
     makeCheck(pf, x - 4, top - 20, TEXT.show, nil, setting(def.key, "shown"))
-    makeCheck(pf, x - 4, top - 44, TEXT.locked, shown, setting(def.key, "locked"))
-    makeCheck(pf, x - 4, top - 68, TEXT.keepEmpty, shown, setting(def.key, "keepEmpty"))
+    -- Use highlights (Highlights/Settings.lua), right under Show this window
+    if CRT.HighlightsSettings then
+        CRT.HighlightsSettings.WindowCheck(pf, x - 4, top - 20 - ROW_H, def.highlights, shown,
+            { check = makeCheck, refresh = refresh }, COLUMN_W - 30)
+    end
+    makeCheck(pf, x - 4, top - 20 - 2 * ROW_H, TEXT.locked, shown, setting(def.key, "locked"))
+    makeCheck(pf, x - 4, top - 20 - 3 * ROW_H, TEXT.keepEmpty, shown, setting(def.key, "keepEmpty"))
     local y = top - COLUMN_ROWS_Y
     if def.key == "window" then
         makeCheck(pf, x - 4, y, TEXT.hidePassed, shown, setting(def.key, "hidePassed"))
@@ -221,15 +236,6 @@ local function buildColumn(pf, index, def, top)
     local preview = UI.PreviewButton(pf, def.previewLabel, { def.preview },
         { tooltip = format(TEXT.previewOneTip, def.title) })
     preview:SetPoint("TOPLEFT", x, top - PREVIEW_ROW_Y)
-end
-
-local function refresh()
-    if not page or not page:IsShown() then
-        return
-    end
-    for _, control in ipairs(controls) do
-        control.refresh()
-    end
 end
 
 local function build(pf)
