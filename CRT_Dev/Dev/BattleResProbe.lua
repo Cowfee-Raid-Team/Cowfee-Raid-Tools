@@ -3,8 +3,9 @@ local ADDON, CRT = ...
 -- DEVELOPER ONLY. Finds out, in a boss fight, what an addon can read of the shared battle res charges, for the battle
 -- res icon (QoL/BattleRes.lua).
 --   /crt dev brez   prints, for Rebirth (20484): each field of C_Spell.GetSpellCharges, whether it is secret
---                   (issecretvalue), whether an encounter is active, combat, the group and the instance kind, and whether the game's charge duration object
---                   (C_Spell.GetSpellChargeDuration) has secrets and is taken by Cooldown:SetCooldownFromDurationObject
+--                   (issecretvalue), whether an encounter is active, combat, the group and the instance kind, and
+--                   whether the game's charge duration object (C_Spell.GetSpellChargeDuration) has secrets and is
+--                   taken by Cooldown:SetCooldownFromDurationObject
 -- Nothing is compared, joined, turned into text or kept before its issecretvalue check; every game call is in a pcall.
 -- The duration test uses its own hidden cooldown frame, never the icon's.
 --
@@ -104,11 +105,13 @@ function Probe:Run()
         local ok, v = pcall(IsEncounterInProgress)
         inProgress = ok and show(v) or "error"
     end
-    print(string.format(TEXT.encounter, tostring(state.encounter), inProgress, tostring(state.combat), tostring(state.group), tostring(state.instance)))
+    print(string.format(TEXT.encounter, tostring(state.encounter), inProgress, tostring(state.combat),
+        tostring(state.group), tostring(state.instance)))
     print(string.format(TEXT.duration, durationLine(id)))
     local s = CRT.db.qol.battleRes
     local parts = CRT.BattleRes and CRT.BattleRes.Parts() or {}
-    print(string.format(TEXT.icon, (s.enabled and "on" or "off") .. ", " .. tostring(s.show) .. (s.groupOnly and ", only in a group" or ""),tostring(parts.frame and parts.frame:IsShown() or false)))
+    local setting = (s.enabled and "on" or "off") .. ", " .. tostring(s.show) .. (s.groupOnly and ", only in a group" or "")
+    print(string.format(TEXT.icon, setting, tostring(parts.frame and parts.frame:IsShown() or false)))
 end
 
 -- Handles "dev brez". Returns true when the command was one.

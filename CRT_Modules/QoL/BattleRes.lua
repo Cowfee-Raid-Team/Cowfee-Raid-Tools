@@ -33,7 +33,9 @@ local ADDON, CRT = ...
 -- ENCOUNTER_END, PLAYER_REGEN_DISABLED, PLAYER_REGEN_ENABLED, PLAYER_ENTERING_WORLD, ZONE_CHANGED_NEW_AREA.
 -- Added 2026-11-12 (warcraft.wiki.gg, read that day): IsInGroup([groupType]) -> inGroup (any group with no argument),
 -- event GROUP_ROSTER_UPDATE (no payload; a group formed or disbanded, or someone joined or left). IsInInstance is now
--- only read for the dev probe's instance kind.
+-- only read for the dev probe's instance kind. Also (warcraft.wiki.gg and Gethe/wow-ui-source live
+-- ChallengeModeInfoDocumentation): events CHALLENGE_MODE_START (mapID), CHALLENGE_MODE_COMPLETED (no payload),
+-- CHALLENGE_MODE_RESET (mapID); C_Timer.After(seconds, callback); Region:SetAlpha(alpha) for the dimmed icon.
 
 local BattleRes = {}
 CRT.BattleRes = BattleRes
@@ -390,6 +392,21 @@ UI:RegisterPreview("battleres", function(on)
     BattleRes:Apply()
 end)
 
+-- The charge pool can outlast the event that ends it by a moment, so after these the charges are read once more,
+-- REREAD_DELAY seconds later: a shown icon then dims back to the dash instead of keeping an old count.
+local KEY_EVENTS = { "CHALLENGE_MODE_START", "CHALLENGE_MODE_COMPLETED", "CHALLENGE_MODE_RESET" }
+local REREAD_AFTER = { ENCOUNTER_END = true, CHALLENGE_MODE_COMPLETED = true, CHALLENGE_MODE_RESET = true }
+local REREAD_DELAY = 1
+
+local function rereadSoon()
+    if not (C_Timer and C_Timer.After) then
+        return
+    end
+    pcall(C_Timer.After, REREAD_DELAY, function()
+        BattleRes:Update()
+    end)
+end
+
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -400,11 +417,19 @@ events:RegisterEvent("ENCOUNTER_START")
 events:RegisterEvent("ENCOUNTER_END")
 events:RegisterEvent("SPELL_UPDATE_CHARGES")
 events:RegisterEvent("GROUP_ROSTER_UPDATE") -- Only in a group: joining or leaving applies at once
+-- A key's start, end and reset: the charge pool comes or goes, so the charges are read again.
+for _, event in ipairs(KEY_EVENTS) do
+    events:RegisterEvent(event)
+end
 events:SetScript("OnEvent", function(_, event)
     if event == "SPELL_UPDATE_CHARGES" then
         BattleRes:Update()
         return
-    elseif event == "PLAYER_REGEN_DISABLED" then
+    end
+    if REREAD_AFTER[event] then
+        rereadSoon()
+    end
+    if event == "PLAYER_REGEN_DISABLED" then
         inCombat = true
     elseif event == "PLAYER_REGEN_ENABLED" then
         inCombat = false

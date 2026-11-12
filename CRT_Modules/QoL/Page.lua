@@ -63,7 +63,6 @@ local TEXT = {
     brezBossTip = "from the pull until the boss dies or the group wipes.",
     brezCombatTip = "whenever you are in combat, trash and training dummies too.",
     brezRaidTip = "all the time.",
-    brezGroupTip = "Only in a group hides it while you are solo. A party or a raid counts.",
     brezGroupOnly = "Only in a group",
     brezSize = "Size",
     brezTimer = "Show the timer",
@@ -454,7 +453,6 @@ local function buildBattleRes(pf, top)
         { TEXT.brezBoss, TEXT.brezBossTip },
         { TEXT.brezCombat, TEXT.brezCombatTip },
         { TEXT.brezRaid, TEXT.brezRaidTip },
-        TEXT.brezGroupTip,
     }, { parent = pf })
 
     local groupOnly = checkRow(pf, 6, top - 66, TEXT.brezGroupOnly)

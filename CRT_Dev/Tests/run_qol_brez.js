@@ -75,6 +75,10 @@ local now = 1000
 GetTime = function() return now end
 local inside, kind = false, "none"
 IsInInstance = function() return inside, kind end
+-- timers wait here until the check runs them
+local timers = {}
+C_Timer = { After = function(sec, fn) timers[#timers + 1] = { sec = sec, fn = fn } end }
+local function runTimers() local due = timers timers = {} for _, t in ipairs(due) do t.fn() end return #due end
 local grouped = false
 IsInGroup = function() return grouped end
 IsEncounterInProgress = function() return false end
@@ -110,7 +114,7 @@ check(B ~= nil, "CRT.BattleRes exists")
 local events
 for _, f in ipairs(made) do if f.events and f.events.SPELL_UPDATE_CHARGES then events = f end end
 check(events ~= nil, "it listens to SPELL_UPDATE_CHARGES")
-for _, e in ipairs({ "ENCOUNTER_START", "ENCOUNTER_END", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_ENTERING_WORLD", "GROUP_ROSTER_UPDATE" }) do
+for _, e in ipairs({ "ENCOUNTER_START", "ENCOUNTER_END", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_ENTERING_WORLD", "GROUP_ROSTER_UPDATE", "CHALLENGE_MODE_START", "CHALLENGE_MODE_COMPLETED", "CHALLENGE_MODE_RESET" }) do
   check(events and events.events[e], "it listens to " .. e)
 end
 local function fire(e) events.scripts.OnEvent(events, e) end
@@ -251,6 +255,51 @@ fire("ENCOUNTER_END")
 info = { currentCharges = 1, maxCharges = 0, cooldownStartTime = 0, cooldownDuration = 0, chargeModRate = 1, isActive = false }
 fire("SPELL_UPDATE_CHARGES")
 check(p.count.text == DASH and p.frame.alpha < 1, "a reading with no charges at all (maxCharges 0): no pool")
+
+-- A stale pool: Always keeps the icon after ENCOUNTER_END; the game may still give the old pool at that moment, so
+-- the charges are read again a moment later, and with no pool then it dims back to the dash
+timers = {}
+info = { currentCharges = 1, maxCharges = 5, cooldownStartTime = 0, cooldownDuration = 0, chargeModRate = 1, isActive = false }
+fire("ENCOUNTER_START")
+fire("ENCOUNTER_END")
+check(shown() and p.count.text == 1 and p.frame.alpha == 1, "ENCOUNTER_END: the pool still read at once, full")
+check(#timers == 1 and timers[1].sec > 0 and timers[1].sec <= 2, "ENCOUNTER_END: one re-read a moment later: " .. #timers)
+info = nil
+runTimers()
+check(p.count.text == DASH and p.frame.alpha < 1, "the delayed re-read with no pool: the dimmed dash")
+-- a key: start and complete read the charges again (completed and reset once more a moment later)
+info = { currentCharges = 1, maxCharges = 1, cooldownStartTime = 0, cooldownDuration = 0, chargeModRate = 1, isActive = false }
+fire("CHALLENGE_MODE_START")
+check(p.count.text == 1 and p.frame.alpha == 1, "CHALLENGE_MODE_START: the key's pool read, full")
+check(#timers == 0, "CHALLENGE_MODE_START: no delayed re-read")
+info = nil
+fire("CHALLENGE_MODE_COMPLETED")
+check(p.count.text == DASH and p.frame.alpha < 1, "CHALLENGE_MODE_COMPLETED: read again, the dimmed dash")
+info = { currentCharges = 1, maxCharges = 1, cooldownStartTime = 0, cooldownDuration = 0, chargeModRate = 1, isActive = false }
+fire("CHALLENGE_MODE_START")
+fire("CHALLENGE_MODE_COMPLETED")
+check(p.count.text == 1, "(set up) the pool still there right after the key")
+check(#timers == 2, "CHALLENGE_MODE_COMPLETED: a delayed re-read: " .. #timers)
+info = nil
+runTimers()
+check(p.count.text == DASH and p.frame.alpha < 1, "after the key, the delayed re-read: the dimmed dash")
+info = { currentCharges = 1, maxCharges = 1, cooldownStartTime = 0, cooldownDuration = 0, chargeModRate = 1, isActive = false }
+fire("CHALLENGE_MODE_START")
+info = nil
+fire("CHALLENGE_MODE_RESET")
+check(p.count.text == DASH and #timers == 1, "CHALLENGE_MODE_RESET: read again and once more later")
+runTimers()
+-- the timer never errors when the icon is hidden by then, nor without C_Timer
+s.enabled = false
+fire("ENCOUNTER_END")
+local okT, errT = pcall(runTimers)
+check(okT and not shown(), "a delayed re-read while hidden: nothing, no error: " .. tostring(errT))
+s.enabled = true
+local keepTimer = C_Timer
+C_Timer = nil
+okT, errT = pcall(fire, "ENCOUNTER_END")
+check(okT and shown(), "no C_Timer: no error: " .. tostring(errT))
+C_Timer = keepTimer
 
 -- Charges change: SPELL_UPDATE_CHARGES writes the new count
 info = { currentCharges = 1, maxCharges = 5, cooldownStartTime = now - 60, cooldownDuration = 300, chargeModRate = 1, isActive = true }
