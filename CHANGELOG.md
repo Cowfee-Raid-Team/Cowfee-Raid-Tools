@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.1 (2026-11-12)
+
+- **Battle res icon anywhere:** the icon is no longer raid-only. Pick In boss fights, In any combat or Always on Quality of Life > Battle res, and it works in raids, dungeons, Mythic+ and the open world.
+- **Only in a group:** a new tick under Show it, so the icon shows only while you're in a party or raid.
+- **No charges, dimmed icon:** battle res charges only exist in a boss fight or a Mythic+ key. Anywhere else the icon shows dimmed with a dash, and it goes back to the dash about a second after a fight or key ends.
+
 ## 1.4.0 (2026-11-12)
 
 - **Loot wishlists:** right-click an item in the Adventure Guide and add it to your wishlist as a Big upgrade, Small upgrade or Off spec. The loot master and assists see each raider's pick in the Master Loot window. Nothing is whispered.

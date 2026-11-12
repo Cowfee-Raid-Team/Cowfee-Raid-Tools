@@ -6,6 +6,15 @@ local ADDON, CRT = ...
 -- CRT_Dev/Tests/run_whatsnew.js checks every entry.
 CRT.WhatsNewData = {
     {
+        version = "1.4.1",
+        lines = {
+            "Battle res icon in any combat, anywhere",
+            "Battle res icon: Only in a group option",
+            "Battle res icon dims when there are no charges",
+        },
+        more = 0,
+    },
+    {
         version = "1.4.0",
         lines = {
             "Loot wishlists from the Adventure Guide",
