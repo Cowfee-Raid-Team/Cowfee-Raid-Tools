@@ -53,11 +53,18 @@ local TEXT = {
     breakPreview = "Preview break timer",
     breakPreviewTip = "Shows the break timer with a sample break so you can drag it into place. Other previews stay as they are.",
     brezEnable = "Show battle res icon",
-    brezNote = "An icon with your group's battle res charges in its corner, for raids only: it never shows in dungeons or Mythic+. While a charge comes back, it shows the time to it. At 0 charges its border and number turn the theme's bad colour (red in Default: Blizzard). In a fight the game may hide the count's value, so the number won't change colour. If it hides the recharge too, the icon shows the count only.",
+    brezNote = "An icon with your group's battle res charges in its corner. Charges exist only in a boss fight or a Mythic+ key. Anywhere else the icon is dimmed, with a dash for the number. While a charge comes back, it shows the time to it. At 0 charges its border and number turn the theme's bad colour (red in Default: Blizzard). In a fight the game may hide the count's value, so the number won't change colour. If it hides the recharge too, the icon shows the count only.",
     brezShow = "Show it",
-    brezBoss = "In raid boss fights",
-    brezCombat = "In any combat in a raid",
-    brezRaid = "Always in a raid",
+    -- the stored keys stay boss, combat and raid; raid now means Always
+    brezBoss = "In boss fights",
+    brezCombat = "In any combat",
+    brezRaid = "Always",
+    brezShowIntro = "When the icon is on screen. Raids, dungeons, Mythic+ and the open world all count.",
+    brezBossTip = "from the pull until the boss dies or the group wipes.",
+    brezCombatTip = "whenever you are in combat, trash and training dummies too.",
+    brezRaidTip = "all the time.",
+    brezGroupTip = "Only in a group hides it while you are solo. A party or a raid counts.",
+    brezGroupOnly = "Only in a group",
     brezSize = "Size",
     brezTimer = "Show the timer",
     brezPreview = "Preview battle res",
@@ -442,6 +449,26 @@ local function buildBattleRes(pf, top)
     })
     show:SetPoint("TOPLEFT", 10, top - 32)
     controls[#controls + 1] = show
+    UI.HelpRight(show, TEXT.brezShow, {
+        TEXT.brezShowIntro,
+        { TEXT.brezBoss, TEXT.brezBossTip },
+        { TEXT.brezCombat, TEXT.brezCombatTip },
+        { TEXT.brezRaid, TEXT.brezRaidTip },
+        TEXT.brezGroupTip,
+    }, { parent = pf })
+
+    local groupOnly = checkRow(pf, 6, top - 66, TEXT.brezGroupOnly)
+    groupOnly:SetScript("OnClick", function(self)
+        brez().groupOnly = self:GetChecked() and true or false
+        changed()
+    end)
+    groupOnly.refresh = function()
+        local enabled = on() and true or false
+        groupOnly:SetChecked(brez().groupOnly and true or false)
+        groupOnly:SetEnabled(enabled)
+        groupOnly.label:SetFontObject(enabled and CRTFontSmall or CRTFontDisableSmall)
+    end
+    controls[#controls + 1] = groupOnly
 
     local size = UI.Slider(pf, TEXT.brezSize, {
         min = 50,
@@ -460,10 +487,10 @@ local function buildBattleRes(pf, top)
         end,
         enabledIf = on,
     })
-    size:SetPoint("TOPLEFT", 10, top - 66)
+    size:SetPoint("TOPLEFT", 10, top - 100)
     controls[#controls + 1] = size
 
-    local timer = checkRow(pf, 6, top - 100, TEXT.brezTimer)
+    local timer = checkRow(pf, 6, top - 134, TEXT.brezTimer)
     timer:SetScript("OnClick", function(self)
         brez().timer = self:GetChecked() and true or false
         changed()
@@ -477,7 +504,7 @@ local function buildBattleRes(pf, top)
     controls[#controls + 1] = timer
 
     local preview = UI.PreviewButton(pf, TEXT.brezPreview, { "battleres" }, { tooltip = TEXT.brezPreviewTip })
-    preview:SetPoint("TOPLEFT", 8, top - 136)
+    preview:SetPoint("TOPLEFT", 8, top - 170)
 end
 
 -- Tabs: Low health, Debuffs, Break timer, Battle res and Sounds (the debuff panel, Debuffs/Page.lua). All are only
