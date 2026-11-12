@@ -6,6 +6,17 @@ local ADDON, CRT = ...
 -- CRT_Dev/Tests/run_whatsnew.js checks every entry.
 CRT.WhatsNewData = {
     {
+        version = "1.4.0",
+        lines = {
+            "Loot wishlists from the Adventure Guide",
+            "Wishlists tab: guild-synced, three views",
+            "Raid Groups: four new ways to sort",
+            "Battle res icon with charges and timer",
+            "Assignment highlights: Added, Removed, Moved",
+        },
+        more = 4,
+    },
+    {
         version = "1.3.5",
         lines = {
             "Ready check window: background opacity slider",

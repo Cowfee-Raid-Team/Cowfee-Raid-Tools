@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.0 (2026-11-12)
+
+- **Loot wishlists:** right-click an item in the Adventure Guide and add it to your wishlist as a Big upgrade, Small upgrade or Off spec. The loot master and assists see each raider's pick in the Master Loot window. Nothing is whispered.
+- **Saved wishlists:** wishlists sync over the guild channel, and officers and assists keep a saved copy. The new Wishlists tab on Loot Master shows them three ways: Bosses, one boss's items, and Raiders, with a Team filter.
+- **Order equal answers:** a Loot Master setting for how the loot window orders players who gave the same answer: Wishlist then Raider Score (the default), Raider Score then wishlist, Wishlist only, or Raider Score only.
+- **Raid Groups sorting:** four new ways to arrange the raid: Role blocks, Melee and ranged, Spread duplicates, and Left and right sides. Tick Post group changes to raid chat to post one line per changed group when you Arrange.
+- **Battle res icon:** an optional icon that shows the raid's battle res charges and the time to the next one, during raid boss fights. Switch it on on Quality of Life.
+- **Assignment highlights:** note lines that name you or your group get a band behind them, and when a new version of the note changes your part, the line glows and says Added, Removed or Moved. Turn it on or off on Raid Notes > Notes Settings > Highlights, and pick the windows with Use highlights in each window's column. On for the assignments window to start with.
+- **Interrupts** now sits under Modules in the menu.
+- **Pace:** the preview shows one bar per boss, and The Twin Fangs' bars are named Vexhul and Ithraz.
+- **Tooltips:** a tooltip that explains several choices gives each its own paragraph, and every tooltip names the full path to the setting it mentions.
+
 ## 1.3.5 (2026-11-10)
 
 - **Ready check window opacity:** a Background opacity slider on the Ready Check page's Window tab. 100% is solid; it starts at 90%, close to how it looked before. Only the background fades: names, icons and class bars stay sharp.
