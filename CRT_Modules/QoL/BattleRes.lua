@@ -3,10 +3,16 @@ local ADDON, CRT = ...
 -- The battle res icon (optional, off by default): the Rebirth icon with the group's shared battle res charges in its
 -- bottom-right corner and, while a charge is coming back, a cooldown sweep and the time to it in the middle. At 0
 -- charges its border and number turn the theme's bad colour. Settings in CRTDB.qol.battleRes (defaults in Core.lua):
--- enabled, show ("boss": between ENCOUNTER_START and ENCOUNTER_END inside a raid instance, never a dungeon; "combat": in combat inside a raid instance;
--- "raid": always inside a raid instance), timer (the time text) and size (percent). Its place is the shared
--- Placement helper's (UI/Placement.lua), saved as battleRes.position. The settings are on Quality of Life's
--- Battle res tab (QoL/Page.lua), with a preview to place it.
+-- enabled, show ("boss": between ENCOUNTER_START and ENCOUNTER_END; "combat": in combat; "raid": always, the stored
+-- key kept from when it meant always in a raid), groupOnly (only while in a party or raid), timer (the time text) and
+-- size (percent). Every mode counts anywhere: raids, dungeons, Mythic+ and the open world (Alex, 2026-11-12). Its
+-- place is the shared Placement helper's (UI/Placement.lua), saved as battleRes.position. The settings are on Quality
+-- of Life's Battle res tab (QoL/Page.lua), with a preview to place it.
+--
+-- No charge pool: the shared charges exist only in a boss fight or a Mythic+ key; elsewhere GetSpellCharges gives
+-- nothing (MayReturnNothing). Then, or when maxCharges (NeverSecret, still checked) is a plain number under 1, the
+-- icon shows at NO_POOL_ALPHA with a dash for the count, no sweep and no time. isActive is not used for this: it is
+-- false at full charges too (it only says a charge is recharging).
 --
 -- Secret values: C_Spell.GetSpellCharges is SecretWhenCooldownsRestricted, so in a boss fight its currentCharges,
 -- cooldownStartTime and cooldownDuration may be secret (maxCharges and isActive never are). This file never
@@ -25,6 +31,11 @@ local ADDON, CRT = ...
 -- Cooldown:SetCooldown(start, duration, modRate), Cooldown:Clear, Cooldown:SetHideCountdownNumbers, issecretvalue,
 -- IsInInstance, IsEncounterInProgress, UnitAffectingCombat; events SPELL_UPDATE_CHARGES, ENCOUNTER_START,
 -- ENCOUNTER_END, PLAYER_REGEN_DISABLED, PLAYER_REGEN_ENABLED, PLAYER_ENTERING_WORLD, ZONE_CHANGED_NEW_AREA.
+-- Added 2026-11-12 (warcraft.wiki.gg, read that day): IsInGroup([groupType]) -> inGroup (any group with no argument),
+-- event GROUP_ROSTER_UPDATE (no payload; a group formed or disbanded, or someone joined or left). IsInInstance is now
+-- only read for the dev probe's instance kind. Also (warcraft.wiki.gg and Gethe/wow-ui-source live
+-- ChallengeModeInfoDocumentation): events CHALLENGE_MODE_START (mapID), CHALLENGE_MODE_COMPLETED (no payload),
+-- CHALLENGE_MODE_RESET (mapID); C_Timer.After(seconds, callback); Region:SetAlpha(alpha) for the dimmed icon.
 
 local BattleRes = {}
 CRT.BattleRes = BattleRes
@@ -34,6 +45,7 @@ local UI = CRT.UI
 local TEXT = {
     title = "Battle res",
     drag = "Battle res: drag to move",
+    noPool = "\226\128\147", -- an en dash: no charges to count here
 }
 
 BattleRes.SPELL_ID = 20484 -- Rebirth: the group's shared battle res charges
@@ -42,6 +54,7 @@ BattleRes.MODES = { "boss", "combat", "raid" }
 local BASE = 44 -- the icon's side at 100%
 local BORDER = 2
 local TICK = 0.2 -- seconds between time text updates while shown
+local NO_POOL_ALPHA = 0.45 -- the whole icon's alpha while there is no charge pool (outside a boss fight or a key)
 local SAMPLE = { charges = 2, length = 300, left = 222 } -- the preview: 2 ready, the next in 3:42
 -- Colours from the theme (CRT_Dev/StyleGuide.md): the border is the outline, the number the text colour, both the
 -- theme's bad at 0 charges. Each is a UI.Tint, so a theme switch repaints it.
@@ -67,12 +80,22 @@ local function isSecret(value)
     return not ok or s == true
 end
 
-local function inRaid()
-    if not IsInInstance then
+-- In a party or raid. A missing or failing IsInGroup counts as solo.
+local function inGroup()
+    if not IsInGroup then
         return false
     end
-    local ok, inside, kind = pcall(IsInInstance)
-    return ok and inside and kind == "raid" or false
+    local ok, grouped = pcall(IsInGroup)
+    return ok and grouped and true or false
+end
+
+-- The instance kind ("none", "party", "raid", ...), for the dev probe only.
+local function instanceKind()
+    if not IsInInstance then
+        return "unknown"
+    end
+    local ok, _, kind = pcall(IsInInstance)
+    return ok and tostring(kind) or "unknown"
 end
 
 local function clock(seconds)
@@ -252,12 +275,28 @@ local function feedSweep(info)
 end
 
 local function showSample()
+    frame:SetAlpha(1)
     count:SetText(tostring(SAMPLE.charges))
     setBad(false)
     cooldown:SetHideCountdownNumbers(true)
     cooldown:SetCooldown(GetTime() - (SAMPLE.length - SAMPLE.left), SAMPLE.length)
     plainEnd = GetTime() + SAMPLE.left
     writeTime()
+end
+
+-- Whether a reading has no charge pool: maxCharges is NeverSecret, but it is only compared once issecretvalue says
+-- plain; a secret one counts as a pool.
+local function noPool(info)
+    local most = info.maxCharges
+    return not isSecret(most) and type(most) == "number" and most < 1
+end
+
+-- No charges to count here: dimmed, a dash, no sweep, no time, normal colours.
+local function showNoPool()
+    frame:SetAlpha(NO_POOL_ALPHA)
+    count:SetText(TEXT.noPool)
+    setBad(false)
+    clearSweep()
 end
 
 -- Reads the charges and paints the icon. Nothing here keeps a charge reading.
@@ -273,12 +312,11 @@ function BattleRes:Update()
     if get then
         ok, info = pcall(get, self.SPELL_ID)
     end
-    if not ok or type(info) ~= "table" then
-        count:SetText("")
-        setBad(false)
-        clearSweep()
+    if not ok or type(info) ~= "table" or noPool(info) then
+        showNoPool()
         return
     end
+    frame:SetAlpha(1)
     local charges = info.currentCharges
     local secret = isSecret(charges)
     if not pcall(count.SetText, count, charges) then
@@ -297,12 +335,15 @@ function BattleRes:Wanted()
     if not s.enabled then
         return false
     end
-    if s.show == "combat" then
-        return inCombat and inRaid()
-    elseif s.show == "raid" then
-        return inRaid()
+    if s.groupOnly and not inGroup() then
+        return false
     end
-    return encounter and inRaid() -- raid bosses only, never a dungeon's or Mythic+ (Alex, 2026-11-11)
+    if s.show == "combat" then
+        return inCombat
+    elseif s.show == "raid" then
+        return true -- Always
+    end
+    return encounter -- any boss: a raid's, a dungeon's or Mythic+, or the open world's
 end
 
 -- Shows or hides the icon for the setting, the fight and the preview, and paints it.
@@ -327,7 +368,15 @@ end
 
 -- For the tests and the dev probe.
 function BattleRes.State()
-    return { encounter = encounter, combat = inCombat, raid = inRaid(), preview = previewOn, bad = bad, plainEnd = plainEnd }
+    return {
+        encounter = encounter,
+        combat = inCombat,
+        group = inGroup(),
+        instance = instanceKind(),
+        preview = previewOn,
+        bad = bad,
+        plainEnd = plainEnd,
+    }
 end
 
 function BattleRes.Parts()
@@ -343,6 +392,21 @@ UI:RegisterPreview("battleres", function(on)
     BattleRes:Apply()
 end)
 
+-- The charge pool can outlast the event that ends it by a moment, so after these the charges are read once more,
+-- REREAD_DELAY seconds later: a shown icon then dims back to the dash instead of keeping an old count.
+local KEY_EVENTS = { "CHALLENGE_MODE_START", "CHALLENGE_MODE_COMPLETED", "CHALLENGE_MODE_RESET" }
+local REREAD_AFTER = { ENCOUNTER_END = true, CHALLENGE_MODE_COMPLETED = true, CHALLENGE_MODE_RESET = true }
+local REREAD_DELAY = 1
+
+local function rereadSoon()
+    if not (C_Timer and C_Timer.After) then
+        return
+    end
+    pcall(C_Timer.After, REREAD_DELAY, function()
+        BattleRes:Update()
+    end)
+end
+
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -352,11 +416,20 @@ events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:RegisterEvent("ENCOUNTER_START")
 events:RegisterEvent("ENCOUNTER_END")
 events:RegisterEvent("SPELL_UPDATE_CHARGES")
+events:RegisterEvent("GROUP_ROSTER_UPDATE") -- Only in a group: joining or leaving applies at once
+-- A key's start, end and reset: the charge pool comes or goes, so the charges are read again.
+for _, event in ipairs(KEY_EVENTS) do
+    events:RegisterEvent(event)
+end
 events:SetScript("OnEvent", function(_, event)
     if event == "SPELL_UPDATE_CHARGES" then
         BattleRes:Update()
         return
-    elseif event == "PLAYER_REGEN_DISABLED" then
+    end
+    if REREAD_AFTER[event] then
+        rereadSoon()
+    end
+    if event == "PLAYER_REGEN_DISABLED" then
         inCombat = true
     elseif event == "PLAYER_REGEN_ENABLED" then
         inCombat = false

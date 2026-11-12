@@ -1,6 +1,7 @@
 // CRT_Modules/QoL/BattleRes.lua and CRT_Dev/Dev/BattleResProbe.lua: the battle res icon. It shows and hides per its
-// Show it setting on the game's events (boss fights, any combat in a raid, always in a raid), never while it is off;
-// writes the charges; at 0 plain charges turns its number and border the theme's bad colour; runs the sweep and the
+// Show it setting on the game's events (boss fights, any combat, always; the open world, dungeons and raids alike),
+// never while it is off, and with Only in a group never solo; writes the charges, and with no charge pool (nothing to
+// read) shows a dimmed dash; at 0 plain charges turns its number and border the theme's bad colour; runs the sweep and the
 // time from plain numbers; and with the charges secret (proxies that raise an error on any comparison or arithmetic)
 // passes the count straight to SetText, skips the bad colour, never hands a secret to SetCooldown or keeps one, and
 // feeds the sweep from the game's duration object instead. Its preview shows a sample, and the probe prints secrets
@@ -58,6 +59,7 @@ local function region(kind, template)
     SetCooldownFromDurationObject = function(self, d) self.fromDuration = d self.calls[#self.calls + 1] = "fromDuration" end,
     Clear = function(self) self.cd = nil self.fromDuration = nil self.calls[#self.calls + 1] = "Clear" end,
     SetHideCountdownNumbers = function(self, v) self.hideNumbers = v end,
+    SetAlpha = function(self, a) self.alpha = a end,
   }
   return setmetatable(r, { __index = function(_, k) return m[k] or (type(k) == "string" and k:find("^%u") and function() end) or nil end })
 end
@@ -73,6 +75,12 @@ local now = 1000
 GetTime = function() return now end
 local inside, kind = false, "none"
 IsInInstance = function() return inside, kind end
+-- timers wait here until the check runs them
+local timers = {}
+C_Timer = { After = function(sec, fn) timers[#timers + 1] = { sec = sec, fn = fn } end }
+local function runTimers() local due = timers timers = {} for _, t in ipairs(due) do t.fn() end return #due end
+local grouped = false
+IsInGroup = function() return grouped end
 IsEncounterInProgress = function() return false end
 UnitAffectingCombat = function() return false end
 InCombatLockdown = function() return false end
@@ -86,7 +94,7 @@ C_Spell = {
   GetSpellChargeDuration = function(id) durationCalls = durationCalls + 1 return duration end,
 }
 
-local CRT = { db = { qol = { battleRes = { enabled = false, show = "boss", timer = true, size = 100 } } } }
+local CRT = { db = { qol = { battleRes = { enabled = false, show = "boss", groupOnly = false, timer = true, size = 100 } } } }
 CRT.UI = {}
 CRT_THEME(CRT, CRT.UI)
 CRT_PLACEMENT(CRT)
@@ -106,7 +114,7 @@ check(B ~= nil, "CRT.BattleRes exists")
 local events
 for _, f in ipairs(made) do if f.events and f.events.SPELL_UPDATE_CHARGES then events = f end end
 check(events ~= nil, "it listens to SPELL_UPDATE_CHARGES")
-for _, e in ipairs({ "ENCOUNTER_START", "ENCOUNTER_END", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_ENTERING_WORLD" }) do
+for _, e in ipairs({ "ENCOUNTER_START", "ENCOUNTER_END", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_ENTERING_WORLD", "GROUP_ROSTER_UPDATE", "CHALLENGE_MODE_START", "CHALLENGE_MODE_COMPLETED", "CHALLENGE_MODE_RESET" }) do
   check(events and events.events[e], "it listens to " .. e)
 end
 local function fire(e) events.scripts.OnEvent(events, e) end
@@ -133,68 +141,165 @@ fire("ENCOUNTER_END")
 inside, kind = false, "none"
 fire("ZONE_CHANGED_NEW_AREA")
 
--- In raid boss fights (the default): raid bosses only, never a dungeon's or Mythic+ (Alex, 2026-11-11)
+-- Where: the open world, a dungeon (Mythic+ too) and a raid all count for every mode (Alex, 2026-11-12)
+local DASH = "\\226\\128\\147" -- an en dash, UTF-8
+local PLACES = { { false, "none", "the open world" }, { true, "party", "a dungeon" }, { true, "raid", "a raid" } }
+
+-- In boss fights (the default): between ENCOUNTER_START and ENCOUNTER_END, wherever the boss is
 s.enabled = true
 s.show = "boss"
 B:Apply()
-inside, kind = true, "party"
-fire("PLAYER_ENTERING_WORLD")
-fire("ENCOUNTER_START")
-check(not shown(), "boss: a dungeon boss shows nothing")
-fire("ENCOUNTER_END")
-inside, kind = false, "none"
-fire("ENCOUNTER_START")
-check(not shown(), "boss: a boss outside any instance shows nothing")
-fire("ENCOUNTER_END")
+for _, place in ipairs(PLACES) do
+  inside, kind = place[1], place[2]
+  fire("PLAYER_ENTERING_WORLD")
+  check(not shown(), "boss: hidden in " .. place[3] .. " before the pull")
+  fire("PLAYER_REGEN_DISABLED")
+  check(not shown(), "boss: trash combat in " .. place[3] .. " shows nothing")
+  fire("ENCOUNTER_START")
+  check(shown(), "boss: shown on ENCOUNTER_START in " .. place[3])
+  fire("PLAYER_REGEN_ENABLED")
+  check(shown(), "boss: combat ending inside the fight keeps it in " .. place[3])
+  fire("ENCOUNTER_END")
+  check(not shown(), "boss: hidden on ENCOUNTER_END in " .. place[3])
+end
 inside, kind = true, "raid"
 fire("PLAYER_ENTERING_WORLD")
-check(not shown(), "boss: hidden in a raid before the pull")
 fire("ENCOUNTER_START")
-check(shown(), "boss: shown on ENCOUNTER_START")
 local p = parts()
 check(p.icon.texture == 136080, "the icon is Rebirth's (136080): " .. tostring(p.icon.texture))
 check(p.cooldown.template == "CooldownFrameTemplate", "the sweep is a CooldownFrameTemplate cooldown")
 check(p.count.text == 2, "the count is written: " .. tostring(p.count.text))
+check(p.frame.alpha == 1, "a charge pool: full brightness: " .. tostring(p.frame.alpha))
 check(near(p.count.rgb, P.text) and near(p.frame.edge, P.outline), "2 charges: the text colour and the outline")
 check(p.timeText.text == "", "nothing recharging: no time")
-fire("PLAYER_REGEN_DISABLED")
-fire("PLAYER_REGEN_ENABLED")
-check(shown(), "boss: combat ending inside the fight keeps it")
 fire("ENCOUNTER_END")
-check(not shown(), "boss: hidden on ENCOUNTER_END")
-fire("PLAYER_REGEN_DISABLED")
-check(not shown(), "boss: trash combat shows nothing")
-fire("PLAYER_REGEN_ENABLED")
 
--- In any combat in a raid
+-- In any combat: between PLAYER_REGEN_DISABLED and PLAYER_REGEN_ENABLED, anywhere
 s.show = "combat"
-inside, kind = false, "none"
-B:Apply()
-fire("PLAYER_REGEN_DISABLED")
-check(not shown(), "combat: outside a raid instance, nothing")
-fire("PLAYER_REGEN_ENABLED")
-inside, kind = true, "raid"
-fire("ZONE_CHANGED_NEW_AREA")
-check(not shown(), "combat: in a raid, out of combat, nothing")
-fire("PLAYER_REGEN_DISABLED")
-check(shown(), "combat: in combat in a raid, shown")
-fire("PLAYER_REGEN_ENABLED")
-check(not shown(), "combat: hidden when combat ends")
-inside, kind = true, "party"
-fire("PLAYER_REGEN_DISABLED")
-check(not shown(), "combat: a dungeon is not a raid")
-fire("PLAYER_REGEN_ENABLED")
+for _, place in ipairs(PLACES) do
+  inside, kind = place[1], place[2]
+  fire("ZONE_CHANGED_NEW_AREA")
+  check(not shown(), "combat: out of combat in " .. place[3] .. ", nothing")
+  fire("PLAYER_REGEN_DISABLED")
+  check(shown(), "combat: in combat in " .. place[3] .. ", shown")
+  fire("PLAYER_REGEN_ENABLED")
+  check(not shown(), "combat: hidden when combat ends in " .. place[3])
+end
 
--- Always in a raid
+-- Always (the stored key stays "raid"): anywhere, in or out of combat
 s.show = "raid"
+for _, place in ipairs(PLACES) do
+  inside, kind = place[1], place[2]
+  fire("ZONE_CHANGED_NEW_AREA")
+  check(shown(), "Always: shown in " .. place[3])
+end
+
+-- Only in a group: solo hides it in every mode; joining or leaving a group (GROUP_ROSTER_UPDATE) applies at once
+s.groupOnly = true
+grouped = false
+fire("GROUP_ROSTER_UPDATE")
+check(not shown(), "Only in a group: solo, Always shows nothing")
+grouped = true
+fire("GROUP_ROSTER_UPDATE")
+check(shown(), "Only in a group: in a party, Always shows it")
+grouped = false
+fire("GROUP_ROSTER_UPDATE")
+check(not shown(), "Only in a group: leaving the group hides it")
+s.show = "combat"
+fire("PLAYER_REGEN_DISABLED")
+check(not shown(), "Only in a group: solo combat on a dummy shows nothing")
+grouped = true
+fire("GROUP_ROSTER_UPDATE")
+check(shown(), "Only in a group: a party in combat shows it")
+fire("PLAYER_REGEN_ENABLED")
+check(not shown(), "Only in a group: still hidden out of combat in a party")
+s.show = "boss"
+grouped = false
+fire("ENCOUNTER_START")
+check(not shown(), "Only in a group: a solo boss shows nothing")
+grouped = true
+fire("GROUP_ROSTER_UPDATE")
+check(shown(), "Only in a group: a boss in a party shows it")
+fire("ENCOUNTER_END")
+IsInGroup = function() error("no group API") end
+s.show = "raid"
+local okG, errG = pcall(fire, "GROUP_ROSTER_UPDATE")
+check(okG and not shown(), "Only in a group: a failing IsInGroup counts as solo, no error: " .. tostring(errG))
+IsInGroup = function() return grouped end
+s.groupOnly = false
+grouped = false
+fire("GROUP_ROSTER_UPDATE")
+check(shown(), "Only in a group off: solo shows it again")
 inside, kind = true, "raid"
 fire("PLAYER_ENTERING_WORLD")
-check(shown(), "raid: shown inside a raid instance")
-inside, kind = false, "none"
-fire("ZONE_CHANGED_NEW_AREA")
-check(not shown(), "raid: hidden outside")
-inside, kind = true, "raid"
-fire("PLAYER_ENTERING_WORLD")
+
+-- No charge pool (outside a boss fight or a key, GetSpellCharges gives nothing): dimmed, a dash, no sweep, no time,
+-- normal colours; full again when a pool appears
+info = { currentCharges = 1, maxCharges = 5, cooldownStartTime = now - 60, cooldownDuration = 300, chargeModRate = 1, isActive = true }
+fire("SPELL_UPDATE_CHARGES")
+info = nil
+fire("SPELL_UPDATE_CHARGES")
+check(p.count.text == DASH, "no pool: a dash for the count: " .. tostring(p.count.text))
+check(type(p.frame.alpha) == "number" and p.frame.alpha < 1 and p.frame.alpha > 0, "no pool: dimmed: " .. tostring(p.frame.alpha))
+check(p.cooldown.cd == nil and p.cooldown.fromDuration == nil and p.timeText.text == "", "no pool: no sweep, no time")
+check(near(p.count.rgb, P.text) and near(p.frame.edge, P.outline), "no pool: normal colours")
+info = { currentCharges = 1, maxCharges = 5, cooldownStartTime = now - 60, cooldownDuration = 300, chargeModRate = 1, isActive = true }
+fire("SPELL_UPDATE_CHARGES")
+check(p.frame.alpha == 1 and p.count.text == 1, "a pool appears (SPELL_UPDATE_CHARGES): full brightness and the count")
+info = nil
+fire("SPELL_UPDATE_CHARGES")
+info = { currentCharges = 2, maxCharges = 2, cooldownStartTime = 0, cooldownDuration = 0, chargeModRate = 1, isActive = false }
+fire("ENCOUNTER_START")
+check(p.frame.alpha == 1 and p.count.text == 2, "a pool on ENCOUNTER_START, full and not recharging (isActive false): full brightness")
+fire("ENCOUNTER_END")
+info = { currentCharges = 1, maxCharges = 0, cooldownStartTime = 0, cooldownDuration = 0, chargeModRate = 1, isActive = false }
+fire("SPELL_UPDATE_CHARGES")
+check(p.count.text == DASH and p.frame.alpha < 1, "a reading with no charges at all (maxCharges 0): no pool")
+
+-- A stale pool: Always keeps the icon after ENCOUNTER_END; the game may still give the old pool at that moment, so
+-- the charges are read again a moment later, and with no pool then it dims back to the dash
+timers = {}
+info = { currentCharges = 1, maxCharges = 5, cooldownStartTime = 0, cooldownDuration = 0, chargeModRate = 1, isActive = false }
+fire("ENCOUNTER_START")
+fire("ENCOUNTER_END")
+check(shown() and p.count.text == 1 and p.frame.alpha == 1, "ENCOUNTER_END: the pool still read at once, full")
+check(#timers == 1 and timers[1].sec > 0 and timers[1].sec <= 2, "ENCOUNTER_END: one re-read a moment later: " .. #timers)
+info = nil
+runTimers()
+check(p.count.text == DASH and p.frame.alpha < 1, "the delayed re-read with no pool: the dimmed dash")
+-- a key: start and complete read the charges again (completed and reset once more a moment later)
+info = { currentCharges = 1, maxCharges = 1, cooldownStartTime = 0, cooldownDuration = 0, chargeModRate = 1, isActive = false }
+fire("CHALLENGE_MODE_START")
+check(p.count.text == 1 and p.frame.alpha == 1, "CHALLENGE_MODE_START: the key's pool read, full")
+check(#timers == 0, "CHALLENGE_MODE_START: no delayed re-read")
+info = nil
+fire("CHALLENGE_MODE_COMPLETED")
+check(p.count.text == DASH and p.frame.alpha < 1, "CHALLENGE_MODE_COMPLETED: read again, the dimmed dash")
+info = { currentCharges = 1, maxCharges = 1, cooldownStartTime = 0, cooldownDuration = 0, chargeModRate = 1, isActive = false }
+fire("CHALLENGE_MODE_START")
+fire("CHALLENGE_MODE_COMPLETED")
+check(p.count.text == 1, "(set up) the pool still there right after the key")
+check(#timers == 2, "CHALLENGE_MODE_COMPLETED: a delayed re-read: " .. #timers)
+info = nil
+runTimers()
+check(p.count.text == DASH and p.frame.alpha < 1, "after the key, the delayed re-read: the dimmed dash")
+info = { currentCharges = 1, maxCharges = 1, cooldownStartTime = 0, cooldownDuration = 0, chargeModRate = 1, isActive = false }
+fire("CHALLENGE_MODE_START")
+info = nil
+fire("CHALLENGE_MODE_RESET")
+check(p.count.text == DASH and #timers == 1, "CHALLENGE_MODE_RESET: read again and once more later")
+runTimers()
+-- the timer never errors when the icon is hidden by then, nor without C_Timer
+s.enabled = false
+fire("ENCOUNTER_END")
+local okT, errT = pcall(runTimers)
+check(okT and not shown(), "a delayed re-read while hidden: nothing, no error: " .. tostring(errT))
+s.enabled = true
+local keepTimer = C_Timer
+C_Timer = nil
+okT, errT = pcall(fire, "ENCOUNTER_END")
+check(okT and shown(), "no C_Timer: no error: " .. tostring(errT))
+C_Timer = keepTimer
 
 -- Charges change: SPELL_UPDATE_CHARGES writes the new count
 info = { currentCharges = 1, maxCharges = 5, cooldownStartTime = now - 60, cooldownDuration = 300, chargeModRate = 1, isActive = true }
@@ -245,6 +350,13 @@ check(p.cooldown.fromDuration == duration, "secret charges: the sweep comes from
 check(p.cooldown.hideNumbers == false, "secret charges: the game's own numbers show the time")
 check(p.timeText.text == "", "secret charges: no time worked out here")
 check(not holdsSecret(B.State()), "secret charges: nothing secret kept")
+check(p.frame.alpha == 1, "secret charges: a pool, full brightness")
+-- a secret maxCharges (never secret by the docs, guarded anyway): still a pool, never compared
+info = { currentCharges = secret(), maxCharges = secret(), cooldownStartTime = secret(), cooldownDuration = secret(), chargeModRate = 1, isActive = true }
+ok, err = pcall(fire, "SPELL_UPDATE_CHARGES")
+check(ok and p.frame.alpha == 1, "secret maxCharges: a pool, no error: " .. tostring(err))
+info = { currentCharges = cs, maxCharges = 5, cooldownStartTime = secret(), cooldownDuration = secret(), chargeModRate = 1, isActive = true }
+fire("SPELL_UPDATE_CHARGES")
 s.timer = false
 B:Apply()
 check(p.cooldown.hideNumbers == true, "secret charges, Show the timer off: the game's numbers hidden too")
@@ -266,13 +378,18 @@ ok, err = pcall(fire, "SPELL_UPDATE_CHARGES")
 check(ok and p.cooldown.cd == nil, "the duration refused: count only, no error: " .. tostring(err))
 p.cooldown.SetCooldownFromDurationObject = nil
 
--- Nothing to read (no shared charges now): an empty count
+-- Nothing to read (no shared charges now): the dimmed dash
 info = nil
 fire("SPELL_UPDATE_CHARGES")
-check(p.count.text == "" and near(p.count.rgb, P.text), "no reading: an empty count, normal colours")
+check(p.count.text == DASH and near(p.count.rgb, P.text), "no reading: a dash, normal colours")
 C_Spell.GetSpellCharges = nil
 ok, err = pcall(fire, "SPELL_UPDATE_CHARGES")
-check(ok and p.count.text == "", "no GetSpellCharges at all: no error: " .. tostring(err))
+check(ok and p.count.text == DASH and p.frame.alpha < 1, "no GetSpellCharges at all: the dimmed dash, no error: " .. tostring(err))
+-- the preview is never dimmed
+previews.battleres(true)
+check(p.frame.alpha == 1 and p.count.text == "2", "preview over no pool: full brightness")
+previews.battleres(false)
+check(p.frame.alpha < 1 and p.count.text == DASH, "preview off with no pool: dimmed dash again")
 C_Spell.GetSpellCharges = function() return info end
 
 -- Size
@@ -338,6 +455,7 @@ check(ok and err == true, "/crt dev brez runs with secret fields: " .. tostring(
 local all = table.concat(out, "\\n")
 check(all:find("currentCharges: <secret number>", 1, true) and all:find("maxCharges: 5", 1, true) and all:find("isActive: true", 1, true), "the probe prints each field, a secret by its type: " .. all)
 check(all:find("Encounter active", 1, true) and all:find("SetCooldownFromDurationObject", 1, true), "the probe says whether the encounter is active and tries the duration object")
+check(all:find("in a group false", 1, true) and all:find("instance raid", 1, true) and not all:find("in a raid", 1, true), "the probe prints in a group and the instance kind: " .. all)
 check(CRT.BattleResProbe:Command("dev other") == false, "the probe takes only dev brez")
 
 print(passes .. " passed, " .. fails .. " failed")
@@ -358,15 +476,21 @@ const toc = read('CowfeeRaidTools.toc');
 const dev = toc.slice(toc.indexOf('#@do-not-package@'), toc.indexOf('#@end-do-not-package@'));
 if (!/CRT_Modules\\QoL\\BreakTimer\.lua\r?\nCRT_Modules\\QoL\\BattleRes\.lua/.test(toc)) { console.log('FAIL BattleRes.lua is not in the .toc beside the QoL files'); srcFails++; }
 if (!dev.includes('CRT_Dev\\Dev\\BattleResProbe.lua')) { console.log('FAIL BattleResProbe.lua is not in the do-not-package block'); srcFails++; }
-if (!/battleRes = \{ enabled = false, show = "boss", timer = true, size = 100 \}/.test(read('CRT_Core/Core.lua'))) { console.log('FAIL Core.lua lacks the battleRes defaults'); srcFails++; }
+if (!/battleRes = \{ enabled = false, show = "boss", groupOnly = false, timer = true, size = 100 \}/.test(read('CRT_Core/Core.lua'))) { console.log('FAIL Core.lua lacks the battleRes defaults'); srcFails++; }
 const slash = read('CRT_Core/Slash.lua');
 const slashDev = slash.slice(slash.indexOf('--@do-not-package@'), slash.indexOf('--@end-do-not-package@'));
 if (!slashDev.includes('CRT.BattleResProbe:Command(msg)')) { console.log('FAIL /crt dev brez is not in Slash.lua\'s do-not-package block'); srcFails++; }
 const page = read('CRT_Modules/QoL/Page.lua');
 if (!/\{ key = "brez", label = "Battle res" \},\s*\{ key = "sounds"/.test(page)) { console.log('FAIL the Battle res tab is missing from Quality of Life'); srcFails++; }
-for (const k of ['UI.Dropdown(pf, TEXT.brezShow', 'UI.Slider(pf, TEXT.brezSize', 'UI.PreviewButton(pf, TEXT.brezPreview, { "battleres" }', 'UI.HelpRight(enable.label']) {
+for (const k of ['UI.Dropdown(pf, TEXT.brezShow', 'UI.Slider(pf, TEXT.brezSize', 'UI.PreviewButton(pf, TEXT.brezPreview, { "battleres" }', 'UI.HelpRight(enable.label', 'checkRow(pf, 6, top - 66, TEXT.brezGroupOnly)', 'UI.HelpRight(show, TEXT.brezShow, {']) {
   if (!page.includes(k)) { console.log('FAIL the Battle res tab lacks ' + k); srcFails++; }
 }
+// the three choices' labels (stored keys unchanged), and no raid-only wording left on the page or in the defaults' comment
+for (const k of ['{ key = "boss", label = TEXT.brezBoss }', '{ key = "combat", label = TEXT.brezCombat }', '{ key = "raid", label = TEXT.brezRaid }', 'brezBoss = "In boss fights"', 'brezCombat = "In any combat"', 'brezRaid = "Always"', 'brezGroupOnly = "Only in a group"']) {
+  if (!page.includes(k)) { console.log('FAIL Page.lua lacks ' + k); srcFails++; }
+}
+if (/raids only|never shows in dungeons|in a raid"/i.test(page)) { console.log('FAIL Page.lua still says the icon is raid-only'); srcFails++; }
+if (/inRaid\(/.test(src)) { console.log('FAIL BattleRes.lua still gates on a raid instance'); srcFails++; }
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
