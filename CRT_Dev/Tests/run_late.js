@@ -170,6 +170,86 @@ do
   NOW = wed3 + 60 L2:Tick()
   check(L2:Current() ~= nil and L2:Current().team == false, "off: the schedule starts, stamped not a team raid")
 end
+-- Editing a saved night (Late:SetStatus): On time, Late (the recorded join time), No-show and Not expected, each way
+-- and back. The first edit keeps the tracker's own join time (p.recordedAt) once; p.edited marks the player.
+do
+  local function check(ok, what) eq(ok and true or false, true, what) end
+  if CRT.Late then CRT.Late:End("button", NOW) end
+  local T = function(h, m) return os.time({ year = 2026, month = 11, day = 12, hour = h, min = m, sec = 0 }) end
+  local start = T(20, 30)
+  -- an old saved night, with none of the new fields
+  s.history = { { id = 50, startedAt = start, endedAt = T(23, 0), how = "schedule", endReason = "disband", layout = "Main", grace = 5,
+    players = { { key = "Ayla-Area52", joinedAt = T(21, 2) }, { key = "Brum-Area52", never = true },
+      { key = "Cato-Area52", joinedAt = start }, { key = "Dree-Area52", joinedAt = T(20, 33) } } } }
+  local night = s.history[1]
+  local A, B, C, D = night.players[1], night.players[2], night.players[3], night.players[4]
+  local fired = 0
+  Late:OnChange(function() fired = fired + 1 end)
+  local function tot() local out = {} for _, t in ipairs(Late:Totals()) do out[t.key] = t end return out end
+  -- an old night reads as before
+  eq(Late.Status(night, A), "late", "old night: joined after the grace is late")
+  eq(Late.Status(night, B), "noshow", "old night: never joined is a no-show")
+  eq(Late.Status(night, D), "ontime", "old night: joined inside the grace is on time")
+  eq(#Late.Counted(night), 4, "old night: everyone counts")
+  eq(Late.RecordedJoin(A), T(21, 2), "old night: the recorded join time is the join time")
+  eq(Late.RecordedJoin(B), nil, "old night: never joined has none")
+  eq(tot()["Ayla-Area52"].late, 1, "old night: totals count the late one")
+  eq(A.recordedAt == nil and A.edited == nil, true, "reading adds no fields")
+  -- late -> on time -> late restores 21:02
+  local f0 = fired
+  check(Late:SetStatus(50, "ayla-area52", "ontime"), "late to on time (any case)")
+  eq(fired, f0 + 1, "an edit tells the listeners")
+  eq(A.joinedAt, start, "on time: joined at the start")
+  eq(A.recordedAt, T(21, 2), "the tracker's own join time is kept")
+  eq(A.edited, true, "marked edited")
+  eq(Late.Status(night, A), "ontime", "reads on time")
+  eq(tot()["Ayla-Area52"].late, 0, "totals follow")
+  eq(Late.RecordedJoin(A), T(21, 2), "the recorded join time stays offered")
+  check(Late:SetStatus(50, "Ayla-Area52", "late"), "back to late")
+  eq(A.joinedAt, T(21, 2), "late restores 21:02")
+  eq(Late.Status(night, A), "late", "reads late again")
+  Late:SetStatus(50, "Ayla-Area52", "noshow")
+  eq(A.joinedAt, nil, "no-show: no join time") eq(A.never, true, "and never joined, as the tracker marks it")
+  eq(Late.Status(night, A), "noshow", "reads no-show")
+  Late:SetStatus(50, "Ayla-Area52", "late")
+  eq(A.recordedAt, T(21, 2), "recordedAt stored once, never overwritten by an edit")
+  eq(A.never, nil, "late clears never")
+  -- the same status again changes nothing
+  local f1 = fired
+  check(Late:SetStatus(50, "Ayla-Area52", "late"), "picking the status it has")
+  eq(fired, f1, "is no change")
+  -- no-show -> on time; a player who never joined has no Late to pick
+  check(not Late:SetStatus(50, "Brum-Area52", "late"), "never joined: Late can't be picked")
+  eq(B.edited, nil, "and nothing changed")
+  check(Late:SetStatus(50, "Brum-Area52", "ontime"), "no-show to on time")
+  eq(B.never, nil, "on time clears never") eq(B.joinedAt, start, "joined at the start")
+  eq(B.recordedAt, nil, "never joined: no recorded join time") eq(B.edited, true, "marked edited")
+  Late:SetStatus(50, "Brum-Area52", "noshow")
+  eq(Late.Status(night, B), "noshow", "back to no-show") eq(B.never, true, "never joined again")
+  -- an on-time player first edited keeps their own join time, and Late isn't offered (inside the grace)
+  Late:SetStatus(50, "Dree-Area52", "noshow")
+  eq(D.recordedAt, T(20, 33), "the first edit keeps an on-time join time")
+  check(not Late:SetStatus(50, "Dree-Area52", "late"), "joined inside the grace: no Late to pick")
+  Late:SetStatus(50, "Dree-Area52", "ontime")
+  -- not expected and back
+  check(Late:SetStatus(50, "Cato-Area52", "excluded"), "not expected")
+  eq(C.excluded, true, "flagged, not deleted") eq(#night.players, 4, "still saved on the night")
+  eq(Late.Status(night, C), "excluded", "reads not expected")
+  eq(Late.Seconds(night, C), 0, "no time late")
+  eq(#Late.Counted(night), 3, "left out of the night's players")
+  eq(tot()["Cato-Area52"], nil, "left out of the totals")
+  Late:SetStatus(50, "Brum-Area52", "excluded")
+  eq(tot()["Brum-Area52"], nil, "a not expected no-show isn't in the totals")
+  Late:SetStatus(50, "Brum-Area52", "noshow")
+  eq(B.excluded, nil, "any other choice clears it")
+  eq(tot()["Brum-Area52"].never, 1, "and counts again")
+  Late:SetStatus(50, "Cato-Area52", "ontime")
+  eq(C.excluded, nil, "back to on time") eq(tot()["Cato-Area52"].nights, 1, "back in the totals")
+  -- unknown nights, players and choices change nothing; the running night isn't edited here
+  check(not Late:SetStatus(99, "Cato-Area52", "late"), "no such night")
+  check(not Late:SetStatus(50, "Nobody-Area52", "ontime"), "no such player")
+  check(not Late:SetStatus(50, "Cato-Area52", "bogus"), "no such choice")
+end
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;

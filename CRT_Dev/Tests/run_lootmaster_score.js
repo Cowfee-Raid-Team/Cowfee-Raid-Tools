@@ -146,6 +146,25 @@ for _, key in ipairs({ "Raider1-Sargeras", "Raider2-Sargeras", "Raider3-Sargeras
   eq(d.never, t.never, key .. ": no-shows agree")
 end
 eq(tt["raider2-sargeras"].seconds, 25 * 60, "the tracker's minutes late")
+-- An edited no-show scores exactly like a recorded one on the same night (the start until the night's end)
+check(Late.SetStatus ~= nil and Late:SetStatus(night.id, "Raider1-Sargeras", "noshow"), "Raider1 set to no-show")
+eq(LM.Score("Raider1-Sargeras"), LM.Score("Raider3-Sargeras"), "an edited no-show scores like the recorded one")
+eq(Late.Seconds(night, night.players[1]), Late.Seconds(night, night.players[3]), "with the same time")
+eq(totals()["raider1-sargeras"].seconds, totals()["raider3-sargeras"].seconds, "in the tracker's totals too")
+Late:SetStatus(night.id, "Raider1-Sargeras", "ontime")
+eq(Late.Seconds(night, night.players[1]), 0, "on time again: no late time")
+eq(LM.Score("Raider1-Sargeras"), 100, "and no penalty")
+-- A night edited on the Late Tracker's History: a player marked Not expected costs nothing and isn't counted
+check(Late.SetStatus ~= nil and Late:SetStatus(night.id, "Raider3-Sargeras", "excluded"), "Raider3 marked not expected")
+eq(LM.Score("Raider3-Sargeras"), 100, "not expected: the no-show costs nothing")
+eq(LM.ScoreDetails("Raider3-Sargeras").nights, 1, "and the night isn't counted")
+eq(LM.ScoreDetails("Raider3-Sargeras").never, 0, "nor the no-show")
+check(Late:SetStatus(night.id, "Raider2-Sargeras", "ontime"), "Raider2 set on time")
+eq(LM.Score("Raider2-Sargeras"), 100, "on time after the edit: no penalty")
+eq(Late.Seconds(night, night.players[2]), 0, "and no late time")
+eq(totals()["raider2-sargeras"].seconds, 0, "none in the tracker's totals")
+Late:SetStatus(night.id, "Raider2-Sargeras", "late")
+eq(LM.Score("Raider2-Sargeras"), 93, "late again: the recorded 25 minutes")
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;

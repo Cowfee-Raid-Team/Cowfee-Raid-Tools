@@ -32,7 +32,8 @@ local function compute()
             local weeksSince = math.max(0, (now - night.startedAt) / WEEK)
             for _, p in ipairs(night.players or {}) do
                 local key = p.key and p.key:lower()
-                if key then
+                -- a player marked Not expected on the night (History > Edit night) isn't counted at all
+                if key and not p.excluded then
                     local t = out[key]
                     if not t then
                         t = { name = p.key, penalty = 0, nights = 0, late = 0, never = 0 }

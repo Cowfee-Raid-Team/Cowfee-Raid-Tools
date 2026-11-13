@@ -360,8 +360,12 @@ function Late:Find(id)
     end
 end
 
--- Seconds a player was late, from the start until they joined, or until the night ended or now.
+-- Seconds a player was late, from the start until they joined, or until the night ended or now. A player
+-- marked Not expected (p.excluded) was never late.
 function Late.Seconds(night, p, now)
+    if p.excluded then
+        return 0
+    end
     local stop = p.joinedAt or night.endedAt or now or time()
     return math.max(0, stop - night.startedAt)
 end
@@ -377,20 +381,102 @@ end
 -- they were late, even though the saved night marks them never joined (p.never).
 -- Meant for ended nights. On a running night "noshow" only means "not here yet", so the Tonight view
 -- keeps its own wording and does not use this.
+-- A player marked Not expected on the History's Edit night is "excluded": left out of the night's lists, counts,
+-- totals and scores (read the night's players through Late.Counted).
 function Late.Status(night, p, now)
+    if p.excluded then
+        return "excluded"
+    end
     if not Late.IsLate(night, p, now) then
         return "ontime"
     end
     return p.joinedAt and "late" or "noshow"
 end
 
+-- A night's players who count: everyone but those marked Not expected, in saved order.
+function Late.Counted(night)
+    local out = {}
+    for _, p in ipairs(night.players or {}) do
+        if not p.excluded then
+            out[#out + 1] = p
+        end
+    end
+    return out
+end
+
+-- Editing a saved night (History > Edit night) ----------------------------------------------------
+-- The first edit of a player keeps the tracker's own join time as p.recordedAt (nil if they never joined), so Late can
+-- be picked again later, and marks them p.edited. Saved nights from before have neither field and read as they did.
+
+-- The join time the tracker recorded for a player: p.recordedAt once edited, else their join time. nil if they never
+-- joined.
+function Late.RecordedJoin(p)
+    if p.edited then
+        return p.recordedAt
+    end
+    return p.joinedAt
+end
+
+-- Whether Late can be picked for a player: the tracker recorded a join after the night's grace.
+function Late.CanBeLate(night, p)
+    local at = Late.RecordedJoin(p)
+    return at ~= nil and at - night.startedAt > (night.grace or 0) * 60
+end
+
+local EDIT_STATUS = { ontime = true, late = true, noshow = true, excluded = true }
+
+-- Sets how a player did on a saved night: "ontime" (joined at the start), "late" (joined at the recorded time),
+-- "noshow" (never joined) or "excluded" (Not expected: left out of the night). Any choice but "excluded" puts a
+-- Not expected player back. Returns false and a reason when nothing changed.
+function Late:SetStatus(nightId, key, status)
+    local night = self:Find(nightId)
+    if not night then
+        return false, "That night isn't saved."
+    end
+    local _, p = findPlayer(night, key or "")
+    if not p then
+        return false, "That player isn't on the night."
+    end
+    if not EDIT_STATUS[status] then
+        return false, "Pick On time, Late, No-show or Not expected."
+    end
+    if status == "late" and not Late.CanBeLate(night, p) then
+        return false, "No join time after the grace was recorded for " .. Ambiguate(p.key, "none") .. "."
+    end
+    if Late.Status(night, p) == status then
+        return true
+    end
+    if p.recordedAt == nil and not p.edited then
+        p.recordedAt = p.joinedAt
+    end
+    p.edited = true
+    if status == "excluded" then
+        p.excluded = true
+    else
+        p.excluded = nil
+        if status == "ontime" then
+            p.joinedAt = night.startedAt
+            p.never = nil
+        elseif status == "late" then
+            p.joinedAt = p.recordedAt
+            p.never = nil
+        else
+            -- as Late:End marks a player who never joined
+            p.joinedAt = nil
+            p.never = true
+        end
+    end
+    self:Fire()
+    return true
+end
+
 -- One row per player across the saved nights (in a scope, Late:Nights; all of them by default), by
 -- Late.Status: nights expected, nights late (no-shows included), no-shows, and total seconds late. Sorted most
--- late first.
+-- late first. Players marked Not expected are left out.
 function Late:Totals(scope)
     local byKey, out = {}, {}
     for _, night in ipairs(self:Nights(scope)) do
-        for _, p in ipairs(night.players) do
+        for _, p in ipairs(Late.Counted(night)) do
             local lower = p.key:lower()
             local t = byKey[lower]
             if not t then
