@@ -232,6 +232,27 @@ check("NSRT and MRT: spec words go out raw", function()
   assert(mrt:find("{time:1:50} {spell:740} RestoDruid2", 1, true) and mrt:find("{spell:62618} DiscPriest", 1, true), "MRT: " .. mrt)
 end)
 
+-- no realm reaches NSRT (#1280): names in assignment lines, tag: fields and the kick block go without their realm, as
+-- an old note may still hold them; a sentence, a {..} code and the invite list (dropped anyway) are left alone
+check("NSRT: names go without their realms, other text as written", function()
+  local note = "EncounterID:3001;Name:Boss\\nLeft: Abu-Sargeras, Cheo-Area52 (left)\\nTank: Zed-Kel'Thuzad\\n"
+    .. "time:36;ph:1;tag:Abu-Sargeras Cheo healer;spellid:5;text:Soak;\\n"
+    .. "Note: re-check the half-way point\\nStack at {time:1:30} near Abu-Sargeras then move\\n"
+    .. "intstart\\nAbu-Sargeras Cheo\\nZed-Kel'Thuzad\\nintend\\ninvitelist:Abu-Sargeras,Cheo;"
+  local text = NSRT.ToNSRTText(note)
+  assert(text:find("\\nLeft: Abu, Cheo (left)\\n", 1, true), "assignment line: " .. text)
+  assert(text:find("\\nTank: Zed\\n", 1, true), "a realm with an apostrophe: " .. text)
+  assert(text:find("time:36;ph:1;tag:Abu Cheo healer;spellid:5;text:Soak;", 1, true), "tag: " .. text)
+  assert(text:find("\\nNote: re-check the half-way point\\n", 1, true), "a sentence as written: " .. text)
+  assert(text:find("\\nStack at {time:1:30} near Abu-Sargeras then move\\n", 1, true), "free text as written: " .. text)
+  assert(text:find("\\nintstart\\nAbu Cheo\\nZed\\nintend", 1, true), "the kick block: " .. text)
+  assert(not text:find("invitelist", 1, true), "the invite list is still dropped: " .. text)
+  -- the helpers every writer shares (Notes/Parse.lua)
+  assert(P.NoteName(" Abu-Sargeras ") == "Abu" and P.NoteName("Abu") == "Abu" and P.NoteName(nil) == "", "NoteName")
+  assert(P.TagValue({ "Abu-Sargeras", "Demon Hunter", "Group1" }) == "Abu Demon Hunter Group1", "TagValue")
+  assert(P.NoRealms(" Abu-Sargeras, Cheo") == " Abu, Cheo" and P.NoRealms(" re-check it") == " re-check it", "NoRealms")
+end)
+
 if checks.failed then error(checks.failed .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
