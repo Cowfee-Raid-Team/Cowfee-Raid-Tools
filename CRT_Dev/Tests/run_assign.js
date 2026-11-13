@@ -2,7 +2,8 @@
 // note lines. Lines for every cast pattern (all, a list, rotate) and an untimed block; the block read back from the
 // text (round trips, typed times); Replace in place with every other line byte for byte (CRLF kept), a rename, a
 // removal; Write into the boss's note for exactly one difficulty, its timed lines linked to their rows so a name change
-// in the note editor rewrites them (Notes/Links.lua); a pasted note's group list recognised and made a block.
+// in the note editor rewrites them (Notes/Links.lua); a pasted note's group list recognised and made a block; a row
+// label's raid marker codes ({purple}, {rt3}) kept and drawn (#1274).
 // Usage: node run_assign.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -70,12 +71,53 @@ end
 check("assign: names, labels, keys and casts as text", function()
   assert(A.CleanName("  Ravenous: Feast; ") == "Ravenous Feast" and A.CleanName("") == "Assignment", "a heading has no colon: " .. A.CleanName("  Ravenous: Feast; "))
   assert(A.Key("Ravenous  Feast") == "ravenous feast" and A.Key("A/B") == "ab", "the key")
-  assert(A.CleanLabel("Left side, {star}", 1) == "Left side star" and A.CleanLabel("", 3) == "Row 3", A.CleanLabel("Left side, {star}", 1))
+  assert(A.CleanLabel("Left side, {star}", 1) == "Left side {star}" and A.CleanLabel("", 3) == "Row 3", A.CleanLabel("Left side, {star}", 1))
   assert(A.CleanLabel("Phase 2", 2) == "Row 2" and A.CleanLabel("one two three four five", 1) == "one two three four", "a label reads as one")
   assert(A.ParseCasts("") == "all" and A.ParseCasts("Rotate") == "rotate", "all and rotate")
   local l = A.ParseCasts("4, 1 4,2")
   assert(l and table.concat(l, ",") == "1,2,4" and A.FormatCasts(l) == "1, 2, 4", "a list, sorted, each once")
   assert(A.ParseCasts("0") == nil and A.ParseCasts("x") == nil and A.ParseCasts("1.5") == nil, "bad lists don't read")
+end)
+
+check("assign: a row label keeps its raid marker codes (#1274)", function()
+  -- Alex, 2026-11-13: "{purple} orb" lost its braces and showed as "purple orb"
+  local function same(input, want, n)
+    local got = A.CleanLabel(input, n or 1)
+    assert(got == want, input .. " -> " .. tostring(got) .. ", want " .. want)
+    assert(want:find("^Row %d+$") or P.LooksLikeLabel(got), "reads as a label: " .. got)
+  end
+  same("{purple} orb", "{purple} orb")
+  same("{Purple} Orb", "{Purple} Orb")
+  same("{rt3} orb", "{rt3} orb")
+  same("{green} orb", "{green} orb")
+  same("{CROSS}: left, side", "{CROSS} left side")
+  same("{bogus} orb", "bogus orb")
+  same("{purple}", "{purple}")
+  same("{time:5} orb", "time5 orb")
+  same("{ purple } orb", "purple orb")
+  same("a|cff00ff00b{star}", "acff00ff00b{star}")
+  -- a marker code is no word: four words and the codes among them, the label cut at the fifth word
+  same("{star} one two three four", "{star} one two three four")
+  same("one {star} two three four {skull} five {circle}", "one {star} two three four {skull}")
+  same("{star}{circle} soak", "{star}{circle} soak")
+end)
+
+check("assign: a row label with a marker round trips through the note, its icon drawn", function()
+  local b = { name = "Orbs", rows = { { label = "{purple} orb", text = "", tokens = { "Abu" }, casts = "all" },
+    { label = "{Green} Orb", text = "Grab {green}", tokens = { "Cheo" }, casts = "all" } } }
+  local casts = { { ph = 1, t = 30 } }
+  local out = A.Lines(b, casts)
+  assert(out[2] == "{purple} orb: Abu" and out[3] == "{Green} Orb: Cheo", joined(out))
+  assert(out[4] == "time:30;ph:1;tag:Abu;text:{purple} orb;assign:orbs/1/1;", out[4])
+  assert(P.Parse(out[4]).timers[1].text == "{purple} orb", "the timed line's text keeps the code: " .. tostring(P.Parse(out[4]).timers[1].text))
+  local back = A.Read(joined(out), "orbs", casts)
+  assert(back and back.rows[1].label == "{purple} orb" and back.rows[1].text == "" and back.rows[2].label == "{Green} Orb" and back.rows[2].text == "Grab {green}",
+    "read back: " .. tostring(back and back.rows[1].label) .. " / " .. tostring(back and back.rows[1].text))
+  assert(joined(A.Lines(back, casts)) == joined(out), "written again, the same lines")
+  local icon3 = "|TInterface\\\\TargetingFrame\\\\UI-RaidTargetingIcon_3:0|t"
+  assert(CRT.MarkerText(out[2]) == icon3 .. " orb: Abu", "the label line draws the diamond: " .. CRT.MarkerText(out[2]))
+  local s = Model.New(joined(out))
+  assert(s.rows[2].kind == "label" and s.rows[2].label == "{purple} orb", "the note editor reads it as a label")
 end)
 
 check("assign: lines for all, a list and rotate; a row with no one has no timed lines", function()
@@ -380,7 +422,7 @@ if failed > 0 then error(failed .. " failed") end
 `;
 const W = process.argv[2];
 if (!W) { console.error('usage: node run_assign.js <addon folder>'); process.exit(2); }
-const names = ['CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/EditModel.lua',
+const names = ['CRT_Core/MarkerText.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/EditModel.lua',
   'CRT_Modules/Notes/Links.lua', 'CRT_Modules/Notes/MechNote.lua', 'CRT_Modules/Notes/Assign.lua'];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 lua.lua_checkstack(L, names.length * 2 + 2);

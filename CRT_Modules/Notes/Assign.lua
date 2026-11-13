@@ -99,14 +99,31 @@ function Assign.Key(name)
 end
 
 -- A row's label as an assignment line's label (Parser.LooksLikeLabel: four words at most, no markup), else
--- "Row n".
+-- "Row n". Its raid marker codes ({purple}, {rt3}: the codes CRT.MarkerCodes knows, as typed) stay, so the note
+-- draws their icons (Alex, 2026-11-13); every other brace, ":", "|" and "," goes. A code is no word, as
+-- LooksLikeLabel counts them.
+local MARK = "\001(%d+)\002" -- a kept code's place while the rest is cleaned
 function Assign.CleanLabel(label, n)
-    local s = trim(words(clean(label):gsub("[:|{},]", "")))
+    local s = clean(label)
+    local Codes, kept = CRT.MarkerCodes, {}
+    if Codes then
+        s = s:gsub("{([^{}]*)}", function(code)
+            if Codes.Number(code) then
+                kept[#kept + 1] = "{" .. code .. "}"
+                return "\001" .. #kept .. "\002"
+            end
+        end)
+    end
+    s = trim(words(s:gsub("[:|{},]", "")))
     local out, count = {}, 0
     for w in s:gmatch("%S+") do
-        count = count + 1
+        if w:gsub(MARK, "") ~= "" then
+            count = count + 1
+        end
         if count <= 4 then
-            out[#out + 1] = w
+            out[#out + 1] = (w:gsub(MARK, function(k)
+                return kept[tonumber(k)]
+            end))
         end
     end
     s = table.concat(out, " ")
