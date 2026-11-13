@@ -497,7 +497,7 @@ local function makeDrag()
             if source.token then
                 local why
                 local ok = edit(function()
-                    local added, no = W.session:PaletteClick(source.token, source.kind)
+                    local added, no = W.session:PaletteClick(source.token, source.kind, source.full)
                     why = no
                     return added
                 end)

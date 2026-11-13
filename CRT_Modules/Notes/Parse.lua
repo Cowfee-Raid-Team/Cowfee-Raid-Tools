@@ -418,6 +418,54 @@ function Parser.JoinClassWords(words)
     return out
 end
 
+-- Names as a note writes them ---------------------------------------------------------------------------
+-- A player's name goes into a note's text without its realm, "Abu-Sargeras" as "Abu" (Alex, 2026-11-13: the server
+-- name breaks Northern Sky Raid Tools' matching, an integration that matches by plain name). Every writer goes
+-- through these; the readers (Engine.lua, Render.lua, Highlights, Links.lua, Shifts.lua) compare names without realms
+-- already, so a player of another realm still matches their line. Two players of one name from different realms
+-- can't be told apart in a note. The invite list keeps its realms (it invites by them); it never reaches NSRT.
+--   Parser.NoteName(name)    the name as a note writes it: trimmed, without its realm; "" for anything not readable
+--   Parser.TagValue(list)    a tag: field's value for a list of names and tag words, each without its realm
+--   Parser.NoRealms(rest)    an assignment line's names (the part after "Label:") with each name's realm taken out,
+--                            when they are a list of names (isNameList); a sentence ("re-check it") stays as written
+function Parser.NoteName(name)
+    if not (readable(name) and type(name) == "string") then
+        return ""
+    end
+    return (trim(name):gsub("%-.*$", ""))
+end
+
+function Parser.TagValue(list)
+    local out = {}
+    for _, word in ipairs(list or {}) do
+        local name = Parser.NoteName(word)
+        if name ~= "" then
+            out[#out + 1] = name
+        end
+    end
+    return table.concat(out, " ")
+end
+
+-- "Name-Realm": a realm starts with a letter (an ASCII one, or a byte of another alphabet's)
+local WITH_REALM = "^[^%-]+%-[%a\128-\255]"
+function Parser.NoRealms(rest)
+    if not (readable(rest) and type(rest) == "string") or not rest:find("-", 1, true) or not isNameList(rest) then
+        return rest
+    end
+    local out, pos = {}, 1
+    for _, item in ipairs(Parser.ClassRuns(rest, Parser.NAME_WORD)) do
+        out[#out + 1] = rest:sub(pos, item.start - 1)
+        local text = item.text
+        if not item.class and not neutralItem(text) and text:find(WITH_REALM) then
+            text = Parser.NoteName(text)
+        end
+        out[#out + 1] = text
+        pos = item.stop
+    end
+    out[#out + 1] = rest:sub(pos)
+    return table.concat(out)
+end
+
 -- A label with its raid marker codes ({cross}, {rt7}, any case: the codes CRT.MarkerCodes knows) taken out, and
 -- whether it had one. Other {..} codes stay in. It needs CRT_Core/MarkerText.lua loaded first (the .toc does, and so
 -- must every test harness that reads a label): without it a label with braces raises an error here, never quietly
@@ -646,8 +694,9 @@ function Parser.FormatLine(t)
     if t.ph then
         add("ph", num(t.ph))
     end
-    if t.tags and #t.tags > 0 then
-        add("tag", table.concat(t.tags, " "))
+    local tag = t.tags and Parser.TagValue(t.tags) or ""
+    if tag ~= "" then
+        add("tag", tag) -- names without their realms (Parser.NoteName)
     end
     if t.kind == "spell" and t.spellId then
         add("spellid", num(t.spellId))

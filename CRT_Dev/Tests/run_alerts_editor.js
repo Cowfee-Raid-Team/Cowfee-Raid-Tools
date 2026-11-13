@@ -1198,7 +1198,7 @@ do
   assert(value("For") == "Rain-Other" and hasOption(dropdowns["For"], "Rain-Other"), "For the player: " .. tostring(value("For")))
   assert(not hasOption(dropdowns["For"], ""), "no No one choice for a player")
   click(w.saveBtn)
-  assert(rawWith("ph:1;tag:Rain-Other;spell:777;text:Tide;") or rawWith("tag:Rain-Other;"), "saved for the player")
+  assert(rawWith("tag:Rain;") and not rawWith("Rain-Other"), "saved for the player, without the realm (#1280)")
   -- no one: the editor's own No one choice, and the line has no tag
   E:Open(ENC, nil, { spellID = 777, text = "Unassigned", saveAs = "note", ph = 1, time = 30, tag = "" })
   assert(value("For") == "" and hasOption(dropdowns["For"], "").label == "No one (timers window only)", "For No one: " .. tostring(value("For")))

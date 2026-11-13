@@ -12,8 +12,8 @@ local ADDON, CRT = ...
 --   s:Remove(i, k)              removes row i's k-th name
 --   s:Move(i, k, j)             moves row i's k-th name to row j
 --   s:Text(), s:Dirty()         the raw text now, and whether it differs from the text opened
---   s:SetQuickFill(on), s:Select(i), s:PaletteClick(token, kind)   Quick fill: a click on a chip adds it to the row
---   s:BeginDrag(source), s:Drop(i, at), s:CancelDrag()   a drag: { token, kind } from the palette, { row, index } from a
+--   s:SetQuickFill(on), s:Select(i), s:PaletteClick(token, kind, full)   Quick fill: a click on a chip adds it to the row
+--   s:BeginDrag(source), s:Drop(i, at), s:CancelDrag()   a drag: { token, kind, full } from the palette, { row, index } from a
 --                               row; at (optional) the place in row i it lands (a kick row's, below), else its end
 --   s:Order()                   the rows' indices in the order they show (a kick block's missing groups, below)
 --   Model.Palette(roster, query)  the palette's sections: Players, General, Groups and Classes
@@ -188,11 +188,13 @@ local function names(f)
     return out
 end
 
--- Whether the field has the token already, a class in any spelling ("DEMONHUNTER" for "Demon Hunter").
+-- Whether the field has the token already, a class in any spelling ("DEMONHUNTER" for "Demon Hunter"). A label or kick
+-- row writes names without realms, so there "Abu" is "Abu-Sargeras"; the invite list tells realms apart.
 local function has(f, token)
-    local lower, class = token:lower(), Parser.ClassOf(token)
+    local plain = f.kind == "invite" and function(s) return s end or Parser.NoteName
+    local lower, class = plain(token):lower(), Parser.ClassOf(token)
     for _, name in ipairs(names(f)) do
-        if name:lower() == lower or (class and Parser.ClassOf(name) == class) then
+        if plain(name):lower() == lower or (class and Parser.ClassOf(name) == class) then
             return true
         end
     end
@@ -273,7 +275,8 @@ local function fieldText(f)
     for k, item in ipairs(f.items) do
         out[#out + 1] = (k > 1 and item.sep or "") .. item.word
     end
-    return f.before .. table.concat(out) .. f.trail
+    -- a label line written again has its names without realms (#1280); a sentence stays as written
+    return f.before .. Parser.NoRealms(table.concat(out) .. f.trail)
 end
 
 -- Rows ----------------------------------------------------------------------------------------------------------
@@ -474,13 +477,19 @@ Model.ValidToken = validToken
 
 -- Adds a name to row i (a kick row's at place at, else its end). False when the row takes no names, the token isn't
 -- one word, the row has it already, or (the invite list, a kick row) it is not a player; false and why when a kick row
--- is full.
-function Session:Add(i, token, kind, at)
+-- is full. A label or kick row takes the name without its realm (#1280); the invite list takes full (a palette chip's
+-- name with the realm of a player from another realm, which invites need), else the token as it is.
+function Session:Add(i, token, kind, at, full)
     if not (self:Editable(i) and validToken(token)) then
         return false
     end
     local row = self.rows[i]
     local f = row.field
+    if f.kind == "invite" then
+        token = validToken(full) and full or token
+    else
+        token = Parser.NoteName(token)
+    end
     if has(f, token) then
         return false
     end
@@ -583,7 +592,7 @@ function Session:SetTimerNames(i, list)
     if self.readOnly or not (row and row.kind == "timer") then
         return false
     end
-    local value = table.concat(list, " ")
+    local value = Parser.TagValue(list) -- without realms (#1280)
     local line = Parser.ReplaceField(row.raw, "tag", value)
     if not line then
         return false
@@ -672,10 +681,11 @@ function Session:Select(i)
     return self.selected
 end
 
--- A click on a palette chip: with Quick fill on and a row selected, the chip's token is added to it.
-function Session:PaletteClick(token, kind)
+-- A click on a palette chip: with Quick fill on and a row selected, the chip's token is added to it (full: its name for
+-- the invite list, as Add).
+function Session:PaletteClick(token, kind, full)
     if self.quickFill and self.selected then
-        return self:Add(self.selected, token, kind)
+        return self:Add(self.selected, token, kind, nil, full)
     end
     return false
 end
@@ -712,7 +722,7 @@ function Session:Drop(i, at)
     if d.row then
         return self:Move(d.row, d.index, i, at)
     end
-    return self:Add(i, d.token, d.kind, at)
+    return self:Add(i, d.token, d.kind, at, d.full)
 end
 
 function Session:CancelDrag()
@@ -723,8 +733,9 @@ end
 
 local ROLE_ORDER = { TANK = 1, HEALER = 2, DAMAGER = 3 }
 
--- The name a player chip writes: without the realm when it is your own (Ambiguate "none", as Raid Groups shows it).
-local function shortName(key)
+-- A player's name as Raid Groups shows it: the realm only for a player of another realm (Ambiguate "none"). The invite
+-- list takes it (entry.full); every other row the name without the realm (Parser.NoteName, #1280).
+local function displayName(key)
     if Ambiguate then
         local ok, name = pcall(Ambiguate, key, "none")
         if ok and type(name) == "string" and readable(name) and name ~= "" then
@@ -752,11 +763,12 @@ function Model.Palette(roster, query)
     local players = {}
     for _, p in ipairs(roster or {}) do
         if type(p) == "table" and type(p.key) == "string" and readable(p.key) and p.key ~= "" then
-            local name = shortName(p.key)
-            if validToken(name) then
+            local full = displayName(p.key)
+            local name = Parser.NoteName(full)
+            if validToken(name) and validToken(full) then
                 local class = readable(p.class) and type(p.class) == "string" and p.class or nil
                 local role = readable(p.role) and ROLE_ORDER[p.role] and p.role or nil
-                players[#players + 1] = { label = name, token = name, class = class, role = role }
+                players[#players + 1] = { label = name, token = name, full = full, class = class, role = role }
             end
         end
     end

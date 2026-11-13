@@ -74,8 +74,9 @@ end
 
 -- A row's name as a block writes it: without its realm, as the note's other group lines (the Kick order's) have it
 -- (Alex, 2026-10-30). The alerts read a tag without its realm all the same (Notes/Engine.lua). A tag word has none.
+-- Parse.lua's NoteName, the one rule every writer of a note's names uses (#1280).
 local function short(token)
-    return (tostring(token or ""):gsub("%-.*$", ""))
+    return Parser.NoteName(tostring(token or ""))
 end
 
 local function shortAll(tokens)

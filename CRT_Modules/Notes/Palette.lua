@@ -385,7 +385,7 @@ function Palette.Draw(state, roster, width)
         sections[n] = { title = TEXT.sections[section.key], entries = section.entries,
             icon = section.key == "players" or section.key == "classes",
             source = function(entry)
-                return { token = entry.token, kind = kind }
+                return { token = entry.token, kind = kind, full = entry.full } -- full: the invite list's (#1280)
             end }
     end
     Palette.DrawSections(state, sections, width)

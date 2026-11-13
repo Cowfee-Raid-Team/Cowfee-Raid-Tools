@@ -51,7 +51,8 @@ local def = I:Def(M)
 -- the lines
 local list = { { "Solex", "", "Brenn-Illidan", "Mara" }, { "", "", "", "" } }
 local lines = B.Lines(def, list)
-eq(table.concat(lines, "|"), "intstart|Solex Brenn-Illidan Mara|intend", "lines: one per group, names in order, empty slots left out, an empty last group left out")
+eq(table.concat(lines, "|"), "intstart|Solex Brenn Mara|intend", "lines: one per group, names in order (no realm, #1280), empty slots left out, an empty last group left out")
+eq(table.concat(B.LinesOf({ { "Abu-Sargeras", " Cheo " }, { "Zed-Kel'Thuzad" } }), "|"), "intstart|Abu Cheo|Zed|intend", "lines: the note editor's rows written without realms (#1280)")
 lines = B.Lines(def, { { "", "", "", "" }, { "A", "B", "", "" } })
 eq(table.concat(lines, "|"), "intstart||A B|intend", "lines: an empty group before another is an empty line")
 eq(#B.Lines(def, { {}, {} }), 0, "lines: none for an empty list")

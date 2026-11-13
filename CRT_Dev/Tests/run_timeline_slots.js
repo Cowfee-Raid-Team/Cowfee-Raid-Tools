@@ -683,6 +683,23 @@ do
   CRT.db.specCache["bark-home"] = nil
 end
 
+-- #1280: a player from another realm goes into the note without the realm, and Clear player still finds their lines
+do
+  setNote({ "time:20;ph:1;tag:RestoDruid;spellid:740;" })
+  CRT.db.timeline.healerSlots[3001] = { { spec = 105, n = 1 } }
+  v:Refresh()
+  find(find(headerMenu(v, "healers:slot:105:1").items, "Assign player").items, "Type a name").fn()
+  typeName("Bramble-Away")
+  local t = N:Parsed(1).timers[1]
+  check(CRT.db.timeline.healerSlots[3001][1].player == "Bramble-Away" and t.tags[1] == "Bramble",
+    "the slot keeps the realm, the note's line has none: " .. tostring(N:Get(1).raw))
+  find(headerMenu(v, "healers:bramble-away").items, "Clear player").fn()
+  t = N:Parsed(1).timers[1]
+  check(t.tags[1] == "RestoDruid", "Clear player finds the line by the plain name: " .. tostring(t.tags[1]))
+  setNote({})
+  CRT.db.timeline.healerSlots = {}
+end
+
 if fails > 0 then error(fails .. " healer slot checks failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
