@@ -7,7 +7,9 @@ local ADDON, CRT = ...
 -- sound (CRT.Sound, on General Settings' sound channel).
 -- An untimed setup has nothing to count down. When the cast before yours starts on your group's add (Plates:OnTurn moves
 -- it to the number before yours) it shows "Your kick next: Skull add #2" as a heads-up; when your own cast starts it
--- shows "Kick now: Skull add #2" with the sound. It hides when the add moves past you, or after HOLD seconds.
+-- shows "Kick now: Skull add #2" with the sound. It hides when the add moves past you, or after HOLD seconds. While
+-- raid markers on plates are secret, Plates can't know a plate's group and never calls OnTurn, so an untimed setup
+-- shows no reminder (Interrupts/Plates.lua); this stays for the day a plate's group can be known.
 --
 -- The schedule: when a pull arms (Interrupts/Anchor.lua), one timer per entry of the block's anchor.times, at
 -- pullTime + time + PairOffset(number) - LEAD, since wave 1's reminder is due before its anchor is even cast. When
