@@ -6,6 +6,14 @@ local ADDON, CRT = ...
 -- CRT_Dev/Tests/run_whatsnew.js checks every entry.
 CRT.WhatsNewData = {
     {
+        version = "1.4.3",
+        lines = {
+            "Notes no longer write server names",
+            "Raid Groups and invites keep Name-Server",
+        },
+        more = 0,
+    },
+    {
         version = "1.4.2",
         lines = {
             "Interrupts: marker kick numbers show again",

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.3 (2026-11-13)
+
+- **No server names in notes:** names CRT writes into a note (assignment blocks, kick setups, healer slots and the player chips you drop in) no longer carry the server, and older note text drops it for players in your group or Raid Groups layout. Raid Groups and the invite list still keep Name-Server.
+- **Northern Sky Raid Tools:** notes sent to it no longer include server names, so its name matching works.
+
 ## 1.4.2 (2026-11-13)
 
 - **Interrupts marker numbers:** kick setups that use raid markers show their numbers on the marked adds again. Each add keeps its own kick count, and marker setups have no kick reminder.
