@@ -772,6 +772,14 @@ function CRT:PlaySound(kit)
     return nil
 end
 
+-- Whether the Development page is open (/crt dev). Players never have it. Asked when needed: pages register
+-- after this file loads, and SetPageHidden turns it on and off. Developer-only features gate on this.
+function CRT.DevMode()
+    local pages = type(CRT.UI) == "table" and rawget(CRT.UI, "pages")
+    local page = type(pages) == "table" and rawget(pages, "dev")
+    return type(page) == "table" and not page.hidden
+end
+
 function CRT:Print(msg)
     print("|cffc8a050Cowfee Raid Tools|r: " .. tostring(msg))
 end

@@ -13,6 +13,7 @@ local function defaults()
     overlayOn = false, hideEmpty = false, nextId = 1 }
 end
 local CRT = { db = { timeline = defaults() } }
+CRT.DevMode = function() local pg = type(CRT.UI) == "table" and rawget(CRT.UI, "pages") local d = type(pg) == "table" and rawget(pg, "dev") return type(d) == "table" and not d.hidden end -- CRT_Core/Core.lua is not loaded here
 assert(load(src, "CRT_Modules/Timeline/Data.lua"))("CowfeeRaidTools", CRT)
 local T = CRT.Timeline
 local fired = 0

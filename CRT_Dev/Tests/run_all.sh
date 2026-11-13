@@ -184,7 +184,7 @@ g "game ids" && { node run_gameids.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTA
 # 265202 and Rapture 47536 (removed in 11.1.0), Emerald Communion 370960 (a PvP talent since 12.0.0), Evangelism's old ID 246287.
 g "removed cooldowns stay out" && { bad=$(grep -rnE 'spellID *= *(265202|47536|370960|246287)([^0-9]|$)' --include=*.lua "$W/CRT_Data/Seasons"); if [ -n "$bad" ]; then echo "FAIL a removed class cooldown is back in a season pack:"; echo "$bad"; else echo "all passed"; fi; }
 g "late data" && { node run_late.js "$W/CRT_Modules/Late/Data.lua" 2>&1 | tail -6; echo "exit ${PIPESTATUS[0]}"; }
-g "late page" && { node run_latepage.js "$W/CRT_Modules/Late/Data.lua" "$W/CRT_Modules/Late/Page.lua" 2>&1 | tail -44; echo "exit ${PIPESTATUS[0]}"; }
+g "late page" && { node run_latepage.js "$W/CRT_Modules/Late/Data.lua" "$W/CRT_Modules/Late/Page.lua" "$W/CRT_Core/Core.lua" 2>&1 | tail -44; echo "exit ${PIPESTATUS[0]}"; }
 g "groups extras" && { node run_groups_extras.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "groups sort" && { node run_groups_sort.js "$W" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
 g "roster share" && { node run_roster_share.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }

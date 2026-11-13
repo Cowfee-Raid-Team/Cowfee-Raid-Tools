@@ -96,6 +96,7 @@ local CRT = { db = { timeline = { record = true, minPull = 15, keep = 10, bosses
   PALETTE = { background = { 0.1, 0.1, 0.1 }, border = { 0.3, 0.3, 0.3 }, accent = { 0.78, 0.56, 0.36 }, label = { 0.87, 0.73, 0.56 }, text = { 0.95, 0.9, 0.84 } },
 }
 CRT_THEME(CRT, CRT.UI)
+CRT.DevMode = function() local pg = type(CRT.UI) == "table" and rawget(CRT.UI, "pages") local d = type(pg) == "table" and rawget(pg, "dev") return type(d) == "table" and not d.hidden end -- CRT_Core/Core.lua is not loaded here
 -- Timeline.DevMode reads the Development page's hidden flag: /crt dev open while the tests run, unless one closes it
 CRT.UI.pages = { dev = { hidden = false } }
 local function setDev(on) CRT.UI.pages.dev.hidden = not on end
