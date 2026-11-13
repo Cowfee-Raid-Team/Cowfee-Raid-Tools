@@ -10,10 +10,11 @@ local ADDON, CRT = ...
 --             Raiders: per raider, Big/Small/Off counts per boss (one column a boss, blank when none) and Updated (how
 --             old their list is; past V.OLD_DAYS in warn). Players in your raid with no list show "no list". The X
 --             forgets one raider's list.
---   Team      Everyone kept, In my raid now, Raid Groups layout (the active layout, Groups:ActiveNames).
+--   Team      Everyone kept, In my raid now, Raid Groups layout: then a Layout dropdown beside it picks which saved
+--             layout (Groups:PresetNames; the one in use by default, never changing Use This Group).
 --   Forget all asks first (W.AskForgetAll).
 -- The rows are worked out once per data change (a list heard or forgotten, your own list, the Journal's data, the
--- roster, a pick); the lists draw only the rows in view. The view, team, boss and sort are kept in
+-- roster, a Raid Groups layout, a pick); the lists draw only the rows in view. The view, team, layout, boss and sort are kept in
 -- lootmaster.wishlistsTab. Built by Page.lua's tab (LM.BuildWishlistsTab), inside the page area.
 
 local LM = CRT.LootMaster
@@ -23,7 +24,9 @@ local V = W.Views
 
 local L = {
     x = 8, top = -8, controls = -30, head = -70, list = -90, rowH = 24, bottom = 8, scrollGap = 20,
-    viewLabel = 34, viewW = 130, teamLabel = 38, teamW = 170, bossLabel = 34, bossW = 220, gap = 16,
+    -- the controls' row: View, Team, Layout (only for a Raid Groups layout) and Boss (only in Boss detail), all four
+    -- left of Forget all at the page's width
+    viewLabel = 34, viewW = 130, teamLabel = 38, teamW = 170, layoutLabel = 44, layoutW = 160, bossLabel = 34, bossW = 200, gap = 16,
     -- Bosses
     bossName = 4, bossNameW = 260, count = 60, big = 270, small = 334, off = 398, value = 462, barW = 300, barH = 10, valueY = -6, valueW = 60,
     -- Boss detail
@@ -40,7 +43,7 @@ local TEXT = {
         { "Bosses", "the wants for each boss's items, as Big upgrade, Small upgrade and Off spec. Value adds them up as Big 3, Small 1 and Off 0.5. Click a boss to see its items." },
         { "Boss detail", "who wants each item, by rank." },
         { "Raiders", "each raider's wants per boss as Big/Small/Off, and how old their list is." },
-        { "Team", "everyone you keep, the players in your raid now, or the Raid Groups layout in use (Use This Group)." },
+        { "Team", "everyone you keep, the players in your raid now, or the players in a Raid Groups layout you pick." },
     },
     notKeeper = "Only officers and raid assists keep raiders' lists.",
     notKeeperHelp = "Raiders' wishlists are kept by guild officers (a rank that can edit officer notes), the loot master, the raid leader and raid assists.\n\nYour own list is My wishlist, on the Tonight tab.",
@@ -48,7 +51,9 @@ local TEXT = {
     views = { { key = "bosses", label = "Bosses" }, { key = "detail", label = "Boss detail" }, { key = "raiders", label = "Raiders" } },
     team = "Team",
     teams = { all = "Everyone kept", raid = "In my raid now", team = "Raid Groups layout" },
-    noLayout = "Pick a layout with Use This Group on Raid Groups first.",
+    noLayout = "Save a layout on Raid Groups first.",
+    layout = "Layout",
+    inUse = "%s (in use)",
     boss = "Boss",
     forgetAll = "Forget all",
     forget = "Forget %s's list",
@@ -82,6 +87,11 @@ local function picked()
         team = "all"
     end
     return s.view or "bosses", team
+end
+
+-- The Raid Groups layout Team reads: the one picked while it is still saved, else the one in use, else the first.
+local function layoutPick()
+    return V.LayoutPick(state().layout)
 end
 
 local function seasonKey()
@@ -423,7 +433,7 @@ end
 -- Works the rows out for the pick: once per data change, never per row drawn.
 local function work()
     local view, team = picked()
-    local raiders = V.Raiders(team)
+    local raiders = V.Raiders(team, layoutPick())
     local m = V.Map()
     local s = state()
     rows.view, rows.loading, rows.people = view, m.loading, raiders
@@ -465,8 +475,16 @@ refresh = function()
     end
     work()
     local view = rows.view
+    local byLayout = select(2, picked()) == "team"
     parts.viewRow.refresh()
     parts.teamRow.refresh()
+    parts.layoutRow:SetShown(byLayout)
+    if byLayout then
+        parts.layoutRow.refresh()
+    end
+    -- Boss sits right of Layout while it shows, else right of Team
+    parts.bossRow:ClearAllPoints()
+    parts.bossRow:SetPoint("LEFT", byLayout and parts.layoutRow or parts.teamRow, "RIGHT", L.gap, 0)
     parts.bossRow.refresh()
     parts.bossRow:SetShown(view == "detail")
     local list
@@ -502,6 +520,18 @@ local function teamOptions()
     return out
 end
 
+-- Every saved Raid Groups layout, in its saved order (asked when the list opens, so a rename or a new layout shows),
+-- the one in use tagged.
+local function layoutOptions()
+    local active = CRT.Groups and CRT.Groups.Active and CRT.Groups:Active()
+    local out = {}
+    for _, p in ipairs(V.Layouts()) do
+        local name = tostring(p.name or p.id)
+        out[#out + 1] = { key = p.id, label = p.id == active and TEXT.inUse:format(name) or name }
+    end
+    return out
+end
+
 local function buildControls(f)
     local c = CreateFrame("Frame", nil, f)
     c:SetAllPoints()
@@ -528,6 +558,15 @@ local function buildControls(f)
         end,
     })
     parts.teamRow:SetPoint("LEFT", parts.viewRow, "RIGHT", L.gap, 0)
+    parts.layoutRow = UI.Dropdown(c, TEXT.layout, {
+        labelWidth = L.layoutLabel, width = L.layoutW, maxHeight = 400, options = layoutOptions,
+        get = layoutPick,
+        set = function(key)
+            state().layout = key
+            refresh()
+        end,
+    })
+    parts.layoutRow:SetPoint("LEFT", parts.teamRow, "RIGHT", L.gap, 0)
     parts.bossRow = UI.Dropdown(c, TEXT.boss, {
         labelWidth = L.bossLabel, width = L.bossW, maxHeight = 400,
         options = function()
@@ -592,7 +631,7 @@ LM:OnChange(function(what, how)
 end)
 if CRT.Groups and CRT.Groups.OnChange then
     CRT.Groups:OnChange(function()
-        soon(false) -- the Raid Groups layout in use
+        soon(false) -- a Raid Groups layout saved, renamed, edited or put in use
     end)
 end
 UI:OnTheme(refresh)

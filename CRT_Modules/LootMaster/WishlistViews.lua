@@ -1,9 +1,9 @@
 local ADDON, CRT = ...
 
 -- The Wishlists tab's numbers (Issue #1269), with no frames: LootMaster/WishlistTab.lua draws them.
---   Raiders(team)      who counts: the saved lists (LootMaster/WishlistSaved.lua), your own list, and the players in
---                      your raid with no list ("no list"); team "all" (everyone kept), "raid" (in your group now) or
---                      "team" (the active Raid Groups layout, Groups:ActiveNames: the roster the raid runs with)
+--   Raiders(team, layoutId)  who counts: the saved lists (LootMaster/WishlistSaved.lua), your own list, and the
+--                      players in your raid with no list ("no list"); team "all" (everyone kept), "raid" (in your group
+--                      now) or "team" (a saved Raid Groups layout's names, Groups:PresetNames; LayoutPick says which)
 --   BossRows(raiders)  view A: per boss of the season, in route order (CRT.Bosses:RouteList), how many wants of each
 --                      rank its items have, and a value (VALUE: Big 3, Small 1, Off 0.5)
 --   Detail(raiders, encounterID)  view B: each item of the boss someone wants, with who wants it by rank
@@ -66,16 +66,44 @@ local function lower(name)
     return type(name) == "string" and name:lower() or ""
 end
 
--- The names the team filter keeps ({ [lower name] = name }), or nil for everyone kept.
-local function teamNames(team)
+-- The saved Raid Groups layouts (Groups:Presets, in their saved order), or none while Raid Groups isn't loaded.
+local function layouts()
+    local Groups = CRT.Groups
+    if not (Groups and Groups.Presets and Groups.PresetNames) then
+        return {}
+    end
+    return Groups:Presets() or {}
+end
+V.Layouts = layouts
+
+-- The layout the team filter reads: id when it is still saved, else the one in use (Groups:Active), else the first.
+function V.LayoutPick(id)
+    local list = layouts()
+    for _, p in ipairs(list) do
+        if p.id == id then
+            return id
+        end
+    end
+    local active = CRT.Groups and CRT.Groups.Active and CRT.Groups:Active()
+    for _, p in ipairs(list) do
+        if p.id == active then
+            return active
+        end
+    end
+    return list[1] and list[1].id or nil
+end
+
+-- The names the team filter keeps ({ [lower name] = name }), or nil for everyone kept. layoutId: the layout "team"
+-- reads (V.LayoutPick).
+local function teamNames(team, layoutId)
     local out = {}
     if team == "raid" then
         for _, name in ipairs(IsInGroup() and LM:Roster() or {}) do
             out[lower(name)] = name
         end
     elseif team == "team" then
-        local Groups = CRT.Groups
-        for _, name in ipairs(Groups and Groups.ActiveNames and Groups:ActiveNames() or {}) do
+        local id = V.LayoutPick(layoutId)
+        for _, name in ipairs(id ~= nil and CRT.Groups:PresetNames(id) or {}) do
             out[lower(name)] = name
         end
     else
@@ -84,19 +112,24 @@ local function teamNames(team)
     return out
 end
 
--- Whether the team filter can be picked: "team" needs an active Raid Groups layout.
+-- Whether the team filter can be picked: "team" needs a saved Raid Groups layout with names.
 function V.HasTeam(team)
     if team ~= "team" then
         return true
     end
-    local Groups = CRT.Groups
-    return Groups ~= nil and Groups.ActiveNames ~= nil and #Groups:ActiveNames() > 0
+    for _, p in ipairs(layouts()) do
+        if #CRT.Groups:PresetNames(p.id) > 0 then
+            return true
+        end
+    end
+    return false
 end
 
 -- The raiders for a team filter: { { name, class, items (nil: no list), at } }, sorted by name, those with no list
 -- last. Your own list counts as yours; players in your raid (or the team) with no list are there as "no list".
-function V.Raiders(team)
-    local keep = teamNames(team)
+-- layoutId: the Raid Groups layout "team" reads (V.LayoutPick: nil is the one in use, else the first).
+function V.Raiders(team, layoutId)
+    local keep = teamNames(team, layoutId)
     local out, seen = {}, {}
     local function add(name, items, at, class)
         local key = lower(name)
