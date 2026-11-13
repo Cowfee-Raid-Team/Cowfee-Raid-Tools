@@ -276,6 +276,18 @@ local function plain(key)
     return Groups.ReportName(key)
 end
 
+-- Discord headings: heading 2 for the title, heading 3 for the date or the date range.
+local EXPORT_TEXT = {
+    title = "## Late Tracker:",
+    date = "### Date: %s",
+    dates = "### Dates: %s - %s",
+}
+
+-- "Nov 5": month abbreviation and day number, no leading zero.
+local function exportDay(t)
+    return date("%b", t) .. " " .. tonumber(date("%d", t))
+end
+
 local function totalsExport()
     local history = Late:Nights(scope())
     if #history == 0 then
@@ -285,8 +297,11 @@ local function totalsExport()
     for _, night in ipairs(history) do
         first, last = math.min(first, night.startedAt), math.max(last, night.startedAt)
     end
+    local from, to = exportDay(first), exportDay(last)
     local lines = {
-        format("**Late tracker totals**: %d nights, %s to %s", #history, day(first), day(last)),
+        EXPORT_TEXT.title,
+        from == to and format(EXPORT_TEXT.date, from) or format(EXPORT_TEXT.dates, from, to),
+        "",
         "```",
         pad("Player", 26) .. pad("Late", 9) .. pad("Time late", 13) .. "No-Show",
     }
@@ -299,7 +314,10 @@ end
 
 local function nightExport(night)
     local lines = {
-        format("**Raid night %s**, start %s, roster \"%s\", ended %s when %s", day(night.startedAt), clock(night.startedAt), night.layout or "?", clock(night.endedAt), ENDED[night.endReason] or "it ended"),
+        EXPORT_TEXT.title,
+        format(EXPORT_TEXT.date, exportDay(night.startedAt)),
+        format("Start %s, roster \"%s\", ended %s when %s", clock(night.startedAt), night.layout or "?", clock(night.endedAt), ENDED[night.endReason] or "it ended"),
+        "",
     }
     local late, onTime = {}, {}
     for _, p in ipairs(sortedPlayers(night)) do

@@ -299,6 +299,28 @@ do
   frameWith("Export for Discord").OnClick()
   check(exported and not exported:find("Abu", 1, true), "and the Discord export")
   check(exported and not exported:find("edited", 1, true), "the export has no (edited) marks")
+  -- export headings: heading 2 title, heading 3 date(s), a blank line, then the block
+  do
+    local function linesOf(s) local t = {} for l in (s .. "\\n"):gmatch("(.-)\\n") do t[#t + 1] = l end return t end
+    local n = linesOf(exported or "")
+    check(n[1] == "## Late Tracker:" and n[2] == "### Date: Oct 14", "night export heading: " .. tostring(n[1]) .. " / " .. tostring(n[2]))
+    check(n[3] and n[3]:find("^Start 20:00, roster \\"Main\\", ended 22:00") and not n[3]:find("**", 1, true), "night export details line is plain: " .. tostring(n[3]))
+    check(n[4] == "", "night export has a blank line before the block")
+    selectNight("totals")
+    exported = nil
+    frameWith("Export for Discord").OnClick()
+    local t = linesOf(exported or "")
+    check(t[1] == "## Late Tracker:" and t[2] == "### Date: Oct 14", "one-day totals heading: " .. tostring(t[2]))
+    check(t[3] == "" and t[4] == "\`\`\`", "blank line, then the block")
+    local keep = CRT.db.late.history[2].startedAt
+    CRT.db.late.history[2].startedAt = os.time({ year = 2026, month = 11, day = 5, hour = 20, min = 0 })
+    exported = nil
+    frameWith("Export for Discord").OnClick()
+    t = linesOf(exported or "")
+    check(t[2] == "### Dates: Oct 14 - Nov 5", "range heading, no leading zero: " .. tostring(t[2]))
+    CRT.db.late.history[2].startedAt = keep
+    selectNight(1)
+  end
   -- set back to No-show: restored
   edit.OnClick(edit)
   rowFor("Abu-Kel'Thuzad").opts.set("noshow")
