@@ -415,6 +415,107 @@ check("assign: what making a typed list a block changes", function()
   assert(c.lines == 3 and c.off == 1 and c.dropped == 1 and table.concat(c.texts, ",") == "Odd", "3 lines, 1 off, 1 loses its colours, Odd's texts become one")
 end)
 
+-- #1275: a group list named like a block already in the note updates that block, never a copy "Name 2"
+local function orbList(heading)
+  return { heading or "Orb Carriers", "Odd: Solex, Rixxy", "Even: Abu, Cheo",
+    "time:30;ph:1;tag:Solex Rixxy;text:Orbs;", "time:90;ph:1;tag:Abu Cheo;text:Orbs;", "time:999;ph:1;tag:Abu Cheo;text:Off pattern;" }
+end
+local function lineOf(text, needle) for i, l in ipairs(lines(text)) do if l:find(needle, 1, true) then return i end end end
+
+check("assign: MatchingBlock finds the block a group list is named like (#1275)", function()
+  local typed = { { ph = 1, t = 30 }, { ph = 1, t = 90 } }
+  local block = A.Lines({ name = "Orb Carriers", times = typed, rows = { { label = "Left", text = "", tokens = { "Kip", "Zed" }, casts = "all" } } }, typed)
+  local function note(heading)
+    local l = { "EncounterID:3470;Difficulty:Mythic;Name:Twin Fangs" }
+    for _, x in ipairs(block) do l[#l + 1] = x end
+    l[#l + 1] = "Middle line"
+    for _, x in ipairs(orbList(heading)) do l[#l + 1] = x end
+    return joined(l)
+  end
+  local h = #block + 3
+  assert(A.MatchingBlock(note(), h) == "orb carriers", "the same name: " .. tostring(A.MatchingBlock(note(), h)))
+  assert(A.MatchingBlock(note("ORB  carriers"), h) == "orb carriers", "any case, as the key reads it")
+  assert(A.MatchingBlock(note("Orb Carrier"), h) == nil, "only the same key")
+  assert(A.MatchingBlock(note(), h + 1) == nil and A.MatchingBlock(note(), 2) == nil, "a row, or the block's own heading: no list")
+end)
+
+check("assign: AdoptInto updates the block in place, keeping its name and typed times (#1275)", function()
+  local typed = { { ph = 1, t = 30 }, { ph = 1, t = 90 } }
+  local block = A.Lines({ name = "Orb Carriers", times = typed, rows = { { label = "Left", text = "", tokens = { "Kip", "Zed" }, casts = "all" } } }, typed)
+  local head = { "EncounterID:3470;Difficulty:Mythic;Name:Twin Fangs", "Intro" }
+  local l = { head[1], head[2] }
+  for _, x in ipairs(block) do l[#l + 1] = x end
+  l[#l + 1] = "Middle line"
+  for _, x in ipairs(orbList()) do l[#l + 1] = x end
+  l[#l + 1] = "Notes for the raid"
+  local text = joined(l)
+  local h = lineOf(text, "Middle line") + 1
+  local out, b = A.AdoptInto(text, h, nil, "orb carriers")
+  assert(out and b and b.key == "orb carriers" and b.name == "Orb Carriers", "the block's own name and key")
+  assert(out:sub(1, #joined(head)) == joined(head) and lineOf(out, "assign:orb carriers;") == 3, "where it was: " .. out)
+  assert(out:find("assign:orb carriers;name:Orb Carriers;times:1@30,1@90;", 1, true), "its typed times kept: " .. out)
+  assert(table.concat(A.Keys(out), ",") == "orb carriers" and not out:find("Orb Carriers 2", 1, true), "one block, no copy")
+  local back = A.Read(out, "orb carriers")
+  assert(#back.rows == 2 and back.rows[1].label == "Odd" and table.concat(back.rows[2].tokens, ",") == "Abu,Cheo", "the list's rows")
+  assert(back.rows[1].casts == "rotate" and back.rows[1].text == "Orbs", "their casts and text")
+  assert(not out:find("Kip", 1, true), "the block's old rows replaced")
+  assert(not out:find("\\nOrb Carriers\\n", 1, true) and not out:find("Odd: Solex, Rixxy", 1, true) and not out:find("text:Orbs;\\n", 1, true)
+    and #A.Candidates(out) == 0, "the list and its lines gone: " .. out)
+  assert(out:find("Middle line\\ntime:999;ph:1;tag:Abu Cheo;text:Off pattern;\\nNotes for the raid", 1, true), "the line on no cast stays: " .. out)
+  assert(select(2, out:gsub("assign:orb carriers/", "")) == 2, "a line per row per cast")
+  -- the list at the note's end: no line end left over
+  local atEnd = joined({ head[1], joined(block), "Orb Carriers", "Odd: Solex, Rixxy", "time:30;ph:1;tag:Solex Rixxy;text:Orbs;" })
+  local out2 = A.AdoptInto(atEnd, #block + 2, nil, "orb carriers")
+  assert(out2 and not out2:find("\\n$") and table.concat(A.Keys(out2), ",") == "orb carriers", "ends as the note did: " .. tostring(out2))
+  -- a block that isn't there: nothing
+  assert(A.AdoptInto(text, h, nil, "nothing here") == nil, "no block, no update")
+end)
+
+check("assign: AdoptInto keeps a mechanic's block on its casts, even when the list comes first (#1275)", function()
+  local casts = { { ph = 1, t = 30 }, { ph = 1, t = 90 } }
+  -- the block's rows list the same players as the list's: its own marked lines are never the list's
+  local block = A.Lines({ name = "Orb Carriers", spellID = 1234, rows = { { label = "Left", text = "", tokens = { "Solex", "Rixxy" }, casts = "all" } } },
+    casts, { mech = "1234" })
+  local l = { "EncounterID:3470;Difficulty:Mythic;Name:Twin Fangs" }
+  for _, x in ipairs(orbList("orb carriers")) do l[#l + 1] = x end
+  l[#l + 1] = "Middle line"
+  for _, x in ipairs(block) do l[#l + 1] = x end
+  local text = joined(l)
+  assert(A.MatchingBlock(text, 2) == "orb carriers", "matched")
+  local c = A.AdoptChanges(text, 2, casts)
+  assert(c.lines == 2 and c.off == 1, "the block's own lines aren't the list's: " .. c.lines)
+  local out, b = A.AdoptInto(text, 2, casts, "orb carriers")
+  assert(b.mech == "1234" and b.name == "Orb Carriers", "its mechanic and name")
+  assert(out:find("assign:orb carriers;name:Orb Carriers;for:1234;\\n", 1, true) and not out:find("times:", 1, true), "for: kept, no typed times: " .. out)
+  assert(lineOf(out, "Middle line") < lineOf(out, "assign:orb carriers;"), "the block where it was, after the middle line")
+  assert(select(2, out:gsub("spellid:1234;", "")) == 2 and select(2, out:gsub("assign:orb carriers/", "")) == 2, "its spell on the new lines: " .. out)
+  local back = A.Read(out, "orb carriers", casts)
+  assert(#back.rows == 2 and back.rows[1].label == "Odd" and back.rows[2].casts == "rotate", "the list's rows")
+  assert(table.concat(A.Keys(out), ",") == "orb carriers" and #A.Candidates(out) == 0, "one block, the list gone")
+end)
+
+check("assign: after AdoptInto, Save's links follow the block's rows, stale links do no harm (#1275)", function()
+  reset()
+  local casts = { { ph = 1, t = 30 }, { ph = 1, t = 90 } }
+  local block = A.Lines({ name = "Orb Carriers", times = casts, rows = { { label = "Odd", text = "", tokens = { "Kip", "Zed" }, casts = "all" } } }, casts)
+  local raw = "EncounterID:3470;Difficulty:Mythic;Name:Twin Fangs\\n" .. joined(block)
+  local id = Notes:Import(raw)
+  raw = Notes:Get(id).raw
+  assert(A.LinkAll(id, raw) == 2 and #Links.Saved(id) == 1, "the old block's links saved")
+  local text = raw .. "\\n" .. joined(orbList())
+  local h = #block + 2 -- the list's heading, after the note's header and the block
+  local out = A.AdoptInto(text, h, nil, "orb carriers", { saved = Links.Saved(id) })
+  assert(out and table.concat(A.Keys(out), ",") == "orb carriers", "updated: " .. tostring(out))
+  assert(A.LinkAll(id, out) == 2, "Save links the block's two lines")
+  local s = Model.New(out)
+  local m = Links.Match(Links.Rows(s), Links.Lines(s), Links.Saved(id))
+  local _, _, f = A.Find(out, "orb carriers")
+  for _, i in ipairs(f.timed) do
+    local _, r = A.MarkerOf(s.rows[i].raw)
+    assert(m.follow[i] and m.follow[i].row.index == f.labels[r], "line " .. i .. " follows its row")
+  end
+end)
+
 check("no errors raised", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
