@@ -76,7 +76,8 @@ local function layouts()
 end
 V.Layouts = layouts
 
--- The layout the team filter reads: id when it is still saved, else the one in use (Groups:Active), else the first.
+-- The layout the team filter reads: id when it is still saved, else the one in use (Groups:Active), else the first
+-- with names (nil when none has any).
 function V.LayoutPick(id)
     local list = layouts()
     for _, p in ipairs(list) do
@@ -90,7 +91,12 @@ function V.LayoutPick(id)
             return active
         end
     end
-    return list[1] and list[1].id or nil
+    for _, p in ipairs(list) do
+        if #CRT.Groups:PresetNames(p.id) > 0 then
+            return p.id
+        end
+    end
+    return nil
 end
 
 -- The names the team filter keeps ({ [lower name] = name }), or nil for everyone kept. layoutId: the layout "team"

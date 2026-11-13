@@ -487,6 +487,18 @@ eq(V.LayoutPick(99), 2, "pick: a layout gone, the one in use")
 ACTIVE = nil
 eq(V.LayoutPick(99), 1, "pick: none in use, the first")
 eq(V.LayoutPick(2), 2, "pick: a saved layout stays")
+-- the "first" fallback skips layouts with no names; a pick or the layout in use wins even when empty
+table.insert(PRESETS, 1, { id = 5, name = "Blank", names = {} })
+eq(V.LayoutPick(nil), 1, "pick: none in use, the first layout with names (Blank skipped)")
+eq(teamOf(V.Raiders("team")), "Faraway-Sargeras Quick-Sargeras Bench-Sargeras(none)", "pick: and its players")
+eq(V.LayoutPick(5), 5, "pick: an empty layout picked stays")
+ACTIVE = 5
+eq(V.LayoutPick(nil), 5, "pick: an empty layout in use wins")
+ACTIVE = nil
+PRESETS = { { id = 5, name = "Blank", names = {} } }
+eq(V.LayoutPick(nil), nil, "pick: no layout with names, none")
+PRESETS = { { id = 1, name = "Mythic", names = { "Quick-Sargeras", "Faraway-Sargeras", "Bench-Sargeras" } },
+  { id = 2, name = "Heroic", names = { "Halo-Sargeras", "Arrow-Sargeras" } } }
 ACTIVE = 2
 -- your own list counts as yours
 W.Set(23, "small") runTimers() take()
@@ -524,7 +536,8 @@ CreateDataProvider = function(rows) return rows end
 GameTooltip = mock("tip")
 C_ClassColor = { GetClassColor = function(c) return { WrapTextInColorCode = function(_, t) return "[" .. c .. "]" .. t end } end }
 local drops = {}
-CRT.UI.Dropdown = function(parent, text, opts) local d = mock("dropdown") d.opts = opts d.refresh = function() end drops[text] = d return d end
+CRT.UI.Dropdown = function(parent, text, opts) local d = mock("dropdown") d.opts = opts d.ddWidth = opts.width d.refresh = function() end
+  d.SetDropdownWidth = function(w) d.ddWidth = w end drops[text] = d return d end
 CRT.UI.SortHeaders = function(parent, cols, opts) return { refresh = function() end, opts = opts, cols = cols } end
 CRT.UI.PanelButton = function(parent, label, h, fn) local b = mock("button") b.text = label b.scripts.OnClick = fn return b end
 CRT.UI.SkinScrollBar = function() end
@@ -660,13 +673,15 @@ refreshers[1]()
 eq(drops.Layout.opts.get(), 2, "layout: a saved layout gone reads as the one in use")
 eq(teamOf(rows.people), "Arrow-Sargeras(none) Halo-Sargeras(none)", "layout: and its players")
 -- the row fits the page: View, Team, Layout and Boss left of Forget all
-local function rowW(d) return d.opts.labelWidth + 5 + d.opts.width end
+eq(drops.Boss.ddWidth, 200, "layout: Boss narrows to 200 beside Layout")
+local function rowW(d) return d.opts.labelWidth + 5 + d.ddWidth end
 local function gapOf(f) return f.points[#f.points][4] end
 local used = 8 + rowW(drops.View) + gapOf(parts.teamRow) + rowW(drops.Team) + gapOf(parts.layoutRow) + rowW(drops.Layout) + gapOf(parts.bossRow) + rowW(drops.Boss)
 check(used <= CRT.UI.PAGE_W - 8 - 110, "layout: the controls fit left of Forget all (" .. used .. " of " .. (CRT.UI.PAGE_W - 118) .. ")")
 drops.Team.opts.set("all")
 eq(parts.layoutRow.shown, false, "layout: hidden again for Everyone kept")
 eq(lastAnchor(parts.bossRow), parts.teamRow, "layout: Boss back right of Team")
+eq(drops.Boss.ddWidth, 220, "layout: Boss back to 220 with Layout hidden")
 eq(CRT.db.lootmaster.wishlistsTab.layout, 99, "layout: the pick kept")
 PRESETS, ACTIVE = {}, nil
 -- a boss kept from another season: Boss detail falls back to the season's first

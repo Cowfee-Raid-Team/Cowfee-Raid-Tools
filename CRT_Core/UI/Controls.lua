@@ -147,7 +147,7 @@ end
 --   decorate(button, option)  optional: adds to each item in the open menu, such as a Play button.
 --                             It may return the item's width and height. Anything it attaches with
 --                             button:AttachFrame or AttachFontString is removed when the menu closes.
--- Returns the row, with row.refresh() to call when the setting may have changed.
+-- Returns the row, with row.refresh() to call when the setting may have changed, and row.SetDropdownWidth(w).
 function UI.Dropdown(parent, text, opts)
     local labelWidth, width = opts.labelWidth or LABEL_W, opts.width or 200
     local row = makeRow(parent, text, labelWidth)
@@ -222,6 +222,11 @@ function UI.Dropdown(parent, text, opts)
             dropdown:SetEnabled(on)
             greyLabel(row, on)
         end
+    end
+    -- A new width for the closed dropdown, its row following (the label kept), for a row that shares its line.
+    row.SetDropdownWidth = function(w)
+        dropdown:SetWidth(w)
+        row:SetWidth(labelWidth + GAP + w)
     end
     return row
 end

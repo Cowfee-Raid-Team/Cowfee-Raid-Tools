@@ -26,7 +26,9 @@ local L = {
     x = 8, top = -8, controls = -30, head = -70, list = -90, rowH = 24, bottom = 8, scrollGap = 20,
     -- the controls' row: View, Team, Layout (only for a Raid Groups layout) and Boss (only in Boss detail), all four
     -- left of Forget all at the page's width
-    viewLabel = 34, viewW = 130, teamLabel = 38, teamW = 170, layoutLabel = 44, layoutW = 160, bossLabel = 34, bossW = 200, gap = 16,
+    -- (Boss narrows to bossNarrowW while Layout shows)
+    viewLabel = 34, viewW = 130, teamLabel = 38, teamW = 170, layoutLabel = 44, layoutW = 160, bossLabel = 34, bossW = 220,
+    bossNarrowW = 200, gap = 16,
     -- Bosses
     bossName = 4, bossNameW = 260, count = 60, big = 270, small = 334, off = 398, value = 462, barW = 300, barH = 10, valueY = -6, valueW = 60,
     -- Boss detail
@@ -482,7 +484,8 @@ refresh = function()
     if byLayout then
         parts.layoutRow.refresh()
     end
-    -- Boss sits right of Layout while it shows, else right of Team
+    -- Boss sits right of Layout while it shows (narrower, to fit the page), else right of Team
+    parts.bossRow.SetDropdownWidth(byLayout and L.bossNarrowW or L.bossW)
     parts.bossRow:ClearAllPoints()
     parts.bossRow:SetPoint("LEFT", byLayout and parts.layoutRow or parts.teamRow, "RIGHT", L.gap, 0)
     parts.bossRow.refresh()
