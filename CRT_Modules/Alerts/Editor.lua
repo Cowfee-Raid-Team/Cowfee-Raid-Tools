@@ -353,8 +353,9 @@ local function forOptions()
     for g = 1, 8 do
         add("G" .. g, string.format(TEXT.group, g))
     end
+    -- a player by the name the note writes (no realm, #1280), so a saved line read back is the same choice
     for _, name in ipairs(roster()) do
-        add(name, name)
+        add(CRT.NoteParser.NoteName(name), name)
     end
     if draft and (draft.tag == "" or (ctx and ctx.untagged)) then
         add("", TEXT.noOne)

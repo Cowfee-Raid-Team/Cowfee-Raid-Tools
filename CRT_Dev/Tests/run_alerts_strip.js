@@ -1410,7 +1410,7 @@ do
   dropCooldown(v, 108280)
   click(pitem(menus[1].root, "Tide-Other"))
   local t2, id2 = noteLine(3)
-  assert(id2 == id and noteCount() == 1 and t2 and t2.tags[1] == "Tide-Other", "another realm keeps its realm, same note")
+  assert(id2 == id and noteCount() == 1 and t2 and t2.tags[1] == "Tide", "another realm's player written without the realm (#1280), same note")
   -- the boss's note for the difficulty you are in is the one written to (S18)
   clearSaves()
   local heroic = N:Import("EncounterID:3001;Difficulty:Heroic;Name:Nek\\n")

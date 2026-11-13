@@ -283,7 +283,7 @@ do
   assert(s:Add(7, "Gadios") and s:LineText(7) == "Melee: Cheoeqar, Abu, Gadios", s:LineText(7))
   assert(s:Remove(7, 1) and s:LineText(7) == "Melee: Abu, Gadios", s:LineText(7))
   assert(s:Move(7, 1, 8) and s:LineText(8) == "Kicks G1: Abu" and s:LineText(7) == "Melee: Gadios", s:LineText(8) .. " / " .. s:LineText(7))
-  assert(s:Add(8, "Rixxy-Sargeras") and s:LineText(8) == "Kicks G1: Abu, Rixxy-Sargeras", "a name with a realm: " .. s:LineText(8))
+  assert(s:Add(8, "Rixxy-Sargeras") and s:LineText(8) == "Kicks G1: Abu, Rixxy-Sargeras", "a word naming no known player stays as written (#1280): " .. s:LineText(8))
   assert(s:Move(8, 2, 11) and s:LineText(11) == "Something odd ; with: colons, Rixxy-Sargeras", "moved to another label: " .. s:LineText(11))
   onlyChanged(NOTE:gsub("\\r", ""), s:Text():gsub("\\r", ""), { 7, 8, 11 })
   assert(select(2, s:Text():gsub("\\r\\n", "")) == select(2, NOTE:gsub("\\r\\n", "")), "every line end kept")
@@ -310,9 +310,10 @@ do
   s:SetQuickFill(true)
   assert(s:Select(12) == 12 and not s:PaletteClick("PRIEST", "class") and s:PaletteClick("Kip", "player"), "Quick fill: players only")
   -- a player dragged out of it onto a label, and a label's player into it; a label's group word stays out
-  assert(s:Move(12, 1, 7) and s:Names(7)[3] == "Cheoeqar-Sargeras" and s:LineText(12):find("^invitelist:,Rixxy"), "dragged out: " .. s:LineText(12))
+  assert(not s:Move(12, 1, 7) and #s:Names(7) == 2, "onto a label that has the name without the realm: refused, never twice (#1280)")
+  assert(s:Move(12, 1, 8) and s:Names(8)[1] == "Cheoeqar" and s:LineText(12):find("^invitelist:,Rixxy"), "dragged out, no realm on the label: " .. s:LineText(12))
   assert(s:Move(7, 2, 12) and s:LineText(12):find("^invitelist:Abu,Rixxy"), "a label's player into the empty slot: " .. s:LineText(12))
-  assert(s:Add(8, "Group2") and not s:Move(8, 1, 12) and s:Names(8)[1] == "Group2", "a label's group word can't go in")
+  assert(s:Add(8, "Group2") and not s:Move(8, 2, 12) and s:Names(8)[2] == "Group2", "a label's group word can't go in")
   -- spaces in the slots, the closing ; and what follows stay as written
   local sp = Model.New("  invitelist: A , B ,,C ;  ")
   assert(sp:Remove(1, 2) and sp:Text() == "  invitelist: A ,  ,,C ;  ", "[" .. sp:Text() .. "]")
@@ -421,7 +422,8 @@ do
   assert(table.concat(keys, ",") == "players,general,groups,classes", table.concat(keys, ","))
   assert(table.concat(kinds, ",") == "player,general,group,class", "each section's chip kind")
   local p = sections[1].entries
-  assert(#p == 4 and p[1].token == "Abu" and p[2].token == "Gadios" and p[3].token == "Zed" and p[4].token == "Bob-Other", "players by role, own realm left out, secret skipped")
+  assert(#p == 4 and p[1].token == "Abu" and p[2].token == "Gadios" and p[3].token == "Zed" and p[4].token == "Bob" and p[4].label == "Bob", "players by role, no realm written (#1280), secret skipped")
+  assert(p[4].full == "Bob-Other" and p[1].full == "Abu", "the name the invite list takes: the realm only for another realm")
   assert(p[1].class == "MAGE" and p[1].role == "TANK", "a player's class and role")
   local g = {}
   for _, e in ipairs(sections[2].entries) do g[#g + 1] = e.token end
@@ -443,6 +445,48 @@ do
   assert(#found[4].entries == 1 and found[4].entries[1].token == "Death Knight", "search finds a class by its name")
 end
 print("ok palette: players by role, general, Group1..8 and classes, each token one the alerts read; search")
+
+-- 6b. #1280: no realm in the note's text (it breaks NSRT's matching): a chip, a row rewritten, a kick row, the tag lines
+-- that follow; the invite list keeps the realm (it invites by it); the alerts still match the plain name
+do
+  local chip = Model.Palette({ { key = "Abu-Elsewhere", class = "MAGE", role = "TANK" } })[1].entries[1]
+  assert(chip.token == "Abu" and chip.full == "Abu-Elsewhere", "a chip of another realm writes the plain name")
+  -- the known players (Parse.lua's Players): Abu is in the group; Zed-Realm and the compass words are no one's
+  local s = Model.New("Left: Abu-Elsewhere, Cheo\\nNote: re-check the half-way point\\ninvitelist:Kip;\\nSpread: North-East, South-West\\nOff: Zed-Realm",
+    { players = { abu = "Abu-Elsewhere" } })
+  assert(not s:Add(1, "Abu", "player"), "the plain name is the same player: not added twice")
+  assert(s:Add(1, "Zed-Elsewhere", "player") and s:LineText(1) == "Left: Abu, Cheo, Zed", "a row rewritten has no realm: " .. s:LineText(1))
+  assert(s:Add(2, "Zed") and s:LineText(2) == "Note: re-check the half-way point Zed", "a sentence keeps its hyphens: " .. s:LineText(2))
+  assert(s:Add(4, "Kip", "player") and s:LineText(4) == "Spread: North-East, South-West, Kip", "words naming no player stay: " .. s:LineText(4))
+  assert(s:Add(5, "Kip", "player") and s:LineText(5) == "Off: Zed-Realm, Kip", "a player not in the group keeps the word: " .. s:LineText(5))
+  assert(s:Move(4, 1, 5) and s:Names(5)[3] == "North-East", "a moved word that names no player keeps its hyphen")
+  -- the invite list: a drop of the chip takes its full name, a click too
+  assert(s:BeginDrag({ token = chip.token, kind = "player", full = chip.full }) and s:Drop(3), "dropped on the invite list")
+  assert(s:LineText(3) == "invitelist:Kip,Abu-Elsewhere;", "the invite list keeps the realm: " .. s:LineText(3))
+  s:SetQuickFill(true)
+  s:Select(1)
+  assert(s:PaletteClick("Rixxy", "player", "Rixxy-Elsewhere") and s:LineText(1) == "Left: Abu, Cheo, Zed, Rixxy", "Quick fill on a row: no realm: " .. s:LineText(1))
+  s:Select(3)
+  assert(s:PaletteClick("Rixxy", "player", "Rixxy-Elsewhere") and s:LineText(3) == "invitelist:Kip,Abu-Elsewhere,Rixxy-Elsewhere;", "on the invite list: " .. s:LineText(3))
+  -- a timed line's tag written from a row has no realm
+  local t = Model.New("Left: Abu\\ntime:10;ph:1;tag:Abu;text:Soak;", { players = { abu = "Abu-Elsewhere" } })
+  assert(t:SetTimerNames(2, { "Abu-Elsewhere", "Cheo", "Zed-Realm" }) and t:LineText(2) == "time:10;ph:1;tag:Abu Cheo Zed-Realm;text:Soak;", "a tag: " .. t:LineText(2))
+  -- a known player moved from a row into the invite list goes by their full name (review round 1)
+  local m = Model.New("Left: Abu, Cheo\\ninvitelist:Kip;", { players = { abu = "Abu-Elsewhere" } })
+  assert(m:Move(1, 1, 2) and m:LineText(2) == "invitelist:Kip,Abu-Elsewhere;", "the invite list takes the realm: " .. m:LineText(2))
+  assert(m:Move(1, 1, 2) and m:LineText(2) == "invitelist:Kip,Abu-Elsewhere,Cheo;", "an unknown one as written: " .. m:LineText(2))
+  -- the alerts: a player of another realm (UnitName gives the name alone) matches a line naming them plainly
+  local was = myName
+  myName = "Abu"
+  Engine:ResetTokens()
+  assert(Engine:IsMine({ tags = { "Abu" } }) and Engine:IsMine({ tags = { "Abu-Elsewhere" } }), "Abu of another realm matches Abu")
+  myName = was
+  Engine:ResetTokens()
+  -- a timed line written by FormatLine (an alert, a block, a Mech Alert) has no realm either
+  local line = Parser.FormatLine({ time = 10, ph = 1, tags = { "Abu-Elsewhere", "healer" }, text = "Soak" })
+  assert(line == "time:10;ph:1;tag:Abu healer;text:Soak;", "FormatLine: " .. line)
+end
+print("ok #1280: no realm written: chips, rows rewritten, tags, FormatLine; the invite list keeps it; Abu still matches")
 
 -- 7. Quick fill, drag and cancel, read-only
 do
@@ -865,11 +909,11 @@ do
     for _, c in ipairs(W.paletteChips) do if c.shown and c.source and c.source.kind == "player" then out[#out + 1] = c.token end end
     return table.concat(out, ",")
   end
-  assert(players() == "Abu,Zed,Bob-Other,Plain-Nowhere", "the layout's players by role then name, own realm dropped: " .. players())
+  assert(players() == "Abu,Zed,Bob,Plain", "the layout's players by role then name, no realm: " .. players())
   local function colour(token) return paletteChip(token).text.textColor end
-  assert(colour("Zed")[1] == RAID_CLASS_COLORS.WARRIOR.r and colour("Bob-Other")[1] == RAID_CLASS_COLORS.ROGUE.r, "class colours from the stored class")
+  assert(colour("Zed")[1] == RAID_CLASS_COLORS.WARRIOR.r and colour("Bob")[1] == RAID_CLASS_COLORS.ROGUE.r, "class colours from the stored class")
   assert(colour("Abu")[1] == RAID_CLASS_COLORS.MAGE.r and rawget(paletteChip("Abu").icon, "atlas") == "classicon-MAGE", "else the shared lookup, with the class icon")
-  assert(not paletteChip("Plain-Nowhere").icon.shown and colour("Plain-Nowhere")[1] == CRT.PALETTE.text[1], "else plain")
+  assert(not paletteChip("Plain").icon.shown and colour("Plain")[1] == CRT.PALETTE.text[1], "else plain")
   assert(not paletteChip("Gadios"), "not the group's players")
   -- search
   W.search:SetText("ze")
@@ -879,18 +923,18 @@ do
   W.search.scripts.OnTextChanged(W.search, true)
   -- the names written as the note's token rules say
   drag(paletteChip("Zed"), 3)
-  drag(paletteChip("Bob-Other"), 3)
-  assert(W.session:LineText(3) == "Soak: Abu, Zed, Bob-Other", W.session:LineText(3))
+  drag(paletteChip("Bob"), 3)
+  assert(W.session:LineText(3) == "Soak: Abu, Zed, Bob", W.session:LineText(3))
   drag(paletteChip("Zed"), 2)
   assert(W.session:LineText(2) == "invitelist:Abu-Sargeras,Kip-Sargeras,Wren-Elsewhere,Zed;", W.session:LineText(2))
 
   -- the invite list as it is now, edits included
   W.from.opts.set("invite")
-  assert(W.playersFrom == "invite" and players() == "Abu,Zed,Kip,Wren-Elsewhere", "the invite list's players: " .. players())
+  assert(W.playersFrom == "invite" and players() == "Abu,Zed,Kip,Wren", "the invite list's players: " .. players())
   assert(colour("Kip")[1] == RAID_CLASS_COLORS.WARRIOR.r, "a class from the group")
   local x = W.rowFrames[2].chips[2].remove
   x.scripts.OnClick(x)
-  assert(players() == "Abu,Zed,Wren-Elsewhere", "follows an edit: " .. players())
+  assert(players() == "Abu,Zed,Wren", "follows an edit: " .. players())
   local paints = 0
   local oldDraw = Editor.DrawPalette
   Editor.DrawPalette = function() paints = paints + 1 return oldDraw() end
@@ -1399,6 +1443,23 @@ do
 end
 print("ok a group list named like a block: Update block in place, no copy, its own dropdown label, refused when the block went")
 
+-- 12c. #1280: Make an Assign block and Update block from a list whose names carry realms write them without
+do
+  local list = "Orbs\\nOdd: Abu-Sargeras, Cheo-Elsewhere\\nEven: Kip\\ntime:36;ph:1;tag:Abu-Sargeras Cheo-Elsewhere;text:Orbs;\\ntime:96;ph:1;tag:Kip;text:Orbs;"
+  local made = Assign.Adopt("EncounterID:3470;Name:Made\\n" .. list, 2, nil)
+  assert(made and not made:find("Sargeras", 1, true) and not made:find("Elsewhere", 1, true), "Make: no realm: " .. tostring(made))
+  assert(made:find("\\nOdd: Abu Cheo\\n", 1, true) and made:find("tag:Abu Cheo;", 1, true), "Make: the plain names: " .. made)
+  local T2 = { { ph = 1, t = 36 }, { ph = 1, t = 96 } }
+  local block = table.concat(Assign.Lines({ name = "Orbs", times = T2, rows = { { label = "Left", text = "", tokens = { "Zed" }, casts = "all" } } }, T2), "\\n")
+  local note = "EncounterID:3470;Name:Upd\\n" .. block .. "\\n" .. list
+  local heading
+  for i, l in ipairs(lines(note)) do if l == "Orbs" then heading = i end end
+  local updated = Assign.AdoptInto(note, heading, nil, "orbs")
+  assert(updated and not updated:find("Sargeras", 1, true) and not updated:find("Elsewhere", 1, true), "Update: no realm: " .. tostring(updated))
+  assert(updated:find("\\nOdd: Abu Cheo\\n", 1, true), "Update: the plain names: " .. updated)
+end
+print("ok #1280: Make an Assign block and Update block write names without realms")
+
 -- 13. Mech Alerts > Assign: name, times, rows with the palette on the right, written into the boss's note
 do
   local frame = mock("Frame")
@@ -1703,8 +1764,8 @@ do
   ui:Flush()
   typeInto(ui.rowFrames[1].labelEdit, "Kill Group")
   ui:Flush()
-  assert(paletteChip("Whitecrows-Stormrage"), "a player of another realm in the palette")
-  blockDrag(W, ui, paletteChip("Whitecrows-Stormrage"), 1)
+  assert(paletteChip("Whitecrows"), "a player of another realm in the palette, without the realm")
+  blockDrag(W, ui, paletteChip("Whitecrows"), 1)
   blockDrag(W, ui, paletteChip("Gadios"), 1)
   local t = W.session:Text()
   assert(t == KICK .. "\\n\\nassign:testing a new assignment;name:Testing a new Assignment;\\nKill Group: Whitecrows Gadios", "the new group: " .. t)

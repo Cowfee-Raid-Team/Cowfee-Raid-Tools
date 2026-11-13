@@ -418,6 +418,124 @@ function Parser.JoinClassWords(words)
     return out
 end
 
+-- Names as a note writes them ---------------------------------------------------------------------------
+-- A player's name goes into a note's text without its realm, "Abu-Sargeras" as "Abu" (Alex, 2026-11-13: the server
+-- name breaks Northern Sky Raid Tools' matching, an integration that matches by plain name). The readers (Engine.lua,
+-- Render.lua, Highlights, Links.lua, Shifts.lua) compare names without realms already, so a player of another realm
+-- still matches their line. Two players of one name from different realms can't be told apart in a note. The invite
+-- list keeps its realms (it invites by them); it never reaches NSRT.
+-- Only the realm goes: a character name is letters only, its realm a letter then letters, digits or "'" ("Area52",
+-- "Kel'Thuzad"), so whatever follows stays ("Abu-Sargeras>Cheo" as "Abu>Cheo") and "P1-P2" is no name.
+-- A name a writer takes from a player (a palette chip, the Kick order, Healer CDs, an alert's player) always goes
+-- without its realm. Text already in a note is only changed for a word whose name is a known player (the group, the
+-- active Raid Groups layout, the note's own roster: Players), so "Spread: North-East, South-West" stays as written
+-- (orchestrator, 2026-11-13).
+--   Parser.StripRealm(word)        the word with its realm taken out, everything else as written
+--   Parser.NoteName(name)          a player's name as a note writes it: trimmed, StripRealm; "" for anything unreadable
+--   Parser.TagValue(list)          a tag: field's value for a writer's names and tag words, each StripRealm
+--   Parser.KnownName(word, known)  StripRealm when the word's name is a known player, else the word as written; known
+--                                  is a set (lower-case name -> anything) or a function(name) -> truthy; nil knows no one
+--   Parser.NoRealms(rest, known)   an assignment line's names (after "Label:") through KnownName, when they are a list
+--                                  of names (isNameList); a sentence ("re-check it") stays as written
+--   Parser.Players(record)         the known players: { [lower-case name] = "Name-Realm" }, or nil with none
+local REALM_RUN = "^([%a\128-\255]+)%-[%a\128-\255][%w\128-\255']*"
+
+function Parser.StripRealm(word)
+    if not (readable(word) and type(word) == "string") then
+        return word
+    end
+    return (word:gsub(REALM_RUN, "%1", 1))
+end
+
+function Parser.NoteName(name)
+    if not (readable(name) and type(name) == "string") then
+        return ""
+    end
+    return Parser.StripRealm(trim(name))
+end
+
+function Parser.TagValue(list)
+    local out = {}
+    for _, word in ipairs(list or {}) do
+        local name = Parser.NoteName(word)
+        if name ~= "" then
+            out[#out + 1] = name
+        end
+    end
+    return table.concat(out, " ")
+end
+
+function Parser.KnownName(word, known)
+    if known == nil or not (readable(word) and type(word) == "string") then
+        return word
+    end
+    local base = word:match(REALM_RUN)
+    if not base then
+        return word
+    end
+    local isKnown
+    if type(known) == "function" then
+        isKnown = known(base:lower())
+    else
+        isKnown = type(known) == "table" and known[base:lower()] ~= nil
+    end
+    return isKnown and Parser.StripRealm(word) or word
+end
+
+function Parser.NoRealms(rest, known)
+    if known == nil or not (readable(rest) and type(rest) == "string") or not rest:find("-", 1, true)
+        or not isNameList(rest) then
+        return rest
+    end
+    local out, pos = {}, 1
+    for _, item in ipairs(Parser.ClassRuns(rest, Parser.NAME_WORD)) do
+        out[#out + 1] = rest:sub(pos, item.start - 1)
+        local text = item.text
+        if not item.class and not neutralItem(text) then
+            text = Parser.KnownName(text, known)
+        end
+        out[#out + 1] = text
+        pos = item.stop
+    end
+    out[#out + 1] = rest:sub(pos)
+    return table.concat(out)
+end
+
+-- The live group (out of combat, where its names may be secret), the active Raid Groups layout and the note's own
+-- linked layout (record.presetId), by name in lower case, each to its "Name-Realm" key (the first seen); nil when
+-- there is no one (no CRT.Groups). Solo, the live group is you.
+function Parser.Players(record)
+    local Groups = CRT.Groups
+    if not Groups then
+        return nil
+    end
+    local set, any = {}, false
+    local function add(key)
+        if readable(key) and type(key) == "string" and key ~= "" then
+            local name = Parser.NoteName(key):lower()
+            if name ~= "" and set[name] == nil then
+                set[name], any = key, true
+            end
+        end
+    end
+    local function each(fn, ...)
+        if type(fn) == "function" then
+            local ok, list = pcall(fn, Groups, ...)
+            for _, v in ipairs(ok and type(list) == "table" and list or {}) do
+                add(type(v) == "table" and v.key or v)
+            end
+        end
+    end
+    if not (InCombatLockdown and InCombatLockdown()) then
+        each(Groups.ReadRoster)
+    end
+    each(Groups.ActiveNames)
+    if type(record) == "table" and record.presetId ~= nil then
+        each(Groups.PresetNames, record.presetId)
+    end
+    return any and set or nil
+end
+
 -- A label with its raid marker codes ({cross}, {rt7}, any case: the codes CRT.MarkerCodes knows) taken out, and
 -- whether it had one. Other {..} codes stay in. It needs CRT_Core/MarkerText.lua loaded first (the .toc does, and so
 -- must every test harness that reads a label): without it a label with braces raises an error here, never quietly
@@ -646,8 +764,9 @@ function Parser.FormatLine(t)
     if t.ph then
         add("ph", num(t.ph))
     end
-    if t.tags and #t.tags > 0 then
-        add("tag", table.concat(t.tags, " "))
+    local tag = t.tags and Parser.TagValue(t.tags) or ""
+    if tag ~= "" then
+        add("tag", tag) -- names without their realms (Parser.NoteName)
     end
     if t.kind == "spell" and t.spellId then
         add("spellid", num(t.spellId))

@@ -311,7 +311,7 @@ end
 function Links.Rewrite(text, lineNumbers, names)
     local pieces = CRT.Notes.SplitPieces(text or "")
     if writable(names) then
-        local value = table.concat(names, " ")
+        local value = Parser.TagValue(names) -- without realms (#1280)
         for _, n in ipairs(lineNumbers or {}) do
             local piece = pieces[n]
             local line = piece and Parser.ReplaceField(piece.text, "tag", value)

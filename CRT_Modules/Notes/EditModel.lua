@@ -12,8 +12,8 @@ local ADDON, CRT = ...
 --   s:Remove(i, k)              removes row i's k-th name
 --   s:Move(i, k, j)             moves row i's k-th name to row j
 --   s:Text(), s:Dirty()         the raw text now, and whether it differs from the text opened
---   s:SetQuickFill(on), s:Select(i), s:PaletteClick(token, kind)   Quick fill: a click on a chip adds it to the row
---   s:BeginDrag(source), s:Drop(i, at), s:CancelDrag()   a drag: { token, kind } from the palette, { row, index } from a
+--   s:SetQuickFill(on), s:Select(i), s:PaletteClick(token, kind, full)   Quick fill: a click on a chip adds it to the row
+--   s:BeginDrag(source), s:Drop(i, at), s:CancelDrag()   a drag: { token, kind, full } from the palette, { row, index } from a
 --                               row; at (optional) the place in row i it lands (a kick row's, below), else its end
 --   s:Order()                   the rows' indices in the order they show (a kick block's missing groups, below)
 --   Model.Palette(roster, query)  the palette's sections: Players, General, Groups and Classes
@@ -188,11 +188,13 @@ local function names(f)
     return out
 end
 
--- Whether the field has the token already, a class in any spelling ("DEMONHUNTER" for "Demon Hunter").
+-- Whether the field has the token already, a class in any spelling ("DEMONHUNTER" for "Demon Hunter"). A label or kick
+-- row writes names without realms, so there "Abu" is "Abu-Sargeras"; the invite list tells realms apart.
 local function has(f, token)
-    local lower, class = token:lower(), Parser.ClassOf(token)
+    local plain = f.kind == "invite" and function(s) return s end or Parser.NoteName
+    local lower, class = plain(token):lower(), Parser.ClassOf(token)
     for _, name in ipairs(names(f)) do
-        if name:lower() == lower or (class and Parser.ClassOf(name) == class) then
+        if plain(name):lower() == lower or (class and Parser.ClassOf(name) == class) then
             return true
         end
     end
@@ -261,7 +263,7 @@ local function shape(f)
     return out
 end
 
-local function fieldText(f)
+local function fieldText(f, known)
     if f.kind == "invite" then
         local out = {}
         for i, slot in ipairs(f.slots) do
@@ -273,7 +275,9 @@ local function fieldText(f)
     for k, item in ipairs(f.items) do
         out[#out + 1] = (k > 1 and item.sep or "") .. item.word
     end
-    return f.before .. table.concat(out) .. f.trail
+    -- a label line written again has its known players' names without realms (#1280); a sentence, and a word that
+    -- names no known player ("North-East"), stay as written
+    return f.before .. Parser.NoRealms(table.concat(out) .. f.trail, known)
 end
 
 -- Rows ----------------------------------------------------------------------------------------------------------
@@ -404,8 +408,10 @@ function Model.New(text, opts)
     text = text or ""
     -- opts.base: the text it was opened from, when lines were added since (the note editor's Add assignment), so it
     -- stays dirty until saved
+    -- opts.players: the known players (Parse.lua's Players: { [lower-case name] = "Name-Realm" }), whose realms come off
+    -- the names already in the text when a row is written again (#1280); the note's invite list counts too (Known)
     local s = setmetatable({ base = opts.base or text, readOnly = opts.readOnly and true or false, markdown = opts.markdown,
-        quickFill = false, rows = {} }, Session)
+        quickFill = false, rows = {}, players = opts.players }, Session)
     local note = Parser.Parse(text)
     local byLine = {}
     for _, t in ipairs(note.timers) do
@@ -445,6 +451,35 @@ function Session:Order()
     return out
 end
 
+-- Whether name (in lower case, no realm) is a known player: opts.players, or a name in the note's invite list as it
+-- was opened. Parse.lua's KnownName asks it.
+function Session:Known(name)
+    if self.players and self.players[name] ~= nil then
+        return true
+    end
+    if not self.inviteKnown then
+        self.inviteKnown = {}
+        for _, row in ipairs(self.rows) do
+            if row.kind == "invite" then
+                for _, n in ipairs(row.original or {}) do
+                    local plain = Parser.NoteName(n):lower()
+                    if plain ~= "" then
+                        self.inviteKnown[plain] = true
+                    end
+                end
+            end
+        end
+    end
+    return self.inviteKnown[name] == true
+end
+
+-- KnownName's known for this session.
+local function knownOf(s)
+    return function(name)
+        return s:Known(name)
+    end
+end
+
 -- Row i's names now (a copy; an invite list's without its empty slots).
 function Session:Names(i)
     local row = self.rows[i]
@@ -474,13 +509,22 @@ Model.ValidToken = validToken
 
 -- Adds a name to row i (a kick row's at place at, else its end). False when the row takes no names, the token isn't
 -- one word, the row has it already, or (the invite list, a kick row) it is not a player; false and why when a kick row
--- is full.
-function Session:Add(i, token, kind, at)
+-- is full. A label or kick row takes a palette chip (kind given) without its realm, and a word from a row without it
+-- when it names a known player (Known), else as written (#1280); the invite list takes full (a player's name with the
+-- realm of another realm's player, which invites need), else the token as it is.
+function Session:Add(i, token, kind, at, full)
     if not (self:Editable(i) and validToken(token)) then
         return false
     end
     local row = self.rows[i]
     local f = row.field
+    if f.kind == "invite" then
+        token = validToken(full) and full or token
+    elseif kind ~= nil then
+        token = Parser.NoteName(token)
+    else
+        token = Parser.KnownName(token, knownOf(self))
+    end
     if has(f, token) then
         return false
     end
@@ -523,7 +567,9 @@ function Session:Move(i, k, j, at)
     if not (word and validToken(word)) then
         return false
     end
-    local ok, why = self:Add(j, word, nil, at)
+    -- into the invite list a known player goes by their full name, realm and all (opts.players)
+    local full = self.players and self.players[Parser.NoteName(word):lower()]
+    local ok, why = self:Add(j, word, nil, at, type(full) == "string" and full or nil)
     if not ok then
         return false, why
     end
@@ -583,7 +629,12 @@ function Session:SetTimerNames(i, list)
     if self.readOnly or not (row and row.kind == "timer") then
         return false
     end
-    local value = table.concat(list, " ")
+    -- a known player's name without the realm (#1280); any other word as written
+    local known, kept = knownOf(self), {}
+    for _, w in ipairs(list) do
+        kept[#kept + 1] = Parser.KnownName(w, known)
+    end
+    local value = table.concat(kept, " ")
     local line = Parser.ReplaceField(row.raw, "tag", value)
     if not line then
         return false
@@ -606,7 +657,7 @@ function Session:LineText(i)
     if not (row and row.field and changed(row)) then
         return row and row.raw or nil
     end
-    return fieldText(row.field)
+    return fieldText(row.field, knownOf(self))
 end
 
 -- The kick block's names now, group by group, when any of them changed; else nil.
@@ -672,10 +723,11 @@ function Session:Select(i)
     return self.selected
 end
 
--- A click on a palette chip: with Quick fill on and a row selected, the chip's token is added to it.
-function Session:PaletteClick(token, kind)
+-- A click on a palette chip: with Quick fill on and a row selected, the chip's token is added to it (full: its name for
+-- the invite list, as Add).
+function Session:PaletteClick(token, kind, full)
     if self.quickFill and self.selected then
-        return self:Add(self.selected, token, kind)
+        return self:Add(self.selected, token, kind, nil, full)
     end
     return false
 end
@@ -712,7 +764,7 @@ function Session:Drop(i, at)
     if d.row then
         return self:Move(d.row, d.index, i, at)
     end
-    return self:Add(i, d.token, d.kind, at)
+    return self:Add(i, d.token, d.kind, at, d.full)
 end
 
 function Session:CancelDrag()
@@ -723,8 +775,9 @@ end
 
 local ROLE_ORDER = { TANK = 1, HEALER = 2, DAMAGER = 3 }
 
--- The name a player chip writes: without the realm when it is your own (Ambiguate "none", as Raid Groups shows it).
-local function shortName(key)
+-- A player's name as Raid Groups shows it: the realm only for a player of another realm (Ambiguate "none"). The invite
+-- list takes it (entry.full); every other row the name without the realm (Parser.NoteName, #1280).
+local function displayName(key)
     if Ambiguate then
         local ok, name = pcall(Ambiguate, key, "none")
         if ok and type(name) == "string" and readable(name) and name ~= "" then
@@ -752,11 +805,12 @@ function Model.Palette(roster, query)
     local players = {}
     for _, p in ipairs(roster or {}) do
         if type(p) == "table" and type(p.key) == "string" and readable(p.key) and p.key ~= "" then
-            local name = shortName(p.key)
-            if validToken(name) then
+            local full = displayName(p.key)
+            local name = Parser.NoteName(full)
+            if validToken(name) and validToken(full) then
                 local class = readable(p.class) and type(p.class) == "string" and p.class or nil
                 local role = readable(p.role) and ROLE_ORDER[p.role] and p.role or nil
-                players[#players + 1] = { label = name, token = name, class = class, role = role }
+                players[#players + 1] = { label = name, token = name, full = full, class = class, role = role }
             end
         end
     end

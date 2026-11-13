@@ -275,10 +275,16 @@ function Slots.Context(view)
     return { encounterID = view:EncounterNumber(), notes = ids, list = view.hvSlots or {} }
 end
 
+-- Whether a tag names the player key ("Name-Realm"): by the full name, or by the name alone, as a note writes every
+-- name (Notes/Parse.lua's NoteName, #1280).
 local function sameName(tag, key)
-    local Groups = CRT.Groups
+    local Groups, Parser = CRT.Groups, CRT.NoteParser
     local full = Groups and Groups.Normalize and Groups.Normalize(tag) or tag
-    return type(full) == "string" and full:lower() == key:lower()
+    if type(full) == "string" and full:lower() == key:lower() then
+        return true
+    end
+    return type(tag) == "string" and not tag:find("-", 1, true) and Parser ~= nil
+        and tag:lower() == Parser.NoteName(key):lower()
 end
 
 -- Which tag of timer t makes it slot s's line (its index), or nil: a spec word that names s, or s's player's name on
@@ -321,7 +327,7 @@ local function eachLine(ctx, s, each, write)
                 if tags == false then
                     drop[t.line], touched = true, true
                 elseif tags then
-                    local line = Parser.ReplaceField(piece.text, "tag", table.concat(tags, " "))
+                    local line = Parser.ReplaceField(piece.text, "tag", Parser.TagValue(tags)) -- no realms (#1280)
                     if line and line ~= piece.text then
                         piece.text, touched = line, true
                     end

@@ -75,14 +75,17 @@ function Block.Lines(def, list)
 end
 
 -- The block's lines for groups of names ({ { names }, ... } in group order, as the note editor's rows hold them),
--- the same way: empty names left out, trailing empty groups too, {} when there is no name.
+-- the same way: empty names left out, trailing empty groups too, {} when there is no name. Each name without its realm
+-- (Notes/Parse.lua's NoteName, #1280), as NSRT matches by plain name.
 function Block.LinesOf(groups)
+    local noteName = CRT.NoteParser.NoteName
     local rows, any = {}, false
     for g, list in ipairs(groups) do
         local names = {}
         for _, name in ipairs(type(list) == "table" and list or {}) do
-            if type(name) == "string" and trim(name) ~= "" then
-                names[#names + 1] = trim(name)
+            local plain = type(name) == "string" and noteName(name) or ""
+            if plain ~= "" then
+                names[#names + 1] = plain
                 any = true
             end
         end

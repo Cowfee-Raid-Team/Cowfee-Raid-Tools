@@ -272,6 +272,9 @@ check(not marks("Kicks G4: Rixxy") and not marks("group 4 left") and not marks("
 check(not marks("Group: 3 people") , "group: a word between Group and the number breaks it")
 check(H:TagSpans({ "Cheoeqar-Area52" }) ~= nil and H:TagSpans({ "G3" }) ~= nil and H:TagSpans({ "Group", "3" })[2] == true, "tags: a name with a realm, G3 and Group 3")
 check(H:TagSpans({ "G4", "Rixxy" }) == nil, "tags: another group and another player are not marked")
+-- #1280: notes write names without realms; the game's UnitName gives your name alone whatever your realm, so a
+-- player of another realm (here Cheoeqar-Area52 seen from anywhere) is marked on a plain-name tag and line
+check(H:TagSpans({ "Cheoeqar" }) ~= nil and marks("Left: Abu, Cheoeqar"), "tags: the plain name marks you, a player of any realm")
 myGroup = 4
 H:ResetGroup()
 check(marks("Group 4: stack right") and not marks("Kicks G3: Rixxy"), "group: follows the roster's group")
