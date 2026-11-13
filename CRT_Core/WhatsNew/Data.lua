@@ -6,6 +6,17 @@ local ADDON, CRT = ...
 -- CRT_Dev/Tests/run_whatsnew.js checks every entry.
 CRT.WhatsNewData = {
     {
+        version = "1.4.2",
+        lines = {
+            "Interrupts: marker kick numbers show again",
+            "Raid marker icons in assignment row labels",
+            "Update block: refresh an assignment from a paste",
+            "Wishlists: pick any Raid Groups layout",
+            "Late Tracker export with Discord headings",
+        },
+        more = 0,
+    },
+    {
         version = "1.4.1",
         lines = {
             "Battle res icon in any combat, anywhere",

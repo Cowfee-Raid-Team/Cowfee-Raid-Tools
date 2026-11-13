@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.2 (2026-11-13)
+
+- **Interrupts marker numbers:** kick setups that use raid markers show their numbers on the marked adds again. Each add keeps its own kick count, and marker setups have no kick reminder.
+- **Raid markers in assignments:** type a marker code such as {purple}, {green}, {cross} or {rt3} in an assignment row's label, and the note shows its icon. The colour names yellow, orange, purple, green, blue and red work everywhere CRT reads marker codes.
+- **Update an assignment from a pasted list:** when a pasted group list has the same name as an assignment already in the note, Make an Assign block offers Update block. It refreshes that assignment instead of making a copy.
+- **Wishlists by layout:** on Loot Master > Wishlists, Team > Raid Groups layout has a Layout dropdown to pick any saved layout, not only the one in use.
+- **Late Tracker Discord export:** the export starts with a Late Tracker heading and the dates, ready to paste.
+
 ## 1.4.1 (2026-11-12)
 
 - **Battle res icon anywhere:** the icon is no longer raid-only. Pick In boss fights, In any combat or Always on Quality of Life > Battle res, and it works in raids, dungeons, Mythic+ and the open world.
