@@ -378,12 +378,10 @@ function Groups:Working()
     return g.working
 end
 
--- The names in the active layout (Active: the roster the raid runs with, set by "Use This Group"), in
--- slot order, each once: { key, ... }. Never the working grid, which is a draft. Empty when no layout is
--- active.
-function Groups:ActiveNames()
-    local id = self:Active()
-    local preset = id and self:Find(id)
+-- The names in a saved layout (id: a preset's id), in slot order, each once: { key, ... }. Never the
+-- working grid, which is a draft. Empty when there is no such layout.
+function Groups:PresetNames(id)
+    local preset = id ~= nil and self:Find(id)
     local slots = preset and preset.slots
     local out, seen = {}, {}
     if type(slots) ~= "table" then
@@ -397,6 +395,12 @@ function Groups:ActiveNames()
         end
     end
     return out
+end
+
+-- The names in the active layout (Active: the roster the raid runs with, set by "Use This Group"), as
+-- PresetNames reads them. Empty when no layout is active.
+function Groups:ActiveNames()
+    return self:PresetNames(self:Active())
 end
 
 function Groups:OnChange(fn)

@@ -339,6 +339,22 @@ do
   post.OnClick(post)
   check(CRT.db.groups.postChanges == false, "unticking it saves it")
 end
+-- PresetNames: any saved layout's names, in slot order, each once (any case); ActiveNames reads the active one
+-- through it (the Wishlists tab's Layout pick, Issue #1277)
+do
+  check(type(G.PresetNames) == "function", "Groups:PresetNames is there")
+  local mineId = CRT.db.groups.selected
+  local id = G:StoreFrom("Kip-Area52", "Names (from Kip)", { "", "Zed-Area52", "", "Abu-KelThuzad", "", "zed-area52", "Kip-Area52" })
+  check(G:Active() == id, "the received layout is active")
+  local function joined(t) return table.concat(t or {}, ",") end
+  check(joined(G.PresetNames and G:PresetNames(id)) == "Zed-Area52,Abu-KelThuzad,Kip-Area52", "its names in slot order, each once: " .. joined(G.PresetNames and G:PresetNames(id)))
+  check(joined(G:ActiveNames()) == joined(G.PresetNames and G:PresetNames(id)), "ActiveNames is the active layout's PresetNames")
+  local want, seen = {}, {}
+  for i = 1, 40 do local k = G:Find(mineId).slots[i] if type(k) == "string" and k ~= "" and not seen[k:lower()] then seen[k:lower()] = true want[#want + 1] = k end end
+  check(G.PresetNames and joined(G:PresetNames(mineId)) == joined(want), "a layout not in use reads its own names: " .. joined(G.PresetNames and G:PresetNames(mineId)))
+  check(G.PresetNames and #G:PresetNames("no-such-layout") == 0 and #G:PresetNames(nil) == 0, "no such layout: no names")
+  G:Delete(id)
+end
 if fails > 0 then error(fails .. " groups invite checks failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness + tail)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
