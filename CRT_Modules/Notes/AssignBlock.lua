@@ -143,9 +143,9 @@ local function tagEnter(tag)
         return
     end
     UI.TooltipOwner(GameTooltip, tag, "ANCHOR_RIGHT")
-    GameTooltip:SetText(string.format(TEXT.tagTip, Assign.CleanLabel(row.label, tag.index)), 1, 1, 1)
+    GameTooltip:SetText(string.format(TEXT.tagTip, CRT.MarkerText(Assign.CleanLabel(row.label, tag.index))), 1, 1, 1)
     for _, e in ipairs(list) do
-        GameTooltip:AddLine(castText(e) .. "  " .. table.concat(row.tokens, ", ") .. "  " .. e.text, 0.85, 0.85, 0.85)
+        GameTooltip:AddLine(castText(e) .. "  " .. table.concat(row.tokens, ", ") .. "  " .. CRT.MarkerText(e.text), 0.85, 0.85, 0.85)
     end
     GameTooltip:Show()
 end
