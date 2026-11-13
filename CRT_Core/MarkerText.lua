@@ -1,7 +1,7 @@
 local ADDON, CRT = ...
 
--- Raid marker codes in text: {rt1} to {rt8} and the names the game's chat takes ({star}, {skull}, {X} and the
--- rest, any case), one list for every part of the addon that reads them.
+-- Raid marker codes in text: {rt1} to {rt8}, the names the game's chat takes ({star}, {skull}, {X} and the rest)
+-- and the icons' colours ({purple}), any case, one list for every part of the addon that reads them.
 --   CRT.MarkerText(text, size)          the text with each marker code drawn as its icon, unknown codes as written
 --   CRT.MarkerCodes.Number(code)        a code without braces ("cross", "RT7") to its marker number, or nil
 --   CRT.MarkerCodes.Icon(n, size)       marker n's icon as text, "" for no marker
@@ -20,7 +20,10 @@ local ICON = "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_%d:%d|t"
 -- The marker names in English, by marker number (warcraft.wiki.gg, Raid target icons). Always read, so a note
 -- written on an English client shows its icons on any client; the game's own list (ICON_TAG_LIST) adds the
 -- client's names.
-local ICON_NAMES = { star = 1, circle = 2, diamond = 3, triangle = 4, moon = 5, square = 6, cross = 7, x = 7, skull = 8 }
+local ICON_NAMES = { star = 1, circle = 2, diamond = 3, triangle = 4, moon = 5, square = 6, cross = 7, x = 7, skull = 8,
+    -- The icons' colours, so {purple} always works whatever the game's list holds (Alex's request, 2026-11-13). Moon
+    -- and skull have no clear single colour name, so they get none.
+    yellow = 1, orange = 2, purple = 3, green = 4, blue = 6, red = 7 }
 
 local function secret(v)
     return issecretvalue and issecretvalue(v) or false

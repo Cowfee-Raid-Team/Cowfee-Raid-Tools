@@ -19,7 +19,7 @@ const FILES = ['CRT_Core/MarkerText.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Mo
   'CRT_Modules/Markers/Display.lua', 'CRT_Modules/Interrupts/Setup.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Modules/Alerts/Areas.lua',
   'CRT_Modules/Alerts/Texts.lua', 'CRT_Modules/Alerts/Icons.lua', 'CRT_Modules/Alerts/Circles.lua', 'CRT_Modules/Alerts/Bars.lua',
   'CRT_Modules/Alerts/TimelineArea.lua', 'CRT_Modules/Alerts/GameTimeline.lua', 'CRT_Modules/Notes/EditorWindow.lua',
-  'CRT_Modules/Notes/EditorLinks.lua', 'CRT_Modules/Notes/EditorAssign.lua', 'CRT_Modules/Timeline/View.lua',
+  'CRT_Modules/Notes/EditorLinks.lua', 'CRT_Modules/Notes/EditorAssign.lua', 'CRT_Modules/Notes/AssignBlock.lua', 'CRT_Modules/Timeline/View.lua',
   'CRT_Core/Integrations/NoteTargets.lua', 'CRT_Core/Integrations/NSRT.lua', 'CRT_Core/Integrations/MRT.lua', 'CRT_Modules/Notes/Comm.lua',
   'CRT_Modules/Notes/Page.lua', 'CRT_Modules/Notes/AlertShareWindows.lua'];
 
@@ -99,6 +99,15 @@ do
   end
   for n = 1, 8 do if MT("{rt" .. n .. "}") ~= icon(n) then all = false end end
   check(all, "every marker name and {rt1} to {rt8} becomes its icon")
+  -- the icons' colours (Alex, 2026-11-13, #1274): {purple} always works; moon and skull have none
+  local colours = { yellow = 1, orange = 2, purple = 3, green = 4, blue = 6, red = 7 }
+  local allColours = true
+  for name, n in pairs(colours) do
+    if MT("{" .. name .. "}") ~= icon(n) or Codes.Number(name:upper()) ~= n then allColours = false print("  " .. name .. " -> " .. tostring(MT("{" .. name .. "}"))) end
+  end
+  check(allColours, "the colour names (yellow, orange, purple, green, blue, red) are their markers, any case")
+  check(MT("{purple} orb") == icon(3) .. " orb" and MT("{Green} orb") == icon(4) .. " orb", "{purple} orb draws the diamond, {Green} the triangle")
+  check(Codes.Number("white") == nil and Codes.Number("silver") == nil and Codes.Number("grey") == nil, "moon and skull get no colour name")
   check(MT("{CROSS} {Skull} {RT8} {X}") == icon(7) .. " " .. icon(8) .. " " .. icon(8) .. " " .. icon(7), "any case")
   local unknown = "{rt9} {rt0} {rt} {nothing} {time:5} {} {cross"
   check(MT(unknown) == unknown, "unknown codes are left as written")
@@ -260,6 +269,8 @@ check(#raw == 0, "nothing the player types in goes through the helper: " .. tabl
 check(has(code("CRT_Modules/Notes/EditorLinks.lua"), "fs:SetText(CRT.MarkerText(text))"), "the editor's linked groups banner")
 check(has(code("CRT_Modules/Notes/EditorLinks.lua"), "\\"  \\" .. CRT.MarkerText(text)"), "the editor's tag tooltip lines match its title")
 check(has(code("CRT_Modules/Notes/EditorAssign.lua"), "CRT.MarkerText(title)"), "the editor's assignments banner")
+local block = code("CRT_Modules/Notes/AssignBlock.lua")
+check(has(block, "CRT.MarkerText(Assign.CleanLabel(row.label, tag.index))") and has(block, "CRT.MarkerText(e.text)"), "the assignment block's tag tooltip: the row's label and its lines' text")
 local share = code("CRT_Modules/Notes/AlertShareWindows.lua")
 check(has(share, "GameTooltip:SetText(CRT.MarkerText(e.label") and has(share, "row.name:SetText(CRT.MarkerText(e.label"), "the alert share windows' labels and their tooltips")
 for _, p in ipairs({ "CRT_Modules/Notes/Render.lua", "CRT_Modules/Notes/Window.lua", "CRT_Modules/Notes/EditorWindow.lua", "CRT_Modules/Notes/EditorLinks.lua", "CRT_Modules/Timeline/View.lua" }) do
