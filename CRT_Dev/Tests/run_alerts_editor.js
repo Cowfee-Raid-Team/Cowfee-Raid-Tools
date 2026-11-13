@@ -1208,6 +1208,16 @@ do
   for line in raw:gmatch("[^\\n]+") do
     if line:find("text:Unassigned;", 1, true) then assert(not line:find("tag:", 1, true), "no tag: " .. line) end
   end
+  -- #1280: a raid member of another realm is one For choice, keyed by the plain name a saved line holds
+  local oldUnitName, wasRaid = UnitName, group.raid
+  UnitName = function(unit) if unit == "raid2" then return "Bob", "Other" end return oldUnitName(unit) end
+  group.raid = true
+  E:Open(ENC, nil, { spellID = 777, text = "Again", saveAs = "note", ph = 1, time = 25, tag = "Bob" })
+  local bobs = 0
+  for _, o in ipairs(flatOptions(dropdowns["For"])) do if o.key == "Bob" or o.key == "Bob-Other" then bobs = bobs + 1 end end
+  local bob = hasOption(dropdowns["For"], "Bob")
+  assert(bobs == 1 and bob and bob.label == "Bob-Other" and value("For") == "Bob", "one Bob, labelled with the realm: " .. bobs)
+  UnitName, group.raid = oldUnitName, wasRaid
   -- no tag in the prefill: Everyone, as before
   E:Open(ENC, nil, { text = "All", saveAs = "note", ph = 1, time = 40 })
   assert(value("For") == "everyone", "Everyone by default")

@@ -283,8 +283,8 @@ do
   assert(s:Add(7, "Gadios") and s:LineText(7) == "Melee: Cheoeqar, Abu, Gadios", s:LineText(7))
   assert(s:Remove(7, 1) and s:LineText(7) == "Melee: Abu, Gadios", s:LineText(7))
   assert(s:Move(7, 1, 8) and s:LineText(8) == "Kicks G1: Abu" and s:LineText(7) == "Melee: Gadios", s:LineText(8) .. " / " .. s:LineText(7))
-  assert(s:Add(8, "Rixxy-Sargeras") and s:LineText(8) == "Kicks G1: Abu, Rixxy", "a name with a realm goes without it (#1280): " .. s:LineText(8))
-  assert(s:Move(8, 2, 11) and s:LineText(11) == "Something odd ; with: colons, Rixxy", "moved to another label: " .. s:LineText(11))
+  assert(s:Add(8, "Rixxy-Sargeras") and s:LineText(8) == "Kicks G1: Abu, Rixxy-Sargeras", "a word naming no known player stays as written (#1280): " .. s:LineText(8))
+  assert(s:Move(8, 2, 11) and s:LineText(11) == "Something odd ; with: colons, Rixxy-Sargeras", "moved to another label: " .. s:LineText(11))
   onlyChanged(NOTE:gsub("\\r", ""), s:Text():gsub("\\r", ""), { 7, 8, 11 })
   assert(select(2, s:Text():gsub("\\r\\n", "")) == select(2, NOTE:gsub("\\r\\n", "")), "every line end kept")
   local sp = Model.New("Soak:  Abu Cheo  \\nOther:   ")
@@ -451,10 +451,15 @@ print("ok palette: players by role, general, Group1..8 and classes, each token o
 do
   local chip = Model.Palette({ { key = "Abu-Elsewhere", class = "MAGE", role = "TANK" } })[1].entries[1]
   assert(chip.token == "Abu" and chip.full == "Abu-Elsewhere", "a chip of another realm writes the plain name")
-  local s = Model.New("Left: Abu-Elsewhere, Cheo\\nNote: re-check the half-way point\\ninvitelist:Kip;")
+  -- the known players (Parse.lua's Players): Abu is in the group; Zed-Realm and the compass words are no one's
+  local s = Model.New("Left: Abu-Elsewhere, Cheo\\nNote: re-check the half-way point\\ninvitelist:Kip;\\nSpread: North-East, South-West\\nOff: Zed-Realm",
+    { players = { abu = "Abu-Elsewhere" } })
   assert(not s:Add(1, "Abu", "player"), "the plain name is the same player: not added twice")
   assert(s:Add(1, "Zed-Elsewhere", "player") and s:LineText(1) == "Left: Abu, Cheo, Zed", "a row rewritten has no realm: " .. s:LineText(1))
   assert(s:Add(2, "Zed") and s:LineText(2) == "Note: re-check the half-way point Zed", "a sentence keeps its hyphens: " .. s:LineText(2))
+  assert(s:Add(4, "Kip", "player") and s:LineText(4) == "Spread: North-East, South-West, Kip", "words naming no player stay: " .. s:LineText(4))
+  assert(s:Add(5, "Kip", "player") and s:LineText(5) == "Off: Zed-Realm, Kip", "a player not in the group keeps the word: " .. s:LineText(5))
+  assert(s:Move(4, 1, 5) and s:Names(5)[3] == "North-East", "a moved word that names no player keeps its hyphen")
   -- the invite list: a drop of the chip takes its full name, a click too
   assert(s:BeginDrag({ token = chip.token, kind = "player", full = chip.full }) and s:Drop(3), "dropped on the invite list")
   assert(s:LineText(3) == "invitelist:Kip,Abu-Elsewhere;", "the invite list keeps the realm: " .. s:LineText(3))
@@ -464,8 +469,12 @@ do
   s:Select(3)
   assert(s:PaletteClick("Rixxy", "player", "Rixxy-Elsewhere") and s:LineText(3) == "invitelist:Kip,Abu-Elsewhere,Rixxy-Elsewhere;", "on the invite list: " .. s:LineText(3))
   -- a timed line's tag written from a row has no realm
-  local t = Model.New("Left: Abu\\ntime:10;ph:1;tag:Abu;text:Soak;")
-  assert(t:SetTimerNames(2, { "Abu-Elsewhere", "Cheo" }) and t:LineText(2) == "time:10;ph:1;tag:Abu Cheo;text:Soak;", "a tag: " .. t:LineText(2))
+  local t = Model.New("Left: Abu\\ntime:10;ph:1;tag:Abu;text:Soak;", { players = { abu = "Abu-Elsewhere" } })
+  assert(t:SetTimerNames(2, { "Abu-Elsewhere", "Cheo", "Zed-Realm" }) and t:LineText(2) == "time:10;ph:1;tag:Abu Cheo Zed-Realm;text:Soak;", "a tag: " .. t:LineText(2))
+  -- a known player moved from a row into the invite list goes by their full name (review round 1)
+  local m = Model.New("Left: Abu, Cheo\\ninvitelist:Kip;", { players = { abu = "Abu-Elsewhere" } })
+  assert(m:Move(1, 1, 2) and m:LineText(2) == "invitelist:Kip,Abu-Elsewhere;", "the invite list takes the realm: " .. m:LineText(2))
+  assert(m:Move(1, 1, 2) and m:LineText(2) == "invitelist:Kip,Abu-Elsewhere,Cheo;", "an unknown one as written: " .. m:LineText(2))
   -- the alerts: a player of another realm (UnitName gives the name alone) matches a line naming them plainly
   local was = myName
   myName = "Abu"

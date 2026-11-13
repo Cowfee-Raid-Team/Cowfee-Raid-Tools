@@ -73,31 +73,31 @@ end
 
 -- A CRT tag in NSRT's words: "all" is "everyone", a class is its class ID, and names, roles, melee and ranged
 -- are the same in both. A tag holds only tags, so a class in any spelling is the class ("Demon Hunter" as one,
--- "priest", "deathknight"; Notes/Parse.lua's class words), as CRT's alerts read it. A name goes without its realm
--- (Parse.lua's NoteName): NSRT matches players by plain name, and a note from before #1280 may still have one.
-local function nsrtTags(value)
+-- "priest", "deathknight"; Notes/Parse.lua's class words), as CRT's alerts read it. A known player's name goes
+-- without its realm (Parse.lua's KnownName, #1280): NSRT matches players by plain name, and an older note may still
+-- have one.
+local function nsrtTags(value, known)
     local Parser = CRT.NoteParser
     local out = {}
     for _, item in ipairs(Parser.ClassRuns(value, "%S+")) do
         local id = item.class and classID(item.class)
-        local name = Parser.NoteName(item.text)
-        out[#out + 1] = id or (item.text:lower() == "all" and "everyone") or (name ~= "" and name or item.text)
+        out[#out + 1] = id or (item.text:lower() == "all" and "everyone") or Parser.KnownName(item.text, known)
     end
     return table.concat(out, " ")
 end
 
 -- An assignment line ("Orb Soak 1: DEMONHUNTER Warlock") with each class written as NSRT notes name it, the
 -- English name with its spaces ("Demon Hunter"), where Parse.lua's AssignmentClasses counts it as the class, and
--- each name without its realm when the line is a list of names (Parse.lua's NoRealms, #1280); a player's name
--- ("Deathknight"), a sentence ("the hunter kites", "re-check it") and everything else as written. Any other line as
--- it is.
-local function assignmentLine(line)
+-- each known player's name without its realm when the line is a list of names (Parse.lua's NoRealms, #1280); a
+-- player's name ("Deathknight"), a sentence ("the hunter kites", "re-check it") and everything else as written. Any
+-- other line as it is.
+local function assignmentLine(line, known)
     local Parser = CRT.NoteParser
     local label, rest = line:match("^([^:]+:)(.*)$")
     if not (label and Parser.LooksLikeLabel(label:sub(1, -2))) then
         return line
     end
-    rest = Parser.NoRealms(rest)
+    rest = Parser.NoRealms(rest, known)
     local out, pos = {}, 1
     for _, item in ipairs(Parser.AssignmentClasses(rest)) do
         out[#out + 1] = rest:sub(pos, item.start - 1)
@@ -110,12 +110,12 @@ end
 
 local pairsOf = Targets.Fields
 
-local function timedLine(line)
+local function timedLine(line, known)
     local out = {}
     for _, f in ipairs(pairsOf(line)) do
         local k = f.key:lower()
         if k == "tag" then
-            out[#out + 1] = "tag:" .. nsrtTags(f.value) .. ";"
+            out[#out + 1] = "tag:" .. nsrtTags(f.value, known) .. ";"
         elseif not CRT_ONLY[k] then
             out[#out + 1] = f.key .. ":" .. f.value .. ";"
         end
@@ -140,15 +140,36 @@ local function headerLine(line)
     return out
 end
 
--- NSRT's kick list in the note (Interrupts/NoteBlock.lua writes it): between these words, one line of names per group.
-local KICK_START, KICK_END = "intstart", "intend"
+-- The words around NSRT's kick list in the note: Interrupts/NoteBlock.lua's, read when it is loaded.
+local function kickWords()
+    local Kick = CRT.InterruptNote
+    return Kick and Kick.START or "intstart", Kick and Kick.END or "intend"
+end
 
--- A kick line's names, each without its realm (#1280).
-local function kickLine(line)
+-- The kick list's lines in a note's lines (a set of their numbers): those between its start word and the first end
+-- word after it. A start with no end is no list (NoteBlock's rule), so nothing after it is read as one.
+local function kickLines(lines)
+    local start, stop = kickWords()
+    local set, first = {}, nil
+    for i, line in ipairs(lines) do
+        local word = line:lower()
+        if not first and word == start then
+            first = i
+        elseif first and word == stop then
+            for k = first + 1, i - 1 do
+                set[k] = true
+            end
+            return set
+        end
+    end
+    return set
+end
+
+-- A kick line's names, each known player's without its realm (#1280).
+local function kickLine(line, known)
     local out = {}
     for word in line:gmatch("%S+") do
-        local name = CRT.NoteParser.NoteName(word)
-        out[#out + 1] = name ~= "" and name or word
+        out[#out + 1] = CRT.NoteParser.KnownName(word, known)
     end
     return table.concat(out, " ")
 end
@@ -156,28 +177,29 @@ end
 -- The one place a CRT note becomes an NSRT note. Header and timed lines are rewritten, the invite list
 -- is dropped (NSRT has none), and every other line is free text, which NSRT shows in its extra note
 -- frame with the same {star} and {rt1} raid icons; an assignment line's classes are written by name.
--- No name reaches NSRT with its realm (Alex, 2026-11-13: NSRT matches by plain name): a tag's names, an assignment
--- line's and the kick list's go without it, whatever an older note still holds; free text stays as written.
-function NSRT.ToNSRTText(raw)
-    local out = {}
-    local inKick = false
+-- No known player's name reaches NSRT with its realm (Alex, 2026-11-13: NSRT matches by plain name): a tag's names,
+-- an assignment line's and the kick list's go without it, whatever an older note still holds. known: the players
+-- (Parse.lua's Players: the group, the active layout, the note's roster); nil changes no name. Free text, and a word
+-- that names no known player ("North-East"), stay as written.
+function NSRT.ToNSRTText(raw, known)
+    local lines = {}
     for rawLine in ((raw or "") .. "\n"):gmatch("(.-)\r?\n") do
-        local line = strtrim(rawLine)
+        lines[#lines + 1] = strtrim(rawLine)
+    end
+    local kick = kickLines(lines)
+    local out = {}
+    for i, line in ipairs(lines) do
         local lower = line:lower()
-        if lower == KICK_START then
-            inKick = true
-            out[#out + 1] = line
-        elseif inKick then
-            inKick = lower ~= KICK_END
-            out[#out + 1] = inKick and kickLine(line) or line
+        if kick[i] then
+            out[#out + 1] = kickLine(line, known)
         elseif lower:find("^encounterid:") then
             out[#out + 1] = headerLine(line)
         elseif lower:find("^time:") then
-            out[#out + 1] = timedLine(line)
+            out[#out + 1] = timedLine(line, known)
         elseif CRT.NoteParser.AssignHeading(line) then
             out[#out + 1] = CRT.NoteParser.AssignHeading(line).name -- an assignment block's heading, as plain text
         elseif not lower:find("^invitelist:") then
-            out[#out + 1] = assignmentLine(line)
+            out[#out + 1] = assignmentLine(line, known)
         end
     end
     while #out > 0 and out[#out] == "" do
@@ -212,7 +234,7 @@ function NSRT.CanSend()
 end
 
 function NSRT.Format(record)
-    return NSRT.ToNSRTText(record.raw), { encounterID = record.encounterID, name = record.name }
+    return NSRT.ToNSRTText(record.raw, CRT.NoteParser.Players(record)), { encounterID = record.encounterID, name = record.name }
 end
 
 local function senderUnit()

@@ -143,7 +143,7 @@ end
 local function apply(text)
     local s = W.session
     local quick, selected = s.quickFill, s.selected
-    W.session = Model.New(text, { markdown = s.markdown, readOnly = s.readOnly, base = s.base })
+    W.session = Model.New(text, { markdown = s.markdown, readOnly = s.readOnly, base = s.base, players = s.players })
     W.session:SetQuickFill(quick)
     W.session.selected = selected
 end

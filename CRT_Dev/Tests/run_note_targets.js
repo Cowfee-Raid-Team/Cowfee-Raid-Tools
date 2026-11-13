@@ -239,7 +239,9 @@ check("NSRT: names go without their realms, other text as written", function()
     .. "time:36;ph:1;tag:Abu-Sargeras Cheo healer;spellid:5;text:Soak;\\n"
     .. "Note: re-check the half-way point\\nStack at {time:1:30} near Abu-Sargeras then move\\n"
     .. "intstart\\nAbu-Sargeras Cheo\\nZed-Kel'Thuzad\\nintend\\ninvitelist:Abu-Sargeras,Cheo;"
-  local text = NSRT.ToNSRTText(note)
+  -- the known players (Parse.lua's Players): Abu, Cheo and Zed are in the group; Rixxy is not
+  local known = { abu = "Abu-Sargeras", cheo = "Cheo-Area52", zed = "Zed-Kel'Thuzad" }
+  local text = NSRT.ToNSRTText(note .. "\\nSoak: Rixxy-Realm, Abu-Sargeras\\nSpread: North-East, South-West", known)
   assert(text:find("\\nLeft: Abu, Cheo (left)\\n", 1, true), "assignment line: " .. text)
   assert(text:find("\\nTank: Zed\\n", 1, true), "a realm with an apostrophe: " .. text)
   assert(text:find("time:36;ph:1;tag:Abu Cheo healer;spellid:5;text:Soak;", 1, true), "tag: " .. text)
@@ -247,10 +249,26 @@ check("NSRT: names go without their realms, other text as written", function()
   assert(text:find("\\nStack at {time:1:30} near Abu-Sargeras then move\\n", 1, true), "free text as written: " .. text)
   assert(text:find("\\nintstart\\nAbu Cheo\\nZed\\nintend", 1, true), "the kick block: " .. text)
   assert(not text:find("invitelist", 1, true), "the invite list is still dropped: " .. text)
-  -- the helpers every writer shares (Notes/Parse.lua)
+  assert(text:find("\\nSoak: Rixxy-Realm, Abu\\n", 1, true), "a player not in the group keeps the word as written: " .. text)
+  local spread = "\\nSpread: North-East, South-West"
+  assert(text:sub(-#spread) == spread, "words that name no player stay: " .. text)
+  -- no known players (no group, no layout): the net changes nothing
+  local none = NSRT.ToNSRTText(note, nil)
+  assert(none:find("\\nLeft: Abu-Sargeras, Cheo-Area52 (left)\\n", 1, true) and none:find("tag:Abu-Sargeras Cheo healer;", 1, true)
+    and none:find("\\nintstart\\nAbu-Sargeras Cheo\\nZed-Kel'Thuzad\\nintend", 1, true), "nothing known, nothing changed: " .. none)
+  -- only the realm goes: what follows it stays, and a word like P1-P2 is no name
+  local marks = NSRT.ToNSRTText("Order: Abu-Sargeras>Cheo, Abu-Sargeras/Zed, Abu-Sargeras(left), Abu-Sargeras., P1-P2", known)
+  assert(marks == "Order: Abu>Cheo, Abu/Zed, Abu(left), Abu., P1-P2", "punctuation kept: " .. marks)
+  -- a kick start with no end is no block: the lines after it are read as they always are
+  local open = NSRT.ToNSRTText("EncounterID:3001;Name:Boss\\nintstart\\nRixxy-Realm Abu-Sargeras\\ntime:10;ph:1;tag:Rixxy-Realm;text:X;tts:1;\\ninvitelist:Abu;", known)
+  assert(open == "EncounterID:3001;Name:Boss;\\nintstart\\nRixxy-Realm Abu-Sargeras\\ntime:10;ph:1;tag:Rixxy-Realm;text:X;", "unterminated: " .. open)
+  -- the helpers (Notes/Parse.lua)
   assert(P.NoteName(" Abu-Sargeras ") == "Abu" and P.NoteName("Abu") == "Abu" and P.NoteName(nil) == "", "NoteName")
+  assert(P.StripRealm("Abu-Sargeras>Cheo") == "Abu>Cheo" and P.StripRealm("P1-P2") == "P1-P2" and P.StripRealm("Abu-Area52.") == "Abu.", "StripRealm")
   assert(P.TagValue({ "Abu-Sargeras", "Demon Hunter", "Group1" }) == "Abu Demon Hunter Group1", "TagValue")
-  assert(P.NoRealms(" Abu-Sargeras, Cheo") == " Abu, Cheo" and P.NoRealms(" re-check it") == " re-check it", "NoRealms")
+  assert(P.NoRealms(" Abu-Sargeras, Cheo", known) == " Abu, Cheo" and P.NoRealms(" Abu-Sargeras", nil) == " Abu-Sargeras"
+    and P.NoRealms(" re-check it", { re = "Re-X" }) == " re-check it", "NoRealms")
+  assert(P.KnownName("Abu-Sargeras", function(n) return n == "abu" end) == "Abu" and P.KnownName("Rixxy-Realm", known) == "Rixxy-Realm", "KnownName: a set or a function; an unknown name stays")
 end)
 
 if checks.failed then error(checks.failed .. " failed") end

@@ -657,13 +657,14 @@ end
 local function loadSession()
     local text, editable = sourceText()
     -- the note's record: its boss and difficulty name the kick block's groups when the text has no header
-    W.session = Model.New(text or "", { markdown = W.source.personal, readOnly = not editable,
-        boss = not W.source.personal and Notes:Get(W.source.id) or nil })
+    -- players: whose realms come off the names already written when a row is written again (#1280)
+    local record = not W.source.personal and Notes:Get(W.source.id) or nil
+    W.session = Model.New(text or "", { markdown = W.source.personal, readOnly = not editable, boss = record,
+        players = CRT.NoteParser.Players(record) })
     W.notice, W.refused = nil, nil
     if W.source.personal then
         W.window.strip:SetTitle(TEXT.personalTitle)
     else
-        local record = Notes:Get(W.source.id)
         local name = record and record.name or TEXT.untitled
         if record and record.difficulty then
             name = name .. " (" .. record.difficulty .. ")"
