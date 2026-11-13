@@ -302,7 +302,7 @@ local function adoptText(heading, key)
             return nil
         end
         times = list
-        title = string.format(TEXT.updateTitle, Assign.Read(W.session:Text(), key).name)
+        title = string.format(TEXT.updateTitle, Assign.CleanName(Assign.Read(W.session:Text(), key).name))
     end
     local c = Assign.AdoptChanges(W.session:Text(), heading, times, CRT.NoteLinks.Saved(noteKey()))
     if not c then
@@ -383,7 +383,7 @@ local function choices()
     local text = W.session and W.session:Text() or ""
     for _, key in ipairs(Assign.Keys(text)) do
         local b = Assign.Read(text, key)
-        out[#out + 1] = { key = "b:" .. key, label = b and b.name or key }
+        out[#out + 1] = { key = "b:" .. key, label = marked(b and b.name or key) }
     end
     for _, c in ipairs(Assign.Candidates(text, CRT.NoteLinks.Saved(noteKey()))) do
         local match = Assign.MatchingBlock(text, c.heading)
@@ -680,8 +680,7 @@ function EA.RefreshBanner(width, top)
     b.title:SetWidth(width - 2 * BANNER.pad)
     local title = #names == 1 and string.format(TEXT.bannerOne, names[1])
         or string.format(TEXT.bannerMany, #names, table.concat(names, ", "))
-    -- raid marker codes in a heading as their icons (CRT_Core/MarkerText.lua)
-    b.title:SetText(CRT.MarkerText and CRT.MarkerText(title) or title)
+    b.title:SetText(marked(title)) -- raid marker codes in a heading as their icons
     local y = BANNER.pad + math.ceil(b.title:GetStringHeight() or 14) + BANNER.gap
     b.make:ClearAllPoints()
     b.make:SetPoint("TOPLEFT", BANNER.pad, -y)

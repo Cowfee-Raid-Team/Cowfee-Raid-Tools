@@ -542,10 +542,22 @@ local function dropGap(s, set)
 end
 
 -- The text with the lines in `set` (line numbers of session s, read from text) taken out, and the blank line before
--- them when only a blank line or the note's end follows them (dropGap); every other line byte for byte. Lines that
--- ended the note (no line end after them): the line before them ends it again, in the note's own line-end style.
-local function cut(text, s, set)
-    dropGap(s, set)
+-- them when only a blank line or the note's end follows them (dropGap); every other line byte for byte. from
+-- (optional): the lines are scattered (a group list's, with lines it leaves between them), so only the run of them
+-- from line `from` counts: the blank line before it goes when that run ends at a blank line or the note's end. Lines
+-- that ended the note (no line end after them): the line before them ends it again, in the note's own line-end style.
+local function cut(text, s, set, from)
+    if not from then
+        dropGap(s, set)
+    elseif blankAt(s, from - 1) then
+        local j = from
+        while set[j] do
+            j = j + 1
+        end
+        if s.pieces[j] == nil or blankAt(s, j) then
+            set[from - 1] = true
+        end
+    end
     local out = CRT.MechNote.ReplaceLines(text, function(i)
         return set[i] == true
     end, {})
@@ -1054,10 +1066,14 @@ function Assign.AdoptInto(text, heading, times, key, opts)
     else
         block.times = old.times or block.times -- FromRows read the list's own when the block had none
     end
-    block.name, block.key, block.mech = old.name, key, old.mech
+    -- a block with no heading (edited away) has only its key for a name: then the list's (FromRows: CleanName)
+    if old.hasHeading then
+        block.name = old.name
+    end
+    block.key, block.mech = key, old.mech
     block.spellID = opts.spellID or old.spellID or block.spellID
     block.adopted = nil
-    local rest = cut(text or "", s, taken)
+    local rest = cut(text or "", s, taken, heading)
     return Assign.Replace(rest, key, Assign.Lines(block, list or block.times, { key = key })), block
 end
 

@@ -494,6 +494,24 @@ check("assign: AdoptInto keeps a mechanic's block on its casts, even when the li
   assert(table.concat(A.Keys(out), ",") == "orb carriers" and #A.Candidates(out) == 0, "one block, the list gone")
 end)
 
+check("assign: AdoptInto on a block with no heading; the blank line before a list with text inside it stays (#1275)", function()
+  local typed = { { ph = 1, t = 30 }, { ph = 1, t = 90 } }
+  local full = A.Lines({ name = "Orb Carriers", times = typed, rows = { { label = "Left", text = "", tokens = { "Kip", "Zed" }, casts = "all" } } }, typed)
+  -- only its timed lines are left (heading and row edited away by hand): the update names it as the list does
+  local headless = { "EncounterID:3470;Difficulty:Mythic;Name:Twin Fangs", full[3], full[4] }
+  for _, x in ipairs(orbList()) do headless[#headless + 1] = x end
+  local out = A.AdoptInto(joined(headless), 4, nil, "orb carriers")
+  assert(out and out:find("assign:orb carriers;name:Orb Carriers;", 1, true) and not out:find("name:orb carriers", 1, true), "the list's name: " .. tostring(out))
+  -- text between the list's rows and its timer lines, the last one ending the note: the blank line before the list stays
+  local l = { "EncounterID:3470;Difficulty:Mythic;Name:Twin Fangs" }
+  for _, x in ipairs(full) do l[#l + 1] = x end
+  local h = #l + 2
+  for _, x in ipairs({ "", "Orb Carriers", "Odd: Solex, Rixxy", "Even: Abu, Cheo", "Between", "time:30;ph:1;tag:Solex Rixxy;text:Orbs;",
+    "time:90;ph:1;tag:Abu Cheo;text:Orbs;" }) do l[#l + 1] = x end
+  local out2 = A.AdoptInto(joined(l), h, nil, "orb carriers")
+  assert(out2 and out2:find("\\n\\nBetween$"), "Between stays apart, ending the note: " .. tostring(out2))
+end)
+
 check("assign: after AdoptInto, Save's links follow the block's rows, stale links do no harm (#1275)", function()
   reset()
   local casts = { { ph = 1, t = 30 }, { ph = 1, t = 90 } }
