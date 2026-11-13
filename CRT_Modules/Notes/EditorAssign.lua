@@ -680,7 +680,8 @@ function EA.RefreshBanner(width, top)
     b.title:SetWidth(width - 2 * BANNER.pad)
     local title = #names == 1 and string.format(TEXT.bannerOne, names[1])
         or string.format(TEXT.bannerMany, #names, table.concat(names, ", "))
-    b.title:SetText(marked(title)) -- raid marker codes in a heading as their icons
+    -- raid marker codes in a heading as their icons (CRT_Core/MarkerText.lua)
+    b.title:SetText(CRT.MarkerText and CRT.MarkerText(title) or title)
     local y = BANNER.pad + math.ceil(b.title:GetStringHeight() or 14) + BANNER.gap
     b.make:ClearAllPoints()
     b.make:SetPoint("TOPLEFT", BANNER.pad, -y)
