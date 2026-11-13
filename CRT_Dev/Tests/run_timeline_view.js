@@ -78,6 +78,7 @@ CRT.TimelineJournal = { ResolveID = function(_, k, r) if type(k) == "number" the
   IsHidden = function(_, enc, id) return hidden[id] and true or false end,
 }
 CRT_THEME(CRT, CRT.UI)
+CRT.DevMode = function() local pg = type(CRT.UI) == "table" and rawget(CRT.UI, "pages") local d = type(pg) == "table" and rawget(pg, "dev") return type(d) == "table" and not d.hidden end -- CRT_Core/Core.lua is not loaded here
 CRT.Dev = {} -- a developer build (the CRT_Dev files loaded): your own timeline layers are read (Timeline.DevBuild)
 -- View.lua places its tooltips with UI.TooltipOwner: a CRT.UI with only the real CRT_Core/UI/Tooltip.lua
 CRT.UI = {}

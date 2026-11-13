@@ -114,6 +114,7 @@ CRT.AlertEditor = { Open = function(self, enc, id, prefill) opened[#opened + 1] 
   BindTest = function(self, btn, owner, start) btn:SetScript("OnClick", start) end }
 
 CRT_THEME(CRT, CRT.UI)
+CRT.DevMode = function() local pg = type(CRT.UI) == "table" and rawget(CRT.UI, "pages") local d = type(pg) == "table" and rawget(pg, "dev") return type(d) == "table" and not d.hidden end -- CRT_Core/Core.lua is not loaded here
 for i, src in ipairs(sources) do
   if src:find("function UI:SkinScrollBar", 1, true) then -- the real CRT_Core/UI/ScrollBar.lua: only the gutter rule is taken
     local tmp = { UI = {} }

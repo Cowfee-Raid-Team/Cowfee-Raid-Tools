@@ -137,9 +137,7 @@ end
 -- Whether this is a developer build with the Development page open (/crt dev). Players never have it:
 -- the page and every Dev file are left out of the package.
 function Timeline.DevMode()
-    local pages = type(CRT.UI) == "table" and rawget(CRT.UI, "pages")
-    local page = type(pages) == "table" and rawget(pages, "dev")
-    return type(page) == "table" and not page.hidden
+    return CRT.DevMode()
 end
 
 -- Hidden abilities: boss mechanics taken off the timeline for everyone, unlike ignored mechanics, which

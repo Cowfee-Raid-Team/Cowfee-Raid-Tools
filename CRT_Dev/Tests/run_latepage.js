@@ -5,7 +5,7 @@ const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
-local dataSrc, pageSrc = ...
+local dataSrc, pageSrc, coreSrc = ...
 local strings = {}
 local lateHelps = {} -- every (?) made
 tinsert = table.insert
@@ -61,6 +61,8 @@ local CRT = { db = { late = { days = {}, hour = 20, minute = 0, grace = 0, histo
 function CRT:Print(m) print(m) end
 CRT.ConsumablesTools = { ShowText = function(_, title, text) exported = text end }
 CRT_THEME(CRT, CRT.UI)
+-- the shared dev-mode helper, cut out of CRT_Core/Core.lua (the rest of Core is not loaded here)
+assert(load("local CRT = ... " .. coreSrc:match("function CRT%.DevMode%(%).-\\nend"), "DevMode"))(CRT)
 local function at(h, m) return os.time({ year = 2026, month = 10, day = 14, hour = h, min = m }) end
 CRT.db.late.history = {
   { id = 1, startedAt = at(20, 0), endedAt = at(22, 0), how = "schedule", endReason = "disband", layout = "Main", grace = 0,
@@ -233,14 +235,21 @@ do
   local editHelp
   for _, x in ipairs(lateHelps) do if x.helpTitle == "Edit night" then editHelp = x end end
   check(editHelp ~= nil and rawget(editHelp, "helpTarget") == edit, "with its (?) right of it")
-  -- a packaged build (no CRT_Dev files, so no CRT.Dev) never shows it
-  check(rawget(CRT, "Dev") == nil, "the harness starts as a packaged build")
-  selectNight(1)
-  check(not edit.shown, "packaged build: no Edit night for a night")
-  check(editHelp and not editHelp.shown, "nor its (?)")
-  check(detail():find("Late (2):", 1, true), "the night reads as before")
-  check(#dropdowns > 0 and not rowFor("Balevolence-Stormrage"), "and no edit rows")
-  CRT.Dev = {} -- a developer build: CRT_Dev/Dev/LayoutEditor.lua makes CRT.Dev
+  -- Edit night is there only while the Development page is open (/crt dev), not for a build that merely has the dev files
+  local function check_hidden(why)
+    selectNight(1)
+    check(not edit.shown, why .. ": no Edit night for a night")
+    check(editHelp and not editHelp.shown, why .. ": nor its (?)")
+    check(detail():find("Late (2):", 1, true), why .. ": the night reads as before")
+    check(#dropdowns > 0 and not rowFor("Balevolence-Stormrage"), why .. ": and no edit rows")
+  end
+  check(rawget(CRT.UI, "pages") == nil, "the harness starts with no Development page")
+  check_hidden("no dev page")
+  CRT.Dev = {} -- the dev files loaded, but /crt dev not open
+  check_hidden("dev files only")
+  CRT.UI.pages = { dev = { hidden = true } } -- the page exists but is closed
+  check_hidden("dev page hidden")
+  CRT.UI.pages.dev.hidden = false -- /crt dev
   selectNight("totals")
   check(not edit.shown, "no Edit night on Totals")
   check(editHelp and not editHelp.shown, "nor its (?)")
@@ -306,10 +315,23 @@ do
   -- picking another night leaves edit mode
   selectNight(2)
   check(edit.text == "Edit night" and not rowFor("Balevolence-Stormrage"), "another night: out of edit mode")
+  -- dev mode going away while editing leaves edit mode on the next refresh; page re-checks on show
+  selectNight(1)
+  edit.OnClick(edit)
+  check(rowFor("Balevolence-Stormrage") ~= nil, "editing again")
+  CRT.UI.pages.dev.hidden = true
+  pf:Show()
+  check(not edit.shown, "dev closed: Edit night gone on the next show")
+  check(not rowFor("Balevolence-Stormrage"), "dev closed: edit rows gone")
+  check(detail():find("Late", 1, true), "dev closed: the night's detail is back")
+  CRT.UI.pages.dev.hidden = false
+  pf:Show()
+  check(edit.shown and edit.text == "Edit night", "dev reopened: the button is back, not editing")
 end
 if fails > 0 then error(fails .. " late page checks failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[2], 'utf8')));
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[3], 'utf8')));
-if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(process.argv[4], 'utf8')));
+if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

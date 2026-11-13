@@ -235,6 +235,7 @@ CRT.Bosses = { Options = function() return route end, OnRouteChange = function(s
   FirstKey = function(o) for _, x in ipairs(o) do if not x.title then return x.key end end end }
 
 CRT_THEME(CRT, CRT.UI)
+CRT.DevMode = function() local pg = type(CRT.UI) == "table" and rawget(CRT.UI, "pages") local d = type(pg) == "table" and rawget(pg, "dev") return type(d) == "table" and not d.hidden end -- CRT_Core/Core.lua is not loaded here
 CRT.Dev = {} -- a developer build (the CRT_Dev files loaded): your own timeline layers are read (Timeline.DevBuild)
 local function loadSource(i, src)
   if src:find("function UI.PickColor", 1, true) then -- the real CRT_Core/UI/Controls.lua: only PickColor is taken, the harness keeps its own Dropdown and Slider

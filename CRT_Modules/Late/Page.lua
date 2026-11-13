@@ -77,12 +77,6 @@ local selected = TOTALS
 local editing = false -- History's Edit night is open for the selected night
 local refresh
 
--- Whether this is a developer build: the CRT_Dev files are loaded (CRT_Dev/Dev/LayoutEditor.lua makes CRT.Dev).
--- Asked when needed, since the Dev files load after the modules.
-local function devBuild()
-    return rawget(CRT, "Dev") ~= nil
-end
-
 -- History's Show filter, there only once a night that wasn't a team raid is saved (Only record team raids off, or
 -- Start raid now in another group): team raids (the default) or every night.
 local SHOW_OPTIONS = { { key = "team", label = "Team raids" }, { key = "all", label = "All raids" } }
@@ -537,9 +531,9 @@ local function showEditRows(night)
     detailChild:SetHeight(math.max(1, y + 8))
 end
 
--- The Edit night button: shown for a night in a developer build, reading Done while editing, sized from its label.
+-- The Edit night button: shown for a night while /crt dev is open, reading Done while editing, sized from its label.
 local function refreshEditButton()
-    local canEdit = devBuild() and selected ~= TOTALS
+    local canEdit = CRT.DevMode() and selected ~= TOTALS
     editNightButton:SetShown(canEdit)
     editNightHelp:SetShown(canEdit)
     editNightButton:SetText(editing and EDIT_TEXT.done or EDIT_TEXT.edit)
@@ -931,8 +925,8 @@ refresh = function()
     refreshTonight()
     refreshList()
     local night = selected ~= TOTALS and Late:Find(selected)
-    -- Edit night only for a saved night, in a developer build
-    editing = editing and night and devBuild() and true or false
+    -- Edit night only for a saved night, while /crt dev is open (edit mode ends when it closes)
+    editing = editing and night and CRT.DevMode() and true or false
     if editing then
         showEditRows(night)
     else
