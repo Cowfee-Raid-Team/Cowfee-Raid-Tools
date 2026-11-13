@@ -49,11 +49,39 @@ local ENDED = {
     offline = "you logged in after the group had gone",
 }
 
+-- History > Edit night: the selected night's players, each with a status dropdown (Late:SetStatus). Developer builds
+-- only (the CRT_Dev files make CRT.Dev); a packaged build never shows the button.
+local EDIT_TEXT = {
+    edit = "Edit night",
+    done = "Done",
+    help = "Fixes this night's record, such as someone marked late who was here. Pick each player's status: On time "
+        .. "adds no late time, Late uses the join time the tracker recorded, No-show counts until the night ended, "
+        .. "and Not expected leaves them out of the night. Changes save at once, and the totals, the Raider Score "
+        .. "and the export follow.",
+    onTime = "On time",
+    late = "Late (joined %s)",
+    noShow = "No-show",
+    excluded = "Not expected",
+    excludedHeading = "Not expected (%d)",
+    edited = "(edited)",
+}
+local EDIT_LABEL_W = 200 -- the player's name in an edit row
+local EDIT_DROPDOWN_W = 200
+local EDIT_HEADING_PAD = 6 -- above and below the Not expected heading
+
 local page, tonightText, tonightChild, detailText, detailChild, listChild, statusText
 local startButton, endButton, layoutButton, deleteButton, editButton
+local editNightButton, editNightHelp
 local rows, controls = {}, {}
 local selected = TOTALS
+local editing = false -- History's Edit night is open for the selected night
 local refresh
+
+-- Whether this is a developer build: the CRT_Dev files are loaded (CRT_Dev/Dev/LayoutEditor.lua makes CRT.Dev).
+-- Asked when needed, since the Dev files load after the modules.
+local function devBuild()
+    return rawget(CRT, "Dev") ~= nil
+end
 
 -- History's Show filter, there only once a night that wasn't a team raid is saved (Only record team raids off, or
 -- Start raid now in another group): team raids (the default) or every night.
@@ -192,17 +220,21 @@ local function nightLines(night)
     if not Late.IsTeam(night) then
         lines[#lines + 1] = NOT_TEAM
     end
+    -- Players marked Not expected are left out; an edited player gets a small grey "(edited)".
     local late, onTime = {}, {}
     for _, p in ipairs(sortedPlayers(night)) do
         local status = Late.Status(night, p)
-        if status ~= "ontime" then
+        local mark = p.edited and (" " .. UI.ColorText(EDIT_TEXT.edited, "muted")) or ""
+        if status == "excluded" then
+            -- left out
+        elseif status ~= "ontime" then
             if status == "noshow" then
-                late[#late + 1] = format("  %s  %s, %s until the end", name(p.key), UI.BadText("no-show"), minutes(Late.Seconds(night, p)))
+                late[#late + 1] = format("  %s  %s, %s until the end%s", name(p.key), UI.BadText("no-show"), minutes(Late.Seconds(night, p)), mark)
             else
-                late[#late + 1] = format("  %s  joined %s, %s late", name(p.key), clock(p.joinedAt), minutes(Late.Seconds(night, p)))
+                late[#late + 1] = format("  %s  joined %s, %s late%s", name(p.key), clock(p.joinedAt), minutes(Late.Seconds(night, p)), mark)
             end
         else
-            onTime[#onTime + 1] = name(p.key)
+            onTime[#onTime + 1] = name(p.key) .. mark
         end
     end
     lines[#lines + 1] = ""
@@ -271,10 +303,11 @@ local function nightExport(night)
     }
     local late, onTime = {}, {}
     for _, p in ipairs(sortedPlayers(night)) do
-        if Late.Status(night, p) ~= "ontime" then
-            late[#late + 1] = p
-        else
+        local status = Late.Status(night, p)
+        if status == "ontime" then
             onTime[#onTime + 1] = plain(p.key)
+        elseif status ~= "excluded" then
+            late[#late + 1] = p
         end
     end
     if #late > 0 then
@@ -389,6 +422,131 @@ local function showTotals()
     detailChild:SetHeight(24 + (#list + 1) * TOTAL_ROW_H + 8)
 end
 
+-- Edit night rows ----------------------------------------------------------
+-- One Edit Mode style row per player (UI.Dropdown: the name as its label, the status on its right), sorted as the
+-- night's detail sorts them, then the players marked Not expected under their own heading, so they can be put back.
+-- Every change goes through Late:SetStatus, which saves it and refreshes the page.
+
+local editRows, editHeading = {}, nil
+
+local function statusOptions(night, p)
+    local out = { { key = "ontime", label = EDIT_TEXT.onTime } }
+    if Late.CanBeLate(night, p) then
+        out[#out + 1] = { key = "late", label = format(EDIT_TEXT.late, clock(Late.RecordedJoin(p))) }
+    end
+    out[#out + 1] = { key = "noshow", label = EDIT_TEXT.noShow }
+    out[#out + 1] = { key = "excluded", label = EDIT_TEXT.excluded }
+    return out
+end
+
+-- The selected night and the player an edit row stands for, found by name (the rows re-sort after every edit).
+local function editTarget(row)
+    local night = selected ~= TOTALS and Late:Find(selected)
+    if not night or not row.playerKey then
+        return nil
+    end
+    for _, p in ipairs(night.players) do
+        if p.key == row.playerKey then
+            return night, p
+        end
+    end
+end
+
+local function editRow(i)
+    local row = editRows[i]
+    if row then
+        return row
+    end
+    row = UI.Dropdown(detailChild, "", {
+        labelWidth = EDIT_LABEL_W,
+        width = EDIT_DROPDOWN_W,
+        options = function()
+            local night, p = editTarget(row)
+            return night and statusOptions(night, p) or {}
+        end,
+        get = function()
+            local night, p = editTarget(row)
+            return night and Late.Status(night, p) or nil
+        end,
+        set = function(status)
+            local _, p = editTarget(row)
+            if p then
+                local ok, reason = Late:SetStatus(selected, p.key, status)
+                if not ok and reason then
+                    CRT:Print(reason)
+                end
+            end
+        end,
+    })
+    editRows[i] = row
+    return row
+end
+
+local function hideEditRows()
+    for _, row in ipairs(editRows) do
+        row:Hide()
+    end
+    if editHeading then
+        editHeading:Hide()
+    end
+end
+
+local function showEditRows(night)
+    setText(detailText, detailChild, "")
+    local counted, excluded = {}, {}
+    for _, p in ipairs(sortedPlayers(night)) do
+        local list = p.excluded and excluded or counted
+        list[#list + 1] = p
+    end
+    local rowH = UI.CONTROL_ROW_H or 32
+    local y, n = 0, 0
+    local function placeRow(p)
+        n = n + 1
+        local row = editRow(n)
+        row.playerKey = p.key
+        row.Label:SetText(name(p.key))
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", 0, -y)
+        row:Show()
+        row.refresh()
+        y = y + rowH
+    end
+    for _, p in ipairs(counted) do
+        placeRow(p)
+    end
+    if #excluded > 0 then
+        if not editHeading then
+            editHeading = detailChild:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+            editHeading:SetJustifyH("LEFT")
+        end
+        editHeading:SetText(UI.HeadingText(format(EDIT_TEXT.excludedHeading, #excluded)))
+        y = y + EDIT_HEADING_PAD
+        editHeading:ClearAllPoints()
+        editHeading:SetPoint("TOPLEFT", 2, -y)
+        editHeading:Show()
+        y = y + editHeading:GetStringHeight() + EDIT_HEADING_PAD
+        for _, p in ipairs(excluded) do
+            placeRow(p)
+        end
+    elseif editHeading then
+        editHeading:Hide()
+    end
+    for i = n + 1, #editRows do
+        editRows[i]:Hide()
+    end
+    detailChild:SetHeight(math.max(1, y + 8))
+end
+
+-- The Edit night button: shown for a night in a developer build, reading Done while editing, sized from its label.
+local function refreshEditButton()
+    local canEdit = devBuild() and selected ~= TOTALS
+    editNightButton:SetShown(canEdit)
+    editNightHelp:SetShown(canEdit)
+    editNightButton:SetText(editing and EDIT_TEXT.done or EDIT_TEXT.edit)
+    local fs = editNightButton:GetFontString()
+    editNightButton:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
+end
+
 -- Scrolling text boxes ---------------------------------------------------
 
 local function textBox(pf, scrollName)
@@ -490,6 +648,9 @@ local function getRow(i)
     row.text:SetJustifyH("LEFT")
     row.text:SetWordWrap(false)
     row:SetScript("OnClick", function(self)
+        if self.value ~= selected then
+            editing = false -- another night (or the totals) leaves Edit night
+        end
         selected = self.value
         refresh()
     end)
@@ -510,7 +671,7 @@ local function refreshList()
     for i = #history, 1, -1 do
         local night = history[i]
         local count = 0
-        for _, p in ipairs(night.players) do
+        for _, p in ipairs(Late.Counted(night)) do
             if Late.Status(night, p) ~= "ontime" then
                 count = count + 1
             end
@@ -769,14 +930,25 @@ refresh = function()
     end
     refreshTonight()
     refreshList()
-    if selected == TOTALS then
+    local night = selected ~= TOTALS and Late:Find(selected)
+    -- Edit night only for a saved night, in a developer build
+    editing = editing and night and devBuild() and true or false
+    if editing then
+        showEditRows(night)
+    else
+        hideEditRows()
+    end
+    if not night then
         showTotals()
         deleteButton:Hide()
     else
         hideTotals()
-        setText(detailText, detailChild, nightLines(Late:Find(selected)))
+        if not editing then
+            setText(detailText, detailChild, nightLines(night))
+        end
         deleteButton:Show()
     end
+    refreshEditButton()
 end
 
 
@@ -1210,6 +1382,20 @@ local function buildHistory(f)
         self:SetText("Delete this night")
         Late:Delete(selected)
     end)
+
+    -- Edit night (developer builds only), left of Delete with its (?) between them
+    editNightButton = UI.PanelButton(f, EDIT_TEXT.edit, 24, function()
+        editing = not editing
+        refresh()
+    end)
+    -- the same font as Export and Delete beside it; sized from its label (setEditLabel)
+    editNightButton:SetNormalFontObject(CRTFontNormal)
+    editNightButton:SetHighlightFontObject(CRTFontHighlight)
+    editNightButton:SetDisabledFontObject(CRTFontDisable)
+    editNightButton:SetPoint("RIGHT", deleteButton, "LEFT", -(UI.HELP_GAP + UI.HELP_SIZE + 8), 0)
+    editNightHelp = UI.HelpRight(editNightButton, EDIT_TEXT.edit, EDIT_TEXT.help)
+    editNightButton:Hide()
+    editNightHelp:Hide()
 end
 
 local function buildSettings(f)

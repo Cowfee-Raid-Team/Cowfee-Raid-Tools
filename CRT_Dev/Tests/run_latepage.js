@@ -39,6 +39,8 @@ function CreateFrame(_, _, _, template) local f = mock() frames[#frames + 1] = f
 local tip = {}
 GameTooltip = { SetOwner = function() tip = {} end, SetText = function(_, s) tip[#tip + 1] = s end, AddLine = function(_, s) tip[#tip + 1] = s end, Show = function() end, Hide = function() end }
 local menus, gridRef = {}, nil
+local dropdowns = {} -- every UI.Dropdown made, with its opts and its label
+local exported -- the last text shown for Discord
 local sent, states, canInvite, inviteWhy = {}, {}, true, nil
 InCombatLockdown = function() return false end
 format = string.format
@@ -49,14 +51,15 @@ C_Timer = { After = function() end, NewTicker = function() end }
 RAID_CLASS_COLORS = {}
 local pages = {}
 local CRT = { db = { late = { days = {}, hour = 20, minute = 0, grace = 0, history = {}, nextId = 3, lastAuto = "" } },
-  UI = { SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title, text) local m = mock() rawset(m, "helpTitle", title) rawset(m, "helpText", text) lateHelps[#lateHelps + 1] = m return m end, Dropdown = function(_, _, o) local m = mock() rawset(m, "Dropdown", mock()) rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end, Slider = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end,  RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end, SkinScrollBar = function() end, SetFrameTitle = function() end, StyleWindow = function() end,
-    PanelButtonWidth = function(w) return w + 28 end, ContextMenu = function(owner, fill) menus[#menus + 1] = { owner = owner, fill = fill } end },
+  UI = { SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title, text) local m = mock() rawset(m, "helpTitle", title) rawset(m, "helpText", text) lateHelps[#lateHelps + 1] = m return m end, Dropdown = function(_, label, o) local m = mock() rawset(m, "Dropdown", mock()) rawset(m, "opts", o) local lab = mock() lab.text = label rawset(m, "Label", lab) dropdowns[#dropdowns + 1] = m rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end, Slider = function(_, _, o) local m = mock() rawset(m, "refresh", function() if o.enabledIf then rawset(m, "enabled", o.enabledIf() and true or false) end end) return m end,  RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end, SkinScrollBar = function() end, SetFrameTitle = function() end, StyleWindow = function() end,
+    PanelButtonWidth = function(w) return w + 28 end, PanelButton = function(parent, label, h, onClick) local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate") b:SetText(label) b:SetScript("OnClick", onClick) return b end, ContextMenu = function(owner, fill) menus[#menus + 1] = { owner = owner, fill = fill } end },
   Invite = { CanInvite = function() return canInvite, inviteWhy end, Send = function(_, names, slots, from) sent[#sent + 1] = { names = names, slots = slots, from = from } return #names end,
     StateText = function(_, key) return states[key] end, Entry = function(_, key) return states[key] and { state = "invited" } end, Summary = function() return "SUMMARY" end, OnChange = function() end,
     GroupOf = function(slots, key) for i = 1, 40 do if slots[i] == key then return math.ceil(i / 5) end end end },
   Groups = { MakeLookup = function() return function() return nil end end, ActiveNames = function() return {} end, NUM_SLOTS = 40, Active = function() return nil end, Find = function() return nil end, OnChange = function() end, ReportName = function(k) return (k:gsub("%-.*", "")) end, Normalize = function(k) return k end, ReadRoster = function() return {} end, ClassColor = function() return 1, 1, 1 end, Display = function(k) return k end, Presets = function() return {} end, Find = function() return nil end, OnChange = function() end },
 }
 function CRT:Print(m) print(m) end
+CRT.ConsumablesTools = { ShowText = function(_, title, text) exported = text end }
 CRT_THEME(CRT, CRT.UI)
 local function at(h, m) return os.time({ year = 2026, month = 10, day = 14, hour = h, min = m }) end
 CRT.db.late.history = {
@@ -202,6 +205,107 @@ do
     "the page's (?) has the raider caveat")
   check(roster and helpPlain(roster.helpText):find("pushes a note with their roster, it becomes your active layout", 1, true),
     "the expected roster's (?) says a pushed roster becomes yours")
+end
+-- Edit night on History: one row per player with a status dropdown; changes save at once and every total follows
+do
+  local function plain(s) return (tostring(s or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+  local function frameWith(text) for _, f in ipairs(frames) do if rawget(f, "text") == text and rawget(f, "OnClick") then return f end end end
+  local function listLabel(id)
+    for _, f in ipairs(frames) do
+      if rawget(f, "value") == id and f.shown and rawget(f, "text") ~= nil then return plain(rawget(f, "text").text) end
+    end
+  end
+  local function selectNight(id) for _, f in ipairs(frames) do if rawget(f, "value") == id and rawget(f, "OnClick") then f.OnClick(f) return end end end
+  local function detail()
+    local best
+    for _, s in ipairs(strings) do local t = rawget(s, "text") if type(t) == "string" and t:find("Expected roster \\"Main\\"", 1, true) then best = t end end
+    return plain(best)
+  end
+  local function rowFor(key)
+    for _, d in ipairs(dropdowns) do if d.shown and rawget(d, "playerKey") == key then return d end end
+  end
+  local function labels(d) local out = {} for _, o in ipairs(d.opts.options()) do out[#out + 1] = o.label end return table.concat(out, " / ") end
+  CRT.db.late.current = nil
+  pf:Show()
+  check(listLabel(1) and listLabel(1):find("(2 late)", 1, true), "the list: night 1 has 2 late: " .. tostring(listLabel(1)))
+  local edit = frameWith("Edit night")
+  check(edit ~= nil, "History has an Edit night button")
+  local editHelp
+  for _, x in ipairs(lateHelps) do if x.helpTitle == "Edit night" then editHelp = x end end
+  check(editHelp ~= nil and rawget(editHelp, "helpTarget") == edit, "with its (?) right of it")
+  -- a packaged build (no CRT_Dev files, so no CRT.Dev) never shows it
+  check(rawget(CRT, "Dev") == nil, "the harness starts as a packaged build")
+  selectNight(1)
+  check(not edit.shown, "packaged build: no Edit night for a night")
+  check(editHelp and not editHelp.shown, "nor its (?)")
+  check(detail():find("Late (2):", 1, true), "the night reads as before")
+  check(#dropdowns > 0 and not rowFor("Balevolence-Stormrage"), "and no edit rows")
+  CRT.Dev = {} -- a developer build: CRT_Dev/Dev/LayoutEditor.lua makes CRT.Dev
+  selectNight("totals")
+  check(not edit.shown, "no Edit night on Totals")
+  check(editHelp and not editHelp.shown, "nor its (?)")
+  selectNight(1)
+  check(edit.shown, "Edit night shows for a night")
+  check(detail():find("Late (2):", 1, true), "the detail lists 2 late")
+  edit.OnClick(edit)
+  check(edit.text == "Done", "in edit mode it reads Done")
+  local bale, abu, gad = rowFor("Balevolence-Stormrage"), rowFor("Abu-Kel'Thuzad"), rowFor("Gadios-Silvermoon")
+  check(bale and abu and gad, "one row per player")
+  check(bale and plain(bale.Label.text) == "Balevolence", "the row's label is the player's name: " .. tostring(bale and bale.Label.text))
+  check(bale and labels(bale) == "On time / Late (joined 20:14) / No-show / Not expected", "Balevolence's choices: " .. (bale and labels(bale) or "-"))
+  check(abu and labels(abu) == "On time / No-show / Not expected", "never joined: no Late choice: " .. (abu and labels(abu) or "-"))
+  check(bale and bale.opts.get() == "late" and abu.opts.get() == "noshow" and gad.opts.get() == "ontime", "each dropdown shows the status")
+  check(bale and bale.opts.labelWidth and bale.opts.labelWidth > 0, "a fixed label width")
+  -- rows sorted as the detail sorts them: most late first
+  check(abu and bale and gad and rawget(abu, "y") > rawget(bale, "y") and rawget(bale, "y") > rawget(gad, "y"), "rows sorted most late first")
+  -- On time for the missed player: saved at once, the list and the detail follow
+  bale.opts.set("ontime")
+  check(listLabel(1):find("(1 late)", 1, true), "the list now has 1 late: " .. tostring(listLabel(1)))
+  check(CRT.db.late.history[1].players[1].edited == true, "saved through the tracker (edited)")
+  edit.OnClick(edit)
+  check(edit.text == "Edit night", "Done leaves edit mode")
+  check(not rowFor("Balevolence-Stormrage"), "and hides the rows")
+  local d = detail()
+  check(d:find("On time (2): Gadios, Balevolence (edited)", 1, true) or d:find("On time (2): Balevolence (edited), Gadios", 1, true), "Balevolence is on time, marked (edited): " .. d)
+  check(not d:find("Gadios (edited)", 1, true), "an unedited player isn't marked")
+  -- back to Late: restored from the recorded time
+  edit.OnClick(edit)
+  bale = rowFor("Balevolence-Stormrage")
+  check(bale and labels(bale):find("Late (joined 20:14)", 1, true), "Late (joined 20:14) is still offered after the edit")
+  bale.opts.set("late")
+  check(listLabel(1):find("(2 late)", 1, true), "back to 2 late")
+  -- Not expected: gone from the night and the totals, under a Not expected heading in edit mode
+  abu = rowFor("Abu-Kel'Thuzad")
+  abu.opts.set("excluded")
+  check(listLabel(1):find("(1 late)", 1, true), "not expected: out of the count: " .. tostring(listLabel(1)))
+  local heading
+  for _, s in ipairs(strings) do if s.shown and type(rawget(s, "text")) == "string" and plain(s.text) == "Not expected (1)" then heading = s end end
+  abu = rowFor("Abu-Kel'Thuzad")
+  check(heading ~= nil, "edit mode shows a Not expected heading")
+  check(abu ~= nil and heading and rawget(abu, "y") < rawget(heading, "y"), "with the player under it, so it can be undone")
+  check(abu and abu.opts.get() == "excluded", "their dropdown reads Not expected")
+  local lastY = 0
+  for _, k in ipairs({ "Balevolence-Stormrage", "Gadios-Silvermoon" }) do local r = rowFor(k) lastY = math.min(lastY, rawget(r, "y")) end
+  check(heading and rawget(heading, "y") < lastY, "the heading comes after the expected players")
+  edit.OnClick(edit)
+  d = detail()
+  check(not d:find("Abu", 1, true), "the read-only night leaves the not expected player out: " .. d)
+  selectNight("totals")
+  local abuTotal = false
+  for _, s in ipairs(strings) do if s.shown and type(rawget(s, "text")) == "string" and plain(s.text) == "Abu" then abuTotal = true end end
+  check(not abuTotal, "and the Totals do too")
+  selectNight(1)
+  exported = nil
+  frameWith("Export for Discord").OnClick()
+  check(exported and not exported:find("Abu", 1, true), "and the Discord export")
+  check(exported and not exported:find("edited", 1, true), "the export has no (edited) marks")
+  -- set back to No-show: restored
+  edit.OnClick(edit)
+  rowFor("Abu-Kel'Thuzad").opts.set("noshow")
+  check(listLabel(1):find("(2 late)", 1, true), "Not expected undone: 2 late again")
+  -- picking another night leaves edit mode
+  selectNight(2)
+  check(edit.text == "Edit night" and not rowFor("Balevolence-Stormrage"), "another night: out of edit mode")
 end
 if fails > 0 then error(fails .. " late page checks failed") end
 `;
