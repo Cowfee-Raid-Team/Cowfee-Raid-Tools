@@ -12,7 +12,8 @@ local ADDON, CRT = ...
 -- is written into the editor's session (its text, as Save will write it), so Raw text and Save follow; nothing reaches
 -- the note until Save, which links the blocks' timer lines to their rows (Assign.LinkAll). A name another block or a
 -- typed list of the note has is refused, with the reason (Assign.KeyTaken). Making a typed list a block asks first,
--- saying what changes (Assign.AdoptChanges). When a note opens with such lists, a banner over the rows offers it.
+-- saying what changes (Assign.AdoptChanges); a list named like a block the note has updates that block instead
+-- (Assign.AdoptInto), never a copy. When a note opens with such lists, a banner over the rows offers it.
 -- Called by the editor:
 --   EA.Build(left)   makes the view, hidden, and the banner
 --   EA.Toggle()      Add assignment: opens the view (on the row selected for Quick fill's block, if it is one), or
@@ -55,6 +56,11 @@ local TEXT = {
     adoptOff = "%d lines on no cast stay as they are.",
     adoptButton = "Make block",
     adoptGone = "The note changed: that group list isn't there any more.",
+    fromRowsUpdate = "Update %s from this list",
+    updateTitle = "\"%s\" is already an assignment. Update it from this list?",
+    updateButton = "Update block",
+    updated = "Updated %s.",
+    updateGone = "The note changed: that assignment isn't there any more.",
     bannerOne = "%s has timer lines under its rows. Make it an Assign block to change it in one place?",
     bannerMany = "%d group lists have timer lines under their rows (%s). Make one an Assign block?",
     bannerMake = "Make an Assign block",
@@ -78,6 +84,11 @@ EA.state = A
 
 local function readOnly()
     return W.session == nil or W.session.readOnly
+end
+
+-- Text with a name in it, its raid marker codes drawn as their icons (CRT_Core/MarkerText.lua).
+local function marked(text)
+    return CRT.MarkerText and CRT.MarkerText(text) or text
 end
 
 -- The note being edited, or nil (the personal note).
@@ -246,14 +257,58 @@ local function adopt(heading)
     Editor.Refresh()
 end
 
--- What making the list a block changes, for the confirmation.
-local function adoptText(heading)
+-- The timers of the note's block `key`, as openBlock reads them: their A.timers value, the casts to read a list's
+-- lines against (a mechanic's; nil for typed times, which the block keeps itself) and the times its lines go on (a
+-- mechanic's casts, else its typed times or its lines' own). Nil when the note has no such block.
+local function blockTimers(key)
+    local b = W.session and Assign.Read(W.session:Text(), key, nil)
+    if not b then
+        return nil
+    end
+    local t = timersFor(b)
+    local m = A.mechs[t]
+    return t, m and m.casts or nil, m and m.casts or b.times
+end
+
+-- A group list named like a block the note has (Assign.MatchingBlock) taken into that block (Assign.AdoptInto), which
+-- then opens, with the block's own timers.
+local function update(heading, key)
+    local t, casts = blockTimers(key)
+    if not t then
+        return
+    end
+    local m = A.mechs[t]
+    local text, b = Assign.AdoptInto(W.session:Text(), heading, casts, key,
+        { spellID = m and m.spellID or nil, saved = CRT.NoteLinks.Saved(noteKey()) })
+    if not text then
+        return
+    end
+    apply(text)
+    openBlock(key)
+    W.assignOn = true
+    W.notice = UI.GoodText(string.format(TEXT.updated, marked(Assign.CleanName(b.name))))
+    Editor.Refresh()
+end
+
+-- What making the list a block changes, for the confirmation; with key (the block it is named like), what updating
+-- that block from it changes, against the block's timers.
+local function adoptText(heading, key)
     local m = A.mechs[A.timers]
-    local c = Assign.AdoptChanges(W.session:Text(), heading, m and m.casts or nil, CRT.NoteLinks.Saved(noteKey()))
+    local times = m and m.casts or nil
+    local title
+    if key then
+        local t, _, list = blockTimers(key)
+        if not t then
+            return nil
+        end
+        times = list
+        title = string.format(TEXT.updateTitle, Assign.CleanName(Assign.Read(W.session:Text(), key).name))
+    end
+    local c = Assign.AdoptChanges(W.session:Text(), heading, times, CRT.NoteLinks.Saved(noteKey()))
     if not c then
         return nil
     end
-    local out = { string.format(TEXT.adoptTitle, c.name), string.format(TEXT.adoptLines, c.lines) }
+    local out = { title or string.format(TEXT.adoptTitle, c.name), string.format(TEXT.adoptLines, c.lines) }
     if #c.texts > 0 then
         out[#out + 1] = string.format(TEXT.adoptTexts, table.concat(c.texts, ", "))
     end
@@ -277,9 +332,13 @@ local function candidateName(heading)
 end
 
 -- Make an Assign block: asks first, listing what changes; nothing changes until it is accepted, and then only when
--- that line is still the same group list (the note may have changed meanwhile).
+-- that line is still the same group list (the note may have changed meanwhile). A list named like a block the note
+-- has (Assign.MatchingBlock) updates that block instead of making a copy (#1275); then that block must still be there.
+-- There is no "copy anyway": rename the list first for a second block.
 function EA.AskAdopt(heading)
-    local text = adoptText(heading)
+    local s = W.session
+    local key = s and Assign.MatchingBlock(s:Text(), heading)
+    local text = s and adoptText(heading, key)
     local name = candidateName(heading)
     if not (text and name) or readOnly() then
         return false
@@ -293,31 +352,44 @@ function EA.AskAdopt(heading)
             Editor.Refresh()
             return
         end
-        adopt(heading)
+        if key and Assign.MatchingBlock(W.session:Text(), heading) ~= key then
+            W.notice = UI.BadText(TEXT.updateGone)
+            Editor.Refresh()
+            return
+        end
+        if key then
+            update(heading, key)
+        else
+            adopt(heading)
+        end
     end
     if not StaticPopup_ShowCustomGenericConfirmation then
         accept()
         return true
     end
     UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation({
-        text = text,
-        acceptText = TEXT.adoptButton,
+        text = marked(text),
+        acceptText = key and TEXT.updateButton or TEXT.adoptButton,
         cancelText = CANCEL,
         callback = accept,
     }), "GENERIC_CONFIRMATION"))
     return true
 end
 
--- The Assignment dropdown's choices: new, the note's blocks, then the group lists to make into one.
+-- The Assignment dropdown's choices: new, the note's blocks, then the group lists to make into one (or, named like a
+-- block the note has, to update it from).
 local function choices()
     local out = { { key = "new", label = TEXT.newBlock } }
     local text = W.session and W.session:Text() or ""
     for _, key in ipairs(Assign.Keys(text)) do
         local b = Assign.Read(text, key)
-        out[#out + 1] = { key = "b:" .. key, label = b and b.name or key }
+        out[#out + 1] = { key = "b:" .. key, label = marked(b and b.name or key) }
     end
     for _, c in ipairs(Assign.Candidates(text, CRT.NoteLinks.Saved(noteKey()))) do
-        out[#out + 1] = { key = "c:" .. c.heading, label = string.format(TEXT.fromRows, c.name) }
+        local match = Assign.MatchingBlock(text, c.heading)
+        local b = match and Assign.Read(text, match)
+        local label = b and string.format(TEXT.fromRowsUpdate, b.name) or string.format(TEXT.fromRows, c.name)
+        out[#out + 1] = { key = "c:" .. c.heading, label = marked(label) }
     end
     return out
 end

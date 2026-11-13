@@ -39,6 +39,8 @@ local ADDON, CRT = ...
 --   Assign.FromRows(text, heading, times)   such a list as a block, and the lines it takes in; AdoptChanges says what
 --                                        making it a block changes
 --   Assign.Adopt(text, heading, times, opts)   the text with that list rewritten as a block
+--   Assign.MatchingBlock(text, heading)  the block already in the note that list is named like, or nil
+--   Assign.AdoptInto(text, heading, times, key, opts)   the text with that list taken into block `key`, in its place
 
 local Assign = {}
 CRT.NoteAssign = Assign
@@ -539,10 +541,45 @@ local function dropGap(s, set)
     end
 end
 
+-- The text with the lines in `set` (line numbers of session s, read from text) taken out, and the blank line before
+-- them when only a blank line or the note's end follows them (dropGap); every other line byte for byte. from
+-- (optional): the lines are scattered (a group list's, with lines it leaves between them), so only the run of them
+-- from line `from` counts: the blank line before it goes when that run ends at a blank line or the note's end. Lines
+-- that ended the note (no line end after them): the line before them ends it again, in the note's own line-end style.
+local function cut(text, s, set, from)
+    if not from then
+        dropGap(s, set)
+    elseif blankAt(s, from - 1) then
+        local j = from
+        while set[j] do
+            j = j + 1
+        end
+        if s.pieces[j] == nil or blankAt(s, j) then
+            set[from - 1] = true
+        end
+    end
+    local out = CRT.MechNote.ReplaceLines(text, function(i)
+        return set[i] == true
+    end, {})
+    local pieces = s.pieces
+    local n = #pieces
+    if n > 0 and set[n] and pieces[n].eol == "" then
+        local keep = n - 1
+        while keep > 0 and set[keep] do
+            keep = keep - 1
+        end
+        local eol = keep > 0 and pieces[keep].eol or ""
+        if eol ~= "" and out:sub(-#eol) == eol then
+            out = out:sub(1, #out - #eol)
+        end
+    end
+    return out
+end
+
 -- The note's text with the block's lines replaced by `lines` (where its first line was, else at the end), every
 -- other line byte for byte. No lines takes the block out. oldKey (optional): a renamed block's old key, whose lines
 -- go too, the new ones taking their place. A new block at the end gets a blank line before it, so it never reads as
--- part of the group over it (Alex, 2026-10-30), and the blank line goes with it when it is taken out (dropGap).
+-- part of the group over it (Alex, 2026-10-30), and the blank line goes with it when it is taken out (cut).
 function Assign.Replace(text, key, lines, oldKey)
     local s = session(text or "")
     local set, any = Assign.Find(s, key)
@@ -554,33 +591,20 @@ function Assign.Replace(text, key, lines, oldKey)
         any = any or oldAny
     end
     lines = lines or {}
+    if any and #lines == 0 then
+        -- taken out: the text as it was before the block was added
+        return cut(text or "", s, set)
+    end
     if not any and #lines > 0 and needsGap(s) then
         local gapped = { "" }
         for i, line in ipairs(lines) do
             gapped[i + 1] = line
         end
         lines = gapped
-    elseif any and #lines == 0 then
-        dropGap(s, set)
     end
-    local out = CRT.MechNote.ReplaceLines(text or "", function(i)
+    return CRT.MechNote.ReplaceLines(text or "", function(i)
         return set[i] == true
     end, lines)
-    -- A block that ended the note (no line end after it) taken out: the line before it ends the note again, in the
-    -- note's own line-end style, so the text is as it was before the block was added.
-    local pieces = s.pieces
-    local n = #pieces
-    if any and #lines == 0 and n > 0 and set[n] and pieces[n].eol == "" then
-        local keep = n - 1
-        while keep > 0 and set[keep] do
-            keep = keep - 1
-        end
-        local eol = keep > 0 and pieces[keep].eol or ""
-        if eol ~= "" and out:sub(-#eol) == eol then
-            out = out:sub(1, #out - #eol)
-        end
-    end
-    return out
 end
 
 -- Names in one form: without realms, one space between them, commas and runs of spaces read as one space.
@@ -850,6 +874,18 @@ local function linkMatch(s, saved)
     return Links.Match(Links.Rows(s), Links.Lines(s), saved)
 end
 
+-- The timed lines that follow the row at line li (Links.Match) and that no block has marked: a block's own line
+-- listing the same players is never a group list's.
+local function followers(s, m, li)
+    local out = {}
+    for _, line in ipairs(m.byRow[li] or {}) do
+        if not Assign.MarkerOf(s.rows[line.index].raw) then
+            out[#out + 1] = line
+        end
+    end
+    return out
+end
+
 -- Group lists in a note's text that timed lines follow (Notes/Links.lua) and that are no block yet: a heading with
 -- assignment lines under it, such as a pasted planner note. { { heading (its line), name, rows (their lines),
 -- lines (how many timed lines follow them) } }.
@@ -862,7 +898,7 @@ function Assign.Candidates(text, saved)
             local labels = labelsUnder(s, i)
             local n = 0
             for _, li in ipairs(labels) do
-                n = n + #(m.byRow[li] or {})
+                n = n + #followers(s, m, li)
             end
             if n > 0 then
                 out[#out + 1] = { heading = i, name = trim(row.text), rows = labels, lines = n }
@@ -894,7 +930,7 @@ function Assign.FromRows(text, heading, times, saved)
         block.rows[r] = rowFrom(s, i)
         block.rows[r].label = Assign.CleanLabel(block.rows[r].label, r)
         taken[i] = true
-        for _, line in ipairs(m.byRow[i] or {}) do
+        for _, line in ipairs(followers(s, m, i)) do
             local t = line.timer
             entries[#entries + 1] = { r = r, ph = t.ph or 1, t = t.time, text = t.text, spellId = t.spellId, index = line.index,
                 raw = s.rows[line.index].raw }
@@ -986,6 +1022,59 @@ function Assign.Adopt(text, heading, times, opts)
     return CRT.MechNote.ReplaceLines(text or "", function(i)
         return taken[i] == true
     end, lines), block
+end
+
+-- The key of the block in the note that the group list at line `heading` is named like (the same Key: any case), or
+-- nil. Making the list a block would make a copy of it (Adopt's "Name 2"); AdoptInto updates it instead (#1275).
+function Assign.MatchingBlock(text, heading)
+    local s = session(text)
+    local row = s.rows[heading]
+    if not (row and row.kind == "heading" and not row.assign) then
+        return nil
+    end
+    local key = Assign.Key(row.text)
+    for _, k in ipairs(Assign.Keys(s)) do
+        if k == key then
+            return k
+        end
+    end
+    return nil
+end
+
+-- The text with the group list at line `heading` taken into the block `key` (Alex, 2026-11-13: "offer Update"): the
+-- block gets the list's rows (FromRows), keeps its name, key, mechanic and spell, and stays where it was (Replace); the
+-- list's heading, rows and the lines it takes in go (cut); a line on no cast stays as it is. The lines are read
+-- against times (the mechanic's casts) or, with none, the block's own times (Read: typed on its heading, else its
+-- lines'); a block with neither takes the list's lines' times. A mechanic's block stays one; any other keeps its
+-- times typed on its heading. opts: spellID, saved (the note's saved links). Returns the text and the block, or nil
+-- (no such list or block).
+function Assign.AdoptInto(text, heading, times, key, opts)
+    opts = opts or {}
+    key = tostring(key or ""):lower()
+    local s = session(text or "")
+    local old = Assign.Read(s, key, nil)
+    if not old then
+        return nil
+    end
+    local list = times or old.times
+    local block, taken = Assign.FromRows(s, heading, list, opts.saved)
+    if not block then
+        return nil
+    end
+    if times or old.mech then
+        block.times = nil
+    else
+        block.times = old.times or block.times -- FromRows read the list's own when the block had none
+    end
+    -- a block with no heading (edited away) has only its key for a name: then the list's (FromRows: CleanName)
+    if old.hasHeading then
+        block.name = old.name
+    end
+    block.key, block.mech = key, old.mech
+    block.spellID = opts.spellID or old.spellID or block.spellID
+    block.adopted = nil
+    local rest = cut(text or "", s, taken, heading)
+    return Assign.Replace(rest, key, Assign.Lines(block, list or block.times, { key = key })), block
 end
 
 -- The note -------------------------------------------------------------------------------------------------------

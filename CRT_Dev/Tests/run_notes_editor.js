@@ -1337,6 +1337,68 @@ do
 end
 print("ok a pasted group list: the banner, Not now, a confirmation that says what changes, then an Assign block")
 
+-- 12b. #1275: a pasted group list named like a block the note has: Update block, never a copy "Orbs 2"
+do
+  W.session = nil
+  W.window:Hide()
+  local T3 = { { ph = 1, t = 36 }, { ph = 1, t = 96 }, { ph = 1, t = 156 } }
+  local block = table.concat(Assign.Lines({ name = "Orbs", times = T3, rows = { { label = "Left", text = "", tokens = { "Kip" }, casts = "all" } } }, T3), "\\n")
+  local list = table.concat({ "Orbs", "Odd: Abu, Cheo", "Even: Rixxy, Zed", "time:36;ph:1;tag:Abu Cheo;text:Orbs;",
+    "time:96;ph:1;tag:Rixxy Zed;text:Orbs;", "time:156;ph:1;tag:Abu Cheo;text:Orbs;" }, "\\n")
+  local note = "EncounterID:3470;Difficulty:Mythic;Name:Update One\\nIntro\\n" .. block .. "\\n" .. list .. "\\nNotes"
+  local nid = Notes:Import(note)
+  assert(Editor.Open({ id = nid }), "opened")
+  local A, ui = EA.state, W.assignUI
+  local b = A.banner
+  assert(b.shown and b.title:GetText():find("Orbs has timer lines", 1, true), "the banner's wording stays")
+  confirm = nil
+  b.make.scripts.OnClick(b.make)
+  assert(confirm and confirm.text:find('"Orbs" is already an assignment. Update it from this list?', 1, true)
+    and confirm.text:find("Its 3 timer lines", 1, true) and confirm.acceptText == "Update block", "asks to update: " .. tostring(confirm and confirm.text))
+  assert(W.session:Text() == note, "nothing changed yet")
+  confirm.callback()
+  local t = W.session:Text()
+  assert(lineCount(t, "assign:orbs;") == 1 and not t:lower():find("orbs 2", 1, true), "one block, no copy: " .. t)
+  assert(t:find("\\nIntro\\nassign:orbs;name:Orbs;times:1@36,1@96,1@156;\\nOdd: Abu Cheo\\nEven: Rixxy Zed\\n", 1, true), "in its place, the list's rows: " .. t)
+  assert(lineCount(t, "assign:orbs/") == 3 and not t:find("Left: Kip", 1, true) and t:find("\\nNotes$") and #Assign.Candidates(t) == 0, "the list gone: " .. t)
+  assert(W.assignOn and A.key == "orbs" and A.timers == "typed" and ui.nameEdit:GetText() == "Orbs", "the block opens, its typed times")
+  assert(A.block.rows[1].label == "Odd" and A.block.rows[1].casts == "rotate", "with the list's rows")
+  assert(W.status:GetText():find("Updated Orbs.", 1, true), "said: " .. W.status:GetText())
+  A.done.scripts.OnClick(A.done)
+  assert(not b.shown, "no banner left")
+  W.session = nil
+  W.window:Hide()
+  -- from the Assignment dropdown: its own label; the block gone before Accept, nothing changes
+  local first = "EncounterID:3470;Difficulty:Mythic;Name:Update Two\\n" .. list .. "\\nMiddle\\n" .. block
+  local id2 = Notes:Import(first)
+  assert(Editor.Open({ id = id2 }))
+  W.assignButton.scripts.OnClick(W.assignButton)
+  local labels = optionLabels(A.pick)
+  assert(labels:find("Update Orbs from this list", 1, true) and not labels:find("Make an Assign block from Orbs", 1, true), "the dropdown: " .. labels)
+  confirm = nil
+  A.pick.opts.set("c:2")
+  assert(confirm and confirm.acceptText == "Update block", "asked to update")
+  local gone = Assign.Replace(W.session:Text(), "orbs", {})
+  W.session = Model.New(gone, { base = W.session.base })
+  W.notice = nil
+  confirm.callback()
+  assert(W.session:Text() == gone and not W.session:Text():find("assign:", 1, true), "nothing made: " .. W.session:Text())
+  assert(W.status:GetText():find("that assignment isn't there any more", 1, true), "said: " .. W.status:GetText())
+  -- with the block back, accepted: updated in place after the middle line, the list before it gone
+  W.session = Model.New(first, { base = W.session.base })
+  W.notice = nil
+  confirm = nil
+  A.pick.opts.set("c:2")
+  confirm.callback()
+  t = W.session:Text()
+  assert(t:find("Update Two\\nMiddle\\nassign:orbs;name:Orbs;", 1, true) and lineCount(t, "assign:orbs;") == 1, "in place: " .. t)
+  -- (a list named like no block still makes a new one: section 12 above)
+  A.done.scripts.OnClick(A.done)
+  W.session = nil
+  W.window:Hide()
+end
+print("ok a group list named like a block: Update block in place, no copy, its own dropdown label, refused when the block went")
+
 -- 13. Mech Alerts > Assign: name, times, rows with the palette on the right, written into the boss's note
 do
   local frame = mock("Frame")
