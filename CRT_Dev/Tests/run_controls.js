@@ -130,6 +130,15 @@ local d = UI.Dropdown({}, "Post to", { options = { { key = "self", label = "Only
   get = function() return saved.output end, set = function(k) saved.output = k end, enabledIf = function() return enabled end })
 d.refresh()
 print("dropdown shows: " .. tostring(d.Dropdown.shown) .. ", row width " .. d:GetWidth())
+-- SetDropdownWidth: the closed dropdown and its row change width together, the label kept
+assert(type(d.SetDropdownWidth) == "function", "dropdown: SetDropdownWidth is missing")
+do
+  local before = d:GetWidth()
+  d.SetDropdownWidth(150)
+  assert(d.Dropdown.width == 150 and d:GetWidth() == before - 200 + 150, "dropdown: SetDropdownWidth sets the dropdown and its row: " .. tostring(d.Dropdown.width) .. ", " .. tostring(d:GetWidth()))
+  print("ok dropdown: SetDropdownWidth sets the dropdown and its row")
+  d.SetDropdownWidth(200)
+end
 d.Dropdown:Pick("Raid chat") d.refresh()
 print("picked Raid chat: saved " .. saved.output .. ", shows " .. d.Dropdown.shown)
 enabled = false d.refresh()

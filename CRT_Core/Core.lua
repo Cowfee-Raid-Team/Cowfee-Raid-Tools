@@ -288,7 +288,8 @@ local defaults = {
         wishlistWindow = {},
         -- raiders' wishlists an officer or assist heard, saved (LootMaster/WishlistSaved.lua): [Name-Realm] =
         -- { items = { [itemID] = rank }, at, got, class }; wishlistsAsked, when you last asked the guild for them (time());
-        -- wishlistsTab, the Wishlists tab's view, team filter, boss and sort (LootMaster/WishlistTab.lua)
+        -- wishlistsTab, the Wishlists tab's view, team filter, layout (a Raid Groups preset id; unset: the one in use,
+        -- else the first), boss and sort (LootMaster/WishlistTab.lua)
         wishlists = {},
         wishlistsAsked = 0,
         wishlistsTab = {},

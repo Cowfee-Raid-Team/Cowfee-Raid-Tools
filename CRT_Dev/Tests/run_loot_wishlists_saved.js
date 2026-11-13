@@ -5,7 +5,7 @@
 // equal ignored, the cap, Forget and Forget all; the guild channel: a list on change (debounced) and on login
 // (jittered), the officer's ask (rate limited) and the answers (jittered, at most once a minute); stray senders per
 // channel; no guild traffic out of a guild; the encounter hold; and the tab's numbers: Bosses (counts, value, sort),
-// Boss detail (who by rank), Raiders (counts, age, no list) and the Team filter, on stand-in frames.
+// Boss detail (who by rank), Raiders (counts, age, no list) and the Team filter with its Layout pick, on stand-in frames.
 // Usage: node run_loot_wishlists_saved.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -463,13 +463,43 @@ eq(halo.class, "PRIEST", "raiders: the class kept")
 local inRaid = V.Raiders("raid")
 names = {} for i, r in ipairs(inRaid) do names[i] = r.name end
 eq(table.concat(names, " "), "Halo-Sargeras Quick-Sargeras Arrow-Sargeras Gild-Sargeras Solex-Sargeras", "team: in my raid now (Faraway left out)")
-eq(V.HasTeam("team"), false, "team: no Raid Groups layout in use")
-CRT.Groups.ActiveNames = function() return { "Quick-Sargeras", "Faraway-Sargeras", "Bench-Sargeras" } end
-eq(V.HasTeam("team"), true, "team: a layout in use")
+-- the Raid Groups layouts (Groups:Presets, Active, PresetNames), stood in for: PRESETS in their saved order
+local PRESETS, ACTIVE = {}, nil
+CRT.Groups.Presets = function() return PRESETS end
+CRT.Groups.Active = function() for _, p in ipairs(PRESETS) do if p.id == ACTIVE then return ACTIVE end end end
+CRT.Groups.PresetNames = function(_, id) for _, p in ipairs(PRESETS) do if p.id == id then return p.names end end return {} end
+local function teamOf(list) local out = {} for i, r in ipairs(list) do out[i] = r.name .. (r.items and "" or "(none)") end return table.concat(out, " ") end
+eq(V.HasTeam("team"), false, "team: no Raid Groups layout saved")
+PRESETS = { { id = 7, name = "Empty", names = {} } }
+eq(V.HasTeam("team"), false, "team: a saved layout with no names doesn't count")
+PRESETS = { { id = 1, name = "Mythic", names = { "Quick-Sargeras", "Faraway-Sargeras", "Bench-Sargeras" } },
+  { id = 2, name = "Heroic", names = { "Halo-Sargeras", "Arrow-Sargeras" } } }
+eq(V.HasTeam("team"), true, "team: layouts saved, none in use")
 local team = V.Raiders("team")
-names = {} for i, r in ipairs(team) do names[i] = r.name .. (r.items and "" or "(none)") end
-eq(table.concat(names, " "), "Faraway-Sargeras Quick-Sargeras Bench-Sargeras(none)", "team: the layout's players, those with no list too")
+eq(teamOf(team), "Faraway-Sargeras Quick-Sargeras Bench-Sargeras(none)", "team: none in use, the first layout's players, those with no list too")
 eq(V.BossRows(team)[1].big, 2, "team: the counts follow the filter")
+eq(teamOf(V.Raiders("team", 2)), "Halo-Sargeras Arrow-Sargeras(none)", "team: a layout picked that isn't in use")
+ACTIVE = 2
+eq(teamOf(V.Raiders("team")), "Halo-Sargeras Arrow-Sargeras(none)", "team: no pick, the layout in use")
+eq(teamOf(V.Raiders("team", 1)), "Faraway-Sargeras Quick-Sargeras Bench-Sargeras(none)", "team: the pick wins over the layout in use")
+eq(teamOf(V.Raiders("team", 99)), "Halo-Sargeras Arrow-Sargeras(none)", "team: a layout gone reads as the one in use")
+eq(V.LayoutPick(99), 2, "pick: a layout gone, the one in use")
+ACTIVE = nil
+eq(V.LayoutPick(99), 1, "pick: none in use, the first")
+eq(V.LayoutPick(2), 2, "pick: a saved layout stays")
+-- the "first" fallback skips layouts with no names; a pick or the layout in use wins even when empty
+table.insert(PRESETS, 1, { id = 5, name = "Blank", names = {} })
+eq(V.LayoutPick(nil), 1, "pick: none in use, the first layout with names (Blank skipped)")
+eq(teamOf(V.Raiders("team")), "Faraway-Sargeras Quick-Sargeras Bench-Sargeras(none)", "pick: and its players")
+eq(V.LayoutPick(5), 5, "pick: an empty layout picked stays")
+ACTIVE = 5
+eq(V.LayoutPick(nil), 5, "pick: an empty layout in use wins")
+ACTIVE = nil
+PRESETS = { { id = 5, name = "Blank", names = {} } }
+eq(V.LayoutPick(nil), nil, "pick: no layout with names, none")
+PRESETS = { { id = 1, name = "Mythic", names = { "Quick-Sargeras", "Faraway-Sargeras", "Bench-Sargeras" } },
+  { id = 2, name = "Heroic", names = { "Halo-Sargeras", "Arrow-Sargeras" } } }
+ACTIVE = 2
 -- your own list counts as yours
 W.Set(23, "small") runTimers() take()
 local mine
@@ -488,6 +518,7 @@ local function mock(kind)
       SetShown = function(self, v) self.shown = v and true or false end,
       SetScript = function(self, name, fn) self.scripts[name] = fn end,
       SetPoint = function(self, ...) self.points[#self.points + 1] = { ... } end,
+      ClearAllPoints = function(self) self.points = {} end,
       CreateFontString = function() return mock("fs") end, CreateTexture = function() return mock("tex") end,
       SetDataProvider = function(self, rows) self.rows = rows end,
       SetElementInitializer = function(self, kind, fn) self.init = fn end,
@@ -505,7 +536,8 @@ CreateDataProvider = function(rows) return rows end
 GameTooltip = mock("tip")
 C_ClassColor = { GetClassColor = function(c) return { WrapTextInColorCode = function(_, t) return "[" .. c .. "]" .. t end } end }
 local drops = {}
-CRT.UI.Dropdown = function(parent, text, opts) local d = mock("dropdown") d.opts = opts d.refresh = function() end drops[text] = d return d end
+CRT.UI.Dropdown = function(parent, text, opts) local d = mock("dropdown") d.opts = opts d.ddWidth = opts.width d.refresh = function() end
+  d.SetDropdownWidth = function(w) d.ddWidth = w end drops[text] = d return d end
 CRT.UI.SortHeaders = function(parent, cols, opts) return { refresh = function() end, opts = opts, cols = cols } end
 CRT.UI.PanelButton = function(parent, label, h, fn) local b = mock("button") b.text = label b.scripts.OnClick = fn return b end
 CRT.UI.SkinScrollBar = function() end
@@ -532,7 +564,7 @@ eq(parts.note.shown, true, "tab: a plain raider sees the note")
 eq(parts.note.text, "Only officers and raid assists keep raiders' lists.", "tab: the note's wording")
 check(parts.note.help ~= nil, "tab: the note has a (?)")
 eq(parts.controls.shown, false, "tab: and no views")
-be("Gild") CRT.Groups.ActiveNames = nil
+be("Gild") PRESETS, ACTIVE = {}, nil
 refreshers[1]()
 eq(parts.note.shown, false, "tab: an officer sees no note")
 eq(parts.controls.shown, true, "tab: an officer sees the views")
@@ -545,7 +577,8 @@ local opts = drops.View.opts.options
 eq(opts[1].label .. "/" .. opts[2].label .. "/" .. opts[3].label, "Bosses/Boss detail/Raiders", "tab: the view dropdown")
 local tOpts = drops.Team.opts.options()
 eq(tOpts[1].label .. "/" .. tOpts[2].label .. "/" .. tOpts[3].label, "Everyone kept/In my raid now/Raid Groups layout", "tab: the team dropdown")
-eq(tOpts[3].disabled(), true, "tab: Raid Groups layout greyed with no layout in use")
+eq(tOpts[3].disabled(), true, "tab: Raid Groups layout greyed with no layout saved")
+eq(tOpts[3].tooltip, "Save a layout on Raid Groups first.", "tab: and says why")
 -- a boss row drawn, then clicked: Boss detail for it
 local row = mock("row")
 bl.view.init(row, bl.rows[2])
@@ -604,8 +637,53 @@ local hasFar = false
 for _, r in ipairs(rl.rows) do if r.name == "Faraway-Sargeras" then hasFar = true end end
 eq(hasFar, false, "tab: In my raid now leaves out who isn't in your raid")
 drops.Team.opts.set("team")
-eq(drops.Team.opts.get(), "all", "tab: no layout in use reads as Everyone kept")
+eq(drops.Team.opts.get(), "all", "tab: no layout saved reads as Everyone kept")
+eq(parts.layoutRow and parts.layoutRow.shown, false, "layout: no Layout dropdown for Everyone kept")
 drops.Team.opts.set("all")
+-- the Layout pick beside Team (Issue #1277): every saved layout, in their saved order, the one in use tagged
+local function lastAnchor(f) local p = f.points[#f.points] return p and p[2] end
+PRESETS = { { id = 1, name = "Mythic", names = { "Quick-Sargeras", "Faraway-Sargeras", "Bench-Sargeras" } },
+  { id = 2, name = "Heroic", names = { "Halo-Sargeras", "Arrow-Sargeras" } }, { id = 3, name = "Alts", names = {} } }
+eq(tOpts[3].disabled(), false, "layout: Raid Groups layout can be picked with layouts saved and none in use")
+check(drops.Layout ~= nil, "layout: a Layout dropdown")
+drops.Team.opts.set("team")
+eq(drops.Team.opts.get(), "team", "layout: Team is Raid Groups layout")
+eq(parts.layoutRow.shown, true, "layout: the Layout dropdown shows")
+eq(lastAnchor(parts.layoutRow), parts.teamRow, "layout: right of Team")
+eq(lastAnchor(parts.bossRow), parts.layoutRow, "layout: Boss moves right of Layout")
+eq(drops.Layout.opts.get(), 1, "layout: none in use, the first layout")
+eq(teamOf(rows.people), "Faraway-Sargeras Quick-Sargeras Bench-Sargeras(none)", "layout: the first layout's players")
+ACTIVE = 2
+refreshers[1]()
+local lOpts = drops.Layout.opts.options()
+local labels = {} for i, o in ipairs(lOpts) do labels[i] = o.label end
+eq(table.concat(labels, "/"), "Mythic/Heroic (in use)/Alts", "layout: every layout in saved order, the one in use tagged")
+eq(drops.Layout.opts.get(), 2, "layout: the one in use by default")
+eq(teamOf(rows.people), "Arrow-Sargeras(none) Halo-Sargeras(none)", "layout: its players (Halo's list forgotten above)")
+PRESETS[4] = { id = 4, name = "New", names = { "Quick-Sargeras" } }
+lOpts = drops.Layout.opts.options()
+eq(lOpts[4] and lOpts[4].label, "New", "layout: a new layout shows when the list opens")
+PRESETS[4] = nil
+drops.Layout.opts.set(1)
+eq(CRT.db.lootmaster.wishlistsTab.layout, 1, "layout: the pick is saved with the tab")
+eq(teamOf(rows.people), "Faraway-Sargeras Quick-Sargeras Bench-Sargeras(none)", "layout: a layout not in use, its players")
+eq(ACTIVE, 2, "layout: Use This Group unchanged")
+CRT.db.lootmaster.wishlistsTab.layout = 99
+refreshers[1]()
+eq(drops.Layout.opts.get(), 2, "layout: a saved layout gone reads as the one in use")
+eq(teamOf(rows.people), "Arrow-Sargeras(none) Halo-Sargeras(none)", "layout: and its players")
+-- the row fits the page: View, Team, Layout and Boss left of Forget all
+eq(drops.Boss.ddWidth, 200, "layout: Boss narrows to 200 beside Layout")
+local function rowW(d) return d.opts.labelWidth + 5 + d.ddWidth end
+local function gapOf(f) return f.points[#f.points][4] end
+local used = 8 + rowW(drops.View) + gapOf(parts.teamRow) + rowW(drops.Team) + gapOf(parts.layoutRow) + rowW(drops.Layout) + gapOf(parts.bossRow) + rowW(drops.Boss)
+check(used <= CRT.UI.PAGE_W - 8 - 110, "layout: the controls fit left of Forget all (" .. used .. " of " .. (CRT.UI.PAGE_W - 118) .. ")")
+drops.Team.opts.set("all")
+eq(parts.layoutRow.shown, false, "layout: hidden again for Everyone kept")
+eq(lastAnchor(parts.bossRow), parts.teamRow, "layout: Boss back right of Team")
+eq(drops.Boss.ddWidth, 220, "layout: Boss back to 220 with Layout hidden")
+eq(CRT.db.lootmaster.wishlistsTab.layout, 99, "layout: the pick kept")
+PRESETS, ACTIVE = {}, nil
 -- a boss kept from another season: Boss detail falls back to the season's first
 CRT.db.lootmaster.wishlistsTab.boss = 777
 drops.View.opts.set("detail")
@@ -617,6 +695,7 @@ local heads = {}
 for _, part in ipairs(help) do if type(part) == "table" then heads[#heads + 1] = part[1] end end
 eq(table.concat(heads, ","), "Bosses,Boss detail,Raiders,Team", "help: a paragraph for each view and the Team filter")
 check(help[#help][2]:find("everyone you keep", 1, true) == 1, "help: the Team wording")
+check(help[#help][2]:find("the players in a Raid Groups layout you pick", 1, true) ~= nil, "help: Team names the layout pick")
 
 -- 9. The shared drawing helpers, and the roll windows' Wishlist cell: a saved list's age on hover
 check(type(W.ItemIcon) == "function" and type(W.QualityColor) == "function" and type(W.CellTip) == "function", "shared: the icon, quality colour and cell helpers")
