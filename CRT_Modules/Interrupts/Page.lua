@@ -77,7 +77,7 @@ local TEXT = {
     howSpell = "Kicks: %s.",
     howNoSpell = "Kicks: the spell isn't named.",
     howMarker = "Each group kicks the add with its raid marker, in turn.",
-    howTurn = "The number on the add is whose kick its cast is, then the next on each cast.",
+    howTurn = "The number on the add is whose kick its cast is, then the next on each cast. An add that leaves your screen starts at 1 again.",
     howGroup = "%s%s: %d to kick.",
     howNoMarker = "%s: %d to kick, no raid marker.",
     howPairs = "Each number is %d adds in a row.",
@@ -103,7 +103,7 @@ local TEXT = {
     reminderHelp = {
         "Your interrupt's icon with your kick.",
         { "By timing", "it counts down the last 5 seconds before your pair's first cast." },
-        { "By raid marker", "it says Your kick next when your add's cast is yours." },
+        { "By raid marker", "no reminder: the game hides which add has which marker. Watch the number on the add." },
         "Move it with Preview reminder icon.",
     },
     reminderOn = "Count down before my kick",

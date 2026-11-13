@@ -3,10 +3,13 @@
 // a removed plate's number parked on the target and given back when the add's plate returns, a retarget clearing
 // it, a raising or secret UnitIsUnit survived, players, bosses and plates off screen never numbered, Test on trash
 // on any pack, the box's place and colours, the pool, and Stop hiding everything. Then the kick probe
-// (CRT_Dev/Dev/KickProbe.lua): its log lines, on, off and show. Then an untimed setup numbering by raid marker: the
-// marked plates on screen when it arms, 1 to the group's last slot and round again on each cast, each group its own
-// count, a secret, raising or missing marker showing nothing, a marker cleared or moved, your number only on your
-// group's add, the turn listeners, Test on trash, and the probe's read lines (what was readable or secret). Usage: node run_interrupts_plates.js <addon folder>
+// (CRT_Dev/Dev/KickProbe.lua): its log lines, on, off and show. Then an untimed setup numbering by raid marker, with
+// markers that are secret (a proxy that raises on any read): each group's box and number sheets picked for its marker
+// and the plate's number, the secret marker passed untouched to SetSpriteSheetCell, 1 to the group's last slot and
+// round again on each cast of the plate, each plate its own count (lost when it leaves the screen), a failing
+// SetSpriteSheetCell, a raising or missing marker showing nothing, a marker cleared or moved, your number only on
+// your group's layer in your colours, no turn heard, Test on trash, and the probe's lines (counted casts, what was
+// readable or secret). Usage: node run_interrupts_plates.js <addon folder>
 const fs = require('fs');
 const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -25,6 +28,7 @@ local clock = 1000
 GetTime = function() return clock end
 -- frames: every one made, with what the code set on it
 local made = 0
+local sheetFails = false -- SetSpriteSheetCell raises while true
 local function region(kind)
   local r = { kind = kind, shown = true, points = {} }
   function r:SetShown(v) self.shown = v and true or false end
@@ -52,6 +56,9 @@ local function region(kind)
   function r:SetParent(p) self.parent = p end
   function r:GetParent() return self.parent end
   function r:IsAnchoringRestricted() return self.restricted == true end
+  function r:SetTexture(f) self.file, self.cell = f, nil return true end
+  function r:SetSpriteSheetCell(c, rows, cols) if sheetFails then error("refused") end self.cell = { c, rows, cols } return true end
+  function r:SetVertexColor(...) self.vertex = { ... } end
   return r
 end
 local frames = {}
@@ -251,6 +258,7 @@ check(not listening("NAME_PLATE_UNIT_ADDED"), "stop: the plate events go")
 local function wave() for i = 1, 4 do plate("nameplate" .. i); clock = 1037.5 + i; H("UNIT_SPELLCAST_START", "nameplate" .. i) end end
 arm(); wave()
 eq(P:NumberOf("nameplate4"), 3, "pool: a wave numbered")
+check(P.marks ~= nil and next(P.marks) == nil, "timed: no marker sheets")
 A:HandleEvent("ENCOUNTER_END")
 arm()
 local before = made
@@ -320,7 +328,10 @@ plate("nameplate3"); clock = 1039.5; H("UNIT_SPELLCAST_START", "nameplate3")
 eq(#CRT.db.dev.kickProbe.last.lines, #lines, "probe: off logs nothing")
 eq(K:Command("dev other"), false, "probe: other words are not its")
 
--- an untimed setup: numbers by raid marker (Heroic here: Skull add of 4, Cross add of 3)
+-- an untimed setup: numbers by raid marker (Heroic here: Skull add of 4, Cross add of 3). A marker read from a plate
+-- is secret (Alex, 12.1.5, out of combat too), so each group's box and number are sprite sheets where only the cell of
+-- the group's marker is drawn, and the plate's marker goes straight to SetSpriteSheetCell. The fake secret marker
+-- raises on any index, compare, arithmetic or print; seen(u) is what the raider would see (the drawn cell).
 A:HandleEvent("ENCOUNTER_END")
 CRT.Bosses:Get(3470).interrupts[2] = { difficulty = 15, groups = { { key = "skull", label = "Skull add", marker = 8, slots = 4 },
   { key = "cross", label = "Cross add", marker = 7, slots = 3 } } }
@@ -328,64 +339,127 @@ I:ClearCache()
 for u in pairs(plates) do plates[u] = nil end
 players, bosses = {}, {}
 CRT.db.interrupts.plates.all = false
+mine, myGroup = nil, nil
+local hiddenMarker = {}
+local function boom() error("a secret marker was read") end
+local function secretMarker(k)
+  local p = setmetatable({}, { __index = boom, __newindex = boom, __eq = boom, __lt = boom, __le = boom, __add = boom,
+    __sub = boom, __mul = boom, __div = boom, __mod = boom, __pow = boom, __unm = boom, __concat = boom, __len = boom,
+    __call = boom, __tostring = boom })
+  secrets[p], hiddenMarker[p] = true, k
+  return p
+end
+local function realMarker(c) if hiddenMarker[c] then return hiddenMarker[c] end return c end
+-- what shows on a plate: "marker:number" for each group layer whose drawn cell is its own marker's, "" for none
+local function seen(u)
+  local f = P.marks and P.marks[u]
+  if not (f and f:IsShown()) then return "" end
+  local out = {}
+  for i, num in ipairs(f.nums) do
+    local box = f.boxes[i]
+    if num:IsShown() and box:IsShown() and num.cell and box.cell then
+      local k, n = tostring(num.file):match("Num(%d+)_(%d+)$")
+      local bk = tostring(box.file):match("Box(%d+)$")
+      local real = realMarker(num.cell[1])
+      if k and bk == k and type(real) == "number" and tonumber(k) == real and realMarker(box.cell[1]) == real then
+        out[#out + 1] = k .. ":" .. n
+      end
+    end
+  end
+  return table.concat(out, " ")
+end
 local turnsHeard = {}
 P:OnTurn(function(g, n) turnsHeard[#turnsHeard + 1] = g .. ":" .. n end)
-plate("nameplate1"); markers.nameplate1 = 8 -- marked before the pull
+local skull1 = secretMarker(8)
+plate("nameplate1"); markers.nameplate1 = skull1 -- marked before the pull
 plate("nameplate9") -- unmarked
 K:Command("dev kicks on")
 clock = 3000; A:HandleEvent("ENCOUNTER_START", 3470, "Boss", 15)
 check(listening("RAID_TARGET_UPDATE"), "marker: the marker event registered while armed")
-eq(P:NumberOf("nameplate1"), 1, "marker: a marked add on screen shows 1 at the pull")
-eq(P:NumberOf("nameplate9"), nil, "marker: an unmarked one shows nothing")
-mine, myGroup = 2, 2; P:Refresh()
+local m1 = P.marks and P.marks.nameplate1
+check(m1 ~= nil, "marker: a plate on screen at the pull gets its sheets")
+check(not (m1 and m1:IsShown() and m1.nums[1]:IsShown()), "marker: number 1 isn't mine, so hidden by default")
+CRT.db.interrupts.plates.all = true; P:Refresh()
+m1 = P.marks.nameplate1
+if m1 then
+  eq(m1.boxes[1].file, "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\Kicks\\\\Box8", "sheet: the Skull group's box file")
+  eq(m1.nums[1].file, "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\Kicks\\\\Num8_1", "sheet: the Skull group's number 1 file")
+  eq(tostring(m1.nums[2].file):match("Kicks\\\\(.*)$"), "Num7_1", "sheet: the Cross group's number 1 file")
+  eq(tostring(m1.boxes[2].file):match("Kicks\\\\(.*)$"), "Box7", "sheet: the Cross group's box file")
+end
+check(rawequal(m1.nums[1].cell[1], skull1) and rawequal(m1.boxes[1].cell[1], skull1) and rawequal(m1.nums[2].cell[1], skull1),
+  "sheet: the plate's secret marker passed straight to SetSpriteSheetCell")
+eq(m1.nums[1].cell[2], 1, "sheet: one row"); eq(m1.nums[1].cell[3], 8, "sheet: of 8 cells")
+eq(seen("nameplate1"), "8:1", "marker: Show every number, a Skull add shows the Skull group's 1 at the pull")
+eq(seen("nameplate9"), "", "marker: an unmarked one shows nothing")
+eq(table.concat(m1.boxes[1].vertex, ","), "1,0,0,1", "marker: another kick's box in the other box colour")
+eq(table.concat(m1.nums[1].vertex, ","), "1,1,1,1", "marker: and the other number colour")
+eq(m1.w, 50, "marker: the box size")
+local pt1 = m1.points[1]
+check(pt1 and pt1[1] == "BOTTOM" and pt1[2] == plates.nameplate1 and pt1[5] == 20, "marker: above the plate, 20 up")
 local seq = {}
-for i = 1, 6 do clock = 3000 + i; H("UNIT_SPELLCAST_START", "nameplate1"); seq[i] = tostring(P:NumberOf("nameplate1")) end
-eq(table.concat(seq, " "), "1 2 3 4 1 2", "marker: 1 for the first cast, then one more each cast, round again after 4")
-eq(P:TurnOf(1), 2, "marker: the group's count")
-eq(turnsHeard[1] .. " " .. turnsHeard[2], "1:1 1:2", "marker: the turn listeners hear each number")
-check(not shownOf("nameplate1"), "marker: number 2 of Skull is not mine (I am Cross #2)")
-plate("nameplate2"); markers.nameplate2 = 7; H("NAME_PLATE_UNIT_ADDED", "nameplate2")
-eq(P:NumberOf("nameplate2"), 1, "marker: a Cross plate coming on screen shows 1")
-seq = {}
-for i = 1, 4 do H("UNIT_SPELLCAST_START", "nameplate2"); seq[i] = tostring(P:NumberOf("nameplate2")) end
-eq(table.concat(seq, " "), "1 2 3 1", "marker: the Cross group's own count, 3 slots")
-eq(P:NumberOf("nameplate1"), 2, "marker: Skull's count untouched")
-H("UNIT_SPELLCAST_START", "nameplate2")
-check(shownOf("nameplate2"), "marker: my number on my group's add is shown")
-eq(table.concat(P.boxes.nameplate2.bg.color, ","), "0,1,0,1", "marker: in my colours")
--- a plate that leaves and comes back keeps the rotation
-H("NAME_PLATE_UNIT_REMOVED", "nameplate2"); eq(P:NumberOf("nameplate2"), nil, "marker: a removed plate has no number")
-plate("nameplate12"); markers.nameplate12 = 7; H("NAME_PLATE_UNIT_ADDED", "nameplate12")
-eq(P:NumberOf("nameplate12"), 2, "marker: the group's add back on screen carries on its rotation")
+for i = 1, 6 do clock = 3000 + i; H("UNIT_SPELLCAST_START", "nameplate1"); seq[i] = seen("nameplate1") end
+eq(table.concat(seq, " "), "8:1 8:2 8:3 8:4 8:1 8:2", "marker: 1 for the first cast, then one more each cast, round again after 4")
+eq(P:NumberOn("nameplate1", 1), 2, "marker: the plate's number for the Skull group")
+eq(P:NumberOn("nameplate1", 2), 3, "marker: and for the Cross group (3 slots), on the same count")
+eq(tostring(P.marks.nameplate1.nums[2].file):match("Kicks\\\\(.*)$"), "Num7_3", "sheet: the Cross layer shows its own number's file")
+eq(#turnsHeard, 0, "marker: no turn is heard (a plate's group can't be known)")
+-- your number only, in your colours, on your group's layer
+CRT.db.interrupts.plates.all = false
+mine, myGroup = 2, 2; P:Refresh()
+eq(seen("nameplate1"), "", "marker: Skull's 2 is not mine (I am Cross #2)")
+local cross2 = secretMarker(7)
+plate("nameplate2"); markers.nameplate2 = cross2; H("NAME_PLATE_UNIT_ADDED", "nameplate2")
+eq(seen("nameplate2"), "", "marker: a Cross plate coming on screen shows 1, not mine")
+H("UNIT_SPELLCAST_START", "nameplate2"); eq(seen("nameplate2"), "", "marker: its first cast keeps 1")
+H("UNIT_SPELLCAST_START", "nameplate2"); eq(seen("nameplate2"), "7:2", "marker: my number on my group's add is shown")
+local m2 = P.marks.nameplate2
+check(not m2.nums[1]:IsShown() and not m2.boxes[1]:IsShown(), "marker: the Skull layer's 2 on it is not mine, hidden")
+eq(table.concat(m2.boxes[2].vertex, ","), "0,1,0,1", "marker: my box colour")
+eq(table.concat(m2.nums[2].vertex, ","), "1,0,0,1", "marker: my number colour")
+eq(P:NumberOn("nameplate1", 1), 2, "marker: each plate its own count")
+-- a SetSpriteSheetCell that fails leaves it blank
+sheetFails = true; P:Refresh()
+check(not m2.nums[2]:IsShown() and not m2.boxes[2]:IsShown(), "sheet: a failing SetSpriteSheetCell hides the layer")
+sheetFails = false; P:Refresh()
+eq(seen("nameplate2"), "7:2", "sheet: and it shows again once it works")
+CRT.db.interrupts.plates.on = false; P:Refresh()
+eq(seen("nameplate2"), "", "marker: numbers off hides it")
+CRT.db.interrupts.plates.on = true; P:Refresh()
+-- a plate that leaves the screen loses its count
+H("NAME_PLATE_UNIT_REMOVED", "nameplate2"); plates.nameplate2 = nil
+check(P.marks.nameplate2 == nil, "marker: a removed plate's sheets go back")
+plate("nameplate12"); markers.nameplate12 = secretMarker(7); H("NAME_PLATE_UNIT_ADDED", "nameplate12")
+eq(P:NumberOn("nameplate12", 2), 1, "marker: a plate back on screen starts at 1 (its count can't follow it)")
+CRT.db.interrupts.plates.all = true; P:Refresh()
 -- what shows nothing
-plate("nameplate3"); markers.nameplate3 = "hidden"; secrets.hidden = true
-H("UNIT_SPELLCAST_START", "nameplate3"); eq(P:NumberOf("nameplate3"), nil, "marker: a secret marker shows nothing")
 plate("nameplate4"); markers.nameplate4 = "raise"
-H("UNIT_SPELLCAST_START", "nameplate4"); eq(P:NumberOf("nameplate4"), nil, "marker: a raising marker read shows nothing")
-plate("nameplate5"); markers.nameplate5 = 1
-H("UNIT_SPELLCAST_START", "nameplate5"); eq(P:NumberOf("nameplate5"), nil, "marker: a marker no group has shows nothing")
-H("UNIT_SPELLCAST_START", "nameplate9"); eq(P:NumberOf("nameplate9"), nil, "marker: no marker shows nothing")
-playerPlate("nameplate6"); markers.nameplate6 = 8
-H("UNIT_SPELLCAST_START", "nameplate6"); eq(P:NumberOf("nameplate6"), nil, "marker: a player is never numbered")
-eq(P:TurnOf(1), 2, "marker: and its cast moves no count")
+H("NAME_PLATE_UNIT_ADDED", "nameplate4"); eq(seen("nameplate4"), "", "marker: a raising marker read shows nothing")
+check(not (P.marks.nameplate4 and P.marks.nameplate4:IsShown()), "marker: and its sheets are hidden")
+plate("nameplate5"); markers.nameplate5 = secretMarker(1)
+H("NAME_PLATE_UNIT_ADDED", "nameplate5"); eq(seen("nameplate5"), "", "marker: a marker no group has draws only empty cells")
+plate("nameplate7"); markers.nameplate7 = 7
+H("NAME_PLATE_UNIT_ADDED", "nameplate7"); eq(seen("nameplate7"), "7:1", "marker: a plain (readable) marker takes the same route")
+playerPlate("nameplate6"); markers.nameplate6 = secretMarker(8)
+H("UNIT_SPELLCAST_START", "nameplate6")
+eq(P:NumberOn("nameplate6", 1), 1, "marker: a player's cast moves no count")
 -- the marker cleared, then put on another mob
 markers.nameplate1 = nil; H("RAID_TARGET_UPDATE")
-eq(P:NumberOf("nameplate1"), nil, "marker: cleared, the number goes")
-check(P.boxes.nameplate1 == nil, "marker: and its box")
-markers.nameplate9 = 8; H("RAID_TARGET_UPDATE")
-eq(P:NumberOf("nameplate9"), 2, "marker: a new add given the marker shows the group's number")
-markers.nameplate3 = 8; secrets.hidden = nil
+eq(seen("nameplate1"), "", "marker: cleared, the number goes")
+check(P.marks.nameplate1 == nil, "marker: and its sheets")
+markers.nameplate9 = secretMarker(8); H("RAID_TARGET_UPDATE")
+eq(seen("nameplate9"), "8:1", "marker: a mob given the marker shows its own count")
 local lines = CRT.db.dev.kickProbe.last.lines
 local log = table.concat(lines, "\\n")
-check(log:find("nameplate1 Skull add -> 2", 1, true) ~= nil, "probe: a marked cast logged with its group: " .. log)
-check(log:find("nameplate9 no group's marker", 1, true) ~= nil, "probe: an unmarked cast logged")
-check(log:find("nameplate1 read: marker 8, cast error", 1, true) ~= nil, "probe: the marker read")
-check(log:find("nameplate3 read: marker secret", 1, true) ~= nil, "probe: a secret marker logged as secret")
-check(log:find("nameplate4 read: marker error", 1, true) ~= nil, "probe: a raising read logged")
+check(log:find("nameplate1 counted cast 2", 1, true) ~= nil, "probe: a counted cast logged with the plate's count: " .. log)
+check(log:find("nameplate6 not an add", 1, true) ~= nil, "probe: a player's cast logged")
+check(log:find("nameplate1 read: marker secret", 1, true) ~= nil, "probe: a secret marker logged as secret")
 UnitCastingInfo = function() return "Wail of Terror", "Wail", 1, 2, 3, false, "c", false, 1234 end
+H("UNIT_SPELLCAST_START", "nameplate4"); log = table.concat(CRT.db.dev.kickProbe.last.lines, "\\n")
+check(log:find("nameplate4 read: marker error", 1, true) ~= nil, "probe: a raising read logged")
 local hiddenSpell = setmetatable({}, { __tostring = function() error("a secret was printed") end })
 secrets[hiddenSpell] = true
-H("UNIT_SPELLCAST_START", "nameplate2", "guid", 1234)
+H("UNIT_SPELLCAST_START", "nameplate7", "guid", 1234)
 H("UNIT_SPELLCAST_START", "nameplate12", "guid", hiddenSpell)
 local tokenSecret = setmetatable({}, { __index = function() error("a secret token was read") end })
 secrets[tokenSecret] = true
@@ -396,7 +470,7 @@ check(log:find("event spell secret", 1, true) ~= nil, "probe: a secret event spe
 check(log:find("(secret token) read:", 1, true) ~= nil, "probe: a secret token logged")
 K:Command("dev kicks off")
 A:HandleEvent("ENCOUNTER_END")
-check(next(P.boxes) == nil, "marker: the pull's end clears the boxes")
+check(next(P.boxes) == nil and next(P.marks) == nil, "marker: the pull's end clears the boxes and sheets")
 -- only the setup's spell counts, when the cast can be read
 do
   CRT.Bosses:Get(3470).interrupts[2].spell = { name = "Wail of Terror", spellID = 1234 }
@@ -409,27 +483,27 @@ do
   plate("nameplate40"); markers.nameplate40 = 8; H("NAME_PLATE_UNIT_ADDED", "nameplate40")
   local castName = "Wail of Terror"
   UnitCastingInfo = function() return castName end
-  H("UNIT_SPELLCAST_START", "nameplate40", "g", 1234); eq(P:NumberOf("nameplate40"), 1, "spell: the first matching cast keeps 1")
-  H("UNIT_SPELLCAST_START", "nameplate40", "g", 999); eq(P:NumberOf("nameplate40"), 1, "spell: another spell ID doesn't count")
-  H("UNIT_SPELLCAST_START", "nameplate40", "g", 1234); eq(P:NumberOf("nameplate40"), 2, "spell: the next matching one does")
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", 1234); eq(P:NumberOn("nameplate40", 1), 1, "spell: the first matching cast keeps 1")
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", 999); eq(P:NumberOn("nameplate40", 1), 1, "spell: another spell ID doesn't count")
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", 1234); eq(P:NumberOn("nameplate40", 1), 2, "spell: the next matching one does")
   local hiddenID = setmetatable({}, {}); secrets[hiddenID] = true
   castName = "Shadow Bolt"
-  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 2, "spell: a secret ID, another name than the game's for the ID: not counted")
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOn("nameplate40", 1), 2, "spell: a secret ID, another name than the game's for the ID: not counted")
   castName = "Wail of Terror"
-  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 3, "spell: a secret ID, the game's name for the ID: counted")
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOn("nameplate40", 1), 3, "spell: a secret ID, the game's name for the ID: counted")
   -- a German client: the game's own name for the ID is German, and so is the cast's
   locale = "deDE"; gameNames[1234] = "Schreckensgeheul"; castName = "Schreckensgeheul"
-  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 4, "spell: deDE, the cast matching the ID's own name: counted")
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOn("nameplate40", 1), 4, "spell: deDE, the cast matching the ID's own name: counted")
   castName = "Schattenblitz"
-  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 4, "spell: deDE, another spell: not counted")
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOn("nameplate40", 1), 4, "spell: deDE, another spell: not counted")
   local hiddenName = setmetatable({}, {}); secrets[hiddenName] = true
   UnitCastingInfo = function() return hiddenName end
-  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 1, "spell: both secret, every cast counts")
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOn("nameplate40", 1), 1, "spell: both secret, every cast counts")
   UnitCastingInfo = function() error("restricted") end
-  H("UNIT_SPELLCAST_START", "nameplate40"); eq(P:NumberOf("nameplate40"), 2, "spell: nothing readable, every cast counts")
+  H("UNIT_SPELLCAST_START", "nameplate40"); eq(P:NumberOn("nameplate40", 1), 2, "spell: nothing readable, every cast counts")
   C_Spell = { GetSpellName = function() error("restricted") end }
   UnitCastingInfo = function() return "Schattenblitz" end
-  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOf("nameplate40"), 3, "spell: the ID's name can't be had, every cast counts")
+  H("UNIT_SPELLCAST_START", "nameplate40", "g", hiddenID); eq(P:NumberOn("nameplate40", 1), 3, "spell: the ID's name can't be had, every cast counts")
   A:HandleEvent("ENCOUNTER_END")
   -- a setup with a name only: compared on an English client only
   local def = { spell = { name = "Wail of Terror" }, groups = {} }
@@ -454,9 +528,9 @@ end
 
 -- Test on trash with the untimed setup
 CRT.db.interrupts.test = true; A:StartTest("3470:15")
-eq(P:NumberOf("nameplate9"), 1, "test: a marked trash mob shows 1, a new count")
+eq(seen("nameplate9"), "8:1", "test: a marked trash mob shows 1, a new count")
 H("UNIT_SPELLCAST_START", "nameplate9"); H("UNIT_SPELLCAST_START", "nameplate9")
-eq(P:NumberOf("nameplate9"), 2, "test: and moves on with its casts")
+eq(seen("nameplate9"), "8:2", "test: and moves on with its casts")
 A:StopTest()
 
 print(string.format("%d passed, %d failed", passes, fails))

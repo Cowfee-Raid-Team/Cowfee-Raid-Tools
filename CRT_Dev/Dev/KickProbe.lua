@@ -10,9 +10,10 @@ local ADDON, CRT = ...
 --   +39.0 nameplate2 not an add            a player, a boss, or a secret answer
 --   +33.2 anchor wave 1                    a counted anchor
 --   +33.2 boss2 cast 5                     every cast start of the anchor unit, with its count
--- An untimed setup (numbers by raid marker) logs each cast of a candidate plate and the number its group moved to:
---   +12.0 nameplate4 Skull add -> 2        numbered
---   +12.4 nameplate6 no group's marker     no marker, a secret one, or one no group has
+-- An untimed setup (numbers by raid marker) logs each cast of a plate and the plate's own count (its markers are
+-- secret, so which group's add it is can't be known; each group's number on it is that count round its slots):
+--   +12.0 nameplate4 counted cast 2        the plate's second counted cast
+--   +12.4 nameplate6 another spell         not the setup's spell (or "not an add")
 -- And every nameplate cast start, in both kinds, logs what the game let the addon read of it (Alex's first pull
 -- answers whether raid markers and the cast can be read in a raid fight):
 --   +12.0 nameplate4 read: marker 8, cast Wail of Terror, cast spell 1234, event spell 1234
@@ -59,10 +60,13 @@ local function stamp(t)
 end
 
 -- One nameplate's first cast: at is the anchor it was numbered from (nil when none), n its number, why set when it
--- was no candidate. group is the group's label for an untimed setup's cast.
-function Probe.CastLine(seconds, unit, at, castTime, n, why, group)
+-- was no candidate. group is the group's label for an untimed setup's cast; count the plate's counted casts.
+function Probe.CastLine(seconds, unit, at, castTime, n, why, group, count)
     if why then
         return string.format("+%.1f %s %s", seconds, unit, why)
+    end
+    if count then
+        return string.format("+%.1f %s counted cast %d", seconds, unit, count)
     end
     if group then
         return string.format("+%.1f %s %s -> %s", seconds, unit, group, n and tostring(n) or "none")
@@ -132,10 +136,10 @@ if Anchor and Plates then
             add(stamp(at) .. " anchor wave " .. tostring(wave))
         end
     end)
-    Plates:OnCast(function(unit, castTime, at, n, why, g)
+    Plates:OnCast(function(unit, castTime, at, n, why, g, count)
         if CRT.db then
             local group = g and Anchor.def and Anchor.def.groups[g] and Anchor.def.groups[g].label
-            add(Probe.CastLine(castTime - startedAt, unit, at, castTime, n, why, group))
+            add(Probe.CastLine(castTime - startedAt, unit, at, castTime, n, why, group, count))
         end
     end)
     if Plates.OnRawCast then
