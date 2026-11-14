@@ -31,7 +31,6 @@ local TEXT = {
     voiceTts = "Game text to speech reads every line with the voice picked in the game's Text to Speech settings, at the Raid Notes speech rate and volume.",
     voiceLists = "Every sound list also has the clips, under each voice's name.",
     voiceTest = "Test",
-    voiceSample = "Spread",
     soundsTitle = "Your sound files",
     soundsNote = "Your own .ogg or .mp3 files, for every sound list in the addon. Copy the CowfeeRaidTools_Media folder from CowfeeRaidTools\\CRT_Media\\Media Addon Template into Interface\\AddOns once, put your files in its Sounds folder and list their names in Sounds.lua; updates never touch that folder. The game can't list a folder, so a file is known by its name. Test plays it and says whether the game found it. A file added while the game runs may need a restart.",
     soundsAdd = "Add",
@@ -205,10 +204,10 @@ local function buildVoice(pf, top)
     test:SetScript("OnClick", function()
         -- the alert speech's own path, so text to speech uses the Raid Notes rate and volume
         if CRT.AlertSpeech then
-            CRT.AlertSpeech:SpeakNow(TEXT.voiceSample)
+            CRT.AlertSpeech:SpeakNow(Engine.VOICE_TEST)
             return
         end
-        local ok, why = Engine:Speak(TEXT.voiceSample)
+        local ok, why = Engine:Speak(Engine.VOICE_TEST)
         if not ok and why then
             CRT:Print(why)
         end

@@ -601,7 +601,18 @@ if v then
   check("the row has a Test button", v.test ~= nil and v.test.OnClick ~= nil)
   reset()
   if v.test and v.test.OnClick then v.test.OnClick(v.test) end
-  check("Test speaks with the chosen voice", #played == 1 and lastFile():find("^Lola\\\\"), lastFile())
+  -- no CowfeeRaidTools clip is recorded yet, so the shared test line is read by text to speech
+  check("the shared test line is Cowfee Raid Tools", Sound.VOICE_TEST == "Cowfee Raid Tools")
+  check("Test says the shared test line (text to speech until its clip is recorded)", #played == 0 and said[1] and said[1].text == Sound.VOICE_TEST, said[1] and said[1].text)
+  -- recording the clip is data only: a voice with a CowfeeRaidTools clip is found for the test line
+  do
+    local ref, secs = Sound:ClipFor(Sound.VOICE_TEST)
+    check("no clip yet for the test line", ref == nil)
+    Lo.clips[Sound.WordKey("CowfeeRaidTools")] = { ref = "crt:Lola-CowfeeRaidTools", seconds = 1.2 }
+    ref, secs = Sound:ClipFor(Sound.VOICE_TEST, "lola")
+    check("with a CowfeeRaidTools clip, ClipFor finds it for the test line", ref == "crt:Lola-CowfeeRaidTools" and secs == 1.2, tostring(ref))
+    Lo.clips[Sound.WordKey("CowfeeRaidTools")] = nil
+  end
   CRT.db.sound.voice = "tts"
   CRT.db.notes.alert.ttsRate, CRT.db.notes.alert.ttsVolume = 3, 60
   reset()
