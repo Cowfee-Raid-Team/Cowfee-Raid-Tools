@@ -6,6 +6,14 @@ local ADDON, CRT = ...
 -- CRT_Dev/Tests/run_whatsnew.js checks every entry.
 CRT.WhatsNewData = {
     {
+        version = "1.4.4",
+        lines = {
+            "Coiled Altar: phase 2 starts when Malacrass joins",
+            "Eternal Nightfall shield bar runs 17 seconds",
+        },
+        more = 0,
+    },
+    {
         version = "1.4.3",
         lines = {
             "Notes no longer write server names",

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.4 (2026-11-14)
+
+- **The Coiled Altar phase 2:** phase 2 starts by itself when Malacrass joins the fight, so its alerts no longer wait for Next phase.
+- **Eternal Nightfall shield bar:** the bar now runs 17 seconds, the length of his cast measured on Mythic, so it ends with the cast.
+
 ## 1.4.3 (2026-11-13)
 
 - **No server names in notes:** names CRT writes into a note (assignment blocks, kick setups, healer slots and the player chips you drop in) no longer carry the server, and older note text drops it for players in your group or Raid Groups layout. Raid Groups and the invite list still keep Name-Server.
