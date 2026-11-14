@@ -235,6 +235,8 @@ CRT_Modules\QoL\LowHealth.lua
 CRT_Modules\QoL\LowHealthSound.lua
 CRT_Modules\QoL\BreakTimer.lua
 CRT_Modules\QoL\BattleRes.lua
+CRT_Modules\QoL\CombatLog.lua
+CRT_Modules\QoL\CombatLogTab.lua
 CRT_Modules\QoL\Page.lua
 CRT_Core\UI\Minimap.lua
 CRT_Core\UI\SettingsPage.lua

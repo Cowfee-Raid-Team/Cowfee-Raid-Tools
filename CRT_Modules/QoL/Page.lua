@@ -5,7 +5,8 @@ local ADDON, CRT = ...
 -- game's own Combat Audio Alerts pulse, since an addon can't play one for hidden health), and on its own tab the
 -- break timer's other-addon formats and bridge (QoL/BreakTimer.lua, Integrations/Breaks.lua), and on the Sounds
 -- tab the voice that speaks (sound.voice, Sound/Voices.lua) above your own sound files. The Battle res tab holds the
--- battle res icon's settings (QoL/BattleRes.lua). The Low health, Debuffs, Break timer and Battle res tabs each have a
+-- battle res icon's settings (QoL/BattleRes.lua), and the Combat log tab automatic combat logging's
+-- (QoL/CombatLog.lua, built by QoL/CombatLogTab.lua). The Low health, Debuffs, Break timer and Battle res tabs each have a
 -- preview button for their display (UI.PreviewButton); with no
 -- Settings tab, the page has no group button. The
 -- window scale moved to the Addon Settings page (UI/SettingsPage.lua) in 0.13.1.
@@ -504,13 +505,14 @@ local function buildBattleRes(pf, top)
     preview:SetPoint("TOPLEFT", 8, top - 170)
 end
 
--- Tabs: Low health, Debuffs, Break timer, Battle res and Sounds (the debuff panel, Debuffs/Page.lua). All are only
--- settings and their previews.
+-- Tabs: Low health, Debuffs, Break timer, Battle res, Combat log and Sounds (the debuff panel, Debuffs/Page.lua; the
+-- combat log's, QoL/CombatLogTab.lua). All are only settings, their previews and the combat log's Setup buttons.
 local TABS = {
     { key = "lowhealth", label = "Low health" },
     { key = "debuffs", label = "Debuffs" },
     { key = "break", label = "Break timer" },
     { key = "brez", label = "Battle res" },
+    { key = "combatlog", label = "Combat log" },
     { key = "sounds", label = "Sounds" },
 }
 local tabButtons, tabFrames = {}, {}
@@ -568,6 +570,7 @@ local function build(pf)
     CRT.DebuffsPage.Build(tabFrames.debuffs)
     buildBreak(tabFrames["break"], -8)
     buildBattleRes(tabFrames.brez, -8)
+    CRT.CombatLogTab.Build(tabFrames.combatlog, controls, refresh)
     buildSounds(tabFrames.sounds, -8)
     selectTab(CRT.db.qol.tab)
 
@@ -580,7 +583,7 @@ end
 
 UI:RegisterPage("qol", TEXT.title, build)
 
--- Opens the page on a tab: "lowhealth", "debuffs" (/crt debuffs), "break", "brez" or "sounds".
+-- Opens the page on a tab: "lowhealth", "debuffs" (/crt debuffs), "break", "brez", "combatlog" or "sounds".
 CRT.QoLPage = {
     Open = function(key)
         UI:Show("qol")
