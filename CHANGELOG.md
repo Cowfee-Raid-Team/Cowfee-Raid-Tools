@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.5 (2026-11-14)
+
+- **Pick the callout voice:** Raid Notes > Alert Settings has a Voice dropdown, Male01 or Female01, the same setting as Voice under Quality of Life > Sounds. Male01 stays the default.
+- **More spoken callouts:** new voice clips for Shield, Frontal, Taunt swap, Debuffs, Mind controls, Waves, Sweep, Submerge, Pre-pot, Platform break, Orb deadline, Hit + knock, Ghosts (interrupt), Eggs and Damage amp. A word a voice has no clip for is still read by the game's text to speech. New sound files need a full game restart, not a /reload.
+- **Test speech:** both Test buttons now say "Cowfee Raid Tools".
+
 ## 1.4.4 (2026-11-14)
 
 - **The Coiled Altar phase 2:** phase 2 starts by itself when Malacrass joins the fight, so its alerts no longer wait for Next phase.

@@ -6,6 +6,15 @@ local ADDON, CRT = ...
 -- CRT_Dev/Tests/run_whatsnew.js checks every entry.
 CRT.WhatsNewData = {
     {
+        version = "1.4.5",
+        lines = {
+            "Voice dropdown on Alert Settings",
+            "15 new spoken boss callouts",
+            "Test speech says Cowfee Raid Tools",
+        },
+        more = 0,
+    },
+    {
         version = "1.4.4",
         lines = {
             "Coiled Altar: phase 2 starts when Malacrass joins",
