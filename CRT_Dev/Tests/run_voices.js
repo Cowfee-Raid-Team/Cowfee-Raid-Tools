@@ -9,7 +9,7 @@ const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
-local onDisk, engineSrc, voicesSrc, rulesSrc, alertsSrc, speechSrc, pageSrc, lowHealthSrc = ...
+local onDisk, engineSrc, voicesSrc, rulesSrc, alertsSrc, speechSrc, pageSrc, lowHealthSrc, calloutTexts = ...
 local passed, failed = 0, 0
 local function check(name, cond, detail)
   if cond then passed = passed + 1 print("ok " .. name)
@@ -106,7 +106,19 @@ for _, v in ipairs(Sound.VOICES) do
   check(v.key .. ": each clip's seconds match its mp3 frames", #wrong == 0, table.concat(wrong, ","))
   check(v.key .. ": no clip has an ID3 tag or a GEOB or c2pa frame", #tagged == 0, table.concat(tagged, ","))
 end
-check("Xavier and Lola have all 70 words", #X.words == 70 and #Lo.words == 70, #X.words .. " " .. #Lo.words)
+check("Xavier has all 85 words and Lola 79 (nine of the new ones, not the six she lacks)", #X.words == 85 and #Lo.words == 79, #X.words .. " " .. #Lo.words)
+check("Lola lacks exactly the six words not recorded yet", table.concat(Lo.lacks or {}, ",") == "Pre-Pot,OrbDeadline,HitKnock,GhostsInterrupt,Eggs,DamageAmp", table.concat(Lo.lacks or {}, ","))
+do
+  -- every callout text of the season's bosses has a clip in Xavier (the season folder is data, read from disk)
+  local noClip = {}
+  for _, t in ipairs(calloutTexts) do if not X.clips[Sound.WordKey(t)] then noClip[#noClip + 1] = t end end
+  check("every Midnight-S2 callout text has a Xavier clip", #calloutTexts >= 15 and #noClip == 0, #calloutTexts .. " texts; no clip: " .. table.concat(noClip, "; "))
+  local lolaMiss = {}
+  for _, t in ipairs(calloutTexts) do if not Lo.clips[Sound.WordKey(t)] then lolaMiss[#lolaMiss + 1] = t end end
+  check("the callout texts Lola has no clip for are exactly her lacks", #lolaMiss == 6, table.concat(lolaMiss, "; "))
+  local readsWell = Sound.VOICE_LABELS["HitKnock"] == "Hit + knock" and Sound.VOICE_LABELS["GhostsInterrupt"] == "Ghosts (interrupt)" and Sound.VOICE_LABELS["Pre-Pot"] == "Pre-pot"
+  check("the new words that split badly have labels", readsWell)
+end
 local lolaHas = {}
 for _, w in ipairs(Lo.words) do lolaHas[w] = true end
 check("Lola has Void, West and Yellow", lolaHas.Void and lolaHas.West and lolaHas.Yellow and lolaHas.Soak)
@@ -124,8 +136,8 @@ for _, c in ipairs(list) do top[#top + 1] = c.title and ("#" .. c.label) or c.ch
 check("the top level: None, Voices with Male01 and Female01, More with Game sounds", table.concat(top, ",") == "None,#Voices,Male01>,Female01>,#More,Game sounds>", table.concat(top, ","))
 local function groupOf(l, label) for _, c in ipairs(l) do if c.children and c.label == label then return c end end end
 local male, female = groupOf(list, "Male01"), groupOf(list, "Female01")
-check("Male01's clips in its submenu", male and #male.children == 70 and male.children[1].key == "crt:Xavier-0", male and #male.children)
-check("Female01's clips in its submenu", female and #female.children == 70 and female.children[1].key == "crt:Lola-0")
+check("Male01's clips in its submenu", male and #male.children == 85 and male.children[1].key == "crt:Xavier-0", male and #male.children)
+check("Female01's clips in its submenu", female and #female.children == 79 and female.children[1].key == "crt:Lola-0")
 check("the game sounds in theirs", groupOf(list, "Game sounds").children[1].key == "kit:RAID_WARNING")
 local labels = {}
 for _, c in ipairs(Sound.Flat(list)) do labels[c.key] = c.label end
@@ -600,9 +612,13 @@ if v then
   local note
   for _, h in ipairs(helps) do if h.target == (v.test or v) then note = h.text end end
   local function read() local t = type(note) == "function" and note() or note return type(t) == "string" and t or "" end
+  local was = Lo.lacks
+  Lo.lacks = {}
   check("a (?) beside it says what the voice does and that clips take no volume, with no missing words while none are",
     read():find("text to speech", 1, true) and read():find("has no", 1, true) == nil and read():find("volume", 1, true), read())
-  local was = Lo.lacks
+  Lo.lacks = was
+  check("the (?) lists Lola's six missing words as the lists show them",
+    read():find("Female01 has no Pre-pot, Orb deadline, Hit + knock, Ghosts (interrupt), Eggs or Damage amp, so those", 1, true) ~= nil, read())
   Lo.lacks = { "Void" }
   check("the (?) reads voice names and missing words from the voice table", read():find("West", 1, true) == nil
     and read():find("Female01 has no Void, so", 1, true) ~= nil and read():find("Male01 and Female01", 1, true) ~= nil
@@ -669,6 +685,14 @@ for (const v of ['Xavier', 'Lola']) {
   }
   lua.lua_setfield(L, -2, to_luastring(v));
 }
+// every callout text (text = "...") in the newest season's boss files
+const seasonDir = path.join(d, 'CRT_Data', 'Seasons', 'Midnight-S2');
+const callouts = [];
+for (const f of fs.existsSync(seasonDir) ? fs.readdirSync(seasonDir).filter(n => n.endsWith('.lua')) : []) {
+  for (const m of fs.readFileSync(path.join(seasonDir, f), 'utf8').matchAll(/text = "([^"]*)"/g)) if (!callouts.includes(m[1])) callouts.push(m[1]);
+}
 const files = ['CRT_Core/Sound/Engine.lua', 'CRT_Core/Sound/Voices.lua', 'CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Speech.lua', 'CRT_Modules/QoL/Page.lua', 'CRT_Modules/QoL/LowHealthSound.lua'];
 for (const f of files) { const p = path.join(d, f); lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '')); }
-if (lua.lua_pcall(L, files.length + 1, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+lua.lua_newtable(L);
+callouts.forEach((t, i) => { lua.lua_pushstring(L, to_luastring(t)); lua.lua_rawseti(L, -2, i + 1); });
+if (lua.lua_pcall(L, files.length + 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

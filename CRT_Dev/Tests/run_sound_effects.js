@@ -109,7 +109,7 @@ end
 check("no effect is a voice's word", Sound:ClipFor("Air horn") == nil and Sound:ClipFor("Cowbell") == nil and Sound:ClipFor("Triangle") == nil)
 local words = 0
 for _, v in ipairs(Sound.VOICES) do words = words + #v.words end
-check("the voices keep their 70 words each", words == 140, words)
+check("the voices keep their words: 85 for Xavier, 79 for Lola", words == 164, words)
 print(passed .. " passed, " .. failed .. " failed")
 if failed > 0 then error(failed .. " checks failed") end
 `;
