@@ -788,15 +788,27 @@ CRT.db.interrupts.enabled = true; P.Refresh()
 check(P.previewBox.enabled == true, "settings: and usable again")
 
 -- the Macros tab (#1285): only the shared Your macros block (UI.MacroSet) with the Target markers set
-P.SelectTab("macros")
-check(P.tabs.macros.frame.shown and not P.tabs.assignments.frame.shown and not P.tabs.settings.frame.shown, "macros: the tab shows")
 local MB = P.macros
+-- the block is drawn only while its tab shows, and as the tab shows (review #1285)
+do
+  local n, real = 0, MB.refresh
+  MB.refresh = function() n = n + 1 real() end
+  P.RefreshNow()
+  eq(n, 0, "macros: another tab shown, the page's draw skips the macro block")
+  for _, f in ipairs(all) do if f.events.UPDATE_MACROS and f.scripts.OnEvent then f.scripts.OnEvent(f, "UPDATE_MACROS") end end
+  eq(n, 0, "macros: and a macro change too")
+  P.SelectTab("macros"); flush()
+  check(n >= 1, "macros: showing the tab draws it")
+  MB.refresh = real
+end
+check(P.tabs.macros.frame.shown and not P.tabs.assignments.frame.shown and not P.tabs.settings.frame.shown, "macros: the tab shows")
 check(MB and MB.set == "targetMarks" and #MB.cells == 8, "macros: the block shows the Target markers set, eight icons")
 eq(MB.heading.text, "Your macros", "macros: the Your macros heading")
 local macrosHelp
 for _, h in ipairs(helps) do if h.helpTarget == MB.heading then macrosHelp = h end end
 local helpText = macrosHelp and type(macrosHelp.helpText) == "table" and macrosHelp.helpText[1] or ""
 check(helpText:find("mouseover", 1, true) and helpText:find("target", 1, true) and helpText:find("assist", 1, true) and helpText:find("combat", 1, true), "macros: its (?) says mouseover or target, leader and assists, works in combat")
+eq(macrosHelp and macrosHelp.helpText[#macrosHelp.helpText], "Not in combat: the game doesn't let addons change macros during a fight.", "macros: its (?) ends with the combat rule")
 eq(MB.cells[1].name.text .. "|" .. MB.cells[8].name.text, "CRT Mk Star|CRT Mk Skull", "macros: CRT Mk Star to CRT Mk Skull")
 eq(MB.cells[8].body.text, "/tm [@mouseover,exists,nodead][] 8", "macros: each with its body")
 check(MB.cells[8].button.icon.desat and not MB.cells[8].button.check.shown, "macros: not made yet, greyed with no check")

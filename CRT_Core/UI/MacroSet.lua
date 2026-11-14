@@ -45,13 +45,13 @@ local ICONS_Y = -24 -- the icons' top, under the heading
 local BUTTONS_Y = ICONS_Y - ICON - 62 -- the buttons, under the name, body and state lines
 local BUTTON_H = 24
 
+-- UI.PanelButton (Panel.lua: the template, skinned), in the page's font as the tab's buttons were, and as wide as
+-- its label in that font.
 local function makeButton(parent, label)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    local b = UI.PanelButton(parent, label, BUTTON_H)
     b:SetNormalFontObject(CRTFontNormal)
     b:SetHighlightFontObject(CRTFontHighlight)
     b:SetDisabledFontObject(CRTFontDisable)
-    b:SetText(label)
-    -- as wide as its label (UI.PanelButtonWidth: the label and the template's end caps)
     local fs = b:GetFontString()
     b:SetSize(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0), BUTTON_H)
     return b
@@ -111,10 +111,20 @@ local function run(block, action, name)
     return ok
 end
 
--- A click: the page's hook first, then make a missing one or remove one of ours.
+-- What the cursor holds (GetCursorInfo -> its kind, or nil when empty; warcraft.wiki.gg), nil when it can't be read.
+local function cursorBusy()
+    if not GetCursorInfo then
+        return false
+    end
+    local ok, kind = pcall(GetCursorInfo)
+    return ok and kind ~= nil
+end
+
+-- A click: the page's hook first, then make a missing one or remove one of ours. A drag that ends on the same icon
+-- arrives as a click with the macro still on the cursor: that is never a toggle.
 local function click(block, cell)
     local e = cell.entry
-    if not e then
+    if not e or cursorBusy() then
         return
     end
     if block.opts.onClick and block.opts.onClick(e) then
@@ -253,7 +263,7 @@ function UI.MacroSet(parent, setKey, opts)
     opts = opts or {}
     local x = opts.x or 8
     local block = { set = setKey, opts = opts, x = x, y = opts.y or -8, cells = {} }
-    -- a cell per macro, eight across for a marker set; a bigger set shares the same width
+    -- a cell per macro, eight across for a marker set; a bigger set fits the same width, so its cells are narrower
     local st = CRT.Macros:Status(setKey)
     local count = math.max(st and st.total or 0, 8)
     block.cellW = math.floor((opts.width or (UI.PAGE_W - 2 * x)) / count)

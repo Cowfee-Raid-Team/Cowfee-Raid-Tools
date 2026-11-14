@@ -98,6 +98,8 @@ CRT.UI = { PAGE_W = 1026, PAGE_H = 560,
   Tint = function() end, Color = function() return 1, 1, 1, 1 end,
   HeadingText = function(s) return s end, GoodText = function(s) return "good:" .. s end, WarnText = function(s) return "warn:" .. s end, BadText = function(s) return "bad:" .. s end,
   PanelButtonWidth = function(w) return math.ceil(w) + 28 end,
+  -- Panel.lua's UI.PanelButton: the template, as wide as its label
+  PanelButton = function(parent, label, h) local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate") b:SetText(label) b:SetSize(math.ceil(b:GetFontString():GetStringWidth()) + 28, h) return b end,
   Dropdown = function(_, label, opts) local r = mock("Dropdown") r.refresh = function() end dropdowns[label] = opts return r end,
   HelpRight = function(target, title, text, opts) local b = (function(_, title, text) helps[title] = text return mock("Help") end)(opts and opts.parent or target, title, text) rawset(b, "helpTarget", target) return b end, HELP_GAP = 4, HELP_SIZE = 20, Help = function(_, title, text) helps[title] = text return mock("Help") end,
   LiftOver = function() end, ShownPopup = function(ret) return ret end,
@@ -196,6 +198,16 @@ check(#account == 0 and diamond.icon.desaturated and not diamond.check.shown, "c
 check(withText("1 of 8 created") == nil, "the status follows")
 cellButton(3).OnClick(cellButton(3))
 check(#account == 1 and account[1].name == "CRT Diamond", "clicking it again makes it again")
+-- a drag that ends on the same icon is no click: while the cursor holds something, a click toggles nothing
+GetCursorInfo = function() return "macro", 3 end
+cellButton(3).OnClick(cellButton(3))
+cellButton(4).OnClick(cellButton(4))
+check(#account == 1 and account[1].name == "CRT Diamond", "with a macro on the cursor a click neither removes nor makes one")
+GetCursorInfo = function() return nil end
+cellButton(3).OnClick(cellButton(3))
+check(#account == 0, "with an empty cursor the click works again")
+cellButton(3).OnClick(cellButton(3))
+GetCursorInfo = nil
 -- in combat a click changes nothing, and chat says why
 combat = true
 printed = {}
@@ -281,9 +293,16 @@ check(filledCell ~= nil and withText("|Tmarker1|t") == nil, "the preview shows t
 check(hasText("Solex"), "with who sent it")
 displayEvents.OnEvent(displayEvents, "CHAT_MSG_SAY", "hello there", "Solex-Area52")
 check(#M:Filled() == 1, "a /say with no marker code fills nothing")
+-- a made macro while testing: the click sends to /say and leaves the macro made
+CRT.Macros:Create("markers", "CRT Skull")
+for _, f in ipairs(frames) do if rawget(f, "events").UPDATE_MACROS and rawget(f, "OnEvent") then f.OnEvent(f, "UPDATE_MACROS") end end
+check(skull.check.shown, "CRT Skull made during the test")
+skull.OnClick(skull)
+check(#sent == 2 and sent[2].msg == "{rt8}" and find("CRT Skull") ~= nil and #account == 1, "while testing, clicking a made macro sends it to /say and keeps it")
+local sentBefore = #sent
 combat = true
 skull.OnClick(skull)
-check(#sent == 1, "in combat the click sends nothing")
+check(#sent == sentBefore, "in combat the click sends nothing")
 combat = false
 button("Stop test").OnClick(button("Stop test"))
 check(not M:Testing() and withText("|Tmarker1|t") ~= nil, "Stop test ends it and the samples come back")

@@ -308,6 +308,13 @@ CRT.Macros = {
 }
 CRT_PLACEMENT(CRT) -- CRT_Core/UI/Placement.lua, which the display is placed by
 assert(load(displaySrc, "Display.lua"))("CowfeeRaidTools", CRT)
+-- Panel.lua's UI.PanelButton, which the macro block's buttons are made by: the template, as wide as its label
+UI.PanelButton = function(parent, label, h)
+  local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+  b:SetText(label)
+  b:SetSize(UI.PanelButtonWidth(b:GetFontString():GetStringWidth()), h)
+  return b
+end
 assert(load(macroSetSrc, "MacroSet.lua"))("CowfeeRaidTools", CRT) -- the shared Your macros block
 assert(load(tabSrc, "MacrosTab.lua"))("CowfeeRaidTools", CRT)
 for _, def in ipairs({

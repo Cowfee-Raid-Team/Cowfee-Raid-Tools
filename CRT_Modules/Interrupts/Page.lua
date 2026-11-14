@@ -49,7 +49,8 @@ local TEXT = {
         { "Generate all macros", "makes all eight. They go in General Macros, for all your characters, or this character's macros when General Macros is full." },
         { "Remove macros", "deletes only the macros the addon made. A macro you edited or renamed, or your own with the same name, is never changed." },
         { "Click a marker", "to make just that one. Click it again to remove it." },
-        "Drag a made one from here to your action bars. Making and removing macros waits until you are out of combat.",
+        "Drag a made one from here to your action bars.",
+        "Not in combat: the game doesn't let addons change macros during a fight.",
     },
     boss = "Boss",
     bossHelp = "Every boss and difficulty with a kick setup: the one CRT ships, or your own.",
@@ -778,17 +779,18 @@ end
 
 local MACRO_SET = "targetMarks" -- Interrupts/Macros.lua's set
 
--- Only the shared Your macros block; drawn with the page, and again when a macro changes or combat starts or ends
--- while this tab shows.
+-- Only the shared Your macros block. It reads the game's macro list, so it is drawn only while its tab shows: with
+-- the page (selecting the tab draws the page), and when a macro changes or combat starts or ends.
 local function buildMacros(f)
     local block = UI.MacroSet(f, MACRO_SET, { x = L.leftX, y = L.bossY, heading = TEXT.macros, help = TEXT.macrosHelp })
     Page.macros = block
-    controls[#controls + 1] = block
-    CRT.Macros:OnChange(function()
+    local function drawShown()
         if page and page:IsShown() and Page.tab == "macros" then
             block.refresh()
         end
-    end)
+    end
+    controls[#controls + 1] = { refresh = drawShown }
+    CRT.Macros:OnChange(drawShown)
 end
 
 -- The page -------------------------------------------------------------------------------------------------------------
