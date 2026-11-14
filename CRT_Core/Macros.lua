@@ -3,7 +3,8 @@ local ADDON, CRT = ...
 -- The macro engine, CRT.Macros: makes, rewrites and removes ready-made macros in the game's macro list, safely.
 -- It knows nothing about the features: each one registers a set,
 --   Macros:Register({ key, label, perCharacter, macros = { { name, icon, body }, ... } })
--- (Markers/Macros.lua is the first, shown on Raid Notes > Marker macros, Markers/MacrosTab.lua).
+-- (Markers/Macros.lua, shown on Raid Notes > Marker macros, Markers/MacrosTab.lua; Interrupts/Macros.lua, shown on
+-- Interrupts > Macros). Both pages show a set with the same block, UI.MacroSet (CRT_Core/UI/MacroSet.lua).
 --
 -- Where they go. A set marked perCharacter goes in the character's macros. Any other set goes in General Macros
 -- (the account's), and when General hasn't room for the missing ones, in the character's macros instead; when
@@ -337,8 +338,16 @@ function Macros:Create(key, only)
     return #failed == 0, msg .. leftAlone(st)
 end
 
--- Deletes the set's macros that are still ours. The list is read again before each one, as slots move.
-function Macros:Remove(key)
+-- Why one macro wasn't removed, by its state (Remove with `only`).
+local NOT_REMOVED = {
+    missing = "nothing to remove, it isn't in your macros.",
+    changed = "nothing to remove, you changed it, so it stays.",
+    conflict = "nothing to remove, it is your own macro.",
+}
+
+-- Deletes the set's macros that are still ours, or only the one named `only` (still only when it is ours). The
+-- list is read again before each one, as slots move.
+function Macros:Remove(key, only)
     local set = sets[key]
     if not set then
         return false, "No such macro set."
@@ -346,17 +355,28 @@ function Macros:Remove(key)
     if inCombat() then
         return false, COMBAT
     end
-    local removed, failed = 0, {}
+    local removed, failed, found = 0, {}, nil
     for _, def in ipairs(set.macros) do
-        local state, slot, _, perCharacter = classify(key, def, readAll())
-        if state == "ours" then
-            if pcall(DeleteMacro, slot) then
-                owned(key, perCharacter)[def.name] = nil
-                removed = removed + 1
-            else
-                failed[#failed + 1] = def.name
+        if only == nil or def.name == only then
+            local state, slot, _, perCharacter = classify(key, def, readAll())
+            found = state
+            if state == "ours" then
+                if pcall(DeleteMacro, slot) then
+                    owned(key, perCharacter)[def.name] = nil
+                    removed = removed + 1
+                else
+                    failed[#failed + 1] = def.name
+                end
             end
         end
+    end
+    if only then
+        if #failed > 0 then
+            return false, only .. ": the game refused to remove it."
+        elseif removed == 0 then
+            return true, only .. ": " .. (NOT_REMOVED[found] or NOT_REMOVED.missing)
+        end
+        return true, only .. ": removed."
     end
     local msg = string.format("%s: removed %s.", set.label, count(removed))
     if #failed > 0 then
