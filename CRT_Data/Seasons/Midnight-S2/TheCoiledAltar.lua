@@ -23,15 +23,17 @@ local ADDON, CRT = ...
 --             hits a random player and is split among those within 9 yards. Gloombomb has the spread type: marked
 --             players explode on everyone within 15 yards, and the Journal shows no dispel icon on it.
 --             Both timelines have phase lines (Mythic: P2 2:55, P2.5 6:22, P3 7:00; Heroic: P2 2:47, P2.5 4:28,
---             P3 5:03), so every cast after P2's line is a phase 2 or 3 item. There are no phase triggers yet, so
---             in a pull those alerts wait for Next phase.
+--             P3 5:03), so every cast after P2's line is a phase 2 or 3 item. Phase 2 starts on its own
+--             (see phases); P2.5 and P3 still wait for Next phase.
 --             Every alert plays on every difficulty (no difficulty field): each reads its row from the run's own
 --             difficulty's timeline, Mythic's on Mythic and Heroic's on Normal and Heroic, never the other's.
 --             The Shield (Eternal Nightfall) is a shield bar on Malacrass, boss2 (absorb probe, Heroic, 2026-10-27):
 --             its fill is his absorb left, starting when the shield goes up near each cast, and on the shield's first
 --             absorb event while phase 2 waits for Next phase (Alerts/Absorb.lua's untimed rule).
---             Still needs Alex: phase triggers, once his /crt dev probe pull confirms the phase events; until then
---             phase 2 and 3 alerts wait for Next phase.
+--             Confirmed by a Mythic Boss debug pull (2026-11-13, wipe at 4:22): phase 2 starts when boss2 (Malacrass)
+--             first appears, at 2:43.4 (phases below; the yells are secret, so no emote trigger). His shield is up
+--             from P2 + 70 s, the cast is 17 s (cast start to success), and the set repeats 85 s after P2 starts.
+--             Still open: the P2.5 and P3 triggers, a broken shield, and the Heroic shield length (its +15 is an estimate).
 --             CRT_Dev/Tests/run_season_special.js checks every entry reads and every row is on both timelines.
 -- interrupts  The Spiteful Soulcoilers' Wail of Terror (Spiritcackle), from Alex on 2026-10-29: the adds spawn at random
 --             spots, so each kick group finds its add by raid marker, four kickers to an add, rotating 1 to 4 (an
@@ -66,7 +68,7 @@ Spiritcackle: 3:08, 3:41, 4:33, 5:06, 5:58, 8:02, 9:38
 Gloombomb: 3:15, 3:52, 4:40, 5:17, 6:05, 7:26, 8:10, 8:48, 9:52
 Retaliatory Malice: 3:12, 3:45, 4:37, 5:10, 6:02
 Soul Sever: 3:33, 4:04, 4:58, 5:29
-Eternal Nightfall: 4:05+15, 5:30+15, 7:37+15, 9:14+15
+Eternal Nightfall: 4:05+17, 5:30+17, 7:37+17, 9:14+17
 Suffocating Darkness: 4:07, 5:32, 7:39, 9:16
 Ghastly Regeneration: 6:22
 Spirit Erasure: 6:27+20
@@ -106,6 +108,9 @@ Blighted Sever: 5:39, 6:11, 6:46, 7:23, 7:56, 8:29
 # Transcribed 2026-10-27 from Alex's Heroic planner screenshot; phase lines and bar lengths are estimates from the axis. A red line at about 9:23 is taken as the berserk, not a phase.
 ]],
     },
+    -- Phase 2 starts when boss2 (Malacrass) appears. Phase triggers belong to the encounter, so this holds on every
+    -- difficulty (confirmed on Mythic only, 2026-11-13).
+    phases = { [2] = { kind = "newboss", value = "boss2" } },
     special = {
         {
             key = "frontalP1",
@@ -247,9 +252,9 @@ Blighted Sever: 5:39, 6:11, 6:46, 7:23, 7:56, 8:29
             text = "Shield",
             show = { callout = true, bar = true, speech = true },
             -- a shield bar on Malacrass (boss2, absorb probe 2026-10-27): it starts when his shield goes up near each
-            -- cast and runs the 15 s the row's casts last (+15 on the reference); anyDifficulty keeps it on a
+            -- cast and runs the 17 s his cast lasts (Mythic debug pull 2026-11-13; the Heroic row's +15 is an estimate); anyDifficulty keeps it on a
             -- difficulty with no ability timeline of its own
-            absorb = { unit = "boss2", length = 15, anyDifficulty = true },
+            absorb = { unit = "boss2", length = 17, anyDifficulty = true },
         },
         {
             key = "ghosts",
