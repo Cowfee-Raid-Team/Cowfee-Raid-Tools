@@ -293,14 +293,37 @@ do
   local good = set and #set.macros == 8
   for i, name in ipairs(NAMES) do
     local m = set and set.macros[i]
-    good = good and m and m.name == "CRT Mk " .. name and #m.name <= 16 and m.icon == 137000 + i and m.body == "/tm [@mouseover,exists,nodead][] " .. i
+    good = good and m and m.name == "CRT Mk " .. name and #m.name <= 16 and m.icon == 137000 + i and m.body == "/tm [@mouseover,exists,nodead][] !" .. i
   end
-  check(good, "targetMarks: CRT Mk Star to CRT Mk Skull, at most 16 characters, /tm [@mouseover,exists,nodead][] 1 to 8")
+  check(good, "targetMarks: CRT Mk Star to CRT Mk Skull, at most 16 characters, /tm [@mouseover,exists,nodead][] !1 to !8 (always set, never removed)")
   reset()
   M:Create("targetMarks")
-  check(#account == 8 and find("CRT Mk Triangle") and find("CRT Mk Triangle").body == "/tm [@mouseover,exists,nodead][] 4", "targetMarks: made like any set")
+  check(#account == 8 and find("CRT Mk Triangle") and find("CRT Mk Triangle").body == "/tm [@mouseover,exists,nodead][] !4", "targetMarks: made like any set")
   M:Remove("targetMarks", "CRT Mk Skull")
   check(#account == 7 and not find("CRT Mk Skull"), "targetMarks: one removed by name")
+end
+
+-- On an action bar: a slot holding a macro whose text (its name) is ours (#1285).
+do
+  reset()
+  M:Create("markers")
+  local bar = {}
+  GetActionInfo = function(slot) if slot == 50 then error("bad slot") end if bar[slot] then return "macro", 3, nil end if slot == 7 then return "spell", 133 end end
+  C_ActionBar = { GetActionText = function(slot) return bar[slot] end }
+  check(M:OnActionBar("markers", "CRT Skull") == false, "action bar: not on a bar")
+  bar[140] = "CRT Skull"
+  check(M:OnActionBar("markers", "CRT Skull") == true, "action bar: found in slot 140, past a slot that errors")
+  check(M:OnActionBar("markers", "CRT Star") == false, "action bar: another macro of the set isn't")
+  bar[180] = "CRT Star"
+  check(M:OnActionBar("markers", "CRT Star") == true, "action bar: slot 180, the last bar's last slot, is read")
+  -- a hidden (secret) answer is never compared
+  issecretvalue = function(v) return v == "CRT Moon" end
+  bar[3] = "CRT Moon"
+  check(M:OnActionBar("markers", "CRT Moon") == false, "action bar: a secret name isn't compared")
+  issecretvalue = nil
+  check(M:OnActionBar("markers", "CRT Nothing") == false, "action bar: a name not in the set is never on a bar")
+  GetActionInfo, C_ActionBar = nil, nil
+  check(M:OnActionBar("markers", "CRT Skull") == false, "action bar: without the game's calls, not on a bar")
 end
 
 -- Old saved data (no place recorded) still reads as General Macros.

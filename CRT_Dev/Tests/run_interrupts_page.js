@@ -808,9 +808,10 @@ local macrosHelp
 for _, h in ipairs(helps) do if h.helpTarget == MB.heading then macrosHelp = h end end
 local helpText = macrosHelp and type(macrosHelp.helpText) == "table" and macrosHelp.helpText[1] or ""
 check(helpText:find("mouseover", 1, true) and helpText:find("target", 1, true) and helpText:find("assist", 1, true) and helpText:find("combat", 1, true), "macros: its (?) says mouseover or target, leader and assists, works in combat")
+check(helpText:find("pressing it again leaves it on", 1, true), "macros: its (?) says pressing it again leaves the marker on")
 eq(macrosHelp and macrosHelp.helpText[#macrosHelp.helpText], "Not in combat: the game doesn't let addons change macros during a fight.", "macros: its (?) ends with the combat rule")
 eq(MB.cells[1].name.text .. "|" .. MB.cells[8].name.text, "CRT Mk Star|CRT Mk Skull", "macros: CRT Mk Star to CRT Mk Skull")
-eq(MB.cells[8].body.text, "/tm [@mouseover,exists,nodead][] 8", "macros: each with its body")
+eq(MB.cells[8].body.text, "/tm [@mouseover,exists,nodead][] !8", "macros: each with its body")
 check(MB.cells[8].button.icon.desat and not MB.cells[8].button.check.shown, "macros: not made yet, greyed with no check")
 check(MB.generate and MB.generate.text == "Generate all macros" and MB.remove and MB.remove.text == "Remove macros", "macros: Generate all macros and Remove macros")
 -- a click makes a missing one, a click again removes it
@@ -818,12 +819,35 @@ local skullCell = MB.cells[8].button
 skullCell.scripts.OnEnter(skullCell)
 check(table.concat(GameTooltip.lines, " "):find("Click to make this macro", 1, true), "macros: the tooltip says a click makes it")
 skullCell.scripts.OnClick(skullCell)
-check(#macroList == 1 and findMacro("CRT Mk Skull") and findMacro("CRT Mk Skull").body == "/tm [@mouseover,exists,nodead][] 8", "macros: clicking CRT Mk Skull makes just that one")
+check(#macroList == 1 and findMacro("CRT Mk Skull") and findMacro("CRT Mk Skull").body == "/tm [@mouseover,exists,nodead][] !8", "macros: clicking CRT Mk Skull makes just that one")
 check(skullCell.check.shown and not skullCell.icon.desat, "macros: made, with a check")
 skullCell.scripts.OnEnter(skullCell)
 check(table.concat(GameTooltip.lines, " "):find("Click to remove this macro", 1, true), "macros: the tooltip now says a click removes it")
 skullCell.scripts.OnClick(skullCell)
 check(#macroList == 0 and skullCell.icon.desat and not skullCell.check.shown, "macros: clicking again removes it")
+check(not table.concat(GameTooltip.lines, " "):find("on your action bars", 1, true), "macros: not on a bar, the tooltip doesn't say it is")
+-- a made macro on an action bar asks first; removed only on accept
+local bar = {}
+GetActionInfo = function(slot) if bar[slot] then return "macro", 1 end end
+C_ActionBar = { GetActionText = function(slot) return bar[slot] end }
+skullCell.scripts.OnClick(skullCell)
+bar[12] = "CRT Mk Star" -- another macro on a bar
+confirmPopup = nil
+skullCell.scripts.OnClick(skullCell)
+check(confirmPopup == nil and #macroList == 0, "macros: made but not on a bar, one click removes it at once")
+skullCell.scripts.OnClick(skullCell)
+bar[61] = "CRT Mk Skull"
+skullCell.scripts.OnEnter(skullCell)
+local barTip = table.concat(GameTooltip.lines, " ")
+check(barTip:find("Click to remove this macro.", 1, true) and barTip:find("It's on your action bars.", 1, true), "macros: on a bar, the tooltip says so")
+confirmPopup = nil
+skullCell.scripts.OnClick(skullCell)
+check(confirmPopup and findMacro("CRT Mk Skull"), "macros: on a bar, a click asks first and removes nothing yet")
+check(confirmPopup and string.format(confirmPopup.text, confirmPopup.text_arg1 or "") == "Remove CRT Mk Skull? It's on your action bars, and making it again won't put it back there.", "macros: the question names it and says the bar loses it")
+confirmPopup.callback()
+check(#macroList == 0 and skullCell.icon.desat, "macros: accepted, it is removed")
+bar = {}
+GetActionInfo, C_ActionBar = nil, nil
 -- Generate all, then an edited one and the player's own are never touched by a click
 MB.generate.scripts.OnClick(MB.generate)
 eq(#macroList, 8, "macros: Generate all macros makes all eight")

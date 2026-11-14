@@ -44,7 +44,7 @@ local TEXT = {
     settings = "Settings",
     macros = "Your macros",
     macrosHelp = {
-        "One macro per raid marker, CRT Mk Star to CRT Mk Skull. Each puts its marker on your mouseover (the mob under your mouse), or on your target when there is none. It works in combat.\n\n"
+        "One macro per raid marker, CRT Mk Star to CRT Mk Skull. Each puts its marker on your mouseover (the mob under your mouse), or on your target when there is none. It puts the marker on; pressing it again leaves it on. It works in combat.\n\n"
             .. "In a raid, only the raid leader and assists can mark.",
         { "Generate all macros", "makes all eight. They go in General Macros, for all your characters, or this character's macros when General Macros is full." },
         { "Remove macros", "deletes only the macros the addon made. A macro you edited or renamed, or your own with the same name, is never changed." },

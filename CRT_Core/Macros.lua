@@ -451,6 +451,44 @@ function Macros:Pickup(key, name)
     return false, nil
 end
 
+-- Whether one of the set's macros sits on an action bar slot, so removing it would empty that slot. Every slot
+-- 1 to ACTION_SLOTS is read: GetActionInfo(slot) -> actionType, id, subType (warcraft.wiki.gg API_GetActionInfo) must
+-- be "macro", and C_ActionBar.GetActionText(slot) (Blizzard_APIDocumentationGenerated/ActionBarFrameDocumentation.lua;
+-- the label Blizzard's ActionButton.lua shows on a macro button) must be its name. The id isn't used: for a macro
+-- that casts a spell it is the spell's ID (subType "spell", ActionButton.lua). Slots run to 180, the last of Action
+-- Bar 8 (warcraft.wiki.gg Action slot). Each call is pcalled (an invalid slot errors), and a hidden (secret) answer
+-- is never compared, so it counts as not on a bar.
+local ACTION_SLOTS = 180
+
+local function readable(v)
+    return not (issecretvalue and issecretvalue(v))
+end
+
+function Macros:OnActionBar(key, name)
+    local set = sets[key]
+    local getText = C_ActionBar and C_ActionBar.GetActionText
+    if not (set and GetActionInfo and getText) then
+        return false
+    end
+    local known = false
+    for _, def in ipairs(set.macros) do
+        known = known or def.name == name
+    end
+    if not known then
+        return false
+    end
+    for slot = 1, ACTION_SLOTS do
+        local ok, kind = pcall(GetActionInfo, slot)
+        if ok and readable(kind) and kind == "macro" then
+            local okText, text = pcall(getText, slot)
+            if okText and readable(text) and text == name then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 function Macros:OnChange(fn)
     listeners[#listeners + 1] = fn
 end

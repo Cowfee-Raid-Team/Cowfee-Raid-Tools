@@ -7,6 +7,8 @@ local ADDON, CRT = ...
 -- /tm takes macro conditionals: Blizzard's Blizzard_ChatFrameBase/Shared/SlashCommands.lua (Gethe/wow-ui-source,
 -- live, read 2026-11-14) runs SLASH_COMMAND.TARGET_MARKER's text through SecureCmdOptionParse and uses "target" when
 -- no unit is given, so [@mouseover,exists,nodead] marks the mouseover and the empty [] falls back to the target. The
+-- same handler toggles a plain number (pressing it on a mob with that marker takes it off); a number after "!" is
+-- only set, never removed when the unit already has that marker, so the macros always mark (Alex, 2026-11-14). The
 -- icons are the game's raid target icons, Interface\TargetingFrame\UI-RaidTargetingIcon_1 to _8, file IDs 137001 to
 -- 137008.
 
@@ -15,7 +17,7 @@ local FIRST_ICON = 137001
 
 local macros = {}
 for i, name in ipairs(NAMES) do
-    macros[i] = { name = "CRT Mk " .. name, icon = FIRST_ICON + i - 1, body = "/tm [@mouseover,exists,nodead][] " .. i }
+    macros[i] = { name = "CRT Mk " .. name, icon = FIRST_ICON + i - 1, body = "/tm [@mouseover,exists,nodead][] !" .. i }
 end
 
 CRT.Macros:Register({ key = "targetMarks", label = "Target markers", macros = macros })

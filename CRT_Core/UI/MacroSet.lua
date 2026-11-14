@@ -5,8 +5,10 @@ local ADDON, CRT = ...
 -- Interrupts/Page.lua).
 --   Heading      opts.heading with its (?) opts.help
 --   Icons        one per macro, with its name, body and state. A click toggles: a macro not made yet is made
---                (Macros:Create(set, name)), one of ours is removed (Macros:Remove(set, name)); one the player edited,
---                or their own with our name, is never touched. A made one drags to an action bar (Macros:Pickup)
+--                (Macros:Create(set, name)), one of ours is removed (Macros:Remove(set, name)), after asking when it
+--                sits on an action bar (Macros:OnActionBar); one the player edited, or their own with our name, is
+--                never touched. A click while the cursor holds something (a drag) does nothing. A made one drags to
+--                an action bar (Macros:Pickup)
 --   Buttons      Generate all macros (makes the rest, and rewrites ours a newer version changed), Remove macros
 --                (only ours, after asking), and the status line; greyed in combat
 -- opts: x, y (the heading's top left in parent, default 8, -8), width (default the page's width less 2 * x),
@@ -34,7 +36,10 @@ local TEXT = {
     tipMissing = "Not made yet. Click to make this macro.",
     tipGeneral = "In General Macros, for all your characters.",
     tipCharacter = "In this character's macros.",
-    tipOurs = "Click to remove this macro. Drag it to an action bar.",
+    tipOurs = "Click to remove this macro.",
+    tipDrag = "Drag it to an action bar.",
+    tipOnBar = "It's on your action bars.",
+    removeOneAsk = "Remove %s? It's on your action bars, and making it again won't put it back there.",
     tipChanged = "You edited this macro, so the addon leaves it as it is.",
     tipConflict = "You have your own macro with this name, so the addon doesn't make one.",
 }
@@ -73,12 +78,13 @@ local function stateText(e)
     return TEXT.missing
 end
 
--- The block's own tooltip line for an entry.
-local function tipLine(e)
+-- The block's own tooltip line for an entry; one of ours says whether it is on an action bar (Macros:OnActionBar).
+local function tipLine(set, e)
     if e.state == "missing" then
         return TEXT.tipMissing
     elseif e.state == "ours" then
-        return (e.perCharacter and TEXT.tipCharacter or TEXT.tipGeneral) .. " " .. TEXT.tipOurs
+        local bar = CRT.Macros:OnActionBar(set, e.def.name) and TEXT.tipOnBar or TEXT.tipDrag
+        return (e.perCharacter and TEXT.tipCharacter or TEXT.tipGeneral) .. " " .. TEXT.tipOurs .. " " .. bar
     elseif e.state == "changed" then
         return TEXT.tipChanged
     end
@@ -94,7 +100,7 @@ local function cellTooltip(block, cell)
     GameTooltip:SetText(e.def.name, 1, 1, 1)
     GameTooltip:AddLine(e.def.body, 0.85, 0.85, 0.85)
     local own = block.opts.tip and block.opts.tip(e)
-    GameTooltip:AddLine(own or tipLine(e), 0.85, 0.85, 0.85, true)
+    GameTooltip:AddLine(own or tipLine(block.set, e), 0.85, 0.85, 0.85, true)
     if not own and (e.state == "missing" or e.state == "ours") and CRT.Macros:InCombat() then
         GameTooltip:AddLine(TEXT.combat, 1, 0.55, 0.1, true)
     end
@@ -109,6 +115,29 @@ local function run(block, action, name)
     end
     block.refresh()
     return ok
+end
+
+-- The game's confirm popup over CRT's windows, as Remove macros asks: accept runs onAccept.
+local function ask(text, arg, acceptText, onAccept)
+    UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation({
+        text = text,
+        text_arg1 = arg,
+        acceptText = acceptText,
+        cancelText = CANCEL,
+        showAlert = true,
+        callback = onAccept,
+    }), "GENERIC_CONFIRMATION"))
+end
+
+-- Removes one of ours: at once, or after asking when it sits on an action bar (removing it empties that slot).
+local function removeOne(block, name)
+    if not CRT.Macros:InCombat() and CRT.Macros:OnActionBar(block.set, name) then
+        ask(TEXT.removeOneAsk, name, TEXT.remove, function()
+            run(block, "Remove", name)
+        end)
+        return
+    end
+    run(block, "Remove", name)
 end
 
 -- What the cursor holds (GetCursorInfo -> its kind, or nil when empty; warcraft.wiki.gg), nil when it can't be read.
@@ -133,7 +162,7 @@ local function click(block, cell)
     if e.state == "missing" then
         run(block, "Create", e.def.name)
     elseif e.state == "ours" then
-        run(block, "Remove", e.def.name)
+        removeOne(block, e.def.name)
     end
 end
 
@@ -203,16 +232,9 @@ local function buildButtons(block, parent)
     remove:SetPoint("LEFT", generate, "RIGHT", 6, 0)
     remove:SetScript("OnClick", function()
         local st = CRT.Macros:Status(block.set)
-        UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation({
-            text = TEXT.removeAsk,
-            text_arg1 = st and st.label or block.set,
-            acceptText = TEXT.remove,
-            cancelText = CANCEL,
-            showAlert = true,
-            callback = function()
-                run(block, "Remove")
-            end,
-        }), "GENERIC_CONFIRMATION"))
+        ask(TEXT.removeAsk, st and st.label or block.set, TEXT.remove, function()
+            run(block, "Remove")
+        end)
     end)
     local status = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     status:SetPoint("LEFT", remove, "RIGHT", 12, 0)
