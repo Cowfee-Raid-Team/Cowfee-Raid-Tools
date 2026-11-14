@@ -147,6 +147,10 @@ CRT.UI = { PAGE_W = 1026, PAGE_H = 560, SkinScrollBar = function() end, ScrollGu
 CRTFontLarge = mock("Font")
 rawset(CRTFontLarge, "fontPath", "Fonts\\\\ARIALN.TTF") rawset(CRTFontLarge, "fontSize", 19)
 local spoken = {}
+-- CRT_Core/Sound/Voices.lua's two reads, as the Voice dropdown uses them
+VOICE_CHOICES = { { key = "xavier", label = "Xavier (Male01)" }, { key = "lola", label = "Lola (Female01)" }, { key = "tts", label = "Text to speech" } }
+CRT.Sound = { VoiceChoices = function() return VOICE_CHOICES end,
+  VoiceKey = function() return (CRT.db and CRT.db.sound and CRT.db.sound.voice) or "xavier" end }
 CRT.AlertSpeech = { SpeakNow = function(_, text) spoken[#spoken + 1] = text end }
 
 -- the main window, centred a little above the screen's centre; the screen's centre is (480, 300)
@@ -550,7 +554,7 @@ end)
 
 -- The callout's rows, as the Configuration panel shows them (the shown ones under the rows' scroll frame).
 local CALLOUT_ROWS = { "Show it early by", "Font", "Size", "Outline", "Align", "Spell icon", "Read them out (text to speech)",
-  "Read it at", "Speech volume", "Speech rate", "Test speech" }
+  "Read it at", "Voice", "Speech volume", "Speech rate", "Test speech" }
 local function calloutRow(label)
   local scroll = created.CowfeeRaidToolsAlertSettingsScroll
   for _, list in ipairs({ sliders, dropdowns }) do
@@ -662,6 +666,31 @@ check("callout: Read them out is notes.alert.tts, the left column's switch, and 
   alertSettings.ttsSeconds, alertSettings.ttsVolume, alertSettings.ttsRate = 3, 100, 0
   click(calloutRow("Test speech"))
   assert(#spoken == 1, "Test speech speaks")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+check("callout: Voice is sound.voice, the Quality of Life setting, Xavier by default", function()
+  local choices = VOICE_CHOICES
+  CRT.db.sound = CRT.db.sound or {}
+  CRT.db.sound.voice = nil
+  CRT.NotesPage.Open("alerts")
+  configDropdown().opts.set("callout")
+  local voice = calloutRow("Voice")
+  assert(voice, "a Voice dropdown")
+  local opts = voice.opts.options()
+  assert(#opts == #choices, "its options are the voice choices")
+  for i, c in ipairs(choices) do assert(opts[i].key == c.key and opts[i].label == c.label, "option " .. i .. " in order") end
+  assert(voice.opts.get() == "xavier", "Xavier by default")
+  voice.opts.set("lola")
+  assert(CRT.db.sound.voice == "lola" and voice.opts.get() == "lola", "set writes sound.voice")
+  -- above Speech volume, and usable with Read them out off
+  local function y(r) return r.pts[#r.pts][5] or r.pts[#r.pts][3] end
+  assert(y(voice) > y(calloutRow("Speech volume")), "above Speech volume")
+  alertSettings.tts = false
+  CRT.NotesPage.Open("alerts")
+  assert(calloutRow("Voice").enabled ~= false, "usable with Read them out off")
+  alertSettings.tts = true
+  CRT.db.sound.voice = nil
   assert(#errors == 0, tostring(errors[1]))
 end)
 

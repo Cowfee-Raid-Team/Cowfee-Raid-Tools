@@ -33,6 +33,8 @@ local TEXT = {
         .. "The rows under it set when, how loud and how fast.",
     readAt = "Read it at",
     readAtValue = "%ds left",
+    voice = "Voice",
+    voiceHelp = "Which voice says your alert callouts. A word the voice has no clip for is read by the game's text to speech.\n\nThe same setting as Voice under Quality of Life > Sounds.",
     volume = "Speech volume",
     volumeHelp = "How loud the game's text to speech reads. A voice's clips (Quality of Life > Sounds) play at your sound channel's volume (General Settings > Appearance > Sound channel) instead: the game takes no volume for them.",
     rate = "Speech rate",
@@ -415,8 +417,17 @@ local function panelRows(panel, s)
         get = function() return s.ttsSeconds or 3 end,
         set = set("ttsSeconds"),
     })
-    -- volume, rate and Test speech apply to every alert that speaks, so they stay usable with Read them out off;
+    -- voice, volume, rate and Test speech apply to every alert that speaks, so they stay usable with Read them out off;
     -- Read it at (ttsSeconds) times only the plain note lines, which the switch quiets, so it greys with it
+    -- the voice is sound.voice, the same setting as Quality of Life > Sounds, whose page reads it again each time it shows
+    panel:Dropdown(TEXT.voice, {
+        options = function() return CRT.Sound:VoiceChoices() end,
+        help = TEXT.voiceHelp,
+        get = function() return CRT.Sound:VoiceKey() end,
+        set = function(key)
+            CRT.db.sound.voice = key
+        end,
+    })
     panel:Slider(TEXT.volume, {
         min = 0, max = 100, help = TEXT.volumeHelp,
         format = function(v) return (v or 0) .. "%" end,
