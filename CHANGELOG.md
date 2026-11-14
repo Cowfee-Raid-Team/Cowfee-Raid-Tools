@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.6 (2026-11-14)
+
+- **Interrupts macros:** Interrupts has a new Macros tab with eight target marker macros, CRT Mk Star to CRT Mk Skull. Each puts its marker on your mouseover, or your target, and pressing it again leaves the marker on. Only the raid leader and assists can mark in a raid.
+- **Click to make or remove a macro:** on both macro tabs (Interrupts > Macros and Raid Notes > Marker macros), click a macro to make it and click it again to remove it. If it's on your action bars, CRT asks first. Generate all macros and Remove macros still do the whole set.
+- **Automatic combat logging:** Quality of Life has a new Combat log tab. Tick Log combat automatically and CRT starts your combat log in the raids and dungeons you pick (every raid difficulty and Mythic+ keys to start with), and stops it when you leave. It never stops a log you started yourself.
+- **Advanced Combat Logging:** ticking Log combat automatically also turns on the game's Advanced Combat Logging, and the tab shows whether it's on, with a button to turn it back on.
+
 ## 1.4.5 (2026-11-14)
 
 - **Pick the callout voice:** Raid Notes > Alert Settings has a Voice dropdown, Male01 or Female01, the same setting as Voice under Quality of Life > Sounds. Male01 stays the default.

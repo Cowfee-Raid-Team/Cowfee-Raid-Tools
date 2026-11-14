@@ -6,6 +6,16 @@ local ADDON, CRT = ...
 -- CRT_Dev/Tests/run_whatsnew.js checks every entry.
 CRT.WhatsNewData = {
     {
+        version = "1.4.6",
+        lines = {
+            "Interrupts: a Macros tab for target markers",
+            "Click a macro to make it, click again to remove",
+            "Quality of Life: automatic combat logging",
+            "Advanced Combat Logging turns on with it",
+        },
+        more = 0,
+    },
+    {
         version = "1.4.5",
         lines = {
             "Voice dropdown on Alert Settings",
