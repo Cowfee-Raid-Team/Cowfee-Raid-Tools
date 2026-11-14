@@ -9,9 +9,14 @@ local ADDON, CRT = ...
 -- The rate limit: LoggingCombat is allowed 5 calls per 10 seconds, shared by every addon and /combatlog, queries too;
 -- over it, it returns nil and changes nothing. So nothing here polls. A decision runs only DECIDE_DELAY seconds after a
 -- zone change (PLAYER_ENTERING_WORLD, ZONE_CHANGED_NEW_AREA, CHALLENGE_MODE_START; a burst of them makes one decision),
--- and only calls the game when it matters: in ticked content one query, then a start if it is off; on leaving, one
--- stop, only for a log CRT started this session (a log the player started, by /combatlog or Start logging now, is never
--- stopped). A nil answer is tried once more RETRY_DELAY seconds later, never again. The manual buttons make one call each.
+-- and only calls the game when it matters: in ticked content one query, then a start if it is off; on leaving (or when
+-- the content stops being ticked, such as a key starting with Mythic+ keys unticked), one stop, only for a log CRT
+-- started (a log the player started, by /combatlog or Start logging now, is never stopped). Unticking Log combat
+-- automatically leaves a running log alone.
+--
+-- Ownership: that CRT started the running log, and where, is saved per character in CRTDBChar.combatLog = { ours,
+-- reason } (never in a profile), so Stop when I leave still works after a /reload. PLAYER_ENTERING_WORLD's
+-- isReloadingUi keeps it, its isInitialLogin clears it (a new session: the game's own log state is unknown). A nil answer is tried once more RETRY_DELAY seconds later, never again. The manual buttons make one call each.
 -- The last known state is kept for the tab. Every call is in pcall: if the game refuses it, chat says so once.
 --
 -- Game facts (read 2026-11-14):
@@ -28,8 +33,9 @@ local ADDON, CRT = ...
 --   and the rest never log (warcraft.wiki.gg DifficultyID).
 --   C_ChallengeMode.IsChallengeModeActive() -> boolean, and event CHALLENGE_MODE_START (mapID) (warcraft.wiki.gg, and
 --   Blizzard_APIDocumentationGenerated/ChallengeModeInfoDocumentation.lua): a key starts in difficulty 23, so a running
---   key counts as Mythic+ keys. Events PLAYER_LOGIN, PLAYER_ENTERING_WORLD, ZONE_CHANGED_NEW_AREA, PLAYER_REGEN_ENABLED;
---   C_Timer.After(seconds, callback).
+--   key counts as Mythic+ keys. Events PLAYER_LOGIN, ZONE_CHANGED_NEW_AREA, PLAYER_REGEN_ENABLED, PLAYER_ENTERING_WORLD
+--   (isInitialLogin, isReloadingUi: warcraft.wiki.gg PLAYER_ENTERING_WORLD, read 2026-11-14; isInitialLogin is true
+--   on a login, also after character select; neither is true for a zone change); C_Timer.After(seconds, callback).
 
 local CombatLog = {}
 CRT.CombatLog = CombatLog
@@ -37,6 +43,7 @@ CRT.CombatLog = CombatLog
 local TEXT = {
     on = "Combat log on: %s.",
     off = "Combat log off: you left the instance.",
+    offNotTicked = "Combat log off: this content isn't ticked.",
     aclOn = "Advanced Combat Logging was off, so CRT turned it on (Options > System > Network).",
     aclLater = "Advanced Combat Logging is off. CRT turns it on when combat ends.",
     aclFailed = "CRT couldn't turn on Advanced Combat Logging. Turn it on in Options > System > Network.",
@@ -50,8 +57,9 @@ local TEXT = {
     nowRefused = "The game refused CRT's combat log call. Use /combatlog.",
     nowCRT = "On: started by CRT in %s.",
     nowManual = "On: started with Start logging now.",
-    nowOther = "On: not started by CRT, so CRT leaves it on.",
+    nowOther = "On: started outside CRT, so CRT leaves it on.",
     nowLeft = "Off: CRT stopped it when you left.",
+    nowNotTicked = "Off: CRT stopped it because this content isn't ticked.",
     nowStopped = "Off: stopped with Stop logging.",
     nowOff = "Off.",
     -- the ticks, and where a log was started (chat and the Now line)
@@ -109,15 +117,33 @@ local PLACES = {
 }
 
 -- What CRT knows. logging is the last state the game gave (nil: unknown); ours, whether CRT's zone logic started the
--- running log this session; now, the Now line's key; label, where CRT started it.
+-- running log (kept across a /reload, see saved()); now, the Now line's key; label, where CRT started it.
 local state = { logging = nil, ours = false, now = "unknown", label = nil, refused = false }
 local refusalSaid = false
 local gen = 0 -- each zone change bumps it, so an older retry does nothing
 local pending = false -- a decision is waiting on its timer
-local waitingForCombat = false
+local waitingForCombat = false -- a turn-on of Advanced Combat Logging waits for combat to end
 
 local function settings()
     return CRT.db and CRT.db.qol and CRT.db.qol.combatLog
+end
+
+-- This character's saved ownership, CRTDBChar.combatLog = { ours, reason }, made when missing.
+local function saved()
+    CRTDBChar = type(CRTDBChar) == "table" and CRTDBChar or {}
+    if type(CRTDBChar.combatLog) ~= "table" then
+        CRTDBChar.combatLog = {}
+    end
+    return CRTDBChar.combatLog
+end
+
+-- Whether CRT owns the running log, and where it started it; saved for a /reload.
+local function setOurs(on, label)
+    state.ours = on and true or false
+    state.label = on and label or nil
+    local mine = saved()
+    mine.ours = state.ours or nil
+    mine.reason = state.label
 end
 
 local function isSecret(value)
@@ -262,10 +288,11 @@ function decide(myGen, retried)
             end
             return
         end
-        state.ours = false -- whatever CRT started was stopped since
+        setOurs(false) -- whatever CRT started was stopped since
         local started, why2 = call(true)
         if started then
-            state.logging, state.ours, state.label, state.now = true, true, label, "crt"
+            state.logging, state.now = true, "crt"
+            setOurs(true, label)
             announce(string.format(TEXT.on, label))
         elseif started == nil and why2 == "busy" then
             busyAgain(myGen, retried)
@@ -273,8 +300,11 @@ function decide(myGen, retried)
     elseif state.ours and s.stopOnLeave then
         local stopped, why = call(false)
         if stopped == false then
-            state.logging, state.ours, state.now = false, false, "left"
-            announce(TEXT.off)
+            -- still in an instance (a difficulty change, a key starting): the content isn't ticked; else you left
+            local inside = type(kind) == "string" and kind ~= "none"
+            state.logging, state.now = false, inside and "notticked" or "left"
+            setOurs(false)
+            announce(inside and TEXT.offNotTicked or TEXT.off)
         elseif stopped == nil and why == "busy" then
             busyAgain(myGen, retried)
         end
@@ -351,7 +381,8 @@ end
 function CombatLog:StartNow()
     local on, why = call(true)
     if on then
-        state.logging, state.ours, state.now = true, false, "manual"
+        state.logging, state.now = true, "manual"
+        setOurs(false)
         return true, TEXT.manualOn
     end
     return false, why == "busy" and TEXT.busy or TEXT.refused
@@ -360,7 +391,8 @@ end
 function CombatLog:StopNow()
     local on, why = call(false)
     if on == false then
-        state.logging, state.ours, state.now = false, false, "stopped"
+        state.logging, state.now = false, "stopped"
+        setOurs(false)
         return true, TEXT.manualOff
     end
     return false, why == "busy" and TEXT.busy or TEXT.refused
@@ -384,6 +416,8 @@ function CombatLog:NowText()
         return TEXT.nowOther
     elseif k == "left" then
         return TEXT.nowLeft
+    elseif k == "notticked" then
+        return TEXT.nowNotTicked
     elseif k == "stopped" then
         return TEXT.nowStopped
     elseif k == "busy" then
@@ -398,15 +432,26 @@ events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 events:RegisterEvent("CHALLENGE_MODE_START") -- a key inserted: the dungeon now counts as Mythic+ keys
-events:SetScript("OnEvent", function(_, event)
+events:SetScript("OnEvent", function(_, event, isInitialLogin, isReloadingUi)
     local s = settings()
     if event == "PLAYER_REGEN_ENABLED" then
-        waitingForCombat = false
-        events:UnregisterEvent("PLAYER_REGEN_ENABLED")
-        if s and s.enabled then
+        -- a turn-on asked for in combat, by the master tick, a login or the button, whatever the master is now
+        if waitingForCombat then
+            waitingForCombat = false
+            events:UnregisterEvent("PLAYER_REGEN_ENABLED")
             CombatLog:TurnOnAdvanced()
         end
         return
+    end
+    if event == "PLAYER_ENTERING_WORLD" then
+        if isInitialLogin then
+            setOurs(false) -- a new session: a log from before is not CRT's to stop
+        elseif isReloadingUi then
+            local mine = saved()
+            if mine.ours then
+                state.ours, state.label, state.now = true, mine.reason, "crt"
+            end
+        end
     end
     if not (s and s.enabled) then
         return

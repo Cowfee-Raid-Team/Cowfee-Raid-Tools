@@ -384,6 +384,92 @@ C:TurnOnAdvanced()
 check(cvars.advancedCombatLogging == true, "without C_CVar: the global GetCVarBool and SetCVar")
 C_CVar = keepCV
 
+-- The Turn on button in combat with the master off: still turned on when combat ends (a pending flag, not the master)
+s.enabled = false
+cvars.advancedCombatLogging = false
+combat = true
+C:TurnOnAdvanced()
+check(cvars.advancedCombatLogging == false and events.events.PLAYER_REGEN_ENABLED, "in combat, master off: it waits for combat to end")
+combat = false
+fire("PLAYER_REGEN_ENABLED")
+check(cvars.advancedCombatLogging == true, "master off: still turned on when combat ends")
+s.enabled = true
+
+-- Unticking Log combat automatically leaves a running log alone
+logging = false
+itype, diff = "raid", 15
+fire("PLAYER_ENTERING_WORLD", false, false)
+settle()
+check(logging == true and C:Status().ours, "(set up) CRT started a log")
+calls = {}
+C:SetEnabled(false)
+settle()
+check(logging == true and #calls == 0, "unticking the master: the running log is left alone, no call")
+itype, diff = "none", 0
+fire("PLAYER_ENTERING_WORLD", false, false)
+settle()
+check(logging == true and #calls == 0, "and leaving with the master off doesn't stop it")
+C:SetEnabled(true)
+settle()
+check(logging == false, "(set up) ticked again in the open world: CRT's own log stops")
+
+-- Still inside, the content no longer ticked (a key starts with only Mythic (no key) ticked): the log stops, and chat
+-- says the content isn't ticked, not that you left
+s.dungeon.keys, s.dungeon.mythic = false, true
+itype, diff = "party", 23
+fire("PLAYER_ENTERING_WORLD", false, false)
+settle()
+check(logging == true and lastPrint() == "Combat log on: Mythic dungeon.", "(set up) Mythic (no key) ticked: on")
+key = true
+fire("CHALLENGE_MODE_START", 2648)
+settle()
+check(logging == false and lastPrint() == "Combat log off: this content isn't ticked.", "a key starting, keys unticked: off, this content isn't ticked: " .. tostring(lastPrint()))
+check(C:NowText():find("isn't ticked", 1, true), "the Now line says why: " .. C:NowText())
+key = false
+s.dungeon.keys, s.dungeon.mythic = true, false
+itype, diff = "none", 0
+fire("PLAYER_ENTERING_WORLD", false, false)
+settle()
+
+-- Ownership across /reload, per character (CRTDBChar.combatLog); a fresh login clears it
+local function reloadFile()
+  assert(load(logSrc, "@CombatLog.lua"))("CowfeeRaidTools", CRT)
+  C = CRT.CombatLog
+  for _, f in ipairs(frames) do if f.events.ZONE_CHANGED_NEW_AREA then events = f end end
+end
+logging = false
+itype, diff = "raid", 15
+fire("PLAYER_ENTERING_WORLD", false, false)
+settle()
+local saved = type(CRTDBChar) == "table" and CRTDBChar.combatLog
+check(saved and saved.ours == true and saved.reason == "Heroic raid", "CRT's start is saved per character with its reason")
+reloadFile()
+check(not C:Status().ours, "(a fresh file knows nothing yet)")
+fire("PLAYER_ENTERING_WORLD", false, true)
+check(C:Status().ours and C:NowText():find("started by CRT in Heroic raid", 1, true), "a /reload keeps CRT's ownership and reason: " .. C:NowText())
+settle()
+calls = {}
+itype, diff = "none", 0
+fire("PLAYER_ENTERING_WORLD", false, false)
+settle()
+check(logging == false and calls[1] == false, "Stop when I leave works after a /reload")
+check(CRTDBChar.combatLog.ours ~= true, "the saved flag clears when CRT stops its log")
+itype, diff = "raid", 15
+fire("PLAYER_ENTERING_WORLD", false, false)
+settle()
+check(CRTDBChar.combatLog.ours == true, "(set up) CRT's again")
+reloadFile()
+fire("PLAYER_ENTERING_WORLD", true, false)
+check(not C:Status().ours and CRTDBChar.combatLog.ours ~= true, "a fresh login clears the saved flag")
+settle()
+check(C:NowText() == "On: started outside CRT, so CRT leaves it on.", "a log CRT didn't start this login: a neutral Now line: " .. C:NowText())
+calls = {}
+itype, diff = "none", 0
+fire("PLAYER_ENTERING_WORLD", false, false)
+settle()
+check(logging == true and #calls == 0, "after a fresh login the log is left on when you leave")
+C:StopNow()
+
 -- The tab: Quality of Life > Combat log ---------------------------------------------------------------------------
 local helps, tabs, build, buttons, controls = {}, {}, nil, {}, {}
 CRT.UI = {
@@ -449,8 +535,8 @@ check(s.dungeon.normal == true, "Heroic and Normal saves dungeon.normal")
 hn:SetChecked(false) hn.scripts.OnClick(hn)
 
 -- the Setup buttons
-local aclBtn = buttons["Turn on advanced logging"]
-check(aclBtn ~= nil, "a Turn on advanced logging button")
+local aclBtn = buttons["Turn on Advanced Combat Logging"]
+check(aclBtn ~= nil, "a Turn on Advanced Combat Logging button")
 refreshAll()
 check(aclBtn and not aclBtn:IsEnabled(), "with it on, the button is greyed")
 cvars.advancedCombatLogging = false
@@ -491,6 +577,9 @@ for (const [f, s] of [['CombatLog.lua', logSrc], ['CombatLogTab.lua', tabSrc]]) 
 if (!logSrc.includes('"advancedCombatLogging"')) fail('CombatLog.lua does not name the advancedCombatLogging CVar');
 const core = read('CRT_Core/Core.lua');
 if (!/combatLog = \{ enabled = false, raid = \{ lfr = true, normal = true, heroic = true, mythic = true \}, dungeon = \{ keys = true, mythic = false, normal = false \}, stopOnLeave = true, announce = true \}/.test(core)) fail('Core.lua lacks the qol.combatLog defaults');
+// ownership is per character, never a profile setting or a shared one
+if (/combatLog = \{[^}]*\bours\b/.test(read('CRT_Core/Profiles.lua')) || /\bours\s*=/.test(core.slice(core.indexOf('combatLog = {'), core.indexOf('combatLog = {') + 300))) fail('the ownership flag is in a profile (Core.lua defaults or Profiles.lua SHARE)');
+if (!logSrc.includes('CRTDBChar.combatLog')) fail('CombatLog.lua does not save ownership in CRTDBChar.combatLog');
 const toc = read('CowfeeRaidTools.toc');
 if (!/CRT_Modules\\QoL\\BattleRes\.lua\r?\nCRT_Modules\\QoL\\CombatLog\.lua\r?\nCRT_Modules\\QoL\\CombatLogTab\.lua\r?\nCRT_Modules\\QoL\\Page\.lua/.test(toc)) fail('the .toc lacks CombatLog.lua and CombatLogTab.lua before QoL\\Page.lua');
 if (!/\{ key = "brez", label = "Battle res" \},\s*\{ key = "combatlog", label = "Combat log" \},\s*\{ key = "sounds"/.test(pageSrc)) fail('Page.lua: the Combat log tab is not between Battle res and Sounds');
