@@ -185,7 +185,9 @@ if altar then
   for _, e in ipairs(list) do if e.difficulty ~= nil then all = false end end
   check(all, "every Coiled Altar special alert plays on every difficulty")
   local shield = S:Get(3429, "shield")
-  check(shield and shield.absorb and shield.absorb.unit == "boss2" and shield.absorb.length == 15 and shield.absorb.anyDifficulty, "the Shield is a shield bar on boss2, 15 s")
+  check(shield and shield.absorb and shield.absorb.unit == "boss2" and shield.absorb.length == 17 and shield.absorb.anyDifficulty, "the Shield is a shield bar on boss2, 17 s")
+  local p2 = altar.phases and altar.phases[2]
+  check(p2 and p2.kind == "newboss" and p2.value == "boss2", "phase 2 starts when boss2 appears")
   local function abs(ref, ph, t)
     if ph == 1 then return t end
     for _, p in ipairs(ref.phases or {}) do
