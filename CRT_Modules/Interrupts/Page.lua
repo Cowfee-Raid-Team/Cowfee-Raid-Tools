@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- The Interrupts page, first in the menu's Modules group, shown only while Enable Interrupts is on (General Settings). Two tabs:
+-- The Interrupts page, first in the menu's Modules group, shown only while Enable Interrupts is on (General Settings). Three tabs:
 --   Assignments  the boss and difficulty (every kick setup, Interrupts:Bosses) with Edit setup beside it (your own
 --                setup, Interrupts/SetupEditor.lua), the status bar (which list is in use and your kick), the Kick
 --                list heading (its (?) is how the numbers are worked out: the setup, read-only), the kick rows
@@ -8,7 +8,9 @@ local ADDON, CRT = ...
 --                the raid's list, Share to raid, Who has it (N of M) (Interrupts/WhoWindow.lua, a pop-out), Test on
 --                trash, Test reminder and Write to the raid note (Interrupts/NoteBlock.lua); on the right, the
 --                players to drag onto the rows (Interrupts/PagePalette.lua)
---   Settings     the numbers above the nameplates, the reminder and sharing; a preview button under each display's
+--   Macros       Your macros: the Target markers set (Interrupts/Macros.lua) in the shared block, UI.MacroSet
+--                (CRT_Core/UI/MacroSet.lua, also on Raid Notes > Marker macros)
+--   Settings    the numbers above the nameplates, the reminder and sharing; a preview button under each display's
 --                settings and Preview kick displays for both (UI.PreviewButton)
 -- Opening a boss reads its raid note's kick block into the raid's list (NoteBlock.ReadInto), again only once the boss
 -- or the note's text changed. The rows edit your own list, and are read-only in a group for anyone who can't share.
@@ -38,7 +40,17 @@ local TEXT = {
         "Numbers only show for adds whose nameplate is on your screen.",
     },
     assignments = "Assignments",
+    macrosTab = "Macros",
     settings = "Settings",
+    macros = "Your macros",
+    macrosHelp = {
+        "One macro per raid marker, CRT Mk Star to CRT Mk Skull. Each puts its marker on your mouseover (the mob under your mouse), or on your target when there is none. It works in combat.\n\n"
+            .. "In a raid, only the raid leader and assists can mark.",
+        { "Generate all macros", "makes all eight. They go in General Macros, for all your characters, or this character's macros when General Macros is full." },
+        { "Remove macros", "deletes only the macros the addon made. A macro you edited or renamed, or your own with the same name, is never changed." },
+        { "Click a marker", "to make just that one. Click it again to remove it." },
+        "Drag a made one from here to your action bars. Making and removing macros waits until you are out of combat.",
+    },
     boss = "Boss",
     bossHelp = "Every boss and difficulty with a kick setup: the one CRT ships, or your own.",
     editSetup = "Edit setup",
@@ -762,9 +774,26 @@ local function buildSettings(f)
     buildReminderSettings(f)
 end
 
+-- Macros -------------------------------------------------------------------------------------------------------------
+
+local MACRO_SET = "targetMarks" -- Interrupts/Macros.lua's set
+
+-- Only the shared Your macros block; drawn with the page, and again when a macro changes or combat starts or ends
+-- while this tab shows.
+local function buildMacros(f)
+    local block = UI.MacroSet(f, MACRO_SET, { x = L.leftX, y = L.bossY, heading = TEXT.macros, help = TEXT.macrosHelp })
+    Page.macros = block
+    controls[#controls + 1] = block
+    CRT.Macros:OnChange(function()
+        if page and page:IsShown() and Page.tab == "macros" then
+            block.refresh()
+        end
+    end)
+end
+
 -- The page -------------------------------------------------------------------------------------------------------------
 
-local TABS = { { key = "assignments", label = TEXT.assignments }, { key = "settings", label = TEXT.settings } }
+local TABS = { { key = "assignments", label = TEXT.assignments }, { key = "macros", label = TEXT.macrosTab }, { key = "settings", label = TEXT.settings } }
 
 local function showTab(key)
     for _, tab in ipairs(TABS) do
@@ -860,7 +889,8 @@ local function build(pf)
     title:SetPoint("TOPLEFT", 8, -8)
     UI.HelpRight(title, TEXT.title, TEXT.help)
     buildAssignments(makeTab(pf, 1, TABS[1]))
-    buildSettings(makeTab(pf, 2, TABS[2]))
+    buildMacros(makeTab(pf, 2, TABS[2]))
+    buildSettings(makeTab(pf, 3, TABS[3]))
     local line = pf:CreateTexture(nil, "ARTWORK")
     UI.Tint(line, "SetColorTexture", "border")
     line:SetHeight(1)
