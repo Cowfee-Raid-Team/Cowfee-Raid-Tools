@@ -3,7 +3,8 @@ local ADDON, CRT = ...
 -- The macro engine, CRT.Macros: makes, rewrites and removes ready-made macros in the game's macro list, safely.
 -- It knows nothing about the features: each one registers a set,
 --   Macros:Register({ key, label, perCharacter, macros = { { name, icon, body }, ... } })
--- (Markers/Macros.lua is the first, shown on Raid Notes > Marker macros, Markers/MacrosTab.lua).
+-- (Markers/Macros.lua, shown on Raid Notes > Marker macros, Markers/MacrosTab.lua; Interrupts/Macros.lua, shown on
+-- Interrupts > Macros). Both pages show a set with the same block, UI.MacroSet (CRT_Core/UI/MacroSet.lua).
 --
 -- Where they go. A set marked perCharacter goes in the character's macros. Any other set goes in General Macros
 -- (the account's), and when General hasn't room for the missing ones, in the character's macros instead; when
@@ -337,8 +338,16 @@ function Macros:Create(key, only)
     return #failed == 0, msg .. leftAlone(st)
 end
 
--- Deletes the set's macros that are still ours. The list is read again before each one, as slots move.
-function Macros:Remove(key)
+-- Why one macro wasn't removed, by its state (Remove with `only`).
+local NOT_REMOVED = {
+    missing = "nothing to remove, it isn't in your macros.",
+    changed = "nothing to remove, you changed it, so it stays.",
+    conflict = "nothing to remove, it is your own macro.",
+}
+
+-- Deletes the set's macros that are still ours, or only the one named `only` (still only when it is ours). The
+-- list is read again before each one, as slots move.
+function Macros:Remove(key, only)
     local set = sets[key]
     if not set then
         return false, "No such macro set."
@@ -346,17 +355,28 @@ function Macros:Remove(key)
     if inCombat() then
         return false, COMBAT
     end
-    local removed, failed = 0, {}
+    local removed, failed, found = 0, {}, nil
     for _, def in ipairs(set.macros) do
-        local state, slot, _, perCharacter = classify(key, def, readAll())
-        if state == "ours" then
-            if pcall(DeleteMacro, slot) then
-                owned(key, perCharacter)[def.name] = nil
-                removed = removed + 1
-            else
-                failed[#failed + 1] = def.name
+        if only == nil or def.name == only then
+            local state, slot, _, perCharacter = classify(key, def, readAll())
+            found = state
+            if state == "ours" then
+                if pcall(DeleteMacro, slot) then
+                    owned(key, perCharacter)[def.name] = nil
+                    removed = removed + 1
+                else
+                    failed[#failed + 1] = def.name
+                end
             end
         end
+    end
+    if only then
+        if #failed > 0 then
+            return false, only .. ": the game refused to remove it."
+        elseif removed == 0 then
+            return true, only .. ": " .. (NOT_REMOVED[found] or NOT_REMOVED.missing)
+        end
+        return true, only .. ": removed."
     end
     local msg = string.format("%s: removed %s.", set.label, count(removed))
     if #failed > 0 then
@@ -429,6 +449,44 @@ function Macros:Pickup(key, name)
         end
     end
     return false, nil
+end
+
+-- Whether one of the set's macros sits on an action bar slot, so removing it would empty that slot. Every slot
+-- 1 to ACTION_SLOTS is read: GetActionInfo(slot) -> actionType, id, subType (warcraft.wiki.gg API_GetActionInfo) must
+-- be "macro", and C_ActionBar.GetActionText(slot) (Blizzard_APIDocumentationGenerated/ActionBarFrameDocumentation.lua;
+-- the label Blizzard's ActionButton.lua shows on a macro button) must be its name. The id isn't used: for a macro
+-- that casts a spell it is the spell's ID (subType "spell", ActionButton.lua). Slots run to 180, the last of Action
+-- Bar 8 (warcraft.wiki.gg Action slot). Each call is pcalled (an invalid slot errors), and a hidden (secret) answer
+-- is never compared, so it counts as not on a bar.
+local ACTION_SLOTS = 180
+
+local function readable(v)
+    return not (issecretvalue and issecretvalue(v))
+end
+
+function Macros:OnActionBar(key, name)
+    local set = sets[key]
+    local getText = C_ActionBar and C_ActionBar.GetActionText
+    if not (set and GetActionInfo and getText) then
+        return false
+    end
+    local known = false
+    for _, def in ipairs(set.macros) do
+        known = known or def.name == name
+    end
+    if not known then
+        return false
+    end
+    for slot = 1, ACTION_SLOTS do
+        local ok, kind = pcall(GetActionInfo, slot)
+        if ok and readable(kind) and kind == "macro" then
+            local okText, text = pcall(getText, slot)
+            if okText and readable(text) and text == name then
+                return true
+            end
+        end
+    end
+    return false
 end
 
 function Macros:OnChange(fn)

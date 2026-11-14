@@ -12,7 +12,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const W = process.argv[2];
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = require('./theme_stub')(W) + require('./placement_stub')(W) + `
-local checkSrc, controlsSrc, pageSrc, parseSrc, renderSrc, displaySrc, tabSrc, slotSrc, addSrc, tonightSrc = ...
+local checkSrc, controlsSrc, pageSrc, parseSrc, renderSrc, displaySrc, tabSrc, slotSrc, addSrc, tonightSrc, macroSetSrc = ...
 local fails, passes = 0, 0
 unpack = unpack or table.unpack
 local function check(ok, what) if ok then passes = passes + 1 print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
@@ -308,6 +308,14 @@ CRT.Macros = {
 }
 CRT_PLACEMENT(CRT) -- CRT_Core/UI/Placement.lua, which the display is placed by
 assert(load(displaySrc, "Display.lua"))("CowfeeRaidTools", CRT)
+-- Panel.lua's UI.PanelButton, which the macro block's buttons are made by: the template, as wide as its label
+UI.PanelButton = function(parent, label, h)
+  local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+  b:SetText(label)
+  b:SetSize(UI.PanelButtonWidth(b:GetFontString():GetStringWidth()), h)
+  return b
+end
+assert(load(macroSetSrc, "MacroSet.lua"))("CowfeeRaidTools", CRT) -- the shared Your macros block
 assert(load(tabSrc, "MacrosTab.lua"))("CowfeeRaidTools", CRT)
 for _, def in ipairs({
   { slots = 4, layout = "row", iconSize = 40 },
@@ -396,7 +404,7 @@ if fails > 0 then error("layout check harness failed") end
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const f of ['CRT_Dev/Dev/LayoutCheck.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Modules/Notes/Page.lua', 'CRT_Modules/Notes/Parse.lua',
   'CRT_Modules/Notes/Render.lua', 'CRT_Modules/Markers/Display.lua', 'CRT_Modules/Markers/MacrosTab.lua',
-  'CRT_Core/UI/ItemSlot.lua', 'CRT_Modules/LootMaster/AddItem.lua', 'CRT_Modules/LootMaster/Tonight.lua']) {
+  'CRT_Core/UI/ItemSlot.lua', 'CRT_Modules/LootMaster/AddItem.lua', 'CRT_Modules/LootMaster/Tonight.lua', 'CRT_Core/UI/MacroSet.lua']) {
   lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(W, f), 'utf8')));
 }
-if (lua.lua_pcall(L, 10, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, 11, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

@@ -7,7 +7,7 @@ const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
-local engineSrc, markersSrc = ...
+local engineSrc, markersSrc, interruptsSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
 
@@ -84,6 +84,7 @@ function CRT:Print(msg) printed[#printed + 1] = msg end
 
 assert(load(engineSrc, "CRT_Core/Macros.lua"))("CowfeeRaidTools", CRT)
 assert(load(markersSrc, "CRT_Modules/Markers/Macros.lua"))("CowfeeRaidTools", CRT)
+assert(load(interruptsSrc, "CRT_Modules/Interrupts/Macros.lua"))("CowfeeRaidTools", CRT)
 local M = CRT.Macros
 check(type(M) == "table", "CRT.Macros exists")
 
@@ -244,6 +245,87 @@ do
   check(#account == 8, "generate all after one: the other 7 are made")
 end
 
+-- One macro at a time: Remove with a name removes just that one, and only while it is ours (#1285).
+do
+  reset()
+  M:Create("markers")
+  playerMacro("Zed", "/say zed")
+  local ok, msg = M:Remove("markers", "CRT Moon")
+  check(ok and #account == 8 and not find("CRT Moon") and find("CRT Star") and find("Zed"), "remove one: only CRT Moon goes (left " .. #account .. ")")
+  check(msg == "CRT Moon: removed.", "remove one: the message names it (" .. tostring(msg) .. ")")
+  check(CRT.db.macros.owned.markers["CRT Moon"] == nil and CRT.db.macros.owned.markers["CRT Star"] ~= nil, "remove one: only its record goes")
+  local before = calls
+  ok, msg = M:Remove("markers", "CRT Moon")
+  check(calls == before and type(msg) == "string" and msg:find("CRT Moon: nothing to remove", 1, true) == 1, "remove one again: nothing to remove (" .. tostring(msg) .. ")")
+  -- edited by the player: kept
+  find("CRT Star").body = "/raid {rt1} mine"
+  before = calls
+  ok, msg = M:Remove("markers", "CRT Star")
+  check(calls == before and find("CRT Star") and find("CRT Star").body == "/raid {rt1} mine", "remove one: an edited macro is kept")
+  check(type(msg) == "string" and msg:find("nothing to remove", 1, true) ~= nil, "remove one: and says so (" .. tostring(msg) .. ")")
+  -- the player's own with our name: kept
+  playerMacro("CRT Moon", "/say my moon")
+  before = calls
+  M:Remove("markers", "CRT Moon")
+  check(calls == before and find("CRT Moon") and find("CRT Moon").body == "/say my moon", "remove one: the player's own CRT Moon is never removed")
+  -- a name not in the set
+  ok, msg = M:Remove("markers", "CRT Nothing")
+  check(calls == before and type(msg) == "string" and msg:find("nothing to remove", 1, true) ~= nil, "remove one: a name not in the set removes nothing")
+  -- combat: refused
+  combat = true
+  ok, msg = M:Remove("markers", "CRT Skull")
+  check(not ok and calls == before and find("CRT Skull") and type(msg) == "string" and msg:lower():find("combat", 1, true), "remove one: refused in combat (" .. tostring(msg) .. ")")
+  combat = false
+  -- in the character's macros
+  reset()
+  fillAccount(118)
+  M:Create("markers")
+  check(#char == 8, "remove one: made in the character's macros")
+  M:Remove("markers", "CRT Cross")
+  check(#char == 7 and not find("CRT Cross", char) and #account == 118, "remove one: taken from the character's macros")
+  check(CRTDBChar.macros.owned.markers["CRT Cross"] == nil and CRTDBChar.macros.owned.markers["CRT Skull"] ~= nil, "remove one: its character record goes, the others stay")
+end
+
+-- The Interrupts page's set: target markers on the mouseover, else the target (Interrupts/Macros.lua).
+do
+  local set for _, s in ipairs(M:Sets()) do if s.key == "targetMarks" then set = s end end
+  check(set ~= nil and set.label == "Target markers", "the targetMarks set is registered as Target markers")
+  local good = set and #set.macros == 8
+  for i, name in ipairs(NAMES) do
+    local m = set and set.macros[i]
+    good = good and m and m.name == "CRT Mk " .. name and #m.name <= 16 and m.icon == 137000 + i and m.body == "/tm [@mouseover,exists,nodead][] !" .. i
+  end
+  check(good, "targetMarks: CRT Mk Star to CRT Mk Skull, at most 16 characters, /tm [@mouseover,exists,nodead][] !1 to !8 (always set, never removed)")
+  reset()
+  M:Create("targetMarks")
+  check(#account == 8 and find("CRT Mk Triangle") and find("CRT Mk Triangle").body == "/tm [@mouseover,exists,nodead][] !4", "targetMarks: made like any set")
+  M:Remove("targetMarks", "CRT Mk Skull")
+  check(#account == 7 and not find("CRT Mk Skull"), "targetMarks: one removed by name")
+end
+
+-- On an action bar: a slot holding a macro whose text (its name) is ours (#1285).
+do
+  reset()
+  M:Create("markers")
+  local bar = {}
+  GetActionInfo = function(slot) if slot == 50 then error("bad slot") end if bar[slot] then return "macro", 3, nil end if slot == 7 then return "spell", 133 end end
+  C_ActionBar = { GetActionText = function(slot) return bar[slot] end }
+  check(M:OnActionBar("markers", "CRT Skull") == false, "action bar: not on a bar")
+  bar[140] = "CRT Skull"
+  check(M:OnActionBar("markers", "CRT Skull") == true, "action bar: found in slot 140, past a slot that errors")
+  check(M:OnActionBar("markers", "CRT Star") == false, "action bar: another macro of the set isn't")
+  bar[180] = "CRT Star"
+  check(M:OnActionBar("markers", "CRT Star") == true, "action bar: slot 180, the last bar's last slot, is read")
+  -- a hidden (secret) answer is never compared
+  issecretvalue = function(v) return v == "CRT Moon" end
+  bar[3] = "CRT Moon"
+  check(M:OnActionBar("markers", "CRT Moon") == false, "action bar: a secret name isn't compared")
+  issecretvalue = nil
+  check(M:OnActionBar("markers", "CRT Nothing") == false, "action bar: a name not in the set is never on a bar")
+  GetActionInfo, C_ActionBar = nil, nil
+  check(M:OnActionBar("markers", "CRT Skull") == false, "action bar: without the game's calls, not on a bar")
+end
+
 -- Old saved data (no place recorded) still reads as General Macros.
 do
   reset()
@@ -316,4 +398,6 @@ if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.
 const d = process.argv[2];
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Core/Macros.lua', 'utf8')));
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/CRT_Modules/Markers/Macros.lua', 'utf8')));
-if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+const intPath = d + '/CRT_Modules/Interrupts/Macros.lua';
+lua.lua_pushstring(L, to_luastring(fs.existsSync(intPath) ? fs.readFileSync(intPath, 'utf8') : 'error("missing CRT_Modules/Interrupts/Macros.lua")'));
+if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

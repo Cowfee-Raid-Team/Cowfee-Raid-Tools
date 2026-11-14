@@ -18,14 +18,28 @@ const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const dir = process.argv[2];
 const harness = themeLua(dir) + `
-local registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc, anchorSrc, kickSrc, pageSrc, parseSrc, notesSrc, editModelSrc, noteBlockSrc, gridSrc, editorSrc, exportSrc, paletteSrc, pagePaletteSrc, whoSrc, markerTextSrc = ...
+local registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc, anchorSrc, kickSrc, pageSrc, parseSrc, notesSrc, editModelSrc, noteBlockSrc, gridSrc, editorSrc, exportSrc, paletteSrc, pagePaletteSrc, whoSrc, markerTextSrc, macrosSrc, macroSetSrc, kickMacrosSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
 local function plain(s) return (tostring(s or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
 time = function() return 1790000000 end
 date = function() return "2026-10-29 12:00" end
-InCombatLockdown = function() return false end
+local inCombat = false
+InCombatLockdown = function() return inCombat end
+-- the game's macro lists for the Macros tab (as run_macros.js): sorted by name, account 1 to 120, character from 121
+Constants = { MacroConsts = { MAX_ACCOUNT_MACROS = 120, MAX_CHARACTER_MACROS = 30 } }
+local macroList = {}
+local function sortMacros() table.sort(macroList, function(a, b) return a.name:lower() < b.name:lower() end) end
+GetNumMacros = function() return #macroList, 0 end
+GetMacroInfo = function(i) local m = macroList[i] if m then return m.name, m.icon, m.body end end
+CreateMacro = function(name, icon, body) if inCombat then error("blocked") end local m = { name = name, icon = icon, body = body } macroList[#macroList + 1] = m sortMacros() for i, x in ipairs(macroList) do if x == m then return i end end end
+EditMacro = function(i, _, _, body) macroList[i].body = body return i end
+DeleteMacro = function(i) if inCombat then error("blocked") end table.remove(macroList, i) end
+local function findMacro(name) for _, m in ipairs(macroList) do if m.name == name then return m end end end
+local confirmPopup
+StaticPopup_ShowCustomGenericConfirmation = function(data) confirmPopup = data end
+CANCEL = "Cancel"
 GetTime = function() return 100 end
 strtrim = function(t) return (t:gsub("^%s+", ""):gsub("%s+$", "")) end
 wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
@@ -91,6 +105,7 @@ local function mock(kind, parent)
     IsMouseOver = function(self) return self.mouseOver and true or false end,
     HookScript = function(self, k, fn) local old = self.scripts[k] self.scripts[k] = old and function(...) old(...) fn(...) end or fn end,
     SetBackdropBorderColor = function(self, r, g, b) self.border = { r, g, b } end,
+    SetDesaturated = function(self, v) self.desat = v and true or false end,
   }
   all[#all + 1] = m
   return setmetatable(m, { __index = function(_, k) if methods[k] then return methods[k] end if type(k) == "string" and k:match("^%u") then return function() end end end })
@@ -138,11 +153,13 @@ function UI.Slider(parent, text, opts) return row("slider", parent, text, opts, 
 function UI.PickColor(color, set, opts) picked[#picked + 1] = { color = color, set = set, opts = opts } end
 function UI.Window(name, opts) local w = mock("Frame") w.content = mock("Frame", w) w.content.h = 300 w.strip = mock("Frame", w) w.name, w.opts = name, opts w.shown = false return w end
 function UI.ScrollGutter(w) return 6 + (w or 18) end
+function UI.LiftOver() end
+function UI.ShownPopup(r) return r end
 local skinnedBars = 0
 function UI:SkinScrollBar() skinnedBars = skinnedBars + 1 end
 local CRT = { UI = UI, db = { interrupts = { enabled = false, own = {}, shared = {}, use = {}, accept = true, test = false,
   plates = { on = true, all = false, size = 50, font = 24, offset = 20, mineBox = { 0, 1, 0, 1 }, mineText = { 1, 0, 0, 1 }, box = { 1, 0, 0, 1 }, text = { 1, 1, 1, 1 } },
-  reminder = { on = true, sound = "none", size = 48 } } } }
+  reminder = { on = true, sound = "none", size = 48 } }, macros = { owned = {} } } }
 CRT_THEME(CRT, UI)
 local printed = {}
 function CRT:Print(m) printed[#printed + 1] = m end
@@ -204,7 +221,7 @@ CRT.Bosses:Register({ encounterID = 3421, name = "Second Boss", season = "sample
   perNumber = 1, window = 20 } } } })
 local shownExport
 CRT.ConsumablesTools = { ShowText = function(_, _, text) shownExport = text end }
-for _, src in ipairs({ anchorSrc, kickSrc, noteBlockSrc, pageSrc, gridSrc, pagePaletteSrc, whoSrc, editorSrc, exportSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
+for _, src in ipairs({ macrosSrc, macroSetSrc, anchorSrc, kickSrc, noteBlockSrc, kickMacrosSrc, pageSrc, gridSrc, pagePaletteSrc, whoSrc, editorSrc, exportSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
 local I, P = CRT.Interrupts, CRT.InterruptsPage
 -- P.Refresh draws on the next frame: here, the frame comes at once, so a check after it sees the page drawn
 do local queue = P.Refresh P.Refresh = function() queue() flush() end end
@@ -219,8 +236,8 @@ local pf = mock("Frame"); pf.w, pf.h = UI.PAGE_W, UI.PAGE_H
 pf.shown = false
 pages.interrupts.builder(pf)
 pf:Show()
-eq(#tabs, 2, "page: two tabs"); eq(P.tabs.settings.label, "Settings", "page: settings last")
-eq(tabs[2].text and tabs[2].text.text, "Settings", "page: the second tab button is Settings")
+eq(#tabs, 3, "page: three tabs"); eq(P.tabs.settings.label, "Settings", "page: settings last")
+eq((tabs[1].text and tabs[1].text.text or "") .. "," .. (tabs[2].text and tabs[2].text.text or "") .. "," .. (tabs[3].text and tabs[3].text.text or ""), "Assignments,Macros,Settings", "page: the tabs in order Assignments, Macros, Settings")
 check(P.tabs.assignments.frame.shown and not P.tabs.settings.frame.shown, "page: opens on Assignments")
 eq(asked, 1, "page: opening asks the Addon check when stale")
 eq(#P.BossOptions(), 2, "page: the two bosses with a block listed")
@@ -769,6 +786,96 @@ CRT.db.interrupts.enabled = false; P.Refresh()
 check(P.previewBox.enabled == false and P.previewBox.why == T.previewBoxOff and T.previewBoxOff:find("Turn on Interrupts"), "settings: greyed with Interrupts off, its tooltip says to turn it on")
 CRT.db.interrupts.enabled = true; P.Refresh()
 check(P.previewBox.enabled == true, "settings: and usable again")
+
+-- the Macros tab (#1285): only the shared Your macros block (UI.MacroSet) with the Target markers set
+local MB = P.macros
+-- the block is drawn only while its tab shows, and as the tab shows (review #1285)
+do
+  local n, real = 0, MB.refresh
+  MB.refresh = function() n = n + 1 real() end
+  P.RefreshNow()
+  eq(n, 0, "macros: another tab shown, the page's draw skips the macro block")
+  for _, f in ipairs(all) do if f.events.UPDATE_MACROS and f.scripts.OnEvent then f.scripts.OnEvent(f, "UPDATE_MACROS") end end
+  eq(n, 0, "macros: and a macro change too")
+  P.SelectTab("macros"); flush()
+  check(n >= 1, "macros: showing the tab draws it")
+  MB.refresh = real
+end
+check(P.tabs.macros.frame.shown and not P.tabs.assignments.frame.shown and not P.tabs.settings.frame.shown, "macros: the tab shows")
+check(MB and MB.set == "targetMarks" and #MB.cells == 8, "macros: the block shows the Target markers set, eight icons")
+eq(MB.heading.text, "Your macros", "macros: the Your macros heading")
+local macrosHelp
+for _, h in ipairs(helps) do if h.helpTarget == MB.heading then macrosHelp = h end end
+local helpText = macrosHelp and type(macrosHelp.helpText) == "table" and macrosHelp.helpText[1] or ""
+check(helpText:find("mouseover", 1, true) and helpText:find("target", 1, true) and helpText:find("assist", 1, true) and helpText:find("combat", 1, true), "macros: its (?) says mouseover or target, leader and assists, works in combat")
+check(helpText:find("pressing it again leaves it on", 1, true), "macros: its (?) says pressing it again leaves the marker on")
+eq(macrosHelp and macrosHelp.helpText[#macrosHelp.helpText], "Not in combat: the game doesn't let addons change macros during a fight.", "macros: its (?) ends with the combat rule")
+eq(MB.cells[1].name.text .. "|" .. MB.cells[8].name.text, "CRT Mk Star|CRT Mk Skull", "macros: CRT Mk Star to CRT Mk Skull")
+eq(MB.cells[8].body.text, "/tm [@mouseover,exists,nodead][] !8", "macros: each with its body")
+check(MB.cells[8].button.icon.desat and not MB.cells[8].button.check.shown, "macros: not made yet, greyed with no check")
+check(MB.generate and MB.generate.text == "Generate all macros" and MB.remove and MB.remove.text == "Remove macros", "macros: Generate all macros and Remove macros")
+-- a click makes a missing one, a click again removes it
+local skullCell = MB.cells[8].button
+skullCell.scripts.OnEnter(skullCell)
+check(table.concat(GameTooltip.lines, " "):find("Click to make this macro", 1, true), "macros: the tooltip says a click makes it")
+skullCell.scripts.OnClick(skullCell)
+check(#macroList == 1 and findMacro("CRT Mk Skull") and findMacro("CRT Mk Skull").body == "/tm [@mouseover,exists,nodead][] !8", "macros: clicking CRT Mk Skull makes just that one")
+check(skullCell.check.shown and not skullCell.icon.desat, "macros: made, with a check")
+skullCell.scripts.OnEnter(skullCell)
+check(table.concat(GameTooltip.lines, " "):find("Click to remove this macro", 1, true), "macros: the tooltip now says a click removes it")
+skullCell.scripts.OnClick(skullCell)
+check(#macroList == 0 and skullCell.icon.desat and not skullCell.check.shown, "macros: clicking again removes it")
+check(not table.concat(GameTooltip.lines, " "):find("on your action bars", 1, true), "macros: not on a bar, the tooltip doesn't say it is")
+-- a made macro on an action bar asks first; removed only on accept
+local bar = {}
+GetActionInfo = function(slot) if bar[slot] then return "macro", 1 end end
+C_ActionBar = { GetActionText = function(slot) return bar[slot] end }
+skullCell.scripts.OnClick(skullCell)
+bar[12] = "CRT Mk Star" -- another macro on a bar
+confirmPopup = nil
+skullCell.scripts.OnClick(skullCell)
+check(confirmPopup == nil and #macroList == 0, "macros: made but not on a bar, one click removes it at once")
+skullCell.scripts.OnClick(skullCell)
+bar[61] = "CRT Mk Skull"
+skullCell.scripts.OnEnter(skullCell)
+local barTip = table.concat(GameTooltip.lines, " ")
+check(barTip:find("Click to remove this macro.", 1, true) and barTip:find("It's on your action bars.", 1, true), "macros: on a bar, the tooltip says so")
+confirmPopup = nil
+skullCell.scripts.OnClick(skullCell)
+check(confirmPopup and findMacro("CRT Mk Skull"), "macros: on a bar, a click asks first and removes nothing yet")
+check(confirmPopup and string.format(confirmPopup.text, confirmPopup.text_arg1 or "") == "Remove CRT Mk Skull? It's on your action bars, and making it again won't put it back there.", "macros: the question names it and says the bar loses it")
+confirmPopup.callback()
+check(#macroList == 0 and skullCell.icon.desat, "macros: accepted, it is removed")
+bar = {}
+GetActionInfo, C_ActionBar = nil, nil
+-- Generate all, then an edited one and the player's own are never touched by a click
+MB.generate.scripts.OnClick(MB.generate)
+eq(#macroList, 8, "macros: Generate all macros makes all eight")
+findMacro("CRT Mk Moon").body = "/tm 5"
+MB.refresh()
+MB.cells[5].button.scripts.OnClick(MB.cells[5].button)
+check(findMacro("CRT Mk Moon") and findMacro("CRT Mk Moon").body == "/tm 5" and #macroList == 8, "macros: clicking an edited macro does nothing")
+confirmPopup = nil
+MB.remove.scripts.OnClick(MB.remove)
+check(confirmPopup and #macroList == 8, "macros: Remove macros asks first")
+confirmPopup.callback()
+check(#macroList == 1 and macroList[1].name == "CRT Mk Moon", "macros: and removes only ours")
+CRT.db.macros.owned.targetMarks = nil -- no record: the player's own macro with our name
+MB.refresh()
+check(MB.cells[5].state.text and plain(MB.cells[5].state.text):find("Blocked by your own", 1, true), "macros: the player's own shows Blocked by your own")
+MB.cells[5].button.scripts.OnClick(MB.cells[5].button)
+check(#macroList == 1 and findMacro("CRT Mk Moon").body == "/tm 5", "macros: the player's own CRT Mk Moon is never touched by a click")
+macroList = {}
+-- combat: the click refuses with the combat message, the buttons grey
+inCombat = true
+printed = {}
+MB.refresh()
+MB.cells[1].button.scripts.OnClick(MB.cells[1].button)
+check(#macroList == 0 and (printed[1] or ""):lower():find("combat", 1, true), "macros: in combat a click makes nothing, and says why")
+check(MB.generate.enabled == false and MB.remove.enabled == false, "macros: in combat Generate and Remove are greyed")
+inCombat = false
+MB.refresh()
+check(MB.generate.enabled == true, "macros: after combat they come back")
 P.SelectTab("assignments")
 
 -- no boss with a setup: no rows
@@ -1016,7 +1123,7 @@ end
 local AREA_H = UI.PAGE_H - 66
 for _, f in ipairs(all) do
   local p = f.points[1]
-  if (f.parent == P.tabs.assignments.frame or f.parent == P.tabs.settings.frame) and p and p[1] == "TOPLEFT" and type(p[2]) == "number" then
+  if (f.parent == P.tabs.assignments.frame or f.parent == P.tabs.macros.frame or f.parent == P.tabs.settings.frame) and p and p[1] == "TOPLEFT" and type(p[2]) == "number" then
     local x, y = p[2], p[3]
     check(x >= 0 and x + (f.w or 0) <= UI.PAGE_W and y <= 0 and y - (f.h or 0) >= -AREA_H, "layout: inside the page (" .. tostring(f.label or f.text or f.kind) .. " at " .. x .. ", " .. y .. ", " .. tostring(f.w) .. " wide)")
   end
@@ -1042,7 +1149,8 @@ const FILES = ['CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.
   'CRT_Core/Comm.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Setup.lua', 'CRT_Modules/Interrupts/Data.lua', 'CRT_Modules/Interrupts/Anchor.lua',
   'CRT_Modules/Interrupts/Comm.lua', 'CRT_Modules/Interrupts/Page.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua',
   'CRT_Modules/Notes/EditModel.lua', 'CRT_Modules/Interrupts/NoteBlock.lua', 'CRT_Modules/Interrupts/PageGrid.lua', 'CRT_Modules/Interrupts/SetupEditor.lua',
-  'CRT_Dev/Dev/KickSetupExport.lua', 'CRT_Modules/Notes/Palette.lua', 'CRT_Modules/Interrupts/PagePalette.lua', 'CRT_Modules/Interrupts/WhoWindow.lua', 'CRT_Core/MarkerText.lua'];
+  'CRT_Dev/Dev/KickSetupExport.lua', 'CRT_Modules/Notes/Palette.lua', 'CRT_Modules/Interrupts/PagePalette.lua', 'CRT_Modules/Interrupts/WhoWindow.lua', 'CRT_Core/MarkerText.lua',
+  'CRT_Core/Macros.lua', 'CRT_Core/UI/MacroSet.lua', 'CRT_Modules/Interrupts/Macros.lua'];
 lua.lua_checkstack(L, FILES.length + 4); // more sources than Lua's default stack room
 for (const f of FILES) {
   const p = path.join(dir, f);

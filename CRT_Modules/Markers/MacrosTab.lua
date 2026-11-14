@@ -8,11 +8,12 @@ local ADDON, CRT = ...
 --   Right   Marker display: a small live copy of the boss's display, drawn from its own settings with
 --           Markers.Geometry, and what it does (slots, layout, fill order, what clears it). Test markers starts the
 --           display's test (Markers:Test), which listens to /say, party and raid chat; Stop test ends it
---   Bottom  Your macros: the Marker calls set (Markers/Macros.lua, made by CRT.Macros), one icon per marker with
---           its name, body and state. An icon not made yet makes just that macro when clicked; Generate all macros
---           makes the rest (and rewrites ours a newer version changed); Remove macros deletes only ours, after asking.
---           A made icon drags straight to an action bar (Macros:Pickup puts the macro on the cursor)
--- While this tab's test runs, clicking an icon sends its marker code to /say instead (C_ChatInfo.SendChatMessage,
+--   Bottom  Your macros: the Marker calls set (Markers/Macros.lua, made by CRT.Macros) in the shared block,
+--           UI.MacroSet (CRT_Core/UI/MacroSet.lua, also on Interrupts > Macros): one icon per marker with its name,
+--           body and state; a click makes a missing one or removes one of ours; Generate all macros, Remove macros;
+--           a made icon drags straight to an action bar
+-- While this tab's test runs, clicking an icon sends its marker code to /say instead, through the block's onClick
+-- hook (C_ChatInfo.SendChatMessage,
 -- else the global SendChatMessage; SAY needs a hardware event in the open world, which a click is), so the display
 -- fills without a group: the macros' /raid only reaches a raid group. Never in combat.
 
@@ -38,15 +39,12 @@ local TEXT = {
     macros = "Your macros",
     macrosHelp = {
         "One macro per raid marker, CRT Star to CRT Skull. Each sends its marker to raid chat (/raid {rt1}), where the marker display reads it. Drag a made one from here straight to your action bars.\n\n"
-            .. "Click a marker that isn't made yet to make just that one.",
+            .. "Click a marker to make just that one. Click it again to remove it.",
         { "Generate all macros", "makes all eight. They go in General Macros, for all your characters. When General Macros is full they go in this character's macros. When both are too full, nothing is made and chat says how many to free." },
         { "Remove macros", "deletes only the macros the addon made. A macro you edited or renamed, or your own with the same name, is never changed." },
         "Not in combat: the game doesn't let addons change macros during a fight.",
     },
-    generate = "Generate all macros",
-    remove = "Remove macros",
-    removeAsk = "Remove the %s macros the addon made? Macros you edited or renamed stay.",
-    combat = "Not in combat: the game doesn't let addons change macros during a fight.",
+    sayTip = "Click to send %s to /say for the test.",
     sayCombat = "Not in combat: the test's /say waits until the fight ends.",
     preview = "Preview marker display",
     previewTip = "Shows the marker display on screen with sample markers so you can drag it into place.",
@@ -65,15 +63,12 @@ local FACTS_W = UI.PAGE_W - 8 - FACTS_X
 local TOP_ROW_Y = -8 -- the boss list, and the display's preview button over the right column
 local COLUMNS_TOP = -48
 local MACROS_TOP = -284
-local CELL_W = math.floor((UI.PAGE_W - 16) / 8)
-local ICON = 36
 
 local tab
 local boss -- the encounter ID picked
 local testBoss -- the boss whose display this tab's test runs
 local controls = {}
 local preview = { cells = {}, lines = {} }
-local cells = {}
 
 local function makeButton(parent, label)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
@@ -304,15 +299,6 @@ end
 
 -- The macros ---------------------------------------------------------------------------------------------------
 
-local function run(action, name)
-    local ok, message = Macros[action](Macros, SET, name)
-    if message then
-        CRT:Print(message)
-    end
-    refresh()
-    return ok
-end
-
 -- Sends a macro's marker code to /say, for the test: out of combat, from a click.
 local function sayMarker(def)
     local code = def.body:match("{[^{}]+}")
@@ -330,179 +316,26 @@ local function sayMarker(def)
     end
 end
 
--- A macro's state, in words and colour, from its Status entry.
-local function stateText(e)
-    if e.state == "ours" then
-        local where = e.perCharacter and " (this character)" or ""
-        if e.outdated then
-            return UI.WarnText("Out of date" .. where)
-        end
-        return UI.GoodText("Made" .. where)
-    elseif e.state == "changed" then
-        return UI.WarnText("Changed by you")
-    elseif e.state == "conflict" then
-        return UI.BadText("Blocked by your own")
-    end
-    return "Not made"
-end
-
-local function cellTooltip(cell)
-    local e = cell.entry
-    if not e then
-        return
-    end
-    UI.TooltipOwner(GameTooltip, cell.button, "ANCHOR_TOP")
-    GameTooltip:SetText(e.def.name, 1, 1, 1)
-    GameTooltip:AddLine(e.def.body, 0.85, 0.85, 0.85)
-    if testingHere() then
-        GameTooltip:AddLine("Click to send " .. (e.def.body:match("{[^{}]+}") or "it") .. " to /say for the test.", 0.85, 0.85, 0.85, true)
-    elseif e.state == "missing" then
-        GameTooltip:AddLine("Not made yet. Click to make this macro.", 0.85, 0.85, 0.85, true)
-        if Macros:InCombat() then
-            GameTooltip:AddLine(TEXT.combat, 1, 0.55, 0.1, true)
-        end
-    elseif e.state == "ours" then
-        GameTooltip:AddLine((e.perCharacter and "In this character's macros." or "In General Macros, for all your characters.") .. " Drag it to an action bar.", 0.85, 0.85, 0.85, true)
-    elseif e.state == "changed" then
-        GameTooltip:AddLine("You edited this macro, so the addon leaves it as it is.", 0.85, 0.85, 0.85, true)
-    else
-        GameTooltip:AddLine("You have your own macro with this name, so the addon doesn't make one.", 0.85, 0.85, 0.85, true)
-    end
-    GameTooltip:Show()
-end
-
-local function makeCell(i)
-    local x = 8 + (i - 1) * CELL_W
-    local cell = {}
-    local b = CreateFrame("Button", nil, tab)
-    b:SetSize(ICON, ICON)
-    b:SetPoint("TOP", tab, "TOPLEFT", x + CELL_W / 2, MACROS_TOP - 24)
-    b.icon = b:CreateTexture(nil, "ARTWORK")
-    b.icon:SetAllPoints()
-    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-    b.check = b:CreateTexture(nil, "OVERLAY")
-    b.check:SetSize(16, 16)
-    b.check:SetPoint("BOTTOMRIGHT", 4, -4)
-    b.check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-    cell.button = b
-    cell.name = tab:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    cell.name:SetPoint("TOP", b, "BOTTOM", 0, -4)
-    cell.name:SetWidth(CELL_W - 6)
-    cell.name:SetWordWrap(false)
-    cell.body = tab:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    cell.body:SetPoint("TOP", cell.name, "BOTTOM", 0, -2)
-    cell.body:SetWidth(CELL_W - 6)
-    cell.body:SetWordWrap(false)
-    UI.Tint(cell.body, "SetTextColor", "muted")
-    cell.state = tab:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    cell.state:SetPoint("TOP", cell.body, "BOTTOM", 0, -2)
-    cell.state:SetWidth(CELL_W - 6)
-    cell.state:SetWordWrap(false)
-    b:SetScript("OnClick", function()
-        local e = cell.entry
-        if not e then
-            return
-        end
-        if testingHere() then
-            sayMarker(e.def)
-        elseif e.state == "missing" then
-            run("Create", e.def.name)
-        end
-    end)
-    -- a made macro drags onto an action bar: the game's cursor carries it, as from its own macro window
-    b:RegisterForDrag("LeftButton")
-    b:SetScript("OnDragStart", function()
-        local e = cell.entry
-        if not e then
-            return
-        end
-        GameTooltip:Hide()
-        local _, message = Macros:Pickup(SET, e.def.name)
-        if message then
-            CRT:Print(message)
-        end
-    end)
-    b:SetScript("OnEnter", function()
-        cellTooltip(cell)
-    end)
-    b:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-    cells[i] = cell
-    return cell
-end
-
+-- Your macros: the shared block (UI.MacroSet), with this tab's test in its hooks: while the test runs, a click sends
+-- the marker to /say and the tooltip says so.
 local function buildMacros()
-    heading(LEFT_X, MACROS_TOP, TEXT.macros, TEXT.macros, TEXT.macrosHelp)
-    for i = 1, 8 do
-        makeCell(i)
-    end
-    local generate = makeButton(tab, TEXT.generate)
-    generate:SetPoint("TOPLEFT", LEFT_X, MACROS_TOP - 24 - ICON - 62)
-    generate:SetScript("OnClick", function()
-        run("Create")
-        local st = Macros:Status(SET)
-        if st and st.outdated > 0 then
-            run("Update")
-        end
-    end)
-    local remove = makeButton(tab, TEXT.remove)
-    remove:SetPoint("LEFT", generate, "RIGHT", 6, 0)
-    remove:SetScript("OnClick", function()
-        local st = Macros:Status(SET)
-        UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation({
-            text = TEXT.removeAsk,
-            text_arg1 = st and st.label or SET,
-            acceptText = TEXT.remove,
-            cancelText = CANCEL,
-            showAlert = true,
-            callback = function()
-                run("Remove")
-            end,
-        }), "GENERIC_CONFIRMATION"))
-    end)
-    local status = tab:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    status:SetPoint("LEFT", remove, "RIGHT", 12, 0)
-    status:SetPoint("RIGHT", tab, "RIGHT", -8, 0)
-    status:SetJustifyH("LEFT")
-    status:SetWordWrap(false)
-
-    local macros = { generate = generate, remove = remove, status = status }
-    macros.refresh = function()
-        local st = Macros:Status(SET)
-        local free = not Macros:InCombat()
-        generate:SetEnabled(free)
-        remove:SetEnabled(free)
-        if not st then
-            status:SetText("")
-            return
-        end
-        local text = Macros:StatusText(SET)
-        if #st.changed > 0 or #st.conflicts > 0 or st.outdated > 0 then
-            text = UI.WarnText(text)
-        elseif st.created == st.total then
-            text = UI.GoodText(text)
-        end
-        status:SetText(text == "none" and "None made yet." or text)
-        for i, cell in ipairs(cells) do
-            local e = st.entries[i]
-            cell.entry = e
-            cell.button:SetShown(e ~= nil)
-            if e then
-                cell.button.icon:SetTexture(e.def.icon)
-                -- a macro of that name is in the list (ours, edited, or the player's own): a check, and its state
-                cell.button.icon:SetDesaturated(e.state == "missing")
-                cell.button.check:SetShown(e.state ~= "missing")
-                cell.name:SetText(e.def.name)
-                cell.body:SetText(e.def.body)
-                cell.state:SetText(stateText(e))
-            else
-                cell.name:SetText("")
-                cell.body:SetText("")
-                cell.state:SetText("")
+    local macros = UI.MacroSet(tab, SET, {
+        x = LEFT_X,
+        y = MACROS_TOP,
+        heading = TEXT.macros,
+        help = TEXT.macrosHelp,
+        onClick = function(e)
+            if testingHere() then
+                sayMarker(e.def)
+                return true
             end
-        end
-    end
+        end,
+        tip = function(e)
+            if testingHere() then
+                return string.format(TEXT.sayTip, e.def.body:match("{[^{}]+}") or "it")
+            end
+        end,
+    })
     controls[#controls + 1] = macros
 end
 

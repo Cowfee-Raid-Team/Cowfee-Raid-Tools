@@ -30,6 +30,7 @@ CRT_Core\Sound\Auras.lua
 CRT_Core\UI\Panel.lua
 CRT_Core\UI\Tooltip.lua
 CRT_Core\UI\Controls.lua
+CRT_Core\UI\MacroSet.lua
 CRT_Core\UI\Toggle.lua
 CRT_Core\UI\ScrollBar.lua
 CRT_Core\UI\Window.lua
@@ -226,6 +227,7 @@ CRT_Modules\Interrupts\Plates.lua
 CRT_Modules\Interrupts\Reminder.lua
 CRT_Modules\Interrupts\Comm.lua
 CRT_Modules\Interrupts\NoteBlock.lua
+CRT_Modules\Interrupts\Macros.lua
 CRT_Modules\Interrupts\Page.lua
 CRT_Modules\Interrupts\PageGrid.lua
 CRT_Modules\Interrupts\PagePalette.lua

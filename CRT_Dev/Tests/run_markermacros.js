@@ -8,7 +8,7 @@ const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = require('./theme_stub')(process.argv.slice(2)) + require('./placement_stub')(process.argv.slice(2)) + `
-local engineSrc, setSrc, dbSrc, displaySrc, regSrc, seasonSrc, bossSrc, tabSrc, markerTextSrc = ...
+local engineSrc, setSrc, dbSrc, displaySrc, regSrc, seasonSrc, bossSrc, tabSrc, markerTextSrc, macroSetSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
 
@@ -98,6 +98,8 @@ CRT.UI = { PAGE_W = 1026, PAGE_H = 560,
   Tint = function() end, Color = function() return 1, 1, 1, 1 end,
   HeadingText = function(s) return s end, GoodText = function(s) return "good:" .. s end, WarnText = function(s) return "warn:" .. s end, BadText = function(s) return "bad:" .. s end,
   PanelButtonWidth = function(w) return math.ceil(w) + 28 end,
+  -- Panel.lua's UI.PanelButton: the template, as wide as its label
+  PanelButton = function(parent, label, h) local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate") b:SetText(label) b:SetSize(math.ceil(b:GetFontString():GetStringWidth()) + 28, h) return b end,
   Dropdown = function(_, label, opts) local r = mock("Dropdown") r.refresh = function() end dropdowns[label] = opts return r end,
   HelpRight = function(target, title, text, opts) local b = (function(_, title, text) helps[title] = text return mock("Help") end)(opts and opts.parent or target, title, text) rawset(b, "helpTarget", target) return b end, HELP_GAP = 4, HELP_SIZE = 20, Help = function(_, title, text) helps[title] = text return mock("Help") end,
   LiftOver = function() end, ShownPopup = function(ret) return ret end,
@@ -120,6 +122,7 @@ for _, f in ipairs(frames) do if rawget(f, "events").ADDON_LOADED and rawget(f, 
 check(CRT.MarkerDisplayDB.displays[3420] ~= nil, "the registry ships Sszorak's marker display")
 check(CRT.MarkerDisplayDB.help[OTHER] == "Stand on your marker.", "the registry ships a boss file's markerHelp")
 CRT_TOOLTIP(CRT) -- UI.TooltipOwner, the real CRT_Core/UI/Tooltip.lua
+assert(load(macroSetSrc, "CRT_Core/UI/MacroSet.lua"))("CowfeeRaidTools", CRT) -- the shared Your macros block
 assert(load(tabSrc, "CRT_Modules/Markers/MacrosTab.lua"))("CowfeeRaidTools", CRT)
 local Tab = CRT.MarkerMacrosTab
 local M = CRT.MarkerDisplay
@@ -139,6 +142,7 @@ check(listed, "the Boss dropdown lists the route's bosses")
 check(Tab.Boss() == 3420, "it starts on the first boss with a marker display (Sszorak)")
 check(hasText("How it works on this boss") and hasText("Marker display") and hasText("Your macros"), "the three headings")
 check(helps["How it works on this boss"] and helps["Your macros"] and helps["Test markers"], "each heading and the test have a (?)")
+check(type(helps["Your macros"]) == "table" and type(helps["Your macros"][1]) == "string" and helps["Your macros"][1]:find("again to remove", 1, true) ~= nil, "Your macros' (?) says a second click removes it")
 check(button("Generate all macros") and button("Remove macros") and button("Test markers") and button("Stop test"), "Generate all macros, Remove macros, Test markers and Stop test")
 for _, label in ipairs({ "Generate all macros", "Remove macros", "Test markers", "Stop test" }) do
   local b = button(label)
@@ -186,8 +190,31 @@ diamond.OnClick(diamond)
 check(#account == 1 and account[1].name == "CRT Diamond", "clicking it makes just CRT Diamond")
 check(diamond.check.shown and not diamond.icon.desaturated and withText("good:Made") ~= nil, "it shows a check and Made")
 check(withText("1 of 8 created") ~= nil, "the status follows")
+-- a made one says a click removes it, and clicking it again removes just that one (#1285)
+diamond.OnEnter(diamond)
+check(table.concat(GameTooltip.lines, " "):find("Click to remove this macro", 1, true) ~= nil, "a made one's tooltip says a click removes it")
 cellButton(3).OnClick(cellButton(3))
-check(#account == 1, "clicking a made one makes nothing")
+check(#account == 0 and diamond.icon.desaturated and not diamond.check.shown, "clicking a made one removes it: greyed, no check")
+check(withText("1 of 8 created") == nil, "the status follows")
+cellButton(3).OnClick(cellButton(3))
+check(#account == 1 and account[1].name == "CRT Diamond", "clicking it again makes it again")
+-- a drag that ends on the same icon is no click: while the cursor holds something, a click toggles nothing
+GetCursorInfo = function() return "macro", 3 end
+cellButton(3).OnClick(cellButton(3))
+cellButton(4).OnClick(cellButton(4))
+check(#account == 1 and account[1].name == "CRT Diamond", "with a macro on the cursor a click neither removes nor makes one")
+GetCursorInfo = function() return nil end
+cellButton(3).OnClick(cellButton(3))
+check(#account == 0, "with an empty cursor the click works again")
+cellButton(3).OnClick(cellButton(3))
+GetCursorInfo = nil
+-- in combat a click changes nothing, and chat says why
+combat = true
+printed = {}
+cellButton(4).OnClick(cellButton(4))
+cellButton(3).OnClick(cellButton(3))
+check(#account == 1 and (printed[1] or ""):lower():find("combat", 1, true) ~= nil, "in combat a click makes and removes nothing, and says why")
+combat = false
 
 -- Generate all macros: the other seven.
 button("Generate all macros").OnClick(button("Generate all macros"))
@@ -214,7 +241,8 @@ find("CRT Moon").body = "/raid {rt5} mine"
 button("Generate all macros").OnClick(button("Generate all macros"))
 check(withText("warn:Changed by you") ~= nil and find("CRT Moon").body == "/raid {rt5} mine", "an edited macro shows Changed by you and is kept")
 check(cellButton(5).check.shown and not cellButton(5).icon.desaturated, "an edited macro still shows its check")
-
+cellButton(5).OnClick(cellButton(5))
+check(find("CRT Moon") and find("CRT Moon").body == "/raid {rt5} mine" and #account == 8, "clicking an edited macro does nothing")
 -- Remove macros asks first, then removes only ours.
 popup = nil
 button("Remove macros").OnClick(button("Remove macros"))
@@ -265,9 +293,16 @@ check(filledCell ~= nil and withText("|Tmarker1|t") == nil, "the preview shows t
 check(hasText("Solex"), "with who sent it")
 displayEvents.OnEvent(displayEvents, "CHAT_MSG_SAY", "hello there", "Solex-Area52")
 check(#M:Filled() == 1, "a /say with no marker code fills nothing")
+-- a made macro while testing: the click sends to /say and leaves the macro made
+CRT.Macros:Create("markers", "CRT Skull")
+for _, f in ipairs(frames) do if rawget(f, "events").UPDATE_MACROS and rawget(f, "OnEvent") then f.OnEvent(f, "UPDATE_MACROS") end end
+check(skull.check.shown, "CRT Skull made during the test")
+skull.OnClick(skull)
+check(#sent == 2 and sent[2].msg == "{rt8}" and find("CRT Skull") ~= nil and #account == 1, "while testing, clicking a made macro sends it to /say and keeps it")
+local sentBefore = #sent
 combat = true
 skull.OnClick(skull)
-check(#sent == 1, "in combat the click sends nothing")
+check(#sent == sentBefore, "in combat the click sends nothing")
 combat = false
 button("Stop test").OnClick(button("Stop test"))
 check(not M:Testing() and withText("|Tmarker1|t") ~= nil, "Stop test ends it and the samples come back")
@@ -276,6 +311,6 @@ print(passes .. " passed, " .. fails .. " failed")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-for (const p of ['CRT_Core/Macros.lua', 'CRT_Modules/Markers/Macros.lua', 'CRT_Modules/Markers/Database.lua', 'CRT_Modules/Markers/Display.lua', 'CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Dev/Tests/SamplePack/Sszorak.lua', 'CRT_Modules/Markers/MacrosTab.lua', 'CRT_Core/MarkerText.lua'])
-  lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
-if (lua.lua_pcall(L, 9, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const p of ['CRT_Core/Macros.lua', 'CRT_Modules/Markers/Macros.lua', 'CRT_Modules/Markers/Database.lua', 'CRT_Modules/Markers/Display.lua', 'CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Dev/Tests/SamplePack/Sszorak.lua', 'CRT_Modules/Markers/MacrosTab.lua', 'CRT_Core/MarkerText.lua', 'CRT_Core/UI/MacroSet.lua'])
+  lua.lua_pushstring(L, to_luastring(fs.existsSync(d + '/' + p) ? fs.readFileSync(d + '/' + p, 'utf8') : 'error("missing ' + p + '")'));
+if (lua.lua_pcall(L, 10, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
