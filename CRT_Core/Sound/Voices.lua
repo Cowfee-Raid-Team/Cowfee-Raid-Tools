@@ -28,16 +28,20 @@ Sound.TTS_VOICE = "tts"
 Sound.VOICE_WORDS = {
     "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "5seconds321",
     "Adds", "Beam", "Blue", "Bomb", "Boss", "Bouncer", "Break", "Charge", "Cleaner", "Clear", "Collect",
-    "Debuff", "Dispel", "Done", "DropPool", "East", "Entertainer", "Feather", "Fire", "Fixate", "Frost",
-    "Fung", "Gate", "Green", "HealAbsorb", "Hide", "Interrupt", "Left", "Light", "Linked", "Macro",
-    "MindControl", "Moon", "Move", "Next", "North", "Obelisk", "Orange", "Orb", "Purple", "Ranged", "Red",
-    "Right", "Root", "Run-Out", "Rune", "Safe", "Server", "Shroom", "Skull", "Soak", "South", "Spread",
-    "Stack", "Suck", "Targeted", "Void", "West", "Yellow",
+    "DamageAmp", "Debuff", "Debuffs", "Dispel", "Done", "DropPool", "East", "Eggs", "Entertainer", "Feather",
+    "Fire", "Fixate", "Frontal", "Frost", "Fung", "Gate", "GhostsInterrupt", "Green", "HealAbsorb", "Hide",
+    "HitKnock", "Interrupt", "Left", "Light", "Linked", "Macro", "MindControl", "MindControls", "Moon", "Move",
+    "Next", "North", "Obelisk", "Orange", "Orb", "OrbDeadline", "PlatformBreak", "Pre-Pot", "Purple", "Ranged",
+    "Red", "Right", "Root", "Run-Out", "Rune", "Safe", "Server", "Shield", "Shroom", "Skull", "Soak", "South",
+    "Spread", "Stack", "Submerge", "Suck", "Sweep", "Targeted", "TauntSwap", "Void", "Waves", "West", "Yellow",
 }
 
 -- A word's label in the sound lists when splitting its name isn't enough (DropPool reads "Drop pool" by itself).
 Sound.VOICE_LABELS = {
     ["5seconds321"] = "5 seconds, 3 2 1",
+    ["GhostsInterrupt"] = "Ghosts (interrupt)",
+    ["HitKnock"] = "Hit + knock",
+    ["Pre-Pot"] = "Pre-pot",
 }
 
 -- The voices, in the order the lists show them. lacks: words this voice has no clip for. seconds: each clip's
@@ -57,6 +61,9 @@ Sound.VOICES = {
             ["Run-Out"] = 1.12, Rune = 1.07, Safe = 0.91, Server = 0.97, Shroom = 1.10, Skull = 1.07, Soak = 1.02,
             South = 1.02, Spread = 1.07, Stack = 0.99, Suck = 0.91, Targeted = 1.07, Void = 1.07, West = 0.99,
             Yellow = 1.07,
+            Shield = 1.02, Frontal = 1.18, TauntSwap = 1.36, Debuffs = 1.33, MindControls = 1.85, Waves = 1.23,
+            Sweep = 1.12, Submerge = 1.38, ["Pre-Pot"] = 1.23, PlatformBreak = 1.62, OrbDeadline = 1.78,
+            HitKnock = 1.75, GhostsInterrupt = 2.09, Eggs = 0.97, DamageAmp = 1.54,
         },
     },
     {
@@ -73,7 +80,11 @@ Sound.VOICES = {
             ["Run-Out"] = 1.02, Rune = 0.68, Safe = 0.81, Server = 0.78, Shroom = 0.86, Skull = 0.78, Soak = 0.81,
             South = 0.78, Spread = 0.84, Stack = 0.84, Suck = 0.76, Targeted = 0.89, Void = 0.81, West = 0.73,
             Yellow = 0.68,
+            Shield = 0.81, Frontal = 0.99, TauntSwap = 1.15, Debuffs = 1.02, MindControls = 1.41, Waves = 0.97,
+            Sweep = 0.89, Submerge = 1.07, PlatformBreak = 1.25,
         },
+        -- not recorded yet: these are read by text to speech
+        lacks = { "Pre-Pot", "OrbDeadline", "HitKnock", "GhostsInterrupt", "Eggs", "DamageAmp" },
     },
 }
 
@@ -104,6 +115,8 @@ local function wordLabel(word)
     local spaced = word:gsub("%-", " "):gsub("(%l)(%u)", "%1 %2")
     return spaced:sub(1, 1) .. spaced:sub(2):lower()
 end
+
+Sound.WordLabel = wordLabel
 
 local byKey = {}
 for _, voice in ipairs(Sound.VOICES) do
@@ -171,7 +184,7 @@ local function listed(items)
 end
 
 -- For the (?) texts, read from the table each time: the voices' names as shown ("Male01 and Female01"), a line per
--- voice that lacks words ("Female01 has no Void, West or Yellow, ..."; none does now), and that clips take no volume.
+-- voice that lacks words ("Female01 has no Pre-pot, Eggs or Damage amp, ..."), and that clips take no volume.
 function Sound:VoiceNames()
     local names = {}
     for _, voice in ipairs(Sound.VOICES) do
@@ -183,7 +196,10 @@ end
 function Sound:VoiceLacks()
     local lines = {}
     for _, voice in ipairs(Sound.VOICES) do
-        local lacks = voice.lacks or {}
+        local lacks = {}
+        for i, w in ipairs(voice.lacks or {}) do
+            lacks[i] = wordLabel(w)
+        end
         if #lacks > 0 then
             local words = #lacks < 2 and lacks[1]
                 or string.format(TEXT.listOr, table.concat(lacks, ", ", 1, #lacks - 1), lacks[#lacks])
