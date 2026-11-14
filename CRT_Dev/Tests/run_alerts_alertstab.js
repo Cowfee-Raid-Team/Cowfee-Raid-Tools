@@ -149,7 +149,7 @@ rawset(CRTFontLarge, "fontPath", "Fonts\\\\ARIALN.TTF") rawset(CRTFontLarge, "fo
 local spoken = {}
 -- CRT_Core/Sound/Voices.lua's two reads, as the Voice dropdown uses them
 VOICE_CHOICES = { { key = "xavier", label = "Xavier (Male01)" }, { key = "lola", label = "Lola (Female01)" }, { key = "tts", label = "Text to speech" } }
-CRT.Sound = { VoiceChoices = function() return VOICE_CHOICES end,
+CRT.Sound = { VOICE_TEST = "Cowfee Raid Tools", VoiceChoices = function() return VOICE_CHOICES end,
   VoiceKey = function() return (CRT.db and CRT.db.sound and CRT.db.sound.voice) or "xavier" end }
 CRT.AlertSpeech = { SpeakNow = function(_, text) spoken[#spoken + 1] = text end }
 
@@ -665,7 +665,7 @@ check("callout: Read them out is notes.alert.tts, the left column's switch, and 
   assert(rate.min == -10 and rate.max == 10, "the game's rate range")
   alertSettings.ttsSeconds, alertSettings.ttsVolume, alertSettings.ttsRate = 3, 100, 0
   click(calloutRow("Test speech"))
-  assert(#spoken == 1, "Test speech speaks")
+  assert(#spoken == 1 and spoken[1] == CRT.Sound.VOICE_TEST and spoken[1] == "Cowfee Raid Tools", "Test speech says the shared test line")
   assert(#errors == 0, tostring(errors[1]))
 end)
 

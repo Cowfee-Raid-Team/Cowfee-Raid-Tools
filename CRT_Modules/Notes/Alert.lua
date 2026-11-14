@@ -39,7 +39,6 @@ local TEXT = {
     volumeHelp = "How loud the game's text to speech reads. A voice's clips (Quality of Life > Sounds) play at your sound channel's volume (General Settings > Appearance > Sound channel) instead: the game takes no volume for them.",
     rate = "Speech rate",
     testSpeech = "Test speech",
-    testPhrase = "Cowfee Raid Tools. Avenging Wrath in three.",
 }
 
 local REFRESH_SECONDS = 0.1
@@ -442,7 +441,7 @@ local function panelRows(panel, s)
         set = set("ttsRate"),
     })
     panel:Button(TEXT.testSpeech, function()
-        Alert:Speak(TEXT.testPhrase)
+        Alert:Speak(CRT.Sound.VOICE_TEST)
     end)
 end
 

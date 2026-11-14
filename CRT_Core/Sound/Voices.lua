@@ -24,6 +24,12 @@ local Sound = CRT.Sound
 Sound.DEFAULT_VOICE = "xavier"
 Sound.TTS_VOICE = "tts"
 
+-- What both Test buttons say (Raid Notes' Test speech, Quality of Life > Sounds' Test). Its clip key is
+-- CowfeeRaidTools (WordKey "cowfeeraidtools"). No clip is recorded yet, so the line is read by text to speech.
+-- A clip named CowfeeRaidTools.mp3 in each voice's folder, plus its VOICE_WORDS and seconds entries, makes the
+-- test speak in that voice, with no other change.
+Sound.VOICE_TEST = "Cowfee Raid Tools"
+
 -- Every word with a clip, as the file is named.
 Sound.VOICE_WORDS = {
     "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "5seconds321",
