@@ -481,7 +481,7 @@ const slash = read('CRT_Core/Slash.lua');
 const slashDev = slash.slice(slash.indexOf('--@do-not-package@'), slash.indexOf('--@end-do-not-package@'));
 if (!slashDev.includes('CRT.BattleResProbe:Command(msg)')) { console.log('FAIL /crt dev brez is not in Slash.lua\'s do-not-package block'); srcFails++; }
 const page = read('CRT_Modules/QoL/Page.lua');
-if (!/\{ key = "brez", label = "Battle res" \},\s*\{ key = "sounds"/.test(page)) { console.log('FAIL the Battle res tab is missing from Quality of Life'); srcFails++; }
+if (!/\{ key = "brez", label = "Battle res" \},\s*\{ key = "combatlog", label = "Combat log" \},\s*\{ key = "sounds"/.test(page)) { console.log('FAIL the Battle res tab is missing from Quality of Life'); srcFails++; }
 for (const k of ['UI.Dropdown(pf, TEXT.brezShow', 'UI.Slider(pf, TEXT.brezSize', 'UI.PreviewButton(pf, TEXT.brezPreview, { "battleres" }', 'UI.HelpRight(enable.label', 'checkRow(pf, 6, top - 66, TEXT.brezGroupOnly)', 'UI.HelpRight(show, TEXT.brezShow, {']) {
   if (!page.includes(k)) { console.log('FAIL the Battle res tab lacks ' + k); srcFails++; }
 }

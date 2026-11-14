@@ -80,6 +80,9 @@ Profiles.SHARE = {
         },
         breakTimer = true,
         battleRes = true, -- the battle res icon's settings and place
+        -- automatic combat logging: the ticks travel; Log combat automatically turns on a game setting and writes files
+        -- on the raider's computer, so each raider opts in themselves (Alex, 2026-11-14: the master defaults off)
+        combatLog = { enabled = false, raid = true, dungeon = true, stopOnLeave = true, announce = true },
     },
     loot = true, -- Loot History's settings only (the history is in CRTLootDB), Tooltip position and spot among them
     lootmaster = {

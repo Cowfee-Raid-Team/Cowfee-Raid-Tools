@@ -256,6 +256,10 @@ local defaults = {
         -- (always: the key is kept from when it meant always in a raid), anywhere; groupOnly hides it while solo; timer
         -- shows the time to the next charge; size is a percent, 50 to 200. position once it is moved.
         battleRes = { enabled = false, show = "boss", groupOnly = false, timer = true, size = 100 },
+        -- Automatic combat logging (QoL/CombatLog.lua): enabled is the master tick (off: raiders opt in); raid and
+        -- dungeon hold the ticks per difficulty (dungeon.normal covers Heroic and Normal dungeons); stopOnLeave stops
+        -- a log CRT started when you leave; announce says in chat when logging starts or stops.
+        combatLog = { enabled = false, raid = { lfr = true, normal = true, heroic = true, mythic = true }, dungeon = { keys = true, mythic = false, normal = false }, stopOnLeave = true, announce = true },
     },
     -- Loot History's settings (the records are in CRTLootDB, Loot/Store.lua): minQuality (3 rare, 4 epic,
     -- 5 legendary), dungeons (record dungeon bosses too), keepMonths (0 keeps everything), rcEnrich

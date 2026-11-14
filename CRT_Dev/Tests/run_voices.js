@@ -581,6 +581,7 @@ CRT.UI = {
 CRT.LowHealth = {}
 CRT.LowHealthSound = { Choices = function() return {} end, Outputs = {}, StopPreview = function() end }
 CRT.DebuffsPage = { Build = function() end }
+CRT.CombatLogTab = { Build = function() end }
 CRT.BreakFormats = { FORMATS = {} }
 assert(load(pageSrc, "@page"))("CowfeeRaidTools", CRT)
 check("QoL page registers", build ~= nil)

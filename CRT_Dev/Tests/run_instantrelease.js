@@ -276,6 +276,7 @@ CRT.UI = {
 CRT.LowHealth = {}
 CRT.LowHealthSound = { StopPreview = function() end }
 CRT.DebuffsPage = { Build = function() end }
+CRT.CombatLogTab = { Build = function() end }
 CRT.BreakFormats = { FORMATS = {} }
 CRT.Sound = { VoiceChoices = function() return {} end, VoiceKey = function() return "tts" end, CustomFiles = function() return {} end }
 CRT.db.sound = {}
@@ -283,7 +284,7 @@ assert(load(pageSrc, "@Page.lua"))("CowfeeRaidTools", CRT)
 build(mock())
 local labels = {}
 for _, b in ipairs(tabs) do labels[#labels + 1] = tostring(b.text and rawget(b.text, "text")) end
-check("Quality of Life has its five tabs, no Settings", table.concat(labels, ",") == "Low health,Debuffs,Break timer,Battle res,Sounds", table.concat(labels, ","))
+check("Quality of Life has its six tabs, no Settings", table.concat(labels, ",") == "Low health,Debuffs,Break timer,Battle res,Combat log,Sounds", table.concat(labels, ","))
 local box = false
 for _, h in ipairs(helps) do if tostring(h.title):find("elease", 1, true) then box = true end end
 check("and no release box or (?)", not box and not pageSrc:find("autoRelease", 1, true))
