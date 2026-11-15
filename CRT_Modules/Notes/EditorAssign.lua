@@ -19,7 +19,8 @@ local ADDON, CRT = ...
 --   EA.Toggle()      Add assignment: opens the view (on the row selected for Quick fill's block, if it is one), or
 --                    closes it
 --   EA.Refresh()     redraws it from the session
---   EA.RefreshBanner(width, top, hide)   the banner's height (0 hidden), under the Link banner; hide: for want of room
+--   EA.RefreshBanner(width, top, hide, again)   the banner's height (0 hidden), under the Link banner; hide: for want
+--                    of room; again: drawn once more in the same Refresh, the group lists as found
 --   EA.Close()       back to the rows
 
 local UI = CRT.UI
@@ -647,7 +648,7 @@ function EA.BuildBanner(left)
     A.banner = b
 end
 
-function EA.RefreshBanner(width, top, hide)
+function EA.RefreshBanner(width, top, hide, again)
     local b = A.banner
     local s = W.session
     if not b then
@@ -657,7 +658,9 @@ function EA.RefreshBanner(width, top, hide)
         b:Hide()
         return 0
     end
-    A.candidates = s and not s.readOnly and not W.assignOn and Assign.Candidates(s:Text(), CRT.NoteLinks.Saved(noteKey())) or {}
+    if not (again and A.candidates) then
+        A.candidates = s and not s.readOnly and not W.assignOn and Assign.Candidates(s:Text(), CRT.NoteLinks.Saved(noteKey())) or {}
+    end
     local d = A.dismissed
     if #A.candidates == 0 or (d and d.key == noteKey() and d.text == s:Text()) then
         b:Hide()

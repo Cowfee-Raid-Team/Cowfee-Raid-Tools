@@ -1451,50 +1451,46 @@ do
 end
 print("ok a group list named like a block: Update block in place, no copy, its own dropdown label, refused when the block went")
 
--- 12d. #1288: the note check's banner: double callouts, a missing cast, a line no row lists; Remove old lines (asked
--- first), Add missing casts, Not now; hidden read-only and while Add assignment is open
+-- 12d. #1288: the note check's banner: double callouts, a line no row lists; Remove old lines (asked first, every line
+-- listed, alike lines grouped), Not now; hidden read-only and while Add assignment is open; no warning for a block
+-- cast with no lines (Alex, 2026-11-15)
 do
   local EC = CRT.NoteEditorCheck
   assert(EC and EC.state, "CRT.NoteEditorCheck")
   W.session = nil
   W.window:Hide()
-  local T2 = { { ph = 1, t = 30 }, { ph = 1, t = 90 } }
-  local blk = table.concat(Assign.Lines({ name = "Orbs", times = T2, rows = { { label = "{cross} orb", text = "", tokens = { "Abu" }, casts = { 1 } } } }, T2), "\\n")
-  local note = "EncounterID:3470;Difficulty:Mythic;Name:Check One\\n" .. blk
-    .. "\\ntime:30;ph:1;tag:Abu;text:Grab {cross} orb;colors:1 0 0 1;\\ntime:60;ph:1;tag:Quinn;text:Use a defensive;"
+  local T4 = { { ph = 1, t = 30 }, { ph = 1, t = 90 }, { ph = 1, t = 150 }, { ph = 3, t = 20 } }
+  local blk = table.concat(Assign.Lines({ name = "Orbs", times = T4, rows = { { label = "{cross} orb", text = "", tokens = { "Abu" }, casts = { 1, 2, 3 } } } }, T4), "\\n")
+  local old = { "time:30;ph:1;tag:Abu;text:Grab {cross} orb;colors:1 0 0 1;", "time:90;ph:1;tag:Abu;text:Grab {cross} orb;colors:1 0 0 1;",
+    "time:150;ph:1;tag:Abu;text:Grab {cross} orb;colors:1 0 0 1;", "time:20;ph:3;tag:Rixxy;text:Grab {cross} orb;" }
+  local note = "EncounterID:3470;Difficulty:Mythic;Name:Check One\\n" .. blk .. "\\n" .. table.concat(old, "\\n")
+    .. "\\ntime:60;ph:1;tag:Quinn;text:Use a defensive;"
   local nid = Notes:Import(note)
   assert(Editor.Open({ id = nid }), "opened")
   local b = EC.state.banner
   assert(b and b.shown and b.title:GetText() == "Note check", "the banner on opening")
-  assert(b.doubles.text.shown and b.doubles.text:GetText():find("1 double callout: a player gets two callouts at once.", 1, true), "doubles: " .. b.doubles.text:GetText())
-  assert(b.missing.text:GetText():find("1 missing cast", 1, true) and b.orphans.text:GetText():find("1 line for a player no group row lists.", 1, true), "missing and orphans")
-  assert(b.doubles.button.shown and b.missing.button.shown and b.orphans.button == nil, "Remove old lines and Add missing casts; the orphans have no button")
-  assert(b.doubles.button:GetText() == "Remove old lines" and b.missing.button:GetText() == "Add missing casts", "the buttons' labels")
-  -- each (?) lists them
+  assert(b.doubles.text.shown and b.doubles.text:GetText():find("3 double callouts: a player gets two callouts at once.", 1, true), "doubles: " .. b.doubles.text:GetText())
+  assert(b.orphans.text:GetText():find("1 line for a player no group row lists.", 1, true), "orphans")
+  assert(rawget(b, "missing") == nil, "no missing casts line: the block's P3 cast with no lines is deliberate")
+  assert(b.doubles.button.shown and b.doubles.button:GetText() == "Remove old lines" and b.orphans.button == nil, "Remove old lines; the orphans have no button")
+  -- each (?) lists them; every old line, alike lines in one group
   local function tip(k) local t = rawget(k.help, "helpText") return CRT.UI.TooltipPlain(t) end
   local dt = tip(b.doubles)
   assert(dt:find("P1 0:30 Abu: ", 1, true) and dt:find("Remove old lines takes out these lines", 1, true), "doubles tip: " .. dt)
-  -- every line Remove old lines takes, with its time, names and text
-  assert(select(2, dt:gsub("P1 0:30 Abu: [^\\n]*Grab ", "")) == 2, "the double and the old line listed: " .. dt)
-  assert(tip(b.missing):find("Orbs: cast 2 (P1 1:30)", 1, true) and tip(b.missing):find("on the rows set to every cast", 1, true), tip(b.missing))
+  assert(dt:find("Abu: [^\\n]*, 3 lines %(P1 0:30 to 2:30%)") and dt:find("Rixxy: [^\\n]*, 1 line %(P3 0:20%)"), "grouped: " .. dt)
   assert(tip(b.orphans):find("P1 1:00 Quinn: Use a defensive", 1, true), tip(b.orphans))
-  -- Remove old lines: asked first, nothing changes until it is accepted
+  -- Remove old lines: asked first with the same list, nothing changes until it is accepted
   confirm = nil
   b.doubles.button.scripts.OnClick(b.doubles.button)
-  assert(confirm and confirm.text:find("Take 1 old line out of the note? An Assign block replaced it:\\nP1 0:30 Abu: ", 1, true) and confirm.text:find("Grab ", 1, true)
-    and confirm.acceptText == "Remove", "the confirm lists the line: " .. tostring(confirm and confirm.text))
+  assert(confirm and confirm.text:find("Take 4 old lines out of the note? An Assign block replaced them:\\n", 1, true)
+    and confirm.text:find("Abu: [^\\n]*, 3 lines %(P1 0:30 to 2:30%)") and confirm.text:find("Rixxy: [^\\n]*, 1 line %(P3 0:20%)")
+    and confirm.acceptText == "Remove", "the confirm lists every line: " .. tostring(confirm and confirm.text))
   assert(W.session:Text() == note, "nothing changed yet")
   confirm.callback()
   local t = W.session:Text()
-  assert(not t:find("Grab {cross} orb", 1, true) and t:find("Use a defensive", 1, true), "the old line out: " .. t)
-  assert(W.status:GetText():find("Removed 1 old line.", 1, true) and W.save:IsEnabled(), "said, unsaved: " .. W.status:GetText())
-  assert(not b.doubles.text.shown and b.missing.text.shown, "no double left")
-  -- Add missing casts: the block's line for cast 2
-  b.missing.button.scripts.OnClick(b.missing.button)
-  t = W.session:Text()
-  assert(t:find("time:90;ph:1;tag:Abu;text:{cross} orb;assign:orbs/1/2;", 1, true), "cast 2 written: " .. t)
-  assert(W.status:GetText():find("Added the missing casts.", 1, true), W.status:GetText())
-  assert(b.shown and not b.missing.text.shown and b.orphans.text.shown, "only the orphan line left")
+  assert(not t:find("Grab {cross} orb", 1, true) and t:find("Use a defensive", 1, true), "the old lines out: " .. t)
+  assert(W.status:GetText():find("Removed 4 old lines.", 1, true) and W.save:IsEnabled(), "said, unsaved: " .. W.status:GetText())
+  assert(b.shown and not b.doubles.text.shown and b.orphans.text.shown, "only the orphan line left")
   -- Not now: hidden until the text changes
   b.later.scripts.OnClick(b.later)
   assert(not b.shown, "Not now")
@@ -1515,19 +1511,28 @@ do
   local roomy = W.bannerH
   W.rawShown = true
   rawset(W.left, "height", 340)
+  Editor.Refresh() -- the check worked out for this text
+  -- every step down only draws again: the links and the group lists are worked out once per Refresh
+  local L2, A2 = CRT.NoteLinks, Assign
+  local match, cands = L2.Match, A2.Candidates
+  local nMatch, nCands = 0, 0
+  L2.Match = function(...) nMatch = nMatch + 1 return match(...) end
+  A2.Candidates = function(...) nCands = nCands + 1 return cands(...) end
   Editor.Refresh()
+  L2.Match, A2.Candidates = match, cands
+  -- (the Link banner's match, and the one inside Candidates)
+  assert(nCands == 1 and nMatch == 2, "once each: " .. nMatch .. " Match, " .. nCands .. " Candidates")
   local room = 340 - 66 - (150 + 6)
   assert(W.bannerH <= room and W.bannerH < roomy, "the banners fit over the rows: " .. W.bannerH .. " of " .. room)
   assert(W.banner.shown, "the Link banner always shows")
-  local short = b.shown and b.short.shown
-  assert(not b.shown or short, "the note check short, or waiting")
+  assert(not b.shown or b.short.shown, "the note check short, or waiting")
   -- a bit more room: the check comes back short
-  rawset(W.left, "height", 450)
+  rawset(W.left, "height", 430)
   Editor.Refresh()
-  assert(b.shown and b.short.shown and not b.title.shown and b.short:GetText():find("Note check: 1 double, 1 old, 1 missing cast, 1 no row.", 1, true),
-    "short: " .. tostring(b.short:GetText()))
-  assert(b.doubles.button.shown and b.missing.button.shown and not b.doubles.text.shown, "its buttons still there")
-  assert(W.bannerH <= 450 - 66 - 156, "and it fits: " .. W.bannerH)
+  assert(b.shown and b.short.shown and not b.title.shown and b.short:GetText():find("Note check: 3 double, 4 old, 1 no row.", 1, true),
+    "short: " .. tostring(b.short:GetText()) .. " / " .. W.bannerH)
+  assert(b.doubles.button.shown and not b.doubles.text.shown, "Remove old lines still there")
+  assert(W.bannerH <= 430 - 66 - 156, "and it fits: " .. W.bannerH)
   rawset(W.left, "height", 900)
   W.rawShown = false
   Editor.Refresh()
@@ -1536,14 +1541,15 @@ do
   local sig, before = EC.state.sig, EC.state.result
   W.banner.link.scripts.OnClick(W.banner.link)
   assert(EC.state.sig ~= sig and EC.state.result ~= before, "the check follows the saved links")
-  -- a clean note: no banner
+  -- a clean note: no banner, even with a block cast no row has a line for
   Editor.Discard()
-  local clean = Notes:Import("EncounterID:3470;Difficulty:Mythic;Name:Check Two\\nLeft: Abu\\ntime:30;ph:1;tag:Abu;text:Left;")
+  local quiet = table.concat(Assign.Lines({ name = "Quiet", times = T4, rows = { { label = "Left", text = "", tokens = { "Abu" }, casts = { 1 } } } }, T4), "\\n")
+  local clean = Notes:Import("EncounterID:3470;Difficulty:Mythic;Name:Check Two\\n" .. quiet)
   assert(Editor.Open({ id = clean }) and not b.shown, "nothing to say: no banner")
   W.session = nil
   W.window:Hide()
 end
-print("ok the note check: the banner, its lists, Remove old lines asked first, Add missing casts, Not now, hidden under Add assignment")
+print("ok the note check: the banner, its grouped list, Remove old lines asked first, Not now, hidden under Add assignment, short in a small window")
 
 -- 12c. #1280: Make an Assign block and Update block from a list whose names carry realms write them without
 do

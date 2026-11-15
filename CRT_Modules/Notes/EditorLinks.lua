@@ -13,8 +13,9 @@ local ADDON, CRT = ...
 --   EL.Build(left)          makes the banner at the top of the rows' side
 --   EL.Clear(f)             a row frame redrawn: no tag, no hover, until LabelTag or TimerRow set them again
 --   EL.Tag(f)               a row frame's tag, or nil
---   EL.Refresh(width, short)   works the links out for the session (W.match) and draws the banner; its height, 0
---                           hidden. short (no room, EditorWindow's banner budget): the title and buttons only
+--   EL.Refresh(width, short, again)   works the links out for the session (W.match) and draws the banner; its height,
+--                           0 hidden. short (no room, EditorWindow's banner budget): the title and buttons only;
+--                           again: the same Refresh drawing it once more, the links as worked out
 --   EL.LabelTag(f, i, x)    row i's tag at x right of its label; the width it takes, 0 for none
 --   EL.TimerRow(f, i)       a timer row's hover
 --   EL.Edit(fn)             runs fn, a change to the session's names that returns whether it changed anything, and
@@ -293,17 +294,21 @@ local function drawBanner(sum, width, short)
     return y
 end
 
-function EL.Refresh(width, short)
+function EL.Refresh(width, short, again)
     local s = W.session
-    W.match, W.linkSummary = nil, nil
+    if not (again and W.match) then
+        W.match, W.linkSummary = nil, nil
+    end
     if not s then
         if W.banner then
             W.banner:Hide()
         end
         return 0
     end
-    W.match = Links.Match(Links.Rows(s), Links.Lines(s), Links.Saved(noteKey()))
-    W.linkSummary = Links.Summary(W.match)
+    if not W.match then
+        W.match = Links.Match(Links.Rows(s), Links.Lines(s), Links.Saved(noteKey()))
+        W.linkSummary = Links.Summary(W.match)
+    end
     local sum = W.linkSummary
     if not W.banner or s.readOnly or sum.total == 0 or Links.Dismissed(noteKey(), s:Text()) then
         if W.banner then

@@ -3,14 +3,14 @@ local ADDON, CRT = ...
 -- The note editor's note check (Notes/EditorWindow.lua; the checking is Notes/Check.lua's, #1288). A banner over the
 -- rows, under the Link banner and Add assignment's, while the note has any of:
 --   Double callouts   a player gets two callouts at once; Remove old lines takes out the typed lines an Assign block
---                     replaced, after a confirmation that lists them
---   Missing casts     a block has typed casts no row has a line for; Add missing casts writes them on the rows set to
---                     every cast (shown only when some row is)
+--                     replaced, after a confirmation; the (?) and the confirmation list every one of them, alike
+--                     lines in one group ("Sixz: Grab {cross} purple orb, 6 lines (P1 0:07 to 3:40)")
 --   Lines for players no group row lists   a warning only
 -- one line each with its count, a (?) that lists them, and its button; Not now hides the banner until the text
--- changes. Both buttons change the session only (Editor.ApplyText): Save keeps the change. Not for a note you can't
+-- changes. Remove old lines changes the session only (Editor.ApplyText): Save keeps the change. A block cast with no
+-- lines is no warning (Alex, 2026-11-15: removing a cast's lines means no one is called then). Not for a note you can't
 -- change, nor while Add assignment is open. Short of room (EditorWindow's banner budget) it shows one line, its
--- counts, with one (?) for everything and the same buttons under it.
+-- counts, with one (?) for everything and Remove old lines under it.
 --   EC.Build(left)                              makes the banner, hidden
 --   EC.RefreshBanner(width, top, short, hide)   the banner's height (0 hidden), under the other banners; short: the
 --                                               one-line form; hide: hidden for want of room
@@ -30,40 +30,33 @@ local TEXT = {
     doubles = "%d double callouts: a player gets two callouts at once.",
     oldOne = "1 old line that an Assign block replaced.",
     old = "%d old lines that an Assign block replaced.",
-    missingOne = "1 missing cast: a block has a cast with no lines.",
-    missing = "%d missing casts: blocks have casts with no lines.",
     orphansOne = "1 line for a player no group row lists.",
     orphans = "%d lines for players no group row lists.",
     short = "Note check: %s.",
     shortDoubles = "%d double",
     shortOld = "%d old",
-    shortMissing = "%d missing cast",
     shortOrphans = "%d no row",
     remove = "Remove old lines",
-    add = "Add missing casts",
     later = "Not now",
     doublesTitle = "Double callouts",
     oldList = "Remove old lines takes out these lines. An Assign block replaced them: each is in a block row's words and follows no other row. It asks first. Save keeps the change.",
     noOld = "No line here is one a block replaced. Change or remove one of them by hand.",
-    missingTitle = "Missing casts",
-    missingHelp = "Add missing casts writes the block's lines for these casts, on the rows set to every cast. Rows that rotate or are on picked casts never get them. Save keeps the change.",
-    missingNone = "No row of these blocks is set to every cast, so Add missing casts can't write them. Pick the casts in Add assignment.",
     orphansTitle = "Lines for players no group row lists",
     orphansHelp = "No group row, Assign block or kick list names these players. Check the names, or add a row for them.",
-    cast = "%s: cast %d (%s)",
     more = "And %d more.",
-    planned = "its line for this cast is missing",
+    group = "%s: %s, %d lines (%s to %s)",
+    groupOne = "%s: %s, 1 line (%s)",
+    moreGroups = "And %d more groups, %d lines.",
     removeConfirmOne = "Take 1 old line out of the note? An Assign block replaced it:\n%s",
     removeConfirm = "Take %d old lines out of the note? An Assign block replaced them:\n%s",
     removeButton = "Remove",
     removedOne = "Removed 1 old line.",
     removed = "Removed %d old lines.",
-    added = "Added the missing casts.",
 }
 EC.TEXT = TEXT
 
 local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 }
-local L = { pad = 6, gap = 4, buttonH = 22, buttonGap = 6, below = 6, maxList = 10, lineGap = 4 }
+local L = { pad = 6, gap = 4, buttonH = 22, buttonGap = 6, below = 6, maxList = 10, maxGroups = 25, lineGap = 4 }
 
 -- The last check, by note, text and saved links, so a redraw doesn't run it again; and Not now's note and text.
 local S = { result = nil, sig = nil, dismissed = nil }
@@ -137,22 +130,44 @@ local function capped(items)
     return table.concat(out, "\n")
 end
 
--- Every line Remove old lines takes, capped.
+-- Every line Remove old lines takes, alike lines (the same players and text) in one group with how many and when:
+-- "Sixz: Grab {cross} purple orb, 6 lines (P1 0:07 to 3:40)". Past maxGroups groups, the rest as a count of groups
+-- and lines, so no line is ever left out silently.
 local function oldList(r)
-    local items = {}
+    local groups, byKey = {}, {}
     for _, i in ipairs(r.old) do
-        items[#items + 1] = lineItem(i)
-    end
-    return capped(items)
-end
-
-local function anyFixable(r)
-    for _, miss in ipairs(r.missing) do
-        if miss.fixable then
-            return true
+        local row = W.session and W.session.rows[i]
+        local t = row and row.timer
+        if t then
+            local who = table.concat(W.session:TimerNames(i), " ")
+            local key = who .. "\1" .. (t.text or "")
+            local g = byKey[key]
+            if not g then
+                g = { who = who, text = lineText(i), first = t, last = t, n = 0 }
+                byKey[key] = g
+                groups[#groups + 1] = g
+            end
+            g.n, g.last = g.n + 1, t
         end
     end
-    return false
+    local out, rest, restLines = {}, 0, 0
+    for k, g in ipairs(groups) do
+        if k > L.maxGroups then
+            rest, restLines = rest + 1, restLines + g.n
+        elseif g.n == 1 then
+            out[#out + 1] = string.format(TEXT.groupOne, g.who, g.text, clock(g.first.ph, g.first.time))
+        else
+            local last = clock(g.last.ph, g.last.time)
+            if (g.last.ph or 1) == (g.first.ph or 1) then
+                last = last:gsub("^P%S+ ", "")
+            end
+            out[#out + 1] = string.format(TEXT.group, g.who, g.text, g.n, clock(g.first.ph, g.first.time), last)
+        end
+    end
+    if rest > 0 then
+        out[#out + 1] = string.format(TEXT.moreGroups, rest, restLines)
+    end
+    return table.concat(out, "\n")
 end
 
 -- The (?) texts, read when the tooltip opens.
@@ -167,9 +182,6 @@ local function doublesTip()
         for _, i in ipairs(d.lines) do
             texts[#texts + 1] = lineText(i)
         end
-        if d.planned then
-            texts[#texts + 1] = TEXT.planned
-        end
         items[#items + 1] = clock(d.ph, d.t) .. " " .. d.name .. ": " .. table.concat(texts, ", ")
     end
     local tip = {}
@@ -183,21 +195,6 @@ local function doublesTip()
         tip[#tip + 1] = TEXT.noOld
     end
     return tip
-end
-
-local function missingTip()
-    local r = S.result
-    if not r then
-        return ""
-    end
-    local items = {}
-    for _, miss in ipairs(r.missing) do
-        for k, c in ipairs(miss.casts) do
-            local e = miss.times[k]
-            items[#items + 1] = string.format(TEXT.cast, marked(miss.name), c, clock(e.ph, e.t))
-        end
-    end
-    return { capped(items), anyFixable(r) and TEXT.missingHelp or TEXT.missingNone }
 end
 
 local function orphansTip()
@@ -219,12 +216,6 @@ local function allTip()
     if r and (#r.doubles > 0 or #r.old > 0) then
         out[#out + 1] = { TEXT.doublesTitle, "" }
         for _, part in ipairs(doublesTip()) do
-            out[#out + 1] = part
-        end
-    end
-    if r and #r.missing > 0 then
-        out[#out + 1] = { TEXT.missingTitle, "" }
-        for _, part in ipairs(missingTip()) do
             out[#out + 1] = part
         end
     end
@@ -272,20 +263,6 @@ local function removeClick()
     }), "GENERIC_CONFIRMATION"))
 end
 
-local function addClick()
-    local s = W.session
-    if not s or readOnly() then
-        return
-    end
-    local text = s:Text()
-    local out = Check.AddMissing(text)
-    if out ~= text then
-        Editor.ApplyText(out)
-        W.notice = UI.GoodText(TEXT.added)
-    end
-    Editor.Refresh()
-end
-
 local function laterClick()
     if W.session then
         S.dismissed = { key = noteKey(), text = W.session:Text() }
@@ -328,7 +305,6 @@ function EC.Build(left)
     b.later = UI.PanelButton(b, TEXT.later, L.buttonH, laterClick)
     label(b.later, TEXT.later)
     b.doubles = kindLine(b, TEXT.doublesTitle, doublesTip, removeClick, TEXT.remove)
-    b.missing = kindLine(b, TEXT.missingTitle, missingTip, addClick, TEXT.add)
     b.orphans = kindLine(b, TEXT.orphansTitle, orphansTip)
     -- the short form: one line of counts, one (?) for all of it
     b.short = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
@@ -379,14 +355,6 @@ local function counted(n, one, many)
     return n == 1 and one or string.format(many, n)
 end
 
-local function missingCount(r)
-    local n = 0
-    for _, miss in ipairs(r.missing) do
-        n = n + #miss.casts
-    end
-    return n
-end
-
 -- The full form: the title and Not now, then a line per kind. The banner's height.
 local function drawFull(b, r, inner)
     b.short:Hide()
@@ -400,7 +368,6 @@ local function drawFull(b, r, inner)
     y = y + L.buttonH + L.gap
     local doubles = counted(#r.doubles, TEXT.doublesOne, TEXT.doubles) or counted(#r.old, TEXT.oldOne, TEXT.old)
     y = placeKind(b, b.doubles, y, doubles, #r.old > 0, inner)
-    y = placeKind(b, b.missing, y, counted(missingCount(r), TEXT.missingOne, TEXT.missing), anyFixable(r), inner)
     y = placeKind(b, b.orphans, y, counted(#r.orphans, TEXT.orphansOne, TEXT.orphans), false, inner)
     return y - L.lineGap + L.pad
 end
@@ -409,11 +376,9 @@ end
 local function drawShort(b, r, inner)
     b.title:Hide()
     hideKind(b.doubles)
-    hideKind(b.missing)
     hideKind(b.orphans)
     local parts = {}
-    for _, e in ipairs({ { #r.doubles, TEXT.shortDoubles }, { #r.old, TEXT.shortOld }, { missingCount(r), TEXT.shortMissing },
-        { #r.orphans, TEXT.shortOrphans } }) do
+    for _, e in ipairs({ { #r.doubles, TEXT.shortDoubles }, { #r.old, TEXT.shortOld }, { #r.orphans, TEXT.shortOrphans } }) do
         if e[1] > 0 then
             parts[#parts + 1] = string.format(e[2], e[1])
         end
@@ -429,16 +394,11 @@ local function drawShort(b, r, inner)
     b.short:Show()
     b.shortHelp:Show()
     y = y + L.buttonH
-    local x = L.pad
-    for _, e in ipairs({ { b.doubles.button, #r.old > 0 }, { b.missing.button, anyFixable(r) } }) do
-        e[1]:SetShown(e[2])
-        if e[2] then
-            e[1]:ClearAllPoints()
-            e[1]:SetPoint("TOPLEFT", x, -(y + L.gap))
-            x = x + (e[1]:GetWidth() or 0) + L.buttonGap
-        end
-    end
-    if x > L.pad then
+    local remove = b.doubles.button
+    remove:SetShown(#r.old > 0)
+    if #r.old > 0 then
+        remove:ClearAllPoints()
+        remove:SetPoint("TOPLEFT", L.pad, -(y + L.gap))
         y = y + L.gap + L.buttonH
     end
     return y + L.pad

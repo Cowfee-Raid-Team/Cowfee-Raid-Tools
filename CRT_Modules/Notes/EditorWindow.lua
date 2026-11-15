@@ -21,8 +21,8 @@ local ADDON, CRT = ...
 -- why). Saving it, Interrupts' lists for that boss follow (NoteBlock's Saved).
 -- Add assignment (Notes/EditorAssign.lua) shows an assignment block in place of the rows, the same as the Mech Alerts
 -- Assign tab's, with timers from one of the boss's mechanics, typed, or none; the palette drags onto its rows then.
--- The note check (Notes/EditorCheck.lua, Notes/Check.lua) is a banner under those: double callouts, a block's missing
--- casts and lines for players no row lists, with Remove old lines and Add missing casts.
+-- The note check (Notes/EditorCheck.lua, Notes/Check.lua) is a banner under those: double callouts and lines for
+-- players no row lists, with Remove old lines.
 
 local Notes = CRT.Notes
 local Model = CRT.NoteEditModel
@@ -645,10 +645,11 @@ function layoutBanners()
         room = h - L.minRows - (W.rawShown and (L.rawH + 6) or 0)
     end
     local mode = {}
-    local function stack()
-        local y = el and el.Refresh(width, mode.linkShort) or 0
+    -- the links and group lists are worked out once (the first stack); the next ones only draw again
+    local function stack(again)
+        local y = el and el.Refresh(width, mode.linkShort, again) or 0
         if ea then
-            y = y + ea.RefreshBanner(width, y, mode.noAssign)
+            y = y + ea.RefreshBanner(width, y, mode.noAssign, again)
         end
         if ec then
             y = y + ec.RefreshBanner(width, y, mode.checkShort, mode.noCheck)
@@ -661,7 +662,7 @@ function layoutBanners()
             break
         end
         mode[step] = true
-        y = stack()
+        y = stack(true)
     end
     W.bannerH = y
 end
