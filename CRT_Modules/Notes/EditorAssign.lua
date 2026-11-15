@@ -19,12 +19,12 @@ local ADDON, CRT = ...
 --   EA.Toggle()      Add assignment: opens the view (on the row selected for Quick fill's block, if it is one), or
 --                    closes it
 --   EA.Refresh()     redraws it from the session
---   EA.RefreshBanner(width, top)   the banner's height (0 hidden), under the Link banner
+--   EA.RefreshBanner(width, top, hide, again)   the banner's height (0 hidden), under the Link banner; hide: for want
+--                    of room; again: drawn once more in the same Refresh, the group lists as found
 --   EA.Close()       back to the rows
 
 local UI = CRT.UI
 local Notes = CRT.Notes
-local Model = CRT.NoteEditModel
 local Assign = CRT.NoteAssign
 local Editor = CRT.NoteEditor
 local W = Editor.state
@@ -52,7 +52,6 @@ local TEXT = {
     adoptTitle = "Make an Assign block from %s?",
     adoptLines = "Its %d timer lines become the block's lines.",
     adoptTexts = "%s: the lines' different texts become one text per row.",
-    adoptDropped = "%d lines lose their colours and other settings.",
     adoptOff = "%d lines on no cast stay as they are.",
     adoptButton = "Make block",
     adoptGone = "The note changed: that group list isn't there any more.",
@@ -141,11 +140,7 @@ end
 
 -- The session's text with the block written in it, as a new session (its base the saved text, so it stays unsaved).
 local function apply(text)
-    local s = W.session
-    local quick, selected = s.quickFill, s.selected
-    W.session = Model.New(text, { markdown = s.markdown, readOnly = s.readOnly, base = s.base, players = s.players })
-    W.session:SetQuickFill(quick)
-    W.session.selected = selected
+    Editor.ApplyText(text)
 end
 
 -- The mechanic picked in Timers, as its key on the block's heading (for:), or nil.
@@ -311,9 +306,6 @@ local function adoptText(heading, key)
     local out = { title or string.format(TEXT.adoptTitle, c.name), string.format(TEXT.adoptLines, c.lines) }
     if #c.texts > 0 then
         out[#out + 1] = string.format(TEXT.adoptTexts, table.concat(c.texts, ", "))
-    end
-    if c.dropped > 0 then
-        out[#out + 1] = string.format(TEXT.adoptDropped, c.dropped)
     end
     if c.off > 0 then
         out[#out + 1] = string.format(TEXT.adoptOff, c.off)
@@ -656,13 +648,19 @@ function EA.BuildBanner(left)
     A.banner = b
 end
 
-function EA.RefreshBanner(width, top)
+function EA.RefreshBanner(width, top, hide, again)
     local b = A.banner
     local s = W.session
     if not b then
         return 0
     end
-    A.candidates = s and not s.readOnly and not W.assignOn and Assign.Candidates(s:Text(), CRT.NoteLinks.Saved(noteKey())) or {}
+    if hide then
+        b:Hide()
+        return 0
+    end
+    if not (again and A.candidates) then
+        A.candidates = s and not s.readOnly and not W.assignOn and Assign.Candidates(s:Text(), CRT.NoteLinks.Saved(noteKey())) or {}
+    end
     local d = A.dismissed
     if #A.candidates == 0 or (d and d.key == noteKey() and d.text == s:Text()) then
         b:Hide()

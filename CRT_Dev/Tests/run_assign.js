@@ -412,7 +412,109 @@ check("assign: what making a typed list a block changes", function()
     "time:150;ph:1;tag:Solex Rixxy;text:Orbs now;", "time:999;ph:1;tag:Abu Cheo;text:Late;" }, "\\n")
   local casts = { { ph = 1, t = 30 }, { ph = 1, t = 90 }, { ph = 1, t = 150 } }
   local c = A.AdoptChanges(pasted, 1, casts)
-  assert(c.lines == 3 and c.off == 1 and c.dropped == 1 and table.concat(c.texts, ",") == "Odd", "3 lines, 1 off, 1 loses its colours, Odd's texts become one")
+  assert(c.lines == 3 and c.off == 1 and table.concat(c.texts, ",") == "Odd", "3 lines, 1 off, Odd's texts become one")
+  assert(c.dropped == nil, "nothing loses its colours any more (#1288)")
+end)
+
+-- #1288: a list made a block, or a block written again, keeps its lines' looks (Alex, 2026-11-15)
+check("assign: the lines keep their looks (dur, colours, DisplayType, sound) through Adopt, Read and a rewrite (#1288)", function()
+  local pasted = table.concat({ "Orbs",
+    "Left: Abu", "Right: Cheo",
+    "time:30;ph:1;tag:Abu;text:Grab left;dur:12;colors:1 0.16 0.16 1;DisplayType:Text;",
+    "time:90;ph:1;tag:Abu;text:Grab left;dur:12;colors:1 0.16 0.16 1;DisplayType:Text;",
+    "time:150;ph:1;tag:Abu;text:Grab left;dur:8;colors:0 1 0 1;DisplayType:Text;sound:Bell;",
+    "time:30;ph:1;tag:Cheo;text:Grab right;",
+    "time:90;ph:1;tag:Cheo;text:Grab right;" }, "\\n")
+  local text, b = A.Adopt(pasted, 1, nil)
+  assert(b and b.key == "orbs", "made a block")
+  local l = lines(text)
+  assert(l[4] == "time:30;ph:1;tag:Abu;text:Grab left;dur:12;colors:1 0.16 0.16 1;DisplayType:Text;assign:orbs/1/1;", l[4])
+  assert(text:find("time:150;ph:1;tag:Abu;text:Grab left;dur:8;colors:0 1 0 1;DisplayType:Text;sound:Bell;assign:orbs/1/3;", 1, true), "each line its own look: " .. text)
+  assert(text:find("time:30;ph:1;tag:Cheo;text:Grab right;assign:orbs/2/1;", 1, true), "a plain line stays plain")
+  -- read back and written again: the same lines
+  local back = A.Read(text, "orbs", nil)
+  assert(back.rows[1].look == "dur:12;colors:1 0.16 0.16 1;DisplayType:Text;", "the row's most common look: " .. tostring(back.rows[1].look))
+  assert(joined(A.Lines(back, back.times)) == joined(A.Lines(A.Copy(back), back.times)), "Copy keeps the looks")
+  assert(A.Replace(text, "orbs", A.Lines(back, back.times)) == text, "written again: byte for byte")
+  -- a new cast: Right on it takes its row's look (none), Left the most common
+  back.times[#back.times + 1] = { ph = 1, t = 210 }
+  back.rows[2].casts = "all"
+  local again = joined(A.Lines(back, back.times))
+  assert(again:find("time:210;ph:1;tag:Abu;text:Grab left;dur:12;colors:1 0.16 0.16 1;DisplayType:Text;assign:orbs/1/4;", 1, true), "the new cast's look: " .. again)
+  assert(again:find("time:210;ph:1;tag:Cheo;text:Grab right;assign:orbs/2/4;", 1, true), "plain stays plain")
+  -- AdoptInto keeps them too
+  local typed = { { ph = 1, t = 30 }, { ph = 1, t = 90 } }
+  local blk = joined(A.Lines({ name = "Orbs", times = typed, rows = { { label = "Left", text = "", tokens = { "Kip" }, casts = "all" } } }, typed))
+  local note = blk .. "\\n" .. pasted
+  local out = A.AdoptInto(note, #lines(blk) + 1, nil, "orbs")
+  assert(out and out:find("time:30;ph:1;tag:Abu;text:Grab left;dur:12;colors:1 0.16 0.16 1;DisplayType:Text;assign:orbs/1/1;", 1, true), "AdoptInto: " .. tostring(out))
+end)
+
+-- Alex's Coiled Altar note (#1288): the line numbers of COILED, the fixture
+local CO = { block = 54, orbs = 158, guillotine = 168, cc = 175, kick = 181, curse = 185, ghosts = 188 }
+
+check("assign: Alex's note offers every typed list, never the kick block (#1288)", function()
+  local c = A.Candidates(COILED)
+  local names = {}
+  for i, x in ipairs(c) do names[i] = x.name .. "=" .. x.lines end
+  assert(table.concat(names, ",") == "Orb Carriers=24,Guillotine Soaks=5,CC Mindcontrol=32,Curse of Tongues on Add=6,Soak Ghosts=4", table.concat(names, ","))
+  local s = Model.New(COILED)
+  assert(s.rows[CO.kick].text == "intstart" and s.rows[CO.kick + 1].text == "Notkvr", "the fixture's kick block")
+  for _, x in ipairs(c) do assert(x.heading < CO.kick or x.heading > CO.kick + 2, "no kick line is a list") end
+  -- a kick block with a label-like line inside is still no list
+  local k = "intstart\\nLeft: Abu\\nintend\\ntime:5;ph:1;tag:Abu;text:Left;"
+  assert(#A.Candidates(k) == 0, "inside intstart / intend: never a list")
+end)
+
+check("assign: Alex's lists each become a block, with their looks; Orb Carriers renamed P3 (#1288)", function()
+  local text, b = A.Adopt(COILED, CO.orbs, nil)
+  assert(b.key == "orb carriers" and #b.rows == 8 and b.times and #b.times == 3, "8 rows, the P3 casts: " .. tostring(b.times and #b.times))
+  for r = 1, 8 do assert(b.rows[r].casts == "all", "row " .. r .. " on every cast") end
+  assert(text:find("time:7;ph:3;tag:Whitecrows;text:Grab {cross} purple orb;dur:12;colors:1 0.16 0.16 1;DisplayType:Text;assign:orb carriers/1/1;", 1, true), "dur:12 and its colour kept")
+  assert(text:find("time:109;ph:3;tag:Skarghan;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;assign:orb carriers/8/3;", 1, true), "the last row too")
+  assert(select(2, text:gsub("assign:orb carriers/", "")) == 24 and not text:find("\\nOrb Carriers\\n", 1, true), "24 lines, the list gone")
+  assert(text:find("time:7;ph:1;tag:Sixz;text:Grab {cross} purple orb;dur:12;", 1, true), "the old P1 lines are no list's: they stay")
+  -- renamed in the editor: the key follows the name, in place (EditorAssign's write)
+  local back = A.Read(text, "orb carriers", nil)
+  back.name = "Orb Carriers P3"
+  local renamed = A.Replace(text, A.Key(back.name), A.Lines(back, back.times, { key = A.Key(back.name) }), "orb carriers")
+  assert(renamed:find("assign:orb carriers p3;name:Orb Carriers P3;times:3@7,3@48,3@109;", 1, true) and not renamed:find("assign:orb carriers/", 1, true)
+    and select(2, renamed:gsub("assign:orb carriers p3/", "")) == 24, "renamed P3")
+  assert(renamed:find("tag:Whitecrows;text:Grab {cross} purple orb;dur:12;colors:1 0.16 0.16 1;DisplayType:Text;assign:orb carriers p3/1/1;", 1, true), "the looks kept on rename")
+  -- the other lists
+  local function adopt(h, rows, lineCount)
+    local out, blk = A.Adopt(COILED, h, nil)
+    assert(blk and #blk.rows == rows, blk and blk.name .. ": " .. #blk.rows .. " rows" or "no block at " .. h)
+    assert(select(2, out:gsub("assign:" .. blk.key .. "/", "")) == lineCount, blk.name .. ": " .. select(2, out:gsub("assign:" .. blk.key .. "/", "")))
+    return out, blk
+  end
+  local cc = adopt(CO.cc, 4, 32)
+  assert(cc:find("tag:Lulu;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;assign:cc mindcontrol/4/", 1, true), "Lulu's CC lines are hers")
+  local curse = adopt(CO.curse, 1, 6)
+  assert(curse:find("time:23;ph:2;tag:Durayn;spellid:1714;text:Curse Add;dur:5;colors:0.63 0.16 1 1;DisplayType:Text;assign:curse of tongues on add/1/1;", 1, true), "Curse Add keeps its spell and looks")
+  local ghosts = adopt(CO.ghosts, 4, 4)
+  assert(ghosts:find("tag:Lulu;text:Soak Ghost at {square};dur:5;colors:0.2 0.4 1 1;DisplayType:Text;assign:soak ghosts/4/1;", 1, true), "Lulu's ghost")
+  -- P1 Soak 1 and P3 Soak 2 list the same five: rows of several players match as before #1288 (Alex, 2026-11-15; a
+  -- later job), so both lines are P1 Soak 1's (casts 1 and 4) and P3 Soak 2, with no line of its own, reads as on
+  -- every cast: 2 + 1 + 1 + 5 + 1 = 10 lines
+  local guill, gb = adopt(CO.guillotine, 5, 10)
+  assert(table.concat(gb.rows[1].casts, ",") == "1,4" and gb.rows[4].casts == "all", "P1 Soak 1 on 1 and 4, P3 Soak 2 on all")
+  assert(guill:find("tag:Sixz Lichkingstoy Thisisfartaa Dyspepsia Sarrantha;text:Soak Guillotine;colors:1 1 0.2 1;DisplayType:Text;assign:guillotine soaks/1/1;", 1, true)
+    and guill:find("text:Soak Guillotine;colors:0.63 0.16 1 1;DisplayType:Text;assign:guillotine soaks/3/", 1, true), "each row its own colour")
+end)
+
+check("assign: a cast whose lines went is read as no row being on it, and stays so when written (#1288)", function()
+  -- Orb Carriers P1 in Alex's note: times for 6 casts, lines for 5. Read infers every row on casts 1-5 (inferCasts),
+  -- so every later write keeps it that way: no one is called then, as Alex means it (2026-11-15)
+  local b = A.Read(COILED, "orb carriers p1", nil)
+  assert(#b.times == 6 and #b.rows == 5, "6 casts, 5 rows")
+  for r = 1, 5 do assert(type(b.rows[r].casts) == "table" and table.concat(b.rows[r].casts, ",") == "1,2,3,4,5", "row " .. r .. ": 1-5") end
+  local out = A.Lines(b, b.times)
+  assert(#out == 1 + 5 + 25, "written again: 25 lines, no 3:40")
+  -- the same block with every cast's lines: all six, every row "all"
+  for r = 1, 5 do b.rows[r].casts = "all" end
+  local full = A.Lines(b, b.times)
+  assert(#full == 1 + 5 + 30 and joined(full):find("time:220;ph:1;tag:Lulu;text:{diamond} purple orb;assign:orb carriers p1/4/6;", 1, true), "all six")
 end)
 
 -- #1275: a group list named like a block already in the note updates that block, never a copy "Name 2"
@@ -543,6 +645,9 @@ const W = process.argv[2];
 if (!W) { console.error('usage: node run_assign.js <addon folder>'); process.exit(2); }
 const names = ['CRT_Core/MarkerText.lua', 'CRT_Modules/Notes/Parse.lua', 'CRT_Modules/Notes/Data.lua', 'CRT_Modules/Notes/EditModel.lua',
   'CRT_Modules/Notes/Links.lua', 'CRT_Modules/Notes/MechNote.lua', 'CRT_Modules/Notes/Assign.lua'];
+// Alex's Coiled Altar note (2026-11-15, most cooldown lines trimmed), for #1288
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(W, 'CRT_Dev/Tests/coiled_altar_note.txt'), 'utf8').replace(/\r\n/g, '\n')));
+lua.lua_setglobal(L, to_luastring('COILED'));
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 lua.lua_checkstack(L, names.length * 2 + 2);
 for (const n of names) { lua.lua_pushstring(L, to_luastring(n)); lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(W, n), 'utf8'))); }

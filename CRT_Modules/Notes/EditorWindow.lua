@@ -21,6 +21,8 @@ local ADDON, CRT = ...
 -- why). Saving it, Interrupts' lists for that boss follow (NoteBlock's Saved).
 -- Add assignment (Notes/EditorAssign.lua) shows an assignment block in place of the rows, the same as the Mech Alerts
 -- Assign tab's, with timers from one of the boss's mechanics, typed, or none; the palette drags onto its rows then.
+-- The note check (Notes/EditorCheck.lua, Notes/Check.lua) is a banner under those: double callouts and lines for
+-- players no row lists, with Remove old lines.
 
 local Notes = CRT.Notes
 local Model = CRT.NoteEditModel
@@ -38,6 +40,11 @@ end
 -- Add assignment (Notes/EditorAssign.lua, loaded after this file), or nil without it.
 local function assign()
     return CRT.NoteEditorAssign
+end
+
+-- The note check's banner (Notes/EditorCheck.lua, loaded after this file), or nil without it.
+local function noteCheck()
+    return CRT.NoteEditorCheck
 end
 
 local TEXT = {
@@ -105,6 +112,7 @@ local TEXT = {
 local L = {
     width = 900, height = 580, minWidth = 680, minHeight = 420,
     paletteW = 270, gap = 10, footerH = 28, rawH = 150,
+    minRows = 66, -- the rows keep this much room under the banners (three rows), whatever the window's size
     rosterH = 26, -- Send my roster with the note, at the foot of the palette's column over Push note
     rowGap = 4, timeW = 36, phaseW = 32, infoH = 18, timerAlpha = 0.5, headingH = 20, blankH = 8,
 }
@@ -531,6 +539,7 @@ end
 -- Refresh, save, close ---------------------------------------------------------------------------------------------
 
 local layoutLeft -- the rows, the banner over them and the raw text under them (below)
+local layoutBanners -- the banners over the rows, within the room they have (below)
 
 -- Send my roster with the note (CRTDB.notes.pushRoster, on unless turned off)
 local function rosterOn()
@@ -584,13 +593,8 @@ function Editor.Refresh()
     local width = (W.window:GetWidth() or L.width) - 2 * inset - L.paletteW - L.gap - UI.ScrollGutter()
     W.rowsWidth = math.max(200, width)
     W.rowsChild:SetWidth(W.rowsWidth)
-    -- the timer links and their banner over the rows, before the rows that show them
-    local el = links()
-    W.bannerH = el and el.Refresh(W.rowsWidth + UI.ScrollGutter()) or 0
-    -- under it, Add assignment's banner: group lists with timer lines that could be Assign blocks
-    if assign() then
-        W.bannerH = W.bannerH + assign().RefreshBanner(W.rowsWidth + UI.ScrollGutter(), W.bannerH)
-    end
+    -- the banners over the rows, before the rows that show them
+    layoutBanners()
     layoutLeft()
     Editor.DrawRows()
     if W.assignOn and assign() then
@@ -625,6 +629,42 @@ function Editor.Refresh()
         status = W.rosterStatus -- whether the last push sent the roster, and why not
     end
     W.status:SetText(status)
+end
+
+-- The banners over the rows: the timer links (Link), under it Add assignment's (group lists that could be Assign
+-- blocks), under them the note check. They stack while they fit; past the room the rows need (L.minRows, and the raw
+-- text box under them when it shows), the note check takes its one-line form, then the Link banner its short form
+-- (title and buttons), then the note check waits, then Add assignment's banner, until there is room (Not now on one
+-- above, Raw text hidden, a bigger window). The Link banner always shows when it has something to say.
+function layoutBanners()
+    local width = W.rowsWidth + UI.ScrollGutter()
+    local el, ea, ec = links(), assign(), noteCheck()
+    local h = W.left and W.left:GetHeight()
+    local room = math.huge
+    if type(h) == "number" and h > 0 then
+        room = h - L.minRows - (W.rawShown and (L.rawH + 6) or 0)
+    end
+    local mode = {}
+    -- the links and group lists are worked out once (the first stack); the next ones only draw again
+    local function stack(again)
+        local y = el and el.Refresh(width, mode.linkShort, again) or 0
+        if ea then
+            y = y + ea.RefreshBanner(width, y, mode.noAssign, again)
+        end
+        if ec then
+            y = y + ec.RefreshBanner(width, y, mode.checkShort, mode.noCheck)
+        end
+        return y
+    end
+    local y = stack()
+    for _, step in ipairs({ "checkShort", "linkShort", "noCheck", "noAssign" }) do
+        if y <= room then
+            break
+        end
+        mode[step] = true
+        y = stack(true)
+    end
+    W.bannerH = y
 end
 
 function layoutLeft()
@@ -671,6 +711,16 @@ local function loadSession()
         end
         W.window.strip:SetTitle(string.format(TEXT.title, name))
     end
+end
+
+-- The session's text replaced by `text` (Add assignment's block, the note check's fixes), as a new session whose base
+-- stays the saved text, so it shows unsaved until Save; Quick fill and the selected row kept.
+function Editor.ApplyText(text)
+    local s = W.session
+    local quick, selected = s.quickFill, s.selected
+    W.session = Model.New(text, { markdown = s.markdown, readOnly = s.readOnly, base = s.base, players = s.players })
+    W.session:SetQuickFill(quick)
+    W.session.selected = selected
 end
 
 function Editor.Save()
@@ -856,6 +906,9 @@ local function buildLeft(c)
     end
     if assign() then
         assign().Build(left) -- Add assignment's block, hidden until opened
+    end
+    if noteCheck() then
+        noteCheck().Build(left) -- the note check's banner
     end
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsNoteEditorRows", left, "UIPanelScrollFrameTemplate")
     UI:SkinScrollBar(scroll.ScrollBar)

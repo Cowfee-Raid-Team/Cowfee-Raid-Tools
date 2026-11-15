@@ -1,0 +1,196 @@
+EncounterID:3429;Difficulty:Mythic;Name:Coiled Altar
+
+time:0;ph:1;tag:Rixxy;spellid:370537;
+time:3;ph:1;tag:Cheoeqar;spellid:200183;
+time:41;ph:1;tag:Cheoeqar;spellid:64843;
+time:7;ph:1;tag:Sixz;text:Grab {cross} purple orb;dur:12;colors:1 0.16 0.16 1;DisplayType:Text;
+time:50;ph:1;tag:Sixz;text:Grab {cross} purple orb;dur:12;colors:1 0.16 0.16 1;DisplayType:Text;
+time:92;ph:1;tag:Sixz;text:Grab {cross} purple orb;dur:12;colors:1 0.16 0.16 1;DisplayType:Text;
+time:135;ph:1;tag:Sixz;text:Grab {cross} purple orb;dur:12;colors:1 0.16 0.16 1;DisplayType:Text;
+time:177;ph:1;tag:Sixz;text:Grab {cross} purple orb;dur:12;colors:1 0.16 0.16 1;DisplayType:Text;
+time:220;ph:1;tag:Sixz;text:Grab {cross} purple orb;dur:12;colors:1 0.16 0.16 1;DisplayType:Text;
+time:7;ph:1;tag:Notkvr;text:Grab {square} purple orb;dur:12;colors:0.2 0.4 1 1;DisplayType:Text;
+time:50;ph:1;tag:Notkvr;text:Grab {square} purple orb;dur:12;colors:0.2 0.4 1 1;DisplayType:Text;
+time:92;ph:1;tag:Notkvr;text:Grab {square} purple orb;dur:12;colors:0.2 0.4 1 1;DisplayType:Text;
+time:135;ph:1;tag:Notkvr;text:Grab {square} purple orb;dur:12;colors:0.2 0.4 1 1;DisplayType:Text;
+time:177;ph:1;tag:Notkvr;text:Grab {square} purple orb;dur:12;colors:0.2 0.4 1 1;DisplayType:Text;
+time:220;ph:1;tag:Notkvr;text:Grab {square} purple orb;dur:12;colors:0.2 0.4 1 1;DisplayType:Text;
+time:7;ph:1;tag:Sarrantha;text:Grab {triangle} purple orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:50;ph:1;tag:Sarrantha;text:Grab {triangle} purple orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:92;ph:1;tag:Sarrantha;text:Grab {triangle} purple orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:135;ph:1;tag:Sarrantha;text:Grab {triangle} purple orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:177;ph:1;tag:Sarrantha;text:Grab {triangle} purple orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:220;ph:1;tag:Sarrantha;text:Grab {triangle} purple orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:7;ph:1;tag:Dotsanhots;text:Grab {diamond} purple orb;dur:12;colors:0.63 0.16 1 1;DisplayType:Text;
+time:50;ph:1;tag:Dotsanhots;text:Grab {diamond} purple orb;dur:12;colors:0.63 0.16 1 1;DisplayType:Text;
+time:92;ph:1;tag:Dotsanhots;text:Grab {diamond} purple orb;dur:12;colors:0.63 0.16 1 1;DisplayType:Text;
+time:135;ph:1;tag:Dotsanhots;text:Grab {diamond} purple orb;dur:12;colors:0.63 0.16 1 1;DisplayType:Text;
+time:177;ph:1;tag:Dotsanhots;text:Grab {diamond} purple orb;dur:12;colors:0.63 0.16 1 1;DisplayType:Text;
+time:220;ph:1;tag:Dotsanhots;text:Grab {diamond} purple orb;dur:12;colors:0.63 0.16 1 1;DisplayType:Text;
+time:7;ph:1;tag:Gadios;text:Grab {star} green orb;dur:12;colors:1 1 0.2 1;DisplayType:Text;
+time:50;ph:1;tag:Gadios;text:Grab {star} green orb;dur:12;colors:1 1 0.2 1;DisplayType:Text;
+time:92;ph:1;tag:Gadios;text:Grab {star} green orb;dur:12;colors:1 1 0.2 1;DisplayType:Text;
+time:135;ph:1;tag:Gadios;text:Grab {star} green orb;dur:12;colors:1 1 0.2 1;DisplayType:Text;
+time:177;ph:1;tag:Gadios;text:Grab {star} green orb;dur:12;colors:1 1 0.2 1;DisplayType:Text;
+time:220;ph:1;tag:Gadios;text:Grab {star} green orb;dur:12;colors:1 1 0.2 1;DisplayType:Text;
+time:7;ph:1;tag:Lichkingstoy;text:Grab {skull} green orb;dur:12;colors:1 1 1 1;DisplayType:Text;
+time:50;ph:1;tag:Lichkingstoy;text:Grab {skull} green orb;dur:12;colors:1 1 1 1;DisplayType:Text;
+time:92;ph:1;tag:Lichkingstoy;text:Grab {skull} green orb;dur:12;colors:1 1 1 1;DisplayType:Text;
+time:135;ph:1;tag:Lichkingstoy;text:Grab {skull} green orb;dur:12;colors:1 1 1 1;DisplayType:Text;
+time:177;ph:1;tag:Lichkingstoy;text:Grab {skull} green orb;dur:12;colors:1 1 1 1;DisplayType:Text;
+time:220;ph:1;tag:Lichkingstoy;text:Grab {skull} green orb;dur:12;colors:1 1 1 1;DisplayType:Text;
+time:7;ph:1;tag:Granddh;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:50;ph:1;tag:Granddh;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:92;ph:1;tag:Granddh;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:135;ph:1;tag:Granddh;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:177;ph:1;tag:Granddh;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:220;ph:1;tag:Granddh;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:7;ph:1;tag:Lulu;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:50;ph:1;tag:Lulu;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:92;ph:1;tag:Lulu;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:135;ph:1;tag:Lulu;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:177;ph:1;tag:Lulu;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:220;ph:1;tag:Lulu;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+assign:orb carriers p1;name:Orb Carriers P1;times:1@7,1@50,1@92,1@135,1@177,1@220;
+{cross} purple orb: Sixz
+{square} purple orb: Notkvr
+{triangle} purple orb: Sarrantha
+{diamond} purple orb: Lulu
+{star} green orb: melee
+time:7;ph:1;tag:Sixz;text:{cross} purple orb;assign:orb carriers p1/1/1;
+time:7;ph:1;tag:Notkvr;text:{square} purple orb;assign:orb carriers p1/2/1;
+time:7;ph:1;tag:Sarrantha;text:{triangle} purple orb;assign:orb carriers p1/3/1;
+time:7;ph:1;tag:Lulu;text:{diamond} purple orb;assign:orb carriers p1/4/1;
+time:7;ph:1;tag:melee;text:{star} green orb;assign:orb carriers p1/5/1;
+time:50;ph:1;tag:Sixz;text:{cross} purple orb;assign:orb carriers p1/1/2;
+time:50;ph:1;tag:Notkvr;text:{square} purple orb;assign:orb carriers p1/2/2;
+time:50;ph:1;tag:Sarrantha;text:{triangle} purple orb;assign:orb carriers p1/3/2;
+time:50;ph:1;tag:Lulu;text:{diamond} purple orb;assign:orb carriers p1/4/2;
+time:50;ph:1;tag:melee;text:{star} green orb;assign:orb carriers p1/5/2;
+time:92;ph:1;tag:Sixz;text:{cross} purple orb;assign:orb carriers p1/1/3;
+time:92;ph:1;tag:Notkvr;text:{square} purple orb;assign:orb carriers p1/2/3;
+time:92;ph:1;tag:Sarrantha;text:{triangle} purple orb;assign:orb carriers p1/3/3;
+time:92;ph:1;tag:Lulu;text:{diamond} purple orb;assign:orb carriers p1/4/3;
+time:92;ph:1;tag:melee;text:{star} green orb;assign:orb carriers p1/5/3;
+time:135;ph:1;tag:Sixz;text:{cross} purple orb;assign:orb carriers p1/1/4;
+time:135;ph:1;tag:Notkvr;text:{square} purple orb;assign:orb carriers p1/2/4;
+time:135;ph:1;tag:Sarrantha;text:{triangle} purple orb;assign:orb carriers p1/3/4;
+time:135;ph:1;tag:Lulu;text:{diamond} purple orb;assign:orb carriers p1/4/4;
+time:135;ph:1;tag:melee;text:{star} green orb;assign:orb carriers p1/5/4;
+time:177;ph:1;tag:Sixz;text:{cross} purple orb;assign:orb carriers p1/1/5;
+time:177;ph:1;tag:Notkvr;text:{square} purple orb;assign:orb carriers p1/2/5;
+time:177;ph:1;tag:Sarrantha;text:{triangle} purple orb;assign:orb carriers p1/3/5;
+time:177;ph:1;tag:Lulu;text:{diamond} purple orb;assign:orb carriers p1/4/5;
+time:177;ph:1;tag:melee;text:{star} green orb;assign:orb carriers p1/5/5;
+time:7;ph:3;tag:Whitecrows;text:Grab {cross} purple orb;dur:12;colors:1 0.16 0.16 1;DisplayType:Text;
+time:48;ph:3;tag:Whitecrows;text:Grab {cross} purple orb;dur:12;colors:1 0.16 0.16 1;DisplayType:Text;
+time:109;ph:3;tag:Whitecrows;text:Grab {cross} purple orb;dur:12;colors:1 0.16 0.16 1;DisplayType:Text;
+time:7;ph:3;tag:Sixz;text:Grab {square} purple orb;dur:12;colors:0.2 0.4 1 1;DisplayType:Text;
+time:48;ph:3;tag:Sixz;text:Grab {square} purple orb;dur:12;colors:0.2 0.4 1 1;DisplayType:Text;
+time:109;ph:3;tag:Sixz;text:Grab {square} purple orb;dur:12;colors:0.2 0.4 1 1;DisplayType:Text;
+time:7;ph:3;tag:Notkvr;text:Grab {triangle} purple orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:48;ph:3;tag:Notkvr;text:Grab {triangle} purple orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:109;ph:3;tag:Notkvr;text:Grab {triangle} purple orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:7;ph:3;tag:Granddh;text:Grab {diamond} purple orb;dur:12;colors:0.63 0.16 1 1;DisplayType:Text;
+time:48;ph:3;tag:Granddh;text:Grab {diamond} purple orb;dur:12;colors:0.63 0.16 1 1;DisplayType:Text;
+time:109;ph:3;tag:Granddh;text:Grab {diamond} purple orb;dur:12;colors:0.63 0.16 1 1;DisplayType:Text;
+time:7;ph:3;tag:Lichkingstoy;text:Grab {star} green orb;dur:12;colors:1 1 0.2 1;DisplayType:Text;
+time:48;ph:3;tag:Lichkingstoy;text:Grab {star} green orb;dur:12;colors:1 1 0.2 1;DisplayType:Text;
+time:109;ph:3;tag:Lichkingstoy;text:Grab {star} green orb;dur:12;colors:1 1 0.2 1;DisplayType:Text;
+time:7;ph:3;tag:Rixxy;text:Grab {skull} green orb;dur:12;colors:1 1 1 1;DisplayType:Text;
+time:48;ph:3;tag:Rixxy;text:Grab {skull} green orb;dur:12;colors:1 1 1 1;DisplayType:Text;
+time:109;ph:3;tag:Rixxy;text:Grab {skull} green orb;dur:12;colors:1 1 1 1;DisplayType:Text;
+time:7;ph:3;tag:Dotsanhots;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:48;ph:3;tag:Dotsanhots;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:109;ph:3;tag:Dotsanhots;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:7;ph:3;tag:Skarghan;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:48;ph:3;tag:Skarghan;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:109;ph:3;tag:Skarghan;text:Grab side green orb;dur:12;colors:0.16 1 0.16 1;DisplayType:Text;
+time:47.97;ph:1;tag:Sixz Lichkingstoy Thisisfartaa Dyspepsia Sarrantha;text:Soak Guillotine;colors:1 1 0.2 1;DisplayType:Text;
+time:132.99;ph:1;tag:Sixz Sarrantha Rixxy;text:Soak Guillotine;colors:1 1 0.2 1;DisplayType:Text;
+time:21.69;ph:3;tag:Sixz Lichkingstoy Thisisfartaa Dyspepsia Sarrantha Rixxy;text:Soak Guillotine;colors:0.63 0.16 1 1;DisplayType:Text;
+time:86.13;ph:3;tag:Sixz Lichkingstoy Thisisfartaa Dyspepsia Sarrantha;text:Soak Guillotine;colors:0.63 0.16 1 1;DisplayType:Text;
+time:186.13;ph:3;tag:Skarghan Balevolence Gadios Notkvr Dotsanhots Solex Rixxy Lulu;text:Soak Guillotine;colors:0.63 0.16 1 1;DisplayType:Text;
+time:9;ph:2;tag:Balevolence;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:45;ph:2;tag:Balevolence;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:94;ph:2;tag:Balevolence;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:130;ph:2;tag:Balevolence;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:179;ph:2;tag:Balevolence;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:58;ph:3;tag:Balevolence;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:154;ph:3;tag:Balevolence;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:202;ph:3;tag:Balevolence;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:9;ph:2;tag:Sarrantha;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:45;ph:2;tag:Sarrantha;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:94;ph:2;tag:Sarrantha;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:130;ph:2;tag:Sarrantha;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:179;ph:2;tag:Sarrantha;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:58;ph:3;tag:Sarrantha;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:154;ph:3;tag:Sarrantha;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:202;ph:3;tag:Sarrantha;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:9;ph:2;tag:Dotsanhots;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:45;ph:2;tag:Dotsanhots;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:94;ph:2;tag:Dotsanhots;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:130;ph:2;tag:Dotsanhots;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:179;ph:2;tag:Dotsanhots;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:58;ph:3;tag:Dotsanhots;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:154;ph:3;tag:Dotsanhots;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:202;ph:3;tag:Dotsanhots;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:9;ph:2;tag:Lulu;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:45;ph:2;tag:Lulu;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:94;ph:2;tag:Lulu;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:130;ph:2;tag:Lulu;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:179;ph:2;tag:Lulu;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:58;ph:3;tag:Lulu;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:154;ph:3;tag:Lulu;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:202;ph:3;tag:Lulu;text:CC Mindcontrol;dur:6;colors:0.63 0.16 1 1;DisplayType:Text;
+time:23;ph:2;tag:Durayn;spellid:1714;text:Curse Add;dur:5;colors:0.63 0.16 1 1;DisplayType:Text;
+time:56;ph:2;tag:Durayn;spellid:1714;text:Curse Add;dur:5;colors:0.63 0.16 1 1;DisplayType:Text;
+time:108;ph:2;tag:Durayn;spellid:1714;text:Curse Add;dur:5;colors:0.63 0.16 1 1;DisplayType:Text;
+time:141;ph:2;tag:Durayn;spellid:1714;text:Curse Add;dur:5;colors:0.63 0.16 1 1;DisplayType:Text;
+time:193;ph:2;tag:Durayn;spellid:1714;text:Curse Add;dur:5;colors:0.63 0.16 1 1;DisplayType:Text;
+time:226;ph:2;tag:Durayn;spellid:1714;text:Curse Add;dur:5;colors:0.63 0.16 1 1;DisplayType:Text;
+time:5;ph:2.5;tag:Mesmertism;text:Soak Ghost at {cross};dur:5;colors:1 0.16 0.16 1;DisplayType:Text;
+time:5;ph:2.5;tag:Rixxy;text:Soak Ghost at {triangle};dur:5;colors:0.16 1 0.16 1;DisplayType:Text;
+time:5;ph:2.5;tag:Cheoeqar;text:Soak Ghost at {diamond};dur:5;colors:0.63 0.16 1 1;DisplayType:Text;
+time:5;ph:2.5;tag:Lulu;text:Soak Ghost at {square};dur:5;colors:0.2 0.4 1 1;DisplayType:Text;
+
+
+Orb Carriers
+{cross} purple orb: Whitecrows
+{square} purple orb: Sixz
+{triangle} purple orb: Notkvr
+{diamond} purple orb: Granddh
+{star} green orb: Lichkingstoy
+{skull} green orb: Rixxy
+side green orb: Dotsanhots
+side green orb: Skarghan
+
+Guillotine Soaks
+P1 Soak 1: Sixz Lichkingstoy Thisisfartaa Dyspepsia Sarrantha
+P1 Soak 2: Sixz Sarrantha Rixxy
+P3 Soak 1: Sixz Lichkingstoy Thisisfartaa Dyspepsia Sarrantha Rixxy
+P3 Soak 2: Sixz Lichkingstoy Thisisfartaa Dyspepsia Sarrantha
+P3 Soak 3: Skarghan Balevolence Gadios Notkvr Dotsanhots Solex Rixxy Lulu
+
+CC Mindcontrol
+1st CC on Mindcontrol: Balevolence
+2nd CC on Mindcontrol: Sarrantha
+3rd CC on Mindcontrol: Dotsanhots
+4th CC on Mindcontrol: Lulu
+
+intstart
+Notkvr
+intend
+
+Curse of Tongues on Add
+Curse Add: Durayn
+
+Soak Ghosts
+Soak Ghost at {cross}: Mesmertism
+Soak Ghost at {triangle}: Rixxy
+Soak Ghost at {diamond}: Cheoeqar
+Soak Ghost at {square}: Lulu
+
+invitelist:Cheoeqar-Area52,Rixxy-TwistingNether,Djaztech-TwistingNether,Skarghan-Kel'Thuzad,Xuelàn-Illidan,Durayn-Dalaran,Notkvr-Stormrage,Sarrantha-Sargeras,Solex-Sargeras,Whitecrows-Stormrage,Sixz-Sargeras,Lulu-Kel'Thuzad,Thisisfartaa-Kil'jaeden,Crazyoio-Illidan,Mesmertism-Stormrage,Lichkingstoy-Sentinels,Granddh-Magtheridon,Gadios-Silvermoon,Balevolence-Stormrage,Dotsanhots-Area52;
+time:120;ph:1;tag:Solex;spellid:740;text:Tranquility;show:text;tts:1;ttsat:0;warn:5;
+time:69;ph:1;tag:Lulu;spellid:114052;text:Ascendance;show:text;tts:1;ttsat:0;warn:5;

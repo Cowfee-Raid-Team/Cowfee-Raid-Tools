@@ -12,7 +12,7 @@
 //   linked one first, picked when solo), class colours, search, the tokens written, and when the list redraws.
 //   Timer lines that follow an assignment line (Links.lua, EditorLinks.lua): the Link banner, Link, the one obvious
 //   fix, the row tags and the hover, a row change rewriting the lines that follow it, Not now, read-only.
-// Usage: node run_notes_editor.js <Parse.lua> <Data.lua> <Engine.lua> <EditModel.lua> <Render.lua> <EditorWindow.lua> <Settings.lua> <Page.lua> <Links.lua> <EditorLinks.lua> <Palette.lua> <MechNote.lua> <Assign.lua> <AssignBlock.lua> <AssignTab.lua> <EditorAssign.lua> <Interrupts/NoteBlock.lua>
+// Usage: node run_notes_editor.js <Parse.lua> <Data.lua> <Engine.lua> <EditModel.lua> <Render.lua> <EditorWindow.lua> <Settings.lua> <Page.lua> <Links.lua> <EditorLinks.lua> <Palette.lua> <MechNote.lua> <Assign.lua> <AssignBlock.lua> <AssignTab.lua> <EditorAssign.lua> <Interrupts/NoteBlock.lua> <Check.lua> <EditorCheck.lua>
 const fs = require('fs');
 const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -535,6 +535,11 @@ assert(load(assignTabSrc, "AssignTab.lua"))("CowfeeRaidTools", CRT)
 assert(load(windowSrc, "EditorWindow.lua"))("CowfeeRaidTools", CRT)
 assert(load(editorLinksSrc, "EditorLinks.lua"))("CowfeeRaidTools", CRT)
 assert(load(editorAssignSrc, "EditorAssign.lua"))("CowfeeRaidTools", CRT)
+local checkSrc, editorCheckSrc = select(18, ...)
+if checkSrc then
+  assert(load(checkSrc, "Check.lua"))("CowfeeRaidTools", CRT)
+  assert(load(editorCheckSrc, "EditorCheck.lua"))("CowfeeRaidTools", CRT)
+end
 assert(load(settingsSrc, "Settings.lua"))("CowfeeRaidTools", CRT)
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
 local Editor = CRT.NoteEditor
@@ -573,6 +578,9 @@ do
   assert(pop and pop:IsEnabled(), "a Pop out editor button by the Note text")
   assert(button("Pop out"), "and one by the Personal note")
   pop.scripts.OnClick(pop)
+  -- a roomy window, so every banner shows in full (section 12d tests a small one)
+  rawset(W.left, "height", 900)
+  Editor.Refresh()
   assert(W.window.shown and W.session and W.session.base == NOTE and not W.session.readOnly, "it opens the selected note, editable")
   assert(rawget(W.window, "title"):find("Nek'zali", 1, true), "titled with the note")
   assert(W.window.opts.kind == "popout" and W.window.opts.layer == "popups" and W.window.opts.saved() == CRT.db.notes.editor, "a pop-out on the popups layer, its place saved in notes.editor")
@@ -1352,13 +1360,13 @@ do
   confirm = nil
   b.make.scripts.OnClick(b.make)
   assert(confirm and confirm.text:find("Make an Assign block from Orbs?", 1, true) and confirm.text:find("Its 3 timer lines", 1, true)
-    and confirm.text:find("1 lines lose their colours", 1, true), "what changes: " .. tostring(confirm and confirm.text))
+    and not confirm.text:find("colours", 1, true), "what changes: " .. tostring(confirm and confirm.text))
   assert(W.session:Text() == pasted, "nothing changed yet")
   confirm.callback()
   local t = W.session:Text()
   assert(W.assignOn and ui.nameEdit:GetText() == "Orbs" and A.block.rows[1].casts == "rotate" and A.block.rows[2].casts == "rotate", "Odd and Even rotate")
   assert(lineCount(t, "assign:orbs/") == 3 and t:find("\\nassign:orbs;name:Orbs;times:1@36,1@96,1@156;\\n", 1, true) and t:find("\\nNotes$"), t)
-  assert(not t:find("colors:", 1, true), "the colours dropped, as it said")
+  assert(t:find("time:36;ph:1;tag:Abu Cheo;text:Orbs;colors:1 0 0 1;assign:orbs/1/1;", 1, true), "the line keeps its colour (#1288): " .. t)
   -- timers from the mechanic: the same casts, the rotation kept
   A.timersDrop.opts.set(1)
   t = W.session:Text()
@@ -1442,6 +1450,106 @@ do
   W.window:Hide()
 end
 print("ok a group list named like a block: Update block in place, no copy, its own dropdown label, refused when the block went")
+
+-- 12d. #1288: the note check's banner: double callouts, a line no row lists; Remove old lines (asked first, every line
+-- listed, alike lines grouped), Not now; hidden read-only and while Add assignment is open; no warning for a block
+-- cast with no lines (Alex, 2026-11-15)
+do
+  local EC = CRT.NoteEditorCheck
+  assert(EC and EC.state, "CRT.NoteEditorCheck")
+  W.session = nil
+  W.window:Hide()
+  local T4 = { { ph = 1, t = 30 }, { ph = 1, t = 90 }, { ph = 1, t = 150 }, { ph = 3, t = 20 } }
+  local blk = table.concat(Assign.Lines({ name = "Orbs", times = T4, rows = { { label = "{cross} orb", text = "", tokens = { "Abu" }, casts = { 1, 2, 3 } } } }, T4), "\\n")
+  local old = { "time:30;ph:1;tag:Abu;text:Grab {cross} orb;colors:1 0 0 1;", "time:90;ph:1;tag:Abu;text:Grab {cross} orb;colors:1 0 0 1;",
+    "time:150;ph:1;tag:Abu;text:Grab {cross} orb;colors:1 0 0 1;", "time:20;ph:3;tag:Rixxy;text:Grab {cross} orb;" }
+  local note = "EncounterID:3470;Difficulty:Mythic;Name:Check One\\n" .. blk .. "\\n" .. table.concat(old, "\\n")
+    .. "\\ntime:60;ph:1;tag:Quinn;text:Use a defensive;"
+  local nid = Notes:Import(note)
+  assert(Editor.Open({ id = nid }), "opened")
+  local b = EC.state.banner
+  assert(b and b.shown and b.title:GetText() == "Note check", "the banner on opening")
+  assert(b.doubles.text.shown and b.doubles.text:GetText():find("3 double callouts: a player gets two callouts at once.", 1, true), "doubles: " .. b.doubles.text:GetText())
+  assert(b.orphans.text:GetText():find("1 line for a player no group row lists.", 1, true), "orphans")
+  assert(rawget(b, "missing") == nil, "no missing casts line: the block's P3 cast with no lines is deliberate")
+  assert(b.doubles.button.shown and b.doubles.button:GetText() == "Remove old lines" and b.orphans.button == nil, "Remove old lines; the orphans have no button")
+  -- each (?) lists them; every old line, alike lines in one group
+  local function tip(k) local t = rawget(k.help, "helpText") return CRT.UI.TooltipPlain(t) end
+  local dt = tip(b.doubles)
+  assert(dt:find("P1 0:30 Abu: ", 1, true) and dt:find("Remove old lines takes out these lines", 1, true), "doubles tip: " .. dt)
+  assert(dt:find("Abu: [^\\n]*, 3 lines %(P1 0:30 to 2:30%)") and dt:find("Rixxy: [^\\n]*, 1 line %(P3 0:20%)"), "grouped: " .. dt)
+  assert(tip(b.orphans):find("P1 1:00 Quinn: Use a defensive", 1, true), tip(b.orphans))
+  -- Remove old lines: asked first with the same list, nothing changes until it is accepted
+  confirm = nil
+  b.doubles.button.scripts.OnClick(b.doubles.button)
+  assert(confirm and confirm.text:find("Take 4 old lines out of the note? An Assign block replaced them:\\n", 1, true)
+    and confirm.text:find("Abu: [^\\n]*, 3 lines %(P1 0:30 to 2:30%)") and confirm.text:find("Rixxy: [^\\n]*, 1 line %(P3 0:20%)")
+    and confirm.acceptText == "Remove", "the confirm lists every line: " .. tostring(confirm and confirm.text))
+  assert(W.session:Text() == note, "nothing changed yet")
+  confirm.callback()
+  local t = W.session:Text()
+  assert(not t:find("Grab {cross} orb", 1, true) and t:find("Use a defensive", 1, true), "the old lines out: " .. t)
+  assert(W.status:GetText():find("Removed 4 old lines.", 1, true) and W.save:IsEnabled(), "said, unsaved: " .. W.status:GetText())
+  assert(b.shown and not b.doubles.text.shown and b.orphans.text.shown, "only the orphan line left")
+  -- Not now: hidden until the text changes
+  b.later.scripts.OnClick(b.later)
+  assert(not b.shown, "Not now")
+  EC.state.dismissed = nil
+  Editor.Refresh()
+  assert(b.shown, "shown again")
+  -- Add assignment open: hidden
+  W.assignButton.scripts.OnClick(W.assignButton)
+  assert(W.assignOn and not b.shown, "hidden under Add assignment")
+  EA.state.done.scripts.OnClick(EA.state.done)
+  assert(b.shown, "back")
+  -- three banners (Link, Make an Assign block, Note check) in the smallest window with Raw text open: the rows keep
+  -- their room, the note check and the Link banner go short, then the lower banners wait
+  Editor.Discard()
+  local busy = Notes:Import(note .. "\\nSoaks\\nLeft: Kip Zed\\ntime:40;ph:1;tag:Kip Zed;text:Soak;\\ntime:70;ph:1;tag:Kip Zed;text:Soak;")
+  assert(Editor.Open({ id = busy }), "opened")
+  assert(W.banner.shown and EA.state.banner.shown and b.shown and b.title.shown, "roomy: all three, the check in full")
+  local roomy = W.bannerH
+  W.rawShown = true
+  rawset(W.left, "height", 340)
+  Editor.Refresh() -- the check worked out for this text
+  -- every step down only draws again: the links and the group lists are worked out once per Refresh
+  local L2, A2 = CRT.NoteLinks, Assign
+  local match, cands = L2.Match, A2.Candidates
+  local nMatch, nCands = 0, 0
+  L2.Match = function(...) nMatch = nMatch + 1 return match(...) end
+  A2.Candidates = function(...) nCands = nCands + 1 return cands(...) end
+  Editor.Refresh()
+  L2.Match, A2.Candidates = match, cands
+  -- (the Link banner's match, and the one inside Candidates)
+  assert(nCands == 1 and nMatch == 2, "once each: " .. nMatch .. " Match, " .. nCands .. " Candidates")
+  local room = 340 - 66 - (150 + 6)
+  assert(W.bannerH <= room and W.bannerH < roomy, "the banners fit over the rows: " .. W.bannerH .. " of " .. room)
+  assert(W.banner.shown, "the Link banner always shows")
+  assert(not b.shown or b.short.shown, "the note check short, or waiting")
+  -- a bit more room: the check comes back short
+  rawset(W.left, "height", 430)
+  Editor.Refresh()
+  assert(b.shown and b.short.shown and not b.title.shown and b.short:GetText():find("Note check: 3 double, 4 old, 1 no row.", 1, true),
+    "short: " .. tostring(b.short:GetText()) .. " / " .. W.bannerH)
+  assert(b.doubles.button.shown and not b.doubles.text.shown, "Remove old lines still there")
+  assert(W.bannerH <= 430 - 66 - 156, "and it fits: " .. W.bannerH)
+  rawset(W.left, "height", 900)
+  W.rawShown = false
+  Editor.Refresh()
+  assert(b.title.shown and not b.short.shown, "full again")
+  -- Link saves links: the check is run again, not taken from before
+  local sig, before = EC.state.sig, EC.state.result
+  W.banner.link.scripts.OnClick(W.banner.link)
+  assert(EC.state.sig ~= sig and EC.state.result ~= before, "the check follows the saved links")
+  -- a clean note: no banner, even with a block cast no row has a line for
+  Editor.Discard()
+  local quiet = table.concat(Assign.Lines({ name = "Quiet", times = T4, rows = { { label = "Left", text = "", tokens = { "Abu" }, casts = { 1 } } } }, T4), "\\n")
+  local clean = Notes:Import("EncounterID:3470;Difficulty:Mythic;Name:Check Two\\n" .. quiet)
+  assert(Editor.Open({ id = clean }) and not b.shown, "nothing to say: no banner")
+  W.session = nil
+  W.window:Hide()
+end
+print("ok the note check: the banner, its grouped list, Remove old lines asked first, Not now, hidden under Add assignment, short in a small window")
 
 -- 12c. #1280: Make an Assign block and Update block from a list whose names carry realms write them without
 do
@@ -1962,7 +2070,7 @@ end
 print("ok Send my roster: on by default, Push note sends the roster after the note and says how it went; off sends none")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const files = process.argv.slice(2, 19);
+const files = process.argv.slice(2, 21);
 for (const f of files) {
   let src; try { src = fs.readFileSync(f, 'utf8'); } catch (e) { console.error('cannot read ' + f); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));
