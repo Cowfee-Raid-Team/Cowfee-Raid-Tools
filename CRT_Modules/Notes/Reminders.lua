@@ -21,7 +21,7 @@ local UI = CRT.UI
 -- read when the tab is built: this file loads first.)
 local TEXT = {
     title = "Mech Alerts",
-    help = "Alerts are saved per difficulty: Normal/Heroic has one set and Mythic its own. Pick one beside the boss. On the left: the abilities on the ability timeline Times from names, as the Timeline shows it (mechanics you ignored there are left out), then your own reminders. Tick an ability to get a reminder for it, with its times from that timeline; untick it to turn it off. A ticked one that isn't on that timeline stays, marked. A dot means the timeline has times for it. Click a row to edit its alert on the right; changes save at once, for the difficulty on show only. Your own reminder adds one not tied to an ability.",
+    help = "Alerts are saved per difficulty: Normal/Heroic has one set and Mythic its own. Pick one beside the boss. On the left: the abilities on the ability timeline Times from names, as the Timeline shows it (mechanics you ignored there are grey and play no alerts), then your own reminders. Tick an ability to get a reminder for it, with its times from that timeline; untick it to turn it off. A ticked one that isn't on that timeline stays, marked. A dot means the timeline has times for it. Click a row to edit its alert on the right; changes save at once, for the difficulty on show only. Your own reminder adds one not tied to an ability.",
     boss = "Boss",
     difficulty = "Difficulty",
     groupNH = "Normal/Heroic",
@@ -115,6 +115,8 @@ local TEXT = {
     -- an ability one of the boss's special alerts already covers (Alerts/Special.lua)
     specialTag = "Special",
     specialTip = "The special alert %s covers this ability. With it on, a reminder of your own here only alerts the casts it doesn't.",
+    -- a mechanic unticked on the Timeline: its row grey, this on hover (it plays no alerts until ticked again there)
+    ignoredTip = "Ignored on the Timeline",
 }
 
 -- Layout, from the page's width (UI.PAGE_W) and the tab's height (CRT.NotesPage.TAB_H, under the Raid
@@ -377,9 +379,9 @@ local function itemKey(item)
 end
 
 -- The ability rows of the ability timeline Times from names, as the Timeline draws them (Lanes.AsShown:
--- your labels, without its hidden abilities and your ignored mechanics), each with casts on it, in its
--- order: { name, spellID (nil for a row with no spell), icon }. Rows the Journal doesn't have are in;
--- Journal abilities with no casts there are not. The one source of the list's abilities.
+-- your labels, without its hidden abilities; your ignored mechanics stay in their place, listed grey), each with
+-- casts on it, in its order: { name, spellID (nil for a row with no spell), icon }. Rows the Journal doesn't have
+-- are in; Journal abilities with no casts there are not. The one source of the list's abilities.
 local function timelineRows(enc)
     local entry = shownReference()
     local T, Lanes, Reference = CRT.Timeline, CRT.TimelineLanes, CRT.TimelineReference
@@ -390,7 +392,8 @@ local function timelineRows(enc)
     local group = type(ref.difficulty) == "string" and ref.difficulty ~= "" and T:GroupFor(ref.difficulty) or nil
     -- the raid's chosen order of the boss's parts, as the Timeline lays it out (Page.lua)
     local order = ref.order and Reference and Reference.ResolveOrder and Reference.ResolveOrder(ref, T:Order(enc, group)) or nil
-    local ok, lanes = pcall(Lanes.AsShown, { reference = ref }, journalRows(enc), T:Settings(), enc, nil, group, order)
+    local ok, lanes = pcall(Lanes.AsShown, { reference = ref }, journalRows(enc), T:Settings(), enc, nil, group, order,
+        { keepIgnored = true })
     if not ok then
         geterrorhandler()(lanes)
         return {}
@@ -554,8 +557,12 @@ local function itemsFor(enc, name)
     local journalEnc = type(enc) == "number" and enc
         or (Journal and Journal.ResolveID and Journal:ResolveID(enc, shown and shown.ref)) or nil
     local group = shownGroup()
+    -- your ignored mechanics, as the alerts read them (Timeline:IgnoreMatcher): their rows grey, playing nothing
+    local T = CRT.Timeline
+    local ignored = T and T.IgnoreMatcher and type(enc) == "number" and T:IgnoreMatcher(enc, shown and shown.ref) or nil
     for _, item in ipairs(list) do
         item.enc, item.group = journalEnc, group
+        item.ignored = ignored and not item.pending and ignored(item.spellID, item.ability and item.ability.name) or nil
         if item.pending then
             item.label, item.has, item.refHas = TEXT.unnamed, false, false
         else
@@ -943,14 +950,15 @@ local function nameColor(item, on, isSelected)
     return Look.NameColor(item.types and item.types[1], on, isSelected)
 end
 
--- Hovering a row: the shared ability tooltip (CRT.AbilityTip): the spell, its Journal text, then each of its ability
--- types in its colour, the main one first, or how to set one.
+-- Hovering a row: the shared ability tooltip (CRT.AbilityTip): the spell, Ignored on the Timeline for a mechanic you
+-- ignored there, its Journal text, then each of its ability types in its colour, the main one first, or how to set one.
 local function typeTip(owner, item)
     if not (item and not item.pending and GameTooltip) then
         return
     end
     local ability = item.ability
     CRT.AbilityTip:Show(GameTooltip, owner, nil, {
+        lines = item.ignored and { { TEXT.ignoredTip, 0.85, 0.85, 0.85 } } or nil, -- the tooltips' usual body grey
         encounterID = item.enc,
         group = item.group,
         spellID = item.spellID,
@@ -986,12 +994,17 @@ local function paint(index)
             local on = item.r ~= nil and item.r.enabled ~= false
             row.item = item
             Look.SetIcon(row.icon, item.iconTex)
-            row.icon:SetAlpha(item.hiddenMark and HIDDEN_ALPHA or 1)
+            row.icon:SetAlpha(item.hiddenMark and HIDDEN_ALPHA or item.ignored and Look.IGNORED_ALPHA or 1)
             if item.hiddenMark then
                 -- hidden for everyone, shown with /crt dev open: faded, with a mark
                 local m = CRT.PALETTE.muted
                 row.name:SetText(string.format(TEXT.hiddenMark, item.label))
                 row.name:SetTextColor(m[1], m[2], m[3], HIDDEN_ALPHA)
+            elseif item.ignored then
+                -- ignored on the Timeline: grey, as it plays nothing; its hover says why (typeTip)
+                local m = CRT.PALETTE.muted
+                row.name:SetText(item.offTimeline and string.format(TEXT.offTimelineMark, item.label) or item.label)
+                row.name:SetTextColor(m[1], m[2], m[3], Look.IGNORED_ALPHA)
             else
                 row.name:SetText(item.offTimeline and string.format(TEXT.offTimelineMark, item.label) or item.label)
                 row.name:SetTextColor(nameColor(item, on, offset + i == index))

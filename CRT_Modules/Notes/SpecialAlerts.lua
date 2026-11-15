@@ -92,6 +92,8 @@ local TEXT = {
     markThem = "Mark the players",
     test = "Test",
     noTest = "Nothing to test: this alert has no times on the ability timeline on show.",
+    -- an alert on a mechanic unticked on the Timeline: its row grey, this on hover (it plays nothing until ticked again)
+    ignored = "Ignored on the Timeline",
 }
 
 local L = {
@@ -307,11 +309,19 @@ local function paintList(list, enc, current)
             local on = Special():Choices(enc, entry).on
             local isSel = entry == current
             row.entry = entry
+            -- on a mechanic you ignored on the Timeline: grey, as it plays nothing; its hover says why
+            row.ignored = Special():Ignored(enc, entry, nil, ref())
             row.check:SetChecked(on)
             -- its icon (Special.Icon), drawn as the Mechanics list draws one
             Look.SetIcon(row.icon, Special().Icon(enc, entry, host.group(), ref()))
+            row.icon:SetAlpha(row.ignored and Look.IGNORED_ALPHA or 1)
             row.name:SetText(entry.label)
-            row.name:SetTextColor(Look.NameColor(entry.type, on, isSel))
+            if row.ignored then
+                local m = CRT.PALETTE.muted
+                row.name:SetTextColor(m[1], m[2], m[3], Look.IGNORED_ALPHA)
+            else
+                row.name:SetTextColor(Look.NameColor(entry.type, on, isSel))
+            end
             row.sel:SetColorTexture(selColor[1], selColor[2], selColor[3], selColor[4])
             row.sel:SetShown(isSel)
             row.frame:Show()
@@ -689,6 +699,9 @@ local function makeRow(parent, i)
         end
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
         GameTooltip:SetText(e.label, 1, 1, 1)
+        if row.ignored then
+            GameTooltip:AddLine(TEXT.ignored, 0.85, 0.85, 0.85, true)
+        end
         if e.help then
             GameTooltip:AddLine(e.help, 0.85, 0.85, 0.85, true)
         end
