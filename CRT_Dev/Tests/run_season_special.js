@@ -207,6 +207,27 @@ if altar then
   check(m == 245 and mn == 4, "a Mythic run: from the Mythic timeline, first at 4:05: " .. tostring(m) .. ", " .. tostring(mn) .. " casts")
 end
 
+-- The Coiled Altar's ability labels (Alex, 2026-11-15): the first boss file to ship the abilities field. After Build,
+-- Bosses:Abilities reads all 20 entries (none left out), with the tags-only entry and the also list kept.
+do
+  B:Build()
+  local a = B:Abilities(3429)
+  local n = 0
+  for _ in pairs(a or {}) do n = n + 1 end
+  check(n == 20, "The Coiled Altar: Bosses:Abilities holds the 20 shipped labels: " .. n)
+  local raw = 0
+  for _ in pairs(altar and altar.abilities or {}) do raw = raw + 1 end
+  check(raw == 20, "none of the 20 written entries is left out by the reader: " .. raw)
+  local soak = a and a[1283489]
+  check(soak and soak.type == "soak" and soak.also and #soak.also == 1 and soak.also[1] == "dodge" and soak.tags and #soak.tags == 1 and soak.tags[1] == "deadly",
+    "1283489: soak, also dodge, tag deadly")
+  local tagsOnly = a and a[1285643]
+  check(tagsOnly and tagsOnly.type == nil and tagsOnly.tags and #tagsOnly.tags == 1 and tagsOnly.tags[1] == "important", "1285643: no type, tag important")
+  local multi = a and a[1286918]
+  check(multi and multi.type == "raid" and table.concat(multi.tags or {}, ",") == "tank,healer,deadly", "1286918: raid, tags tank, healer, deadly")
+  check(a and a[1282287] and a[1282287].type == "dispel" and a[1282287].tags[1] == "poison", "1282287: dispel, tag poison")
+end
+
 -- Ula'tek's Grasping Fangs (Alex, 2026-10-30): a debuff list on every difficulty, Left groups 1 and 3, Right 2 and 4,
 -- spell 1301117, in the mockup's colours (on brighter than off on each side).
 do

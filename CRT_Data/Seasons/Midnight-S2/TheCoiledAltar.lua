@@ -8,9 +8,8 @@ local ADDON, CRT = ...
 --             format): Mythic, transcribed from a planner screenshot on 2026-10-17 (the vault note "Cowfee
 --             Raid Tools - Boss Reference Transcriptions"), and Heroic, transcribed from Alex's Heroic
 --             planner screenshot on 2026-10-27 (its phase lines and bar lengths are estimates from the axis;
---             see its last line). The rows have no types yet: Alex sets them in game as ability labels
---             (right-click an ability on the Timeline: Type, Also, icons), and Export labels there gives the
---             abilities field for this file.
+--             see its last line). The abilities field holds the labels Alex set in game (right-click an
+--             ability on the Timeline: Type, Also, icons), exported with Export labels on 2026-11-15.
 -- special     The boss's special alerts on Raid Notes > Mech Alerts > Special (the format is at the top of
 --             Alerts/Special.lua). Each one names a row of the ability timeline (when.row), so its times are that
 --             row's casts and move when the reference changes. A row that runs through several phases (Venom
@@ -111,6 +110,29 @@ Blighted Sever: 5:39, 6:11, 6:46, 7:23, 7:56, 8:29
     -- Phase 2 starts when boss2 (Malacrass) appears. Phase triggers belong to the encounter, so this holds on every
     -- difficulty (confirmed on Mythic only, 2026-11-13).
     phases = { [2] = { kind = "newboss", value = "boss2" } },
+    -- Ability labels (Bosses:Abilities), exported from the Timeline's Export labels on 2026-11-15.
+    abilities = {
+        [1282287] = { type = "dispel", tags = { "poison" } },
+        [1282403] = { type = "raid" },
+        [1282487] = { type = "generic" },
+        [1283489] = { type = "soak", also = { "dodge" }, tags = { "deadly" } },
+        [1283832] = { type = "dodge" },
+        [1285643] = { tags = { "important" } },
+        [1286620] = { type = "generic" },
+        [1286918] = { type = "raid", tags = { "tank", "healer", "deadly" } },
+        [1286947] = { type = "generic" },
+        [1287722] = { type = "generic" },
+        [1288624] = { type = "raid" },
+        [1298381] = { type = "generic" },
+        [1299267] = { type = "soak" },
+        [1299680] = { type = "heavydot" },
+        [1299838] = { type = "heavydot" },
+        [1299960] = { type = "raid" },
+        [1304033] = { type = "generic" },
+        [1307279] = { type = "generic" },
+        [1308323] = { type = "generic" },
+        [1310882] = { type = "spread", tags = { "important" } },
+    },
     special = {
         {
             key = "frontalP1",
