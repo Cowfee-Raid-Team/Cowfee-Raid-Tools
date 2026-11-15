@@ -23,7 +23,8 @@ GetTime = function() return NOW end
 time = function() return CLOCK end
 wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 strtrim = function(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
-Ambiguate = function(n) return (n:gsub("%-.*$", "")) end
+-- like the game: "short" always drops the realm, "none" drops only your own
+Ambiguate = function(n, how) if how == "short" then return (n:gsub("%-.*$", "")) end return (n:gsub("%-Sargeras$", "")) end
 geterrorhandler = function() return function(e) print("ERROR " .. tostring(e)) fails = fails + 1 end end
 local SECRET = setmetatable({}, { __tostring = function() return "secret" end })
 issecretvalue = function(v) return v == SECRET end
@@ -616,6 +617,17 @@ eq(rrow.cells[1].text, "<good>0/<warn>1/<muted>0", "tab: B/S/O for First Boss")
 eq(rrow.cells[3].text, "", "tab: blank for a boss with none")
 eq(rrow.updated.text, "<warn>9 days", "tab: an old list in warn")
 eq(rrow.forget.shown, true, "tab: a raider's list can be forgotten")
+-- a raider from another realm is drawn without it; the row's key keeps it
+local farRow
+store()["Granddh-Magtheridon"] = { items = { [21] = "big" }, at = CLOCK, class = "MAGE" }
+drops.View.opts.set("raiders")
+for _, r in ipairs(rl.rows) do if r.name == "Granddh-Magtheridon" then farRow = r end end
+check(farRow ~= nil, "realms: a cross-realm raider's row keeps Name-Realm")
+if farRow then
+  rl.view.init(rrow, farRow)
+  eq(rrow.name.text, "[MAGE]Granddh", "realms: Raiders view shows no realm")
+end
+store()["Granddh-Magtheridon"] = nil
 rl.view.init(rrow, arrowRow)
 eq(rrow.updated.text, "<muted>no list", "tab: no list, muted")
 eq(rrow.forget.shown, false, "tab: nothing to forget with no list")

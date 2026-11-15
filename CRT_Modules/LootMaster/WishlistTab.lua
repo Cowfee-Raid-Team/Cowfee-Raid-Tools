@@ -115,7 +115,8 @@ local function detailBoss()
 end
 
 local function classText(name, class)
-    local short = Ambiguate(name, "none")
+    -- display only: "short" always drops the realm (API_Ambiguate on warcraft.wiki.gg); keys stay Name-Realm
+    local short = Ambiguate(name, "short")
     local c = class and (C_ClassColor and C_ClassColor.GetClassColor(class) or (RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]))
     return c and c.WrapTextInColorCode and c:WrapTextInColorCode(short) or short
 end
@@ -348,7 +349,7 @@ local function initRaiderRow(row, data)
         row.forget:SetScript("OnEnter", function(self)
             if row.data then
                 UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, "lootmaster")
-                GameTooltip:SetText(TEXT.forget:format(Ambiguate(row.data.name, "none")))
+                GameTooltip:SetText(TEXT.forget:format(Ambiguate(row.data.name, "short")))
                 GameTooltip:Show()
             end
         end)
@@ -371,7 +372,7 @@ local function initRaiderRow(row, data)
     for i = #bosses + 1, #row.cells do
         row.cells[i]:Hide()
     end
-    row.name:SetText(data.noList and UI.ColorText(Ambiguate(data.name, "none"), "muted") or classText(data.name, data.class))
+    row.name:SetText(data.noList and UI.ColorText(Ambiguate(data.name, "short"), "muted") or classText(data.name, data.class))
     row.updated:ClearAllPoints()
     row.updated:SetPoint("LEFT", right + 4, 0)
     row.updated:SetText(ageText(data))
