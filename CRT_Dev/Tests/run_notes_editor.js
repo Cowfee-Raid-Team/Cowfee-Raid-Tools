@@ -535,10 +535,13 @@ assert(load(assignTabSrc, "AssignTab.lua"))("CowfeeRaidTools", CRT)
 assert(load(windowSrc, "EditorWindow.lua"))("CowfeeRaidTools", CRT)
 assert(load(editorLinksSrc, "EditorLinks.lua"))("CowfeeRaidTools", CRT)
 assert(load(editorAssignSrc, "EditorAssign.lua"))("CowfeeRaidTools", CRT)
-local checkSrc, editorCheckSrc = select(18, ...)
+local checkSrc, editorCheckSrc, editorLinesSrc = select(18, ...)
 if checkSrc then
   assert(load(checkSrc, "Check.lua"))("CowfeeRaidTools", CRT)
   assert(load(editorCheckSrc, "EditorCheck.lua"))("CowfeeRaidTools", CRT)
+end
+if editorLinesSrc then
+  assert(load(editorLinesSrc, "EditorLines.lua"))("CowfeeRaidTools", CRT)
 end
 assert(load(settingsSrc, "Settings.lua"))("CowfeeRaidTools", CRT)
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
@@ -586,11 +589,12 @@ do
   assert(W.window.opts.kind == "popout" and W.window.opts.layer == "popups" and W.window.opts.saved() == CRT.db.notes.editor, "a pop-out on the popups layer, its place saved in notes.editor")
   assert(shownRows() == #W.session.rows, "a row per line")
   -- timed lines: under the Timers heading, dimmed, their names as text, no chips, no mouse
-  assert(W.timerHeading.shown and W.timerHeading:GetText():find("not editable", 1, true), "the Timers heading")
+  assert(W.timerHeading.shown and W.timerHeading:GetText():find("right-click one to delete it", 1, true), "the Timers heading")
   for i = 2, 5 do
     local f = W.rowFrames[i]
     assert(rawget(f, "alpha") == 0.5, "timer row " .. i .. " dimmed")
-    assert(chipsShown(f) == 0 and rawget(f, "mouse") == false, "timer row " .. i .. ": no chips, no clicks")
+    -- (it takes clicks to be selected or deleted, #1294; never a drop: below)
+    assert(chipsShown(f) == 0 and rawget(f, "mouse") == (CRT.NoteEditorLines ~= nil), "timer row " .. i .. ": no chips")
   end
   assert(W.rowFrames[2].info:GetText():find("Abu, Gadios", 1, true), "a timer's names shown as text: " .. W.rowFrames[2].info:GetText())
   local chips = W.rowFrames[7].chips
@@ -1053,7 +1057,8 @@ do
   tips = {}
   if centerLine.scripts.OnEnter then centerLine.scripts.OnEnter(centerLine) end
   assert(tips[1] == nil, "a Center line follows nothing yet")
-  assert(rawget(leftLine, "mouse") == false, "and takes no clicks")
+  -- (a timed line takes clicks to be selected or deleted, #1294, never a drop)
+  assert(rawget(leftLine, "mouse") == (CRT.NoteEditorLines ~= nil), "clicks only to select or delete")
   -- Link 12
   B.link.scripts.OnClick(B.link)
   local saved = CRT.NoteLinks.Saved(nid)
@@ -1550,6 +1555,183 @@ do
   W.window:Hide()
 end
 print("ok the note check: the banner, its grouped list, Remove old lines asked first, Not now, hidden under Add assignment, short in a small window")
+
+-- 12e. #1294: leftover lines deleted. The note check's stale lines with Remove stale lines; right-click a timed line
+-- for Delete line or Delete all lines like it; click, Shift-click and Ctrl-click to select, Delete selected; every
+-- confirm lists the lines grouped and warns about a block's lines; read-only greys it all. Make all in the Make an
+-- Assign block banner: every list a block in the session at once, after one confirm, nothing saved until Save.
+do
+  local EC, ELn = CRT.NoteEditorCheck, CRT.NoteEditorLines
+  assert(ELn and ELn.Click and ELn.Delete, "CRT.NoteEditorLines")
+  W.session = nil
+  W.window:Hide()
+  rawset(W.left, "height", 4000)
+  -- the menu: a stand-in for the game's (UI.ContextMenu), its items kept
+  GameTooltip_AddNormalLine = GameTooltip_AddNormalLine or function() end
+  local menu
+  CRT.UI.ContextMenu = function(owner, fill)
+    menu = { owner = owner, items = {} }
+    local root = { CreateButton = function(_, label, fn)
+      local d = { label = label, fn = fn, enabled = true }
+      function d:SetEnabled(on) self.enabled = on and true or false end
+      function d:SetTooltip(f) self.tip = f end
+      menu.items[#menu.items + 1] = d
+      return d
+    end, CreateTitle = function() end }
+    fill(root)
+    return {}
+  end
+  local shiftDown, ctrlDown = false, false
+  IsShiftKeyDown = function() return shiftDown end
+  IsControlKeyDown = function() return ctrlDown end
+  local function press(i, button) local f = W.rowFrames[i] assert(f and f.shown and f.index == i, "row " .. i .. " shown") f.scripts.OnMouseDown(f, button or "LeftButton") end
+  local function item(label) for _, d in ipairs(menu and menu.items or {}) do if d.label:find(label, 1, true) then return d end end end
+  local function nLines(text) return #lines(text) end
+  local cid = Notes:Import(COILED)
+  local saved = Notes:Get(cid).raw
+  assert(Editor.Open({ id = cid }), "opened Alex's note")
+  local b = EC.state.banner
+  local function tip(k) return CRT.UI.TooltipPlain(rawget(k.help, "helpText")) end
+
+  -- the note check: 18 stale lines, listed grouped, Remove stale lines asked first
+  assert(b.shown and b.stale.text.shown and b.stale.text:GetText():find("18 stale lines", 1, true), "stale: " .. tostring(b.stale.text:GetText()))
+  assert(b.stale.button.shown and b.stale.button:GetText() == "Remove stale lines", "its button")
+  local st = tip(b.stale)
+  assert(st:find("Lichkingstoy: [^\\n]*, 6 lines %(P1 0:07 to 3:40%)") and st:find("Granddh: [^\\n]*, 6 lines %(P1 0:07 to 3:40%)")
+    and st:find("Lulu: Grab side green orb, 6 lines %(P1 0:07 to 3:40%)"), "the (?) lists three groups: " .. st)
+  confirm = nil
+  b.stale.button.scripts.OnClick(b.stale.button)
+  assert(confirm and confirm.text:find("Take 18 stale lines out of the note?", 1, true) and confirm.text:find("Lulu: Grab side green orb, 6 lines", 1, true),
+    "the confirm lists them: " .. tostring(confirm and confirm.text))
+  assert(W.session:Text() == saved, "nothing yet")
+  confirm.callback()
+  assert(nLines(W.session:Text()) == nLines(saved) - 18 and not W.session:Text():find("ph:1;tag:Lulu;text:Grab side green orb;", 1, true), "18 out")
+  assert(W.status:GetText():find("Removed 18 stale lines.", 1, true), W.status:GetText())
+  assert(Notes:Get(cid).raw == saved, "nothing saved")
+
+  -- closed without Save (the editor has no undo), opened again: right-click a Lulu line
+  Editor.Discard()
+  assert(Editor.Open({ id = cid }) and W.session:Text() == saved, "as saved")
+  press(48, "RightButton")
+  assert(menu and menu.owner == W.rowFrames[48], "a menu on the row")
+  local one, all = item("Delete line"), item("Delete all")
+  assert(one and all and one.enabled and all.enabled, "two items")
+  assert(all.label == 'Delete all "Grab side green orb" lines for Lulu', all.label)
+  confirm = nil
+  one.fn()
+  assert(confirm == nil, "one line, no block's: no confirm")
+  assert(nLines(W.session:Text()) == nLines(saved) - 1 and W.status:GetText():find("Deleted 1 line.", 1, true), "one gone")
+  assert(select(2, W.session:Text():gsub("ph:1;tag:Lulu;text:Grab side green orb;", "")) == 5, "her other five stay")
+  local kept = lines(saved)
+  table.remove(kept, 48)
+  assert(W.session:Text() == table.concat(kept, "\\n"), "every other line byte for byte")
+  press(48, "RightButton")
+  item("Delete all").fn()
+  assert(confirm and confirm.text:find("Delete 5 lines from the note?", 1, true) and confirm.text:find("Lulu: Grab side green orb, 5 lines (P1 0:50 to 3:40)", 1, true)
+    and confirm.acceptText == "Delete", "asked, listed: " .. tostring(confirm and confirm.text))
+  confirm.callback()
+  assert(not W.session:Text():find("ph:1;tag:Lulu;text:Grab side green orb;", 1, true) and W.session:Text():find("ph:1;tag:Granddh;text:Grab side green orb;", 1, true),
+    "Lulu's gone, Granddh's stay")
+  assert(W.status:GetText():find("Deleted 5 lines.", 1, true), W.status:GetText())
+  -- a block's line: asked, saying so
+  Editor.Discard()
+  assert(Editor.Open({ id = cid }))
+  press(60, "RightButton")
+  confirm = nil
+  item("Delete line").fn()
+  assert(confirm and confirm.text:find("1 of these is in Orb Carriers P1.", 1, true), "a block's line: asked: " .. tostring(confirm and confirm.text))
+  assert(W.session:Text() == saved, "nothing yet")
+  confirm.callback()
+  assert(nLines(W.session:Text()) == nLines(saved) - 1, "gone from the block")
+
+  -- select: click, Shift-click a range, Ctrl-click one out; Delete selected
+  Editor.Discard()
+  assert(Editor.Open({ id = cid }))
+  local del = W.deleteButton
+  assert(del and not del.shown, "no Delete selected with nothing selected")
+  press(58) -- a row of the block: not a timed line
+  assert(#ELn.Selected() == 0, "only timed lines select")
+  press(60) -- the block's first line
+  shiftDown = true
+  press(64)
+  shiftDown = false
+  assert(table.concat(ELn.Selected(), ",") == "60,61,62,63,64", "a range: " .. table.concat(ELn.Selected(), ","))
+  assert(rawget(W.rowFrames[62], "alpha") == 1 and rawget(W.rowFrames[65], "alpha") == 0.5, "selected at full strength")
+  assert(del.shown and del:GetText() == "Delete selected (5)", "Delete selected: " .. tostring(del:GetText()))
+  ctrlDown = true
+  press(62)
+  press(48)
+  ctrlDown = false
+  assert(table.concat(ELn.Selected(), ",") == "48,60,61,63,64", "Ctrl-click: one out, one in: " .. table.concat(ELn.Selected(), ","))
+  confirm = nil
+  del.scripts.OnClick(del)
+  assert(confirm and confirm.text:find("Delete 5 lines from the note?", 1, true) and confirm.text:find("4 of these are in Orb Carriers P1.", 1, true)
+    and confirm.text:find("Lulu: Grab side green orb, 1 line (P1 0:07)", 1, true), "asked: " .. tostring(confirm and confirm.text))
+  confirm.callback()
+  local want = lines(saved)
+  for _, n in ipairs({ 64, 63, 61, 60, 48 }) do table.remove(want, n) end
+  assert(W.session:Text() == table.concat(want, "\\n"), "exactly those")
+  assert(#ELn.Selected() == 0 and not del.shown, "the selection goes")
+  -- the selection goes with an edit, and on Save
+  press(36)
+  assert(#ELn.Selected() == 1 and del.shown, "one selected")
+  drag(paletteChip("Rixxy"), rowOf(W.session, "label", 1))
+  Editor.Refresh()
+  assert(#ELn.Selected() == 0 and not del.shown, "an edit clears it")
+  press(36)
+  assert(Editor.Save() and #ELn.Selected() == 0 and not del.shown, "Save clears it")
+  -- a plain click on the only selected line clears it
+  press(37)
+  press(37)
+  assert(#ELn.Selected() == 0, "clicked again: none")
+  Editor.Discard()
+  Notes:UpdateRaw(cid, saved)
+
+  -- read-only: no selection, the menu greyed with the reason, no Make all
+  inRaid, leader = true, false
+  assert(Editor.Open({ id = cid }) and W.session.readOnly, "read-only")
+  press(48)
+  assert(#ELn.Selected() == 0 and not W.deleteButton.shown, "no selection")
+  press(48, "RightButton")
+  assert(item("Delete line") and not item("Delete line").enabled and not item("Delete all").enabled and item("Delete line").tip, "greyed, with why")
+  assert(not EA.state.banner.shown, "no Make an Assign block or Make all")
+  assert(not ELn.Delete({ 48 }) and W.session:Text() == saved, "nothing deleted")
+  Editor.Discard()
+  inRaid, leader = false, false
+
+  -- Make all: one confirm listing each list, the session only, one step, nothing saved until Save
+  assert(Editor.Open({ id = cid }))
+  local ab = EA.state.banner
+  assert(ab.shown and ab.all and ab.all.shown and ab.all:GetText() == "Make all", "Make all in the banner")
+  confirm = nil
+  ab.all.scripts.OnClick(ab.all)
+  assert(confirm and confirm.text:find("Make all 5 group lists Assign blocks?", 1, true) and confirm.text:find("Orb Carriers: 24 timer lines", 1, true)
+    and confirm.text:find("Soak Ghosts: 4 timer lines", 1, true) and confirm.acceptText == "Make all", "asked: " .. tostring(confirm and confirm.text))
+  assert(W.session:Text() == saved, "nothing yet")
+  local applied, apply = 0, Editor.ApplyText
+  Editor.ApplyText = function(...) applied = applied + 1 return apply(...) end
+  confirm.callback()
+  Editor.ApplyText = apply
+  assert(applied == 1, "one step: " .. applied)
+  local made = Assign.AdoptAll(saved, { saved = CRT.NoteLinks.Saved(cid) })
+  assert(W.session:Text() == made and #Assign.Candidates(W.session:Text()) == 0, "every list a block")
+  assert(W.status:GetText():find("Made 5 Assign blocks.", 1, true) and W.save:IsEnabled() and not W.assignOn, "said, unsaved, the view closed")
+  assert(not ab.shown, "no list left: no banner")
+  assert(Notes:Get(cid).raw == saved, "nothing saved yet")
+  Editor.Discard()
+  assert(Notes:Get(cid).raw == saved, "closed without Save: the note as it was")
+  assert(Editor.Open({ id = cid }))
+  ab.all.scripts.OnClick(ab.all)
+  confirm.callback()
+  assert(Editor.Save() and Notes:Get(cid).raw == made, "Save writes it")
+  -- one list: no Make all
+  Editor.Discard()
+  local single = Notes:Import("EncounterID:3470;Difficulty:Mythic;Name:One List\\nOrbs\\nOdd: Abu, Cheo\\ntime:36;ph:1;tag:Abu Cheo;text:Orbs;")
+  assert(Editor.Open({ id = single }) and ab.shown and not ab.all.shown, "one list: Make an Assign block only")
+  Editor.Discard()
+  rawset(W.left, "height", 900)
+end
+print("ok leftover lines: stale lines removed, right-click Delete line and Delete all, select and Delete selected, read-only greyed, Make all")
 
 -- 12c. #1280: Make an Assign block and Update block from a list whose names carry realms write them without
 do
@@ -2070,7 +2252,11 @@ end
 print("ok Send my roster: on by default, Push note sends the roster after the note and says how it went; off sends none")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const files = process.argv.slice(2, 21);
+const files = process.argv.slice(2, 22);
+lua.lua_checkstack(L, files.length + 4);
+// Alex's Coiled Altar note (#1288), for the note check and the line deletes (#1294)
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(require('path').join(__dirname, 'coiled_altar_note.txt'), 'utf8').replace(/\r\n/g, '\n')));
+lua.lua_setglobal(L, to_luastring('COILED'));
 for (const f of files) {
   let src; try { src = fs.readFileSync(f, 'utf8'); } catch (e) { console.error('cannot read ' + f); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));
