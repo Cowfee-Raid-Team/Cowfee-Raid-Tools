@@ -13,7 +13,11 @@ local ADDON, CRT = ...
 -- the note until Save, which links the blocks' timer lines to their rows (Assign.LinkAll). A name another block or a
 -- typed list of the note has is refused, with the reason (Assign.KeyTaken). Making a typed list a block asks first,
 -- saying what changes (Assign.AdoptChanges); a list named like a block the note has updates that block instead
--- (Assign.AdoptInto), never a copy. When a note opens with such lists, a banner over the rows offers it.
+-- (Assign.AdoptInto), never a copy. When a note opens with such lists, a banner over the rows offers it; with two or
+-- more, its Make all makes every one a block at once (Assign.AdoptAll, #1294), after one confirmation that lists them.
+-- A block the note has is updated by the first list named like it only; a later one becomes its own block ("Name 2").
+-- Make all changes the session's text only, in one step: nothing reaches the note until Save (the editor has no undo:
+-- closing without Save drops it).
 -- Called by the editor:
 --   EA.Build(left)   makes the view, hidden, and the banner
 --   EA.Toggle()      Add assignment: opens the view (on the row selected for Quick fill's block, if it is one), or
@@ -22,6 +26,7 @@ local ADDON, CRT = ...
 --   EA.RefreshBanner(width, top, hide, again)   the banner's height (0 hidden), under the Link banner; hide: for want
 --                    of room; again: drawn once more in the same Refresh, the group lists as found
 --   EA.Close()       back to the rows
+--   EA.AskMakeAll()  Make all: asked first, every group list made a block in the session
 
 local UI = CRT.UI
 local Notes = CRT.Notes
@@ -64,6 +69,18 @@ local TEXT = {
     bannerMany = "%d group lists have timer lines under their rows (%s). Make one an Assign block?",
     bannerMake = "Make an Assign block",
     bannerLater = "Not now",
+    bannerAll = "Make all",
+    allTitle = "Make all %d group lists Assign blocks?",
+    allLine = "%s: %d timer lines",
+    allLineOne = "%s: 1 timer line",
+    allUpdate = "%s: %d timer lines (updates that block)",
+    allUpdateOne = "%s: 1 timer line (updates that block)",
+    allOwn = "%s: %d timer lines (a block of its own: another list updates that block)",
+    allOwnOne = "%s: 1 timer line (a block of its own: another list updates that block)",
+    allMore = "And %d more lists, %d timer lines.",
+    allButton = "Make all",
+    allDone = "Made %d Assign blocks. Save keeps them.",
+    allGone = "The note changed: Make all made nothing.",
     timersHelp = {
         { "None (names only)", "only the heading and the rows go in the note, for names with no timers." },
         { "Typed times", "type the times below." },
@@ -614,10 +631,83 @@ function EA.Close()
     Editor.Refresh()
 end
 
+-- Make all (#1294): every group list Candidates offers made a block in the session's text at once (Assign.AdoptAll), each
+-- as the banner's Make an Assign block makes it (its lines' own times; a list named like a block the note has updates
+-- that block, against its timers). Asked first, listing each list with its line count; nothing changes unless the text
+-- is the same at Accept. The view stays closed.
+local ALL_MAX = 25 -- lists named in Make all's confirmation; the rest as a count (as the note check's groups)
+
+function EA.AskMakeAll()
+    local s = W.session
+    if not s or readOnly() then
+        return false
+    end
+    local text = s:Text()
+    local saved = CRT.NoteLinks.Saved(noteKey())
+    local cands = Assign.Candidates(text, saved)
+    if #cands == 0 then
+        return false
+    end
+    A.mechs = mechanics()
+    local out = { string.format(TEXT.allTitle, #cands) }
+    -- as Assign.AdoptAll does it: a block the note has is updated by the first list named like it only
+    local updating, rest, restLines = {}, 0, 0
+    for k, c in ipairs(cands) do
+        local key = Assign.MatchingBlock(text, c.heading)
+        local f
+        local one = c.lines == 1
+        if key and not updating[key] then
+            updating[key] = true
+            f = one and TEXT.allUpdateOne or TEXT.allUpdate
+        elseif key then
+            f = one and TEXT.allOwnOne or TEXT.allOwn
+        else
+            f = one and TEXT.allLineOne or TEXT.allLine
+        end
+        if k > ALL_MAX then
+            rest, restLines = rest + 1, restLines + c.lines
+        else
+            out[#out + 1] = one and string.format(f, c.name) or string.format(f, c.name, c.lines)
+        end
+    end
+    if rest > 0 then
+        out[#out + 1] = string.format(TEXT.allMore, rest, restLines)
+    end
+    local function accept()
+        if not (W.session and not readOnly()) then
+            return
+        end
+        if W.session:Text() ~= text then
+            W.notice = UI.BadText(TEXT.allGone)
+            Editor.Refresh()
+            return
+        end
+        local made
+        text, made = Assign.AdoptAll(text, { saved = saved, castsFor = function(key)
+            local _, casts = blockTimers(key)
+            return casts
+        end })
+        apply(text)
+        W.notice = UI.GoodText(string.format(TEXT.allDone, #made))
+        Editor.Refresh()
+    end
+    if not StaticPopup_ShowCustomGenericConfirmation then
+        accept()
+        return true
+    end
+    UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation({
+        text = marked(table.concat(out, "\n")),
+        acceptText = TEXT.allButton,
+        cancelText = CANCEL,
+        callback = accept,
+    }), "GENERIC_CONFIRMATION"))
+    return true
+end
+
 -- The banner ---------------------------------------------------------------------------------------------------------
 -- A note with group lists that timer lines follow (Assign.Candidates: a pasted planner note, say) says so over the rows,
--- under the Link banner, and offers to make the first one a block (asked first, EA.AskAdopt). Not now hides it until
--- the text changes. Not for a note you can't change, nor while Add assignment is open.
+-- under the Link banner, and offers to make the first one a block (asked first, EA.AskAdopt), or, with two or more, all
+-- of them (Make all, EA.AskMakeAll). Not now hides it until the text changes. Not for a note you can't change, nor while Add assignment is open.
 
 local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 }
 local BANNER = { pad = 6, gap = 4, buttonH = 22, buttonGap = 6, below = 6 }
@@ -637,6 +727,9 @@ function EA.BuildBanner(left)
             A.timers = "none"
             EA.AskAdopt(c.heading)
         end
+    end)
+    b.all = UI.PanelButton(b, TEXT.bannerAll, BANNER.buttonH, function()
+        EA.AskMakeAll()
     end)
     b.later = UI.PanelButton(b, TEXT.bannerLater, BANNER.buttonH, function()
         if W.session then
@@ -683,8 +776,12 @@ function EA.RefreshBanner(width, top, hide, again)
     local y = BANNER.pad + math.ceil(b.title:GetStringHeight() or 14) + BANNER.gap
     b.make:ClearAllPoints()
     b.make:SetPoint("TOPLEFT", BANNER.pad, -y)
+    -- Make all with two lists or more
+    b.all:SetShown(#names > 1)
+    b.all:ClearAllPoints()
+    b.all:SetPoint("LEFT", b.make, "RIGHT", BANNER.buttonGap, 0)
     b.later:ClearAllPoints()
-    b.later:SetPoint("LEFT", b.make, "RIGHT", BANNER.buttonGap, 0)
+    b.later:SetPoint("LEFT", #names > 1 and b.all or b.make, "RIGHT", BANNER.buttonGap, 0)
     y = y + BANNER.buttonH + BANNER.pad
     b:SetHeight(y)
     b:Show()

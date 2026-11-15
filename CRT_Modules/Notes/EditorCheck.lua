@@ -5,15 +5,19 @@ local ADDON, CRT = ...
 --   Double callouts   a player gets two callouts at once; Remove old lines takes out the typed lines an Assign block
 --                     replaced, after a confirmation; the (?) and the confirmation list every one of them, alike
 --                     lines in one group ("Sixz: Grab {cross} purple orb, 6 lines (P1 0:07 to 3:40)")
+--   Stale lines       (#1294) lines for players at a block's cast in none of its rows' words that follow no row;
+--                     Remove stale lines takes them out, after a confirmation that lists them, grouped the same way
 --   Lines for players no group row lists   a warning only
 -- one line each with its count, a (?) that lists them, and its button; Not now hides the banner until the text
--- changes. Remove old lines changes the session only (Editor.ApplyText): Save keeps the change. A block cast with no
+-- changes. The buttons change the session only (Editor.ApplyText): Save keeps the change. A block cast with no
 -- lines is no warning (Alex, 2026-11-15: removing a cast's lines means no one is called then). Not for a note you can't
 -- change, nor while Add assignment is open. Short of room (EditorWindow's banner budget) it shows one line, its
--- counts, with one (?) for everything and Remove old lines under it.
+-- counts, with one (?) for everything and its buttons under it.
 --   EC.Build(left)                              makes the banner, hidden
 --   EC.RefreshBanner(width, top, short, hide)   the banner's height (0 hidden), under the other banners; short: the
 --                                               one-line form; hide: hidden for want of room
+--   EC.GroupList(lines)                         lines (line numbers) as a confirmation lists them: alike lines in one
+--                                               group, "Lulu: Grab side green orb, 6 lines (P1 0:07 to 3:40)"
 
 local UI = CRT.UI
 local Check = CRT.NoteCheck
@@ -30,11 +34,21 @@ local TEXT = {
     doubles = "%d double callouts: a player gets two callouts at once.",
     oldOne = "1 old line that an Assign block replaced.",
     old = "%d old lines that an Assign block replaced.",
+    staleOne = "1 stale line: at a block's cast, in none of its rows' words.",
+    stale = "%d stale lines: at a block's cast, in none of its rows' words.",
+    staleTitle = "Stale lines",
+    staleHelp = "These lines are for players at one of an Assign block's casts, but their words fit none of the block's rows and they follow no other row. They are likely left over from before the block. Remove stale lines takes them out. It asks first. Save keeps the change.",
+    removeStale = "Remove stale lines",
+    removeStaleConfirmOne = "Take 1 stale line out of the note?\n%s",
+    removeStaleConfirm = "Take %d stale lines out of the note?\n%s",
+    removedStaleOne = "Removed 1 stale line.",
+    removedStale = "Removed %d stale lines.",
     orphansOne = "1 line for a player no group row lists.",
     orphans = "%d lines for players no group row lists.",
     short = "Note check: %s.",
     shortDoubles = "%d double",
     shortOld = "%d old",
+    shortStale = "%d stale",
     shortOrphans = "%d no row",
     remove = "Remove old lines",
     later = "Not now",
@@ -130,28 +144,14 @@ local function capped(items)
     return table.concat(out, "\n")
 end
 
--- Every line Remove old lines takes, alike lines (the same players and text) in one group with how many and when:
--- "Sixz: Grab {cross} purple orb, 6 lines (P1 0:07 to 3:40)". Past maxGroups groups, the rest as a count of groups
--- and lines, so no line is ever left out silently.
-local function oldList(r)
-    local groups, byKey = {}, {}
-    for _, i in ipairs(r.old) do
-        local row = W.session and W.session.rows[i]
-        local t = row and row.timer
-        if t then
-            local who = table.concat(W.session:TimerNames(i), " ")
-            local key = who .. "\1" .. (t.text or "")
-            local g = byKey[key]
-            if not g then
-                g = { who = who, text = lineText(i), first = t, last = t, n = 0 }
-                byKey[key] = g
-                groups[#groups + 1] = g
-            end
-            g.n, g.last = g.n + 1, t
-        end
-    end
+-- Every line in `list` (line numbers: those Remove old lines takes, or any the editor deletes), alike lines (the same
+-- players and text, Check.Groups) in one group with how many and when: "Sixz: Grab {cross} purple orb, 6 lines (P1
+-- 0:07 to 3:40)". Past maxGroups groups, the rest as a count of groups and lines, so no line is ever left out silently.
+local function groupList(list)
+    local groups = W.session and Check.Groups(W.session, list) or {}
     local out, rest, restLines = {}, 0, 0
     for k, g in ipairs(groups) do
+        g.text = marked(g.text)
         if k > L.maxGroups then
             rest, restLines = rest + 1, restLines + g.n
         elseif g.n == 1 then
@@ -169,6 +169,7 @@ local function oldList(r)
     end
     return table.concat(out, "\n")
 end
+EC.GroupList = groupList
 
 -- The (?) texts, read when the tooltip opens.
 local function doublesTip()
@@ -190,11 +191,19 @@ local function doublesTip()
     end
     if #r.old > 0 then
         tip[#tip + 1] = TEXT.oldList
-        tip[#tip + 1] = oldList(r)
+        tip[#tip + 1] = groupList(r.old)
     else
         tip[#tip + 1] = TEXT.noOld
     end
     return tip
+end
+
+local function staleTip()
+    local r = S.result
+    if not r then
+        return ""
+    end
+    return { TEXT.staleHelp, groupList(r.stale) }
 end
 
 local function orphansTip()
@@ -219,6 +228,12 @@ local function allTip()
             out[#out + 1] = part
         end
     end
+    if r and #r.stale > 0 then
+        out[#out + 1] = { TEXT.staleTitle, "" }
+        for _, part in ipairs(staleTip()) do
+            out[#out + 1] = part
+        end
+    end
     if r and #r.orphans > 0 then
         out[#out + 1] = { TEXT.orphansTitle, "" }
         for _, part in ipairs(orphansTip()) do
@@ -230,14 +245,23 @@ end
 
 -- The buttons ----------------------------------------------------------------------------------------------------
 
-local function removeClick()
+-- Remove old lines (kind "old") and Remove stale lines (kind "stale"): the check run again on the text now, then asked
+-- first with every line listed; nothing changes unless the text is still the same at Accept (Check.RemoveLines).
+local KINDS = {
+    old = { confirmOne = "removeConfirmOne", confirm = "removeConfirm", doneOne = "removedOne", done = "removed" },
+    stale = { confirmOne = "removeStaleConfirmOne", confirm = "removeStaleConfirm", doneOne = "removedStaleOne", done = "removedStale" },
+}
+
+local function removeKind(kind)
     local s = W.session
     if not s or readOnly() then
         return
     end
+    local k = KINDS[kind]
     local text = s:Text()
     local r = Check.Run(text, CRT.NoteLinks.Saved(noteKey()))
-    local n = #r.old
+    local list = r[kind]
+    local n = #list
     if n == 0 then
         return
     end
@@ -246,21 +270,29 @@ local function removeClick()
         if not (W.session and not readOnly() and W.session:Text() == text) then
             return
         end
-        Editor.ApplyText(Check.RemoveOld(text, r))
-        W.notice = UI.GoodText(n == 1 and TEXT.removedOne or string.format(TEXT.removed, n))
+        Editor.ApplyText(Check.RemoveLines(text, list))
+        W.notice = UI.GoodText(n == 1 and TEXT[k.doneOne] or string.format(TEXT[k.done], n))
         Editor.Refresh()
     end
     if not StaticPopup_ShowCustomGenericConfirmation then
         go()
         return
     end
-    local list = oldList(r)
+    local listed = groupList(list)
     UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation({
-        text = n == 1 and string.format(TEXT.removeConfirmOne, list) or string.format(TEXT.removeConfirm, n, list),
+        text = n == 1 and string.format(TEXT[k.confirmOne], listed) or string.format(TEXT[k.confirm], n, listed),
         acceptText = TEXT.removeButton,
         cancelText = CANCEL,
         callback = go,
     }), "GENERIC_CONFIRMATION"))
+end
+
+local function removeClick()
+    removeKind("old")
+end
+
+local function removeStaleClick()
+    removeKind("stale")
 end
 
 local function laterClick()
@@ -305,6 +337,7 @@ function EC.Build(left)
     b.later = UI.PanelButton(b, TEXT.later, L.buttonH, laterClick)
     label(b.later, TEXT.later)
     b.doubles = kindLine(b, TEXT.doublesTitle, doublesTip, removeClick, TEXT.remove)
+    b.stale = kindLine(b, TEXT.staleTitle, staleTip, removeStaleClick, TEXT.removeStale)
     b.orphans = kindLine(b, TEXT.orphansTitle, orphansTip)
     -- the short form: one line of counts, one (?) for all of it
     b.short = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
@@ -368,6 +401,7 @@ local function drawFull(b, r, inner)
     y = y + L.buttonH + L.gap
     local doubles = counted(#r.doubles, TEXT.doublesOne, TEXT.doubles) or counted(#r.old, TEXT.oldOne, TEXT.old)
     y = placeKind(b, b.doubles, y, doubles, #r.old > 0, inner)
+    y = placeKind(b, b.stale, y, counted(#r.stale, TEXT.staleOne, TEXT.stale), true, inner)
     y = placeKind(b, b.orphans, y, counted(#r.orphans, TEXT.orphansOne, TEXT.orphans), false, inner)
     return y - L.lineGap + L.pad
 end
@@ -376,9 +410,11 @@ end
 local function drawShort(b, r, inner)
     b.title:Hide()
     hideKind(b.doubles)
+    hideKind(b.stale)
     hideKind(b.orphans)
     local parts = {}
-    for _, e in ipairs({ { #r.doubles, TEXT.shortDoubles }, { #r.old, TEXT.shortOld }, { #r.orphans, TEXT.shortOrphans } }) do
+    for _, e in ipairs({ { #r.doubles, TEXT.shortDoubles }, { #r.old, TEXT.shortOld }, { #r.stale, TEXT.shortStale },
+        { #r.orphans, TEXT.shortOrphans } }) do
         if e[1] > 0 then
             parts[#parts + 1] = string.format(e[2], e[1])
         end
@@ -394,11 +430,18 @@ local function drawShort(b, r, inner)
     b.short:Show()
     b.shortHelp:Show()
     y = y + L.buttonH
-    local remove = b.doubles.button
-    remove:SetShown(#r.old > 0)
-    if #r.old > 0 then
-        remove:ClearAllPoints()
-        remove:SetPoint("TOPLEFT", L.pad, -(y + L.gap))
+    -- the buttons in one row under it, left to right
+    local x = L.pad
+    for _, e in ipairs({ { b.doubles.button, #r.old > 0 }, { b.stale.button, #r.stale > 0 } }) do
+        local button, on = e[1], e[2]
+        button:SetShown(on)
+        if on then
+            button:ClearAllPoints()
+            button:SetPoint("TOPLEFT", x, -(y + L.gap))
+            x = x + (button:GetWidth() or 0) + L.buttonGap
+        end
+    end
+    if x > L.pad then
         y = y + L.gap + L.buttonH
     end
     return y + L.pad

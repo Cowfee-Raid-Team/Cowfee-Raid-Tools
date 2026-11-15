@@ -52,7 +52,7 @@ local function check(name, fn)
 end
 local function lines(text) local out = {} for l in (text .. "\n"):gmatch("(.-)\r?\n") do out[#out + 1] = l end return out end
 local function count(text, needle) return select(2, text:gsub((needle:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?{}]", "%%%0")), "")) end
-local function summary(r) return #r.doubles .. " doubles, " .. #r.old .. " old, " .. #r.orphans .. " orphans" .. (r.missing and ", a missing list" or "") end
+local function summary(r) return #r.doubles .. " doubles, " .. #r.old .. " old, " .. #(r.stale or {}) .. " stale, " .. #r.orphans .. " orphans" .. (r.missing and ", a missing list" or "") end
 
 -- COILED: the line numbers of the fixture. The 48 phase 1 "Grab ... orb" lines from before the Orb Carriers P1 block,
 -- six per player: Sixz 6-11, Notkvr 12-17, Sarrantha 18-23, Dotsanhots 24-29, Gadios 30-35, Lichkingstoy 36-41,
@@ -99,9 +99,11 @@ check("Alex's note: Remove old lines; Lulu's five doubles left to judge; 3:40 st
   local after = Check.Run(text)
   assert(#after.doubles == 5 and #after.old == 0 and #after.orphans == 0, "Lulu's doubles: " .. summary(after))
   for _, d in ipairs(after.doubles) do assert(d.name == "Lulu", "only Lulu's") end
-  -- Alex takes Lulu's old lines out by hand: clean
+  -- Alex takes Lulu's old lines out by hand: Lichkingstoy's and Granddh's 12 stale lines left (#1294), then clean
   local done = text:gsub("time:[%d%.]+;ph:1;tag:Lulu;text:Grab side green orb;[^\n]*\n", "")
-  assert(Check.Clean(Check.Run(done)), "clean: " .. summary(Check.Run(done)))
+  local left = Check.Run(done)
+  assert(#left.stale == 12 and #left.doubles == 0 and #left.old == 0 and #left.orphans == 0, "12 stale: " .. summary(left))
+  assert(Check.Clean(Check.Run(Check.RemoveStale(done, left))), "clean: " .. summary(Check.Run(Check.RemoveStale(done, left))))
   -- the lists are still there to make blocks of
   assert(#A.Candidates(text) == 5, "five lists to make blocks")
 end)
@@ -199,6 +201,109 @@ check("Remove old lines: a note that ended on one ends as before", function()
   assert(Check.RemoveOld(text, r) == blk, "the note as it was: " .. Check.RemoveOld(text, r))
   local crlf = blk:gsub("\n", "\r\n") .. "\r\ntime:30;ph:1;tag:Abu;text:Grab {cross} orb;\r\n"
   assert(Check.RemoveOld(crlf, Check.Run(crlf)) == blk:gsub("\n", "\r\n") .. "\r\n", "CRLF, a trailing line end kept")
+end)
+
+-- #1294: stale lines (Alex, 2026-11-15): typed lines for players at one of a block's casts, in none of its rows' words,
+-- following no row; the shared line remover; the editor's line helpers
+local STALE_FIRST, STALE_LAST = 36, 53 -- Lichkingstoy 36-41, Granddh 42-47, Lulu 48-53
+
+check("stale: Alex's note: Lichkingstoy's, Granddh's and Lulu's 18 P1 lines, nothing else (#1294)", function()
+  local r = Check.Run(COILED)
+  assert(r.stale and #r.stale == 18, "18 stale lines: " .. (r.stale and #r.stale or "none"))
+  for k, i in ipairs(r.stale) do assert(i == STALE_FIRST + k - 1, "line " .. i .. " in order, from " .. STALE_FIRST) end
+  assert(#r.old == 30 and #r.orphans == 0 and #r.doubles == 20, "the rest as before: " .. summary(r))
+  -- Remove stale lines takes exactly them; with Remove old lines too, the note is clean
+  local text = Check.RemoveStale(COILED, r)
+  assert(#lines(text) == #lines(COILED) - 18, "18 lines out")
+  local kept = lines(COILED)
+  for n = STALE_LAST, STALE_FIRST, -1 do table.remove(kept, n) end
+  assert(table.concat(kept, "\n") == text, "every other line as it was")
+  assert(count(text, "ph:1;tag:Lulu;text:Grab side green orb;") == 0 and count(text, "ph:1;tag:Granddh;") == 0
+    and count(text, "ph:1;tag:Lichkingstoy;") == 0, "their P1 lines out")
+  assert(text:find("time:7;ph:3;tag:Lichkingstoy;text:Grab {star} green orb;", 1, true) and text:find("time:7;ph:3;tag:Granddh;", 1, true), "their P3 lines stay")
+  local after = Check.Run(text)
+  assert(#after.stale == 0 and #after.old == 30 and #after.doubles == 15, "Lulu's doubles went with them: " .. summary(after))
+  local clean = Check.RemoveOld(text, after)
+  assert(Check.Clean(Check.Run(clean)), "clean: " .. summary(Check.Run(clean)))
+  assert(not Check.Clean({ doubles = {}, old = {}, orphans = {}, stale = { 1 } }), "a stale line is something to say")
+end)
+
+check("stale: shares a word; never a spell, a role, a line that follows a row, a near-miss, or a line off the block's casts (#1294)", function()
+  local typed = { { ph = 1, t = 30 }, { ph = 1, t = 90 } }
+  local blk = table.concat(A.Lines({ name = "Orbs", times = typed, rows = { { label = "{cross} orb", text = "", tokens = { "Abu" }, casts = "all" } } }, typed), "\n")
+  local text = table.concat({ "EncounterID:1;Name:Stale", blk, "",
+    "Kicks: Zed",
+    "Healers: Kip, Ned",
+    "Soaks",
+    "Left: Cheo, Kip, Quin, Rob",
+    "time:30;ph:1;tag:Kip;text:Carry the orb out;",       -- a player, at a cast, in no row's words, sharing "orb": stale
+    "time:90.03;ph:1;tag:Quin;text:Move to the orbs;",    -- within the same-time tolerance, sharing the block's name: stale
+    "time:30;ph:1;tag:Kip;text:Use a defensive;",         -- shares no word with the block (Alex, 2026-11-15): kept
+    "time:30;ph:1;tag:Kip;text:Stack on {cross};",        -- shares only a raid marker: kept
+    "time:30;ph:1;tag:Zed;text:Kicks;",                   -- follows Kicks: Zed
+    "time:30;ph:1;tag:healers;text:Raid CD;",             -- a role
+    "time:30;ph:1;tag:Warrior;text:Shout;",               -- a class
+    "time:30;ph:1;tag:Kip;spellid:740;",                  -- a cooldown
+    "time:30;ph:1;tag:Kip;spellid:740;text:Tranq now;",   -- a cooldown with a text
+    "time:30;ph:1;tag:Cheo Kip Quin;text:Soak left;",      -- close to Left (Rob missing): a near-miss
+    "time:60;ph:1;tag:Kip;text:Use a defensive;",         -- off the block's casts
+    "time:30;ph:2;tag:Kip;text:Use a defensive;",         -- the same time in another phase
+    "time:30;ph:1;tag:Abu;text:Grab {cross} orb;",        -- in the block's words: old, never stale
+  }, "\n")
+  local s = Model.New(text)
+  local L = CRT.NoteLinks
+  local m = L.Match(L.Rows(s), L.Lines(s))
+  local at = {}
+  for n, l in ipairs(lines(text)) do at[l] = n end
+  local near = false
+  for _, e in ipairs(m.near) do if e.line.index == at["time:30;ph:1;tag:Cheo Kip Quin;text:Soak left;"] then near = true end end
+  assert(near, "the fixture's near-miss is one")
+  assert(m.follow[at["time:30;ph:1;tag:Zed;text:Kicks;"]], "the fixture's Kicks line follows its row")
+  local r = Check.Run(text)
+  local want = { at["time:30;ph:1;tag:Kip;text:Carry the orb out;"], at["time:90.03;ph:1;tag:Quin;text:Move to the orbs;"] }
+  table.sort(want)
+  assert(table.concat(r.stale, ",") == table.concat(want, ","), "only Kip's and Quin's: " .. table.concat(r.stale, ",") .. " want " .. table.concat(want, ","))
+  assert(#r.old == 1 and r.old[1] == at["time:30;ph:1;tag:Abu;text:Grab {cross} orb;"], "the old line stays old")
+  local out = Check.RemoveStale(text, r)
+  assert(#lines(out) == #lines(text) - 2 and not out:find("Move to the orbs", 1, true) and out:find("time:30;ph:1;tag:Kip;text:Use a defensive;", 1, true)
+    and out:find("Stack on {cross}", 1, true), out)
+  -- a stale line for a player no row lists is stale, not an orphan as well
+  local lone = text .. "\ntime:90;ph:1;tag:Nobody;text:Stand on the orb;"
+  local r2 = Check.Run(lone)
+  assert(r2.stale[#r2.stale] == #lines(lone) and #r2.orphans == 0, "stale, no orphan: " .. summary(r2))
+end)
+
+check("RemoveLines: one helper for every delete; every other byte kept, CRLF and the last line end too (#1294)", function()
+  assert(Check.RemoveLines, "Check.RemoveLines")
+  local text = "a\r\nb\r\nc\r\nd"
+  assert(Check.RemoveLines(text, { 2 }) == "a\r\nc\r\nd", "one line")
+  assert(Check.RemoveLines(text, { 4 }) == "a\r\nb\r\nc", "the last line: the one before ends the note")
+  assert(Check.RemoveLines(text, { [3] = true, [4] = true }) == "a\r\nb", "a set works too")
+  assert(Check.RemoveLines(text, {}) == text, "nothing")
+  assert(Check.RemoveLines("a\nb\n", { 1 }) == "b\n", "a trailing line end kept")
+  assert(Check.RemoveLines(text, { 4, 2, 2 }) == "a\r\nc", "unsorted, a line twice: each once")
+end)
+
+check("SameLines: every line with the same players and text, any time and phase (#1294)", function()
+  local same = Check.SameLines(COILED, 48)
+  assert(table.concat(same, ",") == "48,49,50,51,52,53", "Lulu's six: " .. table.concat(same, ","))
+  assert(#Check.SameLines(COILED, 42) == 6, "Granddh's six, not Lulu's")
+  assert(#Check.SameLines(COILED, 85) == 3, "Whitecrows' P3 three")
+  assert(#Check.SameLines(COILED, 158) == 0, "a heading: none")
+  -- a spell line: the same spell only; listed by the spell's name when it has no text (review, #1294)
+  local spells = "time:10;ph:1;tag:Kip;spellid:740;\ntime:20;ph:1;tag:Kip;spellid:98008;\ntime:30;ph:1;tag:Kip;spellid:740;"
+  assert(table.concat(Check.SameLines(spells, 1), ",") == "1,3", "Tranquility twice, not the other spell")
+  local g = Check.Groups(spells, { 1, 2, 3 })
+  assert(#g == 2 and g[1].text == "Spell740" and g[1].n == 2 and g[2].text == "Spell98008", "by spell: " .. tostring(g[1] and g[1].text))
+end)
+
+check("Groups and InBlocks: what a confirm lists (#1294)", function()
+  local g = Check.Groups(COILED, { 36, 48, 49, 50, 51, 52, 53 })
+  assert(#g == 2 and g[1].who == "Lichkingstoy" and g[1].n == 1 and g[2].who == "Lulu" and g[2].n == 6, "two groups")
+  assert(g[2].text == "Grab side green orb" and g[2].first.time == 7 and g[2].last.time == 220 and (g[2].first.ph or 1) == 1, "with when")
+  local b = Check.InBlocks(COILED, { 60, 61, 48, 65 })
+  assert(#b == 1 and b[1].name == "Orb Carriers P1" and b[1].n == 3 and b[1].key == "orb carriers p1", "3 in the block: " .. tostring(b[1] and b[1].n))
+  assert(#Check.InBlocks(COILED, { 48 }) == 0, "none")
 end)
 
 check("no errors raised", function()
