@@ -145,9 +145,10 @@ local ONE = table.concat({
   "time:7;ph:1;tag:Sixz;text:Grab {cross} purple orb;",           -- 21 another row's wording ({cross}: Whitecrows): never Sixz's row
   "time:7;ph:1;tag:Lulu;text:Grab side green orb;",               -- 22 Lulu on two rows, neither's wording: left alone
   "time:3;ph:1;tag:Cheoeqar;spellid:200183;",                     -- 23 a cooldown: no wording, never linked
-  "time:30;ph:1;tag:Whitecrows;text:Use a healthstone;",          -- 24 Whitecrows on one row only, no row's wording: follows it
+  "time:30;ph:1;tag:Whitecrows;text:Use a healthstone;",          -- 24 Whitecrows on one row only, but no word of its label: unlinked
   "time:30;ph:1;tag:Cheoeqar;spellid:64843;text:Hymn;",           -- 25 a spell line with a text of its own: never by the one row rule
   "time:40;ph:1;tag:Nobody;text:Grab {square} purple orb;",       -- 26 a player on no row
+  "time:50;ph:1;tag:Whitecrows;text:Watch the purple add;",       -- 27 his only row, a word of its label (purple): follows it
 }, "\n")
 
 check("one name: a line follows its player's row by the wording, else his only row (#1288)", function()
@@ -158,7 +159,10 @@ check("one name: a line follows its player's row by the wording, else his only r
   assert(row(16) == "side green orb" and row(20) == "3rd CC on Mindcontrol", "Dotsanhots by the wording: " .. tostring(row(16)) .. " / " .. tostring(row(20)))
   assert(row(17) == "1st CC on Mindcontrol", "the text's words in the label: " .. tostring(row(17)))
   assert(row(18) == "4th CC on Mindcontrol" and row(19) == "Soak Ghost at {square}", "Lulu by the wording: " .. tostring(row(18)) .. " / " .. tostring(row(19)))
-  assert(row(24) == "{cross} purple orb", "a player on one row only, no row's wording: his row: " .. tostring(row(24)))
+  assert(row(24) == nil, "his only row, no word of its label: unlinked (Alex, 2026-11-15): " .. tostring(row(24)))
+  assert(row(27) == "{cross} purple orb", "his only row, sharing a word: " .. tostring(row(27)))
+  assert(Links.Fits("Stack at 10%", "1") == nil and Links.Fits("Soak at 1.", "1") == "strong", "a label fits on word bounds only")
+  assert(Links.Fits("Grab the orb, now", "the orb") == "strong", "a word's comma left out")
   -- never a row of another player; ambiguous or another row's callout: unlinked
   assert(row(21) == nil, "Sixz's line with Whitecrows's wording follows nothing: " .. tostring(row(21)))
   assert(row(22) == nil, "Lulu on two rows, neither's wording: ambiguous, unlinked: " .. tostring(row(22)))
@@ -180,7 +184,7 @@ check("one name: a row's names change and its one-name lines follow; saved links
   assert(s:Remove(2, 1) and s:Add(2, "Abu"), "Whitecrows swapped for Abu")
   assert(Links.Apply(s, snap) == 2, "both of Whitecrows's lines rewritten")
   local out = split(s:Text())
-  assert(tagOf(out[14]) == "Abu" and tagOf(out[24]) == "Abu" and tagOf(out[21]) == "Sixz", "only the lines that followed: " .. out[14] .. " / " .. out[21])
+  assert(tagOf(out[14]) == "Abu" and tagOf(out[27]) == "Abu" and tagOf(out[24]) == "Whitecrows" and tagOf(out[21]) == "Sixz", "only the lines that followed: " .. out[14] .. " / " .. out[21])
   -- a saved link wins over the wording: line 17 saved on the Lulu CC row is a near-miss there, not Balevolence's
   CRT.db.notes.links = nil
   local t = Model.New(ONE)
@@ -193,15 +197,11 @@ check("one name: a row's names change and its one-name lines follow; saved links
   CRT.db.notes.links = nil
 end)
 
-check("two rows of the same players: as many lines follow them in turn (#1288)", function()
+check("two rows of the same players: every line follows the first, as before #1288 (Alex, 2026-11-15)", function()
   local text = table.concat({ "Guillotine Soaks", "P1 Soak 1: Sixz Lichkingstoy Rixxy", "P1 Soak 2: Abu Cheo", "P3 Soak 2: Sixz Lichkingstoy Rixxy",
     "time:48;ph:1;tag:Sixz Lichkingstoy Rixxy;text:Soak;", "time:133;ph:1;tag:Abu Cheo;text:Soak;", "time:86;ph:3;tag:Rixxy Sixz Lichkingstoy;text:Soak;" }, "\n")
   local m = match(Model.New(text), "none")
-  assert(m.follow[5].row.label == "P1 Soak 1" and m.follow[7].row.label == "P3 Soak 2" and m.follow[6].row.label == "P1 Soak 2", "in turn")
-  -- a third line listing them: no telling which is whose, so the first row takes them all, as before
-  local more = text .. "\ntime:150;ph:3;tag:Sixz Lichkingstoy Rixxy;text:Soak;"
-  m = match(Model.New(more), "none")
-  assert(m.follow[5].row.label == "P1 Soak 1" and m.follow[7].row.label == "P1 Soak 1" and m.follow[8].row.label == "P1 Soak 1", "the first row")
+  assert(m.follow[5].row.label == "P1 Soak 1" and m.follow[7].row.label == "P1 Soak 1" and m.follow[6].row.label == "P1 Soak 2", "the first row")
 end)
 
 check("one name: a block's rows never take a typed line, the kick block is no row (#1288)", function()

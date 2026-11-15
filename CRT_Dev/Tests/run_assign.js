@@ -494,11 +494,13 @@ check("assign: Alex's lists each become a block, with their looks; Orb Carriers 
   assert(curse:find("time:23;ph:2;tag:Durayn;spellid:1714;text:Curse Add;dur:5;colors:0.63 0.16 1 1;DisplayType:Text;assign:curse of tongues on add/1/1;", 1, true), "Curse Add keeps its spell and looks")
   local ghosts = adopt(CO.ghosts, 4, 4)
   assert(ghosts:find("tag:Lulu;text:Soak Ghost at {square};dur:5;colors:0.2 0.4 1 1;DisplayType:Text;assign:soak ghosts/4/1;", 1, true), "Lulu's ghost")
-  local guill = adopt(CO.guillotine, 5, 5)
+  -- P1 Soak 1 and P3 Soak 2 list the same five: rows of several players match as before #1288 (Alex, 2026-11-15; a
+  -- later job), so both lines are P1 Soak 1's (casts 1 and 4) and P3 Soak 2, with no line of its own, reads as on
+  -- every cast: 2 + 1 + 1 + 5 + 1 = 10 lines
+  local guill, gb = adopt(CO.guillotine, 5, 10)
+  assert(table.concat(gb.rows[1].casts, ",") == "1,4" and gb.rows[4].casts == "all", "P1 Soak 1 on 1 and 4, P3 Soak 2 on all")
   assert(guill:find("tag:Sixz Lichkingstoy Thisisfartaa Dyspepsia Sarrantha;text:Soak Guillotine;colors:1 1 0.2 1;DisplayType:Text;assign:guillotine soaks/1/1;", 1, true)
     and guill:find("text:Soak Guillotine;colors:0.63 0.16 1 1;DisplayType:Text;assign:guillotine soaks/3/", 1, true), "each row its own colour")
-  -- P1 Soak 1 and P3 Soak 2 list the same five: each its own soak, not the first row twice
-  assert(guill:find("time:86.13;ph:3;tag:Sixz Lichkingstoy Thisisfartaa Dyspepsia Sarrantha;text:Soak Guillotine;colors:0.63 0.16 1 1;DisplayType:Text;assign:guillotine soaks/4/", 1, true), "P3 Soak 2's own line")
 end)
 
 check("assign: a cast whose lines went is read as no row being on it, and stays so when written (#1288)", function()

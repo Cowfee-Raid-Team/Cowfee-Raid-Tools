@@ -161,19 +161,30 @@ end
 
 -- Wording, for a line of one name (#1288) --------------------------------------------------------------------
 
--- A text in one form: lower case, one space between words.
+-- A text in one form: lower case, one space between words, a word's ending , . ! ? or : left out.
 local function form(s)
-    return trim((tostring(s or ""):lower():gsub("%s+", " ")))
+    s = (tostring(s or ""):lower() .. " "):gsub("[,%.!%?:]+%s", " "):gsub("%s+", " ")
+    return trim(s)
 end
 
--- How a line's text (in form) fits a row's label (in form): "strong" when the label, its marker codes too, is inside
--- the text ("Grab {cross} purple orb" fits "{cross} purple orb"); "weak" when every word of the text, with or without
--- its first (a verb like "Grab"), is a word of the label ("CC Mindcontrol" fits "1st CC on Mindcontrol"); else nil.
-local function fits(text, label)
+-- Words that tell nothing about a callout: a one-name line and its player's only row must share another (Alex,
+-- 2026-11-15: "Use a healthstone" is never "{cross} purple orb"'s).
+Links.STOP_WORDS = {}
+for w in ("a an the and or of on at to in into for with by from is are be it this that then now your you use go get do")
+    :gmatch("%S+") do
+    Links.STOP_WORDS[w] = true
+end
+
+-- How a line's text fits a row's label (either as written): "strong" when the label, its marker codes too, is inside
+-- the text as whole words ("Grab {cross} purple orb" fits "{cross} purple orb"; "1" never fits "at 10%"); "weak"
+-- when every word of the text, with or without its first (a verb like "Grab"), is a word of the label ("CC
+-- Mindcontrol" fits "1st CC on Mindcontrol"); else nil. Notes/Check.lua reads wording the same way.
+function Links.Fits(text, label)
+    text, label = form(text), form(label)
     if text == "" or label == "" then
         return nil
     end
-    if text:find(label, 1, true) then
+    if (" " .. text .. " "):find(" " .. label .. " ", 1, true) then
         return "strong"
     end
     local set = {}
@@ -192,21 +203,37 @@ local function fits(text, label)
     end
     return (all or (k > 1 and rest)) and "weak" or nil
 end
+local fits = Links.Fits
+
+-- Whether a text shares a word with a label that isn't a stop word.
+local function sharesWord(text, label)
+    local set = {}
+    for w in form(label):gmatch("%S+") do
+        set[w] = true
+    end
+    for w in form(text):gmatch("%S+") do
+        if set[w] and not Links.STOP_WORDS[w] then
+            return true
+        end
+    end
+    return false
+end
 
 -- A line of one name with no saved link (Alex, 2026-11-15): the row of one name for that same player whose label its
--- text fits (strong before weak); none fits: the player's only row of one name in the typed lists, unless the text
--- fits another row (someone else's callout, or a block's) or the line is a spell's. Two rows that fit as well, or
--- two rows and no wording: none (ambiguous). A block's rows never take a typed line here: its own lines are marked
--- and linked on Save, and a typed line its wording fits is one the block replaced (Notes/Check.lua).
+-- text fits (strong before weak); none fits: the player's only row of one name in the typed lists when the text
+-- shares a word with its label (not a stop word), unless the text fits another row (someone else's callout, or a
+-- block's) or the line is a spell's. Two rows that fit as well, or two rows and no wording: none (ambiguous). A
+-- block's rows never take a typed line here: its own lines are marked and linked on Save, and a typed line its
+-- wording fits is one the block replaced (Notes/Check.lua).
 local function oneName(m, line, rows)
-    local text = form(line.timer and line.timer.text)
-    if line.marked or text == "" then
+    local raw = line.timer and line.timer.text or ""
+    if line.marked or form(raw) == "" then
         return
     end
     local who = nameKey(line.names[1])
     local strong, weak, own, other = {}, {}, {}, false
     for _, row in ipairs(rows) do
-        local how = fits(text, form(row.label))
+        local how = fits(raw, row.label)
         local set, n = keySet(row.names)
         if n == 1 and set[who] and not row.assign then
             if how == "strong" then
@@ -224,7 +251,7 @@ local function oneName(m, line, rows)
         pick = #strong == 1 and strong[1] or nil
     elseif #weak > 0 then
         pick = #weak == 1 and weak[1] or nil
-    elseif not other and not line.timer.spellId and #own == 1 then
+    elseif not other and not line.timer.spellId and #own == 1 and sharesWord(raw, own[1].label) then
         pick = own[1]
     end
     if pick then
@@ -265,48 +292,6 @@ local function bestRow(m, line, rows)
     end
 end
 
--- A list's distinct names (nameKey) in one sorted string, and how many.
-local function setKey(names)
-    local set, n = keySet(names)
-    local out = {}
-    for k in pairs(set) do
-        out[#out + 1] = k
-    end
-    table.sort(out)
-    return table.concat(out, " "), n
-end
-
--- Rows that list the same players, two or more (a soak list's "P1 Soak 1" and "P3 Soak 2" alike, #1288): when as many
--- lines with no saved link list those players as there are such rows, they follow the rows in turn (the first line
--- the first row); else each follows the first such row (bestRow). Line index -> row.
-local function pairTies(rows, lines, savedRow)
-    local byKey = {}
-    for _, row in ipairs(rows) do
-        local key, n = setKey(row.names)
-        if n >= Links.MIN_NAMES then
-            byKey[key] = byKey[key] or { rows = {}, lines = {} }
-            local g = byKey[key].rows
-            g[#g + 1] = row
-        end
-    end
-    for _, line in ipairs(lines) do
-        local key, n = setKey(line.names)
-        local g = n >= Links.MIN_NAMES and not savedRow[line.sig] and byKey[key]
-        if g then
-            g.lines[#g.lines + 1] = line
-        end
-    end
-    local out = {}
-    for _, g in pairs(byKey) do
-        if #g.rows > 1 and #g.rows == #g.lines then
-            for k, line in ipairs(g.lines) do
-                out[line.index] = g.rows[k]
-            end
-        end
-    end
-    return out
-end
-
 function Links.Match(rows, lines, saved)
     local m = { rows = rows, lines = lines, follow = {}, byRow = {}, exact = {}, near = {} }
     local savedRow = {}
@@ -318,7 +303,6 @@ function Links.Match(rows, lines, saved)
             end
         end
     end
-    local tied = pairTies(rows, lines, savedRow)
     for _, line in ipairs(lines) do
         local row = savedRow[line.sig]
         if row then
@@ -328,8 +312,6 @@ function Links.Match(rows, lines, saved)
             else
                 m.near[#m.near + 1] = { line = line, row = row, extra = extra, missing = missing, saved = true }
             end
-        elseif tied[line.index] then
-            follow(m, line, tied[line.index], false)
         else
             bestRow(m, line, rows)
         end
