@@ -71,9 +71,11 @@ Timeline.OVERLAY_PULLS = { min = 2, max = 5 }
 
 -- Ignored mechanics: boss mechanics you hide from your own timeline, per boss, by name (a reference row
 -- and a recorded pull's spell row of the same ability share it), in timeline.ignored[boss][name in
--- lower case] = the name as shown. Only what you see: the notes, alerts, reminders and anything shared
--- are never touched, and a hidden mechanic's alerts still fire. The view lists them under Ignored
--- mechanics, and the Rehearsal leaves them out too.
+-- lower case] = the name as shown. Yours alone: nothing shared or saved elsewhere changes. The view lists
+-- them under Ignored mechanics, and the Rehearsal leaves them out too. Since #1292 an ignored mechanic also
+-- plays none of CRT's mechanic alerts for you: its Mech Alerts (your reminders) and the special alerts on it
+-- are left out of every run (Alerts/Engine.lua, through IgnoreMatcher below), and Mech Alerts lists it grey.
+-- Raid note lines and your personal note still play, even on that mechanic's spell.
 
 local function ignoreKey(name)
     return tostring(name or ""):lower()
@@ -122,6 +124,84 @@ function Timeline:WithoutIgnored(lanes, encounterID)
         end
     end
     return shown, hidden
+end
+
+-- A boss's ignored list as one text, "" when nothing is ignored: it changes whenever the list does, so a reader
+-- (the alerts' run) can tell a change of the list from any other Timeline change.
+function Timeline:IgnoredKey(encounterID)
+    local all = tdb().ignored
+    local list = all and all[tostring(encounterID)]
+    if not list then
+        return ""
+    end
+    local keys = {}
+    for k in pairs(list) do
+        keys[#keys + 1] = k
+    end
+    table.sort(keys)
+    return table.concat(keys, "\n")
+end
+
+-- The alerts' test for a boss's ignored mechanics, or nil when none is ignored: matcher(spellID, name) is true when
+-- the mechanic named name is ignored, or the ability of spellID is. A spell counts by every name its ability is shown
+-- by, as the rows of the Timeline share one ignore name: the rows of ref (the ability timeline the run reads) whose
+-- spell it is, the boss's Journal row with it, and the spell's own name (a recorded pull's spell row). The list is
+-- read once, here: a reader builds it again when IgnoredKey changes. Values the game hides never match.
+function Timeline:IgnoreMatcher(encounterID, ref)
+    local all = tdb().ignored
+    local saved = all and all[tostring(encounterID)]
+    if not saved or next(saved) == nil then
+        return nil
+    end
+    local list = {}
+    for k in pairs(saved) do
+        list[k] = true
+    end
+    local readable = Timeline.readable or function() return true end
+    local journal = {}
+    local J = CRT.TimelineJournal
+    if J and J.Rows then
+        local ok, rows = pcall(J.Rows, J, encounterID)
+        journal = ok and type(rows) == "table" and rows or {}
+    end
+    -- the spells whose row on ref, or whose Journal row, has an ignored name
+    local spells = {}
+    local Lanes = CRT.TimelineLanes
+    for _, row in ipairs(type(ref) == "table" and ref.rows or {}) do
+        if list[ignoreKey(row.name)] and Lanes and Lanes.RowSpell then
+            local ok, id = pcall(Lanes.RowSpell, row, encounterID, journal)
+            if ok and readable(id) and type(id) == "number" and id > 0 then
+                spells[id] = true
+            end
+        end
+    end
+    for _, row in ipairs(journal) do
+        if list[ignoreKey(row.name)] and readable(row.spellID) and type(row.spellID) == "number" then
+            spells[row.spellID] = true
+        end
+    end
+    local named = {}
+    local function spellNamed(id)
+        if named[id] == nil then
+            named[id] = false
+            if C_Spell and C_Spell.GetSpellName then
+                local ok, n = pcall(C_Spell.GetSpellName, id)
+                if ok and readable(n) and type(n) == "string" then
+                    named[id] = list[ignoreKey(n)] or false
+                end
+            end
+        end
+        return named[id]
+    end
+    return function(spellID, name)
+        if readable(name) and type(name) == "string" and name ~= "" and list[ignoreKey(name)] then
+            return true
+        end
+        if readable(spellID) and type(spellID) == "number" and spellID > 0 then
+            return spells[spellID] or spellNamed(spellID) or false
+        end
+        return false
+    end
 end
 
 -- Whether this is a developer build: the CRT_Dev files are loaded (CRT_Dev/Dev/LayoutEditor.lua makes

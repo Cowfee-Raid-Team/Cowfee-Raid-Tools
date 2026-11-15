@@ -230,11 +230,13 @@ function Alerts:RehearsalTick()
 end
 
 -- def = { label, group = bool, Entries = function(run) -> { item }, keepBlock = bool, own = bool,
--- coverable = bool, Replaces = function(run, rep, item) -> bool (optional, see Collect) }.
+-- coverable = bool, ignorable = bool, Replaces = function(run, rep, item) -> bool (optional, see Collect) }.
 -- Registering a key again replaces it. With keepBlock, an item that names its own `block` keeps it (the
 -- editor's Test runs a note line as a "note" item, so the note's speech and sound switches still apply).
 -- own marks your personal items (your reminders, your personal note): previewing as another player leaves them out.
 -- coverable marks the block whose items step aside for a covering item (your reminders; see No double alerts).
+-- ignorable marks the blocks of mechanic alerts (your reminders, the special alerts): an item on a mechanic you ignore
+-- on the Timeline is left out (see Ignored mechanics).
 function Alerts:RegisterBlock(key, def)
     if not self.blocks[key] then
         self.blockOrder[#self.blockOrder + 1] = key
@@ -365,8 +367,55 @@ local function uncovered(out, coverable)
     return kept
 end
 
-function Alerts:Collect(run, opts)
-    local out, coverable = {}, {}
+-- Ignored mechanics (#1292): a mechanic you ignore on the Timeline (Timeline:SetIgnored) plays no mechanic alert for
+-- you. An item of an ignorable block (your reminders, the special alerts) is left out when Timeline:IgnoreMatcher says
+-- its spell (spellID) or its mechanic (mech: the ability timeline row it follows) is ignored, on the run's ability
+-- timeline (a rehearsal's own, else the one its reminders read). The raid note and your personal note are never
+-- gated, and neither is a Test's extra item. The list is read at Start and again only when the boss's ignored list
+-- changes mid-run (Timeline's change event, IgnoredKey): the run keeps every collected item (Alerts.raw) and settles
+-- them again, so the lines, bars, speech and shield bars follow at once.
+local function ignoreGate(self, run)
+    local T = CRT.Timeline
+    if type(run) ~= "table" or type(run.encounterID) ~= "number" or not (T and T.IgnoreMatcher and T.IgnoredKey) then
+        return nil
+    end
+    if T:IgnoredKey(run.encounterID) == "" then
+        return nil
+    end
+    local ref = run.reference
+    local R = CRT.AlertReminders
+    if not ref and R and R.ReferenceFor then
+        local ok, res = pcall(R.ReferenceFor, run.encounterID, { boss = run.bossName }, self:RunGroup(run))
+        ref = ok and res or nil
+    end
+    local ok, matcher = pcall(T.IgnoreMatcher, T, run.encounterID, ref)
+    return ok and type(matcher) == "function" and matcher or nil
+end
+
+-- Whether a run's item on spellID or the mechanic named name is muted by your ignored mechanics. The current run reads
+-- the test it keeps (built at Start and on a change); any other run builds one. False when nothing is ignored.
+function Alerts:Muted(run, spellID, name)
+    run = run or (self.running and self.run)
+    if type(run) ~= "table" then
+        return false
+    end
+    local gate
+    if run == self.run and run.ignoreKey ~= nil then
+        gate = run.ignore
+    else
+        gate = ignoreGate(self, run)
+    end
+    if not gate then
+        return false
+    end
+    local ok, res = pcall(gate, spellID, name)
+    return ok and res == true
+end
+
+-- Every block's items for a run, before the ignored mechanics and the covering are applied: { items, coverable,
+-- ignorable, extra } (coverable and ignorable keyed by item, from the block's def; extra: a test's items).
+local function collectAll(self, run, opts)
+    local out, coverable, ignorable = {}, {}, {}
     -- Previewing as another player shows exactly what they get: none of your own reminders.
     local as = run and run.rehearsal and previewOf(run.rehearsal)
     local othersOnly = as ~= nil and as ~= "*"
@@ -389,26 +438,94 @@ function Alerts:Collect(run, opts)
                         if copy and not replaced(self, run, rep, copy) then
                             out[#out + 1] = copy
                             coverable[copy] = def.coverable or nil
+                            ignorable[copy] = def.ignorable or nil
                         end
                     end
                 end
             end
         end
     end
-    out = uncovered(out, coverable)
     -- the tested alert as it stands on screen. It shows under any Preview as: you always see the alert
     -- you are testing.
+    local extra = {}
     if testing and type(opts.extra) == "table" then
         for _, it in ipairs(opts.extra) do
             if type(it) == "table" then
                 local copy = stamp(self, it, type(it.block) == "string" and it.block or "extra")
                 if copy then
-                    out[#out + 1] = copy
+                    extra[#extra + 1] = copy
                 end
             end
         end
     end
+    return { items = out, coverable = coverable, ignorable = ignorable, extra = extra }
+end
+
+-- The run's items from collectAll's: without the ones on an ignored mechanic (gate, see Ignored mechanics), then
+-- without the covered ones, then a test's extra items.
+local function settle(raw, gate)
+    local kept = raw.items
+    if gate then
+        kept = {}
+        for _, it in ipairs(raw.items) do
+            local ok, muted = true, false
+            if raw.ignorable[it] then
+                ok, muted = pcall(gate, it.spellID, it.mech)
+            end
+            if not (ok and muted == true) then
+                kept[#kept + 1] = it
+            end
+        end
+    end
+    local out = uncovered(kept, raw.coverable)
+    if out == raw.items then
+        out = {}
+        for i, it in ipairs(kept) do
+            out[i] = it
+        end
+    end
+    for _, it in ipairs(raw.extra) do
+        out[#out + 1] = it
+    end
     return out
+end
+
+function Alerts:Collect(run, opts)
+    return settle(collectAll(self, run, opts), ignoreGate(self, run))
+end
+
+-- A Timeline change mid-run: when the run's boss's ignored list changed, its items are settled again (the same
+-- collected items, so nothing else edited since the pull comes in) and every display is told.
+function Alerts:IgnoredChanged()
+    local run = self.running and self.run
+    local T = CRT.Timeline
+    if not (run and self.raw and T and T.IgnoredKey) then
+        return
+    end
+    local key = T:IgnoredKey(run.encounterID)
+    if key == run.ignoreKey then
+        return
+    end
+    run.ignoreKey = key
+    run.ignore = ignoreGate(self, run)
+    self.items = settle(self.raw, run.ignore)
+    if CRT.AlertColors then
+        safe(CRT.AlertColors.Stamp, self.items, run)
+    end
+    changed(self)
+    self:Fire()
+end
+
+-- The Timeline loads after this file: its change event is listened to from the first run on.
+local function hookIgnored(self)
+    local T = CRT.Timeline
+    if self.ignoreHooked or not (T and T.OnChange) then
+        return
+    end
+    self.ignoreHooked = true
+    T:OnChange(function()
+        self:IgnoredChanged()
+    end)
 end
 
 -- The sorted phases for a run: those of the given items and of the phase sources, or just 1 when
@@ -506,7 +623,7 @@ function Alerts:Start(encounterID, difficultyName, reason, opts)
     self.runId = self.runId + 1
     self.running = true
     self.starts, self.skipped = {}, {}
-    self.items = {}
+    self.items, self.raw = {}, nil
     run.shift = orderShift(encounterID, self:RunGroup(run))
     changed(self)
     if reason == "encounter" then
@@ -522,7 +639,12 @@ function Alerts:Start(encounterID, difficultyName, reason, opts)
     -- Anything failing here must still clear `starting`, so it runs inside pcall.
     local ok, err = pcall(function()
         if self.run == run then
-            self.items = self:Collect(run, opts)
+            -- every item is kept (raw), so a change of your ignored mechanics mid-run settles them again
+            hookIgnored(self)
+            self.raw = collectAll(self, run, opts)
+            run.ignoreKey = CRT.Timeline and CRT.Timeline.IgnoredKey and CRT.Timeline:IgnoredKey(run.encounterID) or ""
+            run.ignore = ignoreGate(self, run)
+            self.items = settle(self.raw, run.ignore)
             -- each item's ability type, for its colour (Alerts/Colors.lua, loaded later)
             if CRT.AlertColors then
                 safe(CRT.AlertColors.Stamp, self.items, run)
@@ -543,7 +665,7 @@ end
 function Alerts:Stop(quiet)
     self.running = false
     self.run = nil
-    self.items, self.starts, self.skipped = {}, {}, {}
+    self.items, self.starts, self.skipped, self.raw = {}, {}, {}, nil
     changed(self)
     if not quiet then
         self:Fire()

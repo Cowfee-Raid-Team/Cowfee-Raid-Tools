@@ -612,6 +612,13 @@ function Reminders.FollowsCasts(encounterID, r, ref, group)
     return castSource(encounterID, r, ref, group) ~= nil
 end
 
+-- The name of the ability row a reminder follows (castSource), or nil: the mechanic it alerts, as the Timeline
+-- ignores it by name. A reminder on no row is still matched by its spell (Alerts/Engine.lua, Ignored mechanics).
+function Reminders.Mechanic(encounterID, r, ref, group)
+    local _, row = castSource(encounterID, r, ref, group)
+    return row and type(row.name) == "string" and row.name or nil
+end
+
 -- Every cast a reminder on a boss ability follows, turned off ones too ({ ph, t, key, shift, off }), for
 -- the alert editor's and Mech Alerts' lists; {} when it follows none.
 function Reminders.AllCasts(encounterID, r, ref, group)
@@ -1195,6 +1202,8 @@ function Reminders:Items(encounterID, id, r, group, ref)
     end
     -- a shield bar (Alerts/Absorb.lua): each cast's window opens at Show from, and its ticks don't apply
     local absorb = Reminders.AbsorbOf(r.absorb)
+    -- the mechanic it alerts: the ability row whose casts it follows (ignored mechanics, Alerts/Engine.lua)
+    local mech = Reminders.Mechanic(encounterID, r, ref, group)
     for n, t in ipairs(times) do
         -- the bar's impact ticks, each item its own copy (BarTicks): with any on it, a bar of its own (Alerts/Bars.lua)
         -- from Show from (warn) before the cast to the cast, so each impact sits at the same place on the bar in a
@@ -1211,6 +1220,7 @@ function Reminders:Items(encounterID, id, r, group, ref)
             ph = t.ph,
             time = t.t,
             spellID = r.spellID,
+            mech = mech,
             icon = icon,
             text = text,
             priority = Rules.Priority(3, r.priority),
@@ -1253,8 +1263,10 @@ local function entries(run)
     return out
 end
 
--- coverable: a reminder steps aside for a special alert on the same cast (Alerts/Engine.lua, No double alerts)
-Alerts:RegisterBlock(BLOCK, { label = "Your reminders", group = true, own = true, coverable = true, Entries = entries })
+-- coverable: a reminder steps aside for a special alert on the same cast (Alerts/Engine.lua, No double alerts);
+-- ignorable: one on a mechanic you ignore on the Timeline plays nothing (Alerts/Engine.lua, Ignored mechanics)
+Alerts:RegisterBlock(BLOCK, { label = "Your reminders", group = true, own = true, coverable = true, ignorable = true,
+    Entries = entries })
 
 -- The untimed shield bars of a pull (Alerts/Absorb.lua), as Special:AbsorbWatches gives a special alert's: one watch
 -- per reminder turned on with absorb and its Bar on, { id, key, block, unit, length, text, icon, color, priority,
@@ -1272,7 +1284,8 @@ function Reminders:AbsorbWatches(run)
         local a = Reminders.AbsorbOf(r.absorb)
         local fits = a and matchesDifficulty(r, run)
         if a and r.enabled ~= false and not Reminders.InNote(r) and type(r.outputs) == "table" and r.outputs.bar
-            and (fits or a.anyDifficulty) then
+            and (fits or a.anyDifficulty)
+            and not (Alerts.Muted and Alerts:Muted(run, r.spellID, Reminders.Mechanic(run.encounterID, r, run.reference, group))) then
             local icon, text = looks(r)
             out[#out + 1] = {
                 id = "absorb:" .. BLOCK .. ":" .. tostring(e.id),
