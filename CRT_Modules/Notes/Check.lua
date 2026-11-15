@@ -15,13 +15,27 @@ local ADDON, CRT = ...
 --               Sixz"), or one for players only at one of the block's casts that no block calls them on then
 --               ("Grab {star} green orb" for Gadios where the block's "{star} green orb" row now names someone else).
 --               A line that follows another list's row ("Kicks: Abu") or is for a role is never old.
+--     stale     (#1294) typed text lines for players only, at one of a block's casts (same phase, time within
+--               Assign.SAME_TIME), in none of that block's rows' words, following no row of a list (nor close to
+--               one): leftovers from before the block whose wording fits no row ("Grab side green orb" for Lulu beside
+--               the block's "{diamond} purple orb: Lulu"). Remove stale lines takes them. Sorted line numbers; a stale
+--               line is no orphan as well
 --     orphans   typed text lines for a player that no group row, block row or the kick block mentions (warning
 --               only), sorted line numbers
---   Never a double or an orphan: a spell's line (a cooldown: spellid: on a line no block marked) or the kick block.
+--   Never a double, stale or an orphan: a spell's line (a cooldown: spellid: on a line no block marked) or the kick
+--   block; never stale: a line for a role, group or class.
 --   A block cast that no row has a line for is no warning: removing a cast's lines means no one is called then
 --   (Alex, 2026-11-15).
 --   Check.Clean(result)       whether it found nothing
---   Check.RemoveOld(text, result)   the text without the old lines (result: Run's, else run now), every other byte kept
+--   Check.RemoveOld(text, result)     the text without the old lines (result: Run's, else run now), every other byte kept
+--   Check.RemoveStale(text, result)   the same for the stale lines
+--   Check.RemoveLines(text, lines)    the one way lines leave a note (the editor's deletes too): lines a list or a set
+--                                     of line numbers; every other byte kept, CRLF and the note's last line end too
+-- The note editor's line helpers (Notes/EditorLines.lua, Notes/EditorCheck.lua), src a text or a session:
+--   Check.SameLines(src, i)      the timed lines with line i's players and text, any time or phase (i among them)
+--   Check.Groups(src, lines)     alike lines (the same players and text) grouped, in order: { { who, text, n, first,
+--                                last (their timers), lines } }
+--   Check.InBlocks(src, lines)   the Assign blocks those lines belong to (marked assign:): { { key, name, n } }
 
 local Check = {}
 CRT.NoteCheck = Check
@@ -98,7 +112,8 @@ end
 
 
 -- One block: the callouts its rows plan (planned[moment \1 name] = { key, row, line: its marked line there, or nil })
--- and its casts' moments with its rows (casts[moment] = { { key, rows } }).
+-- and its casts' moments with its rows (casts[moment] = { { key, rows } }; casts.all: { { ph, t, rows } }, for the
+-- same-time tolerance).
 local function readBlock(s, key, planned, casts)
     local Assign = CRT.NoteAssign
     local b = Assign.Read(s, key, nil)
@@ -129,6 +144,7 @@ local function readBlock(s, key, planned, casts)
         local mk = moment(e.ph, e.t)
         casts[mk] = casts[mk] or {}
         casts[mk][#casts[mk] + 1] = { key = key, rows = b.rows }
+        casts.all[#casts.all + 1] = { ph = e.ph or 1, t = e.t, rows = b.rows }
     end
 end
 
@@ -218,14 +234,35 @@ local function blockWording(line, list)
     return false
 end
 
+-- Whether a typed line is a leftover at a block's cast (#1294): for players only, at one of a block's casts (its phase,
+-- its time within Assign.SAME_TIME), and in none of the rows' words of any block cast then.
+local function staleAt(line, all)
+    if not allPlayers(line.names) then
+        return false
+    end
+    local t, at = line.timer, false
+    local near = CRT.NoteAssign.SAME_TIME or 0.05
+    for _, c in ipairs(all) do
+        if c.ph == (t.ph or 1) and math.abs(c.t - (t.time or 0)) < near then
+            at = true
+            for _, row in ipairs(c.rows) do
+                if fitsRow(t.text, row) then
+                    return false
+                end
+            end
+        end
+    end
+    return at
+end
+
 function Check.Run(src, saved)
     local s = session(src)
     local Links, Assign = CRT.NoteLinks, CRT.NoteAssign
     local rows, lines = Links.Rows(s), Links.Lines(s)
     local m = Links.Match(rows, lines, saved)
     local kick = Assign.KickLines(s)
-    local out = { doubles = {}, old = {}, orphans = {} }
-    local planned, casts = {}, {}
+    local out = { doubles = {}, old = {}, stale = {}, orphans = {} }
+    local planned, casts = {}, { all = {} }
     for _, key in ipairs(Assign.Keys(s)) do
         readBlock(s, key, planned, casts)
     end
@@ -262,6 +299,8 @@ function Check.Run(src, saved)
         if callout(line) and not line.marked and not kick[line.index] and not old[line.index] then
             if not listed[line.index] and not calledThen(line, planned) and blockWording(line, casts[moment(t.ph, t.time)]) then
                 old[line.index] = true
+            elseif not listed[line.index] and staleAt(line, casts.all) then
+                out.stale[#out.stale + 1] = line.index
             else
                 for _, name in ipairs(line.names) do
                     if isPlayer(name) and not who[nameKey(name)] then
@@ -273,12 +312,13 @@ function Check.Run(src, saved)
         end
     end
     out.old = sortedSet(old)
+    table.sort(out.stale)
     table.sort(out.orphans)
     return out
 end
 
 function Check.Clean(r)
-    return r ~= nil and #r.doubles == 0 and #r.old == 0 and #r.orphans == 0
+    return r ~= nil and #r.doubles == 0 and #r.old == 0 and #(r.stale or {}) == 0 and #r.orphans == 0
 end
 
 -- The text without the lines in `set` (line numbers), every other byte as written; lines that ended the note (no line
@@ -302,15 +342,105 @@ local function without(text, set)
     return out
 end
 
+function Check.RemoveLines(text, list)
+    text = text or ""
+    local set, any = {}, false
+    for k, v in pairs(list or {}) do
+        local i = (v == true) and k or v
+        if type(i) == "number" then
+            set[i], any = true, true
+        end
+    end
+    if not any then
+        return text
+    end
+    return without(text, set)
+end
+
 function Check.RemoveOld(text, r)
     text = text or ""
     r = r or Check.Run(text)
-    if #r.old == 0 then
-        return text
+    return Check.RemoveLines(text, r.old)
+end
+
+function Check.RemoveStale(text, r)
+    text = text or ""
+    r = r or Check.Run(text)
+    return Check.RemoveLines(text, r.stale or {})
+end
+
+-- The editor's line helpers ----------------------------------------------------------------------------------------
+
+-- A timed line's players as one key (any case, the realm left out, any order) and its text.
+local function likeKey(s, i)
+    local keys = {}
+    for _, name in ipairs(s:TimerNames(i)) do
+        keys[#keys + 1] = nameKey(name)
     end
-    local set = {}
-    for _, i in ipairs(r.old) do
-        set[i] = true
+    table.sort(keys)
+    return table.concat(keys, " ") .. "\1" .. (s.rows[i].timer.text or "")
+end
+
+local function isTimer(s, i)
+    local row = s.rows[i]
+    return row ~= nil and row.kind == "timer" and row.timer ~= nil
+end
+
+function Check.SameLines(src, i)
+    local s = session(src)
+    if not isTimer(s, i) then
+        return {}
     end
-    return without(text, set)
+    local want, out = likeKey(s, i), {}
+    for j = 1, #s.rows do
+        if isTimer(s, j) and likeKey(s, j) == want then
+            out[#out + 1] = j
+        end
+    end
+    return out
+end
+
+function Check.Groups(src, list)
+    local s = session(src)
+    local sorted = {}
+    for _, i in ipairs(list or {}) do
+        if isTimer(s, i) then
+            sorted[#sorted + 1] = i
+        end
+    end
+    table.sort(sorted)
+    local groups, byKey = {}, {}
+    for _, i in ipairs(sorted) do
+        local t = s.rows[i].timer
+        local key = likeKey(s, i)
+        local g = byKey[key]
+        if not g then
+            g = { who = table.concat(s:TimerNames(i), " "), text = t.text or "", n = 0, first = t, last = t, lines = {} }
+            byKey[key] = g
+            groups[#groups + 1] = g
+        end
+        g.n, g.last = g.n + 1, t
+        g.lines[#g.lines + 1] = i
+    end
+    return groups
+end
+
+function Check.InBlocks(src, list)
+    local s = session(src)
+    local Assign = CRT.NoteAssign
+    local out, byKey = {}, {}
+    for _, i in ipairs(list or {}) do
+        local key = isTimer(s, i) and Assign.MarkerOf(s.rows[i].raw) or nil
+        if key then
+            local e = byKey[key]
+            if not e then
+                local b = Assign.Read(s, key, nil)
+                e = { key = key, name = b and b.name or key, n = 0 }
+                byKey[key] = e
+                out[#out + 1] = e
+            end
+            e.n = e.n + 1
+        end
+    end
+    return out
 end

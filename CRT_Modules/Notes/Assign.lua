@@ -47,6 +47,8 @@ local ADDON, CRT = ...
 --   Assign.Adopt(text, heading, times, opts)   the text with that list rewritten as a block
 --   Assign.MatchingBlock(text, heading)  the block already in the note that list is named like, or nil
 --   Assign.AdoptInto(text, heading, times, key, opts)   the text with that list taken into block `key`, in its place
+--   Assign.AdoptAll(text, opts)          every list Candidates offers made a block (or the block it is named like
+--                                        updated) in one text: the note editor's Make all (#1294)
 
 local Assign = {}
 CRT.NoteAssign = Assign
@@ -1149,6 +1151,44 @@ function Assign.AdoptInto(text, heading, times, key, opts)
     block.adopted = nil
     local rest = cut(text or "", s, taken, heading)
     return Assign.Replace(rest, key, Assign.Lines(block, list or block.times, { key = key })), block
+end
+
+-- Every list Candidates offers, in the note's order, made a block in one text, each as Make an Assign block makes it
+-- from the banner: on its lines' own times (Adopt), or, named like a block the note had before, that block updated
+-- (AdoptInto, against opts.castsFor(key): the block's mechanic's casts, nil for its own times). A list named like a
+-- block made here becomes its own block ("Name 2"), never folded into it. opts.saved: the note's saved links.
+-- Returns the text and what was made, in order: { { name, lines (the timed lines that followed the list), update (the
+-- block's key, when one was updated) } }.
+function Assign.AdoptAll(text, opts)
+    opts = opts or {}
+    text = text or ""
+    local before = {}
+    for _, key in ipairs(Assign.Keys(text)) do
+        before[key] = true
+    end
+    local made, skip = {}, 0
+    -- each pass makes the first list left (or skips one that won't go), so the passes end
+    for _ = 1, #Assign.Candidates(text, opts.saved) + 1 do
+        local c = Assign.Candidates(text, opts.saved)[skip + 1]
+        if not c then
+            break
+        end
+        local key = Assign.MatchingBlock(text, c.heading)
+        local out, b
+        if key and before[key] then
+            out, b = Assign.AdoptInto(text, c.heading, opts.castsFor and opts.castsFor(key) or nil, key, { saved = opts.saved })
+        else
+            key = nil
+            out, b = Assign.Adopt(text, c.heading, nil, { saved = opts.saved })
+        end
+        if out then
+            text = out
+            made[#made + 1] = { name = c.name, lines = c.lines, update = key, block = b }
+        else
+            skip = skip + 1
+        end
+    end
+    return text, made
 end
 
 -- The note -------------------------------------------------------------------------------------------------------

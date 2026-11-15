@@ -636,6 +636,51 @@ check("assign: after AdoptInto, Save's links follow the block's rows, stale link
   end
 end)
 
+check("assign: AdoptAll makes every list a block in one text, in order, with names and line counts (#1294)", function()
+  assert(A.AdoptAll, "Assign.AdoptAll")
+  local out, made = A.AdoptAll(COILED)
+  local names = {}
+  for i, x in ipairs(made) do names[i] = x.name .. "=" .. x.lines .. (x.update and "u" or "") end
+  assert(table.concat(names, ",") == "Orb Carriers=24,Guillotine Soaks=5,CC Mindcontrol=32,Curse of Tongues on Add=6,Soak Ghosts=4", table.concat(names, ","))
+  assert(#A.Candidates(out) == 0, "no list left")
+  assert(table.concat(A.Keys(out), ",") == "orb carriers p1,orb carriers,guillotine soaks,cc mindcontrol,curse of tongues on add,soak ghosts", table.concat(A.Keys(out), ","))
+  -- the same as making them one at a time
+  local one = COILED
+  for _, name in ipairs({ "Orb Carriers", "Guillotine Soaks", "CC Mindcontrol", "Curse of Tongues on Add", "Soak Ghosts" }) do
+    for _, c in ipairs(A.Candidates(one)) do
+      if c.name == name then one = A.Adopt(one, c.heading, nil) break end
+    end
+  end
+  assert(out == one, "one at a time gives the same text")
+  -- nothing to make: the text as it was
+  local same, none = A.AdoptAll("EncounterID:1;Name:X\\nLeft: Abu")
+  assert(same == "EncounterID:1;Name:X\\nLeft: Abu" and #none == 0, "nothing")
+end)
+
+check("assign: AdoptAll updates a block a list is named like, and never folds a second list into a block it just made (#1294)", function()
+  local typed = { { ph = 1, t = 30 }, { ph = 1, t = 90 } }
+  local block = A.Lines({ name = "Orb Carriers", times = typed, rows = { { label = "Left", text = "", tokens = { "Kip", "Zed" }, casts = "all" } } }, typed)
+  local l = { "EncounterID:3470;Difficulty:Mythic;Name:Twin Fangs" }
+  for _, x in ipairs(block) do l[#l + 1] = x end
+  for _, x in ipairs(orbList()) do l[#l + 1] = x end
+  local text = joined(l)
+  local out, made = A.AdoptAll(text)
+  assert(#made == 1 and made[1].update == "orb carriers" and made[1].name == "Orb Carriers", "an update")
+  assert(table.concat(A.Keys(out), ",") == "orb carriers" and A.Read(out, "orb carriers").rows[1].label == "Odd", "updated in place: " .. out)
+  -- two lists of one name: the second becomes its own block, "Soaks 2"
+  local two = joined({ "EncounterID:3470;Name:Two", "Soaks", "Left: Abu, Cheo", "time:30;ph:1;tag:Abu Cheo;text:Soak;",
+    "", "Soaks", "Right: Kip, Zed", "time:60;ph:1;tag:Kip Zed;text:Soak;" })
+  local out2, made2 = A.AdoptAll(two)
+  assert(#made2 == 2 and not made2[2].update, "two new blocks")
+  -- (the first takes "Soaks 2": the second list still holds the name then, as Make an Assign block reads it)
+  assert(table.concat(A.Keys(out2), ",") == "soaks 2,soaks", out2)
+  assert(A.Read(out2, "soaks 2").rows[1].label == "Left" and A.Read(out2, "soaks").rows[1].label == "Right", "each its own rows")
+  -- the casts a block named like a list reads its lines against (a mechanic's), asked by key
+  local asked
+  A.AdoptAll(text, { castsFor = function(key) asked = key return nil end })
+  assert(asked == "orb carriers", "castsFor asked for the block's key")
+end)
+
 check("no errors raised", function()
   assert(#errors == 0, tostring(errors[1]))
 end)
