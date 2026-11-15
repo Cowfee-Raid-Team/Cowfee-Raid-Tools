@@ -20,6 +20,8 @@ local Look = {
     ICON_X = 28,
     ICON_CROP = 0.07,
     NAME_X = 50,
+    -- a row on a mechanic you ignored on the Timeline: its icon and name faded this far (it plays no alerts)
+    IGNORED_ALPHA = 0.5,
 }
 CRT.MechLook = Look
 

@@ -1116,6 +1116,7 @@ local function item(entry, choices, n, at, step, covers, icon)
         ph = at.ph,
         time = at.t,
         spellID = spell,
+        mech = entry.when.row, -- the mechanic it alerts, by its row's name (ignored mechanics, Alerts/Engine.lua)
         icon = icon,
         text = textOut,
         priority = Rules.Priority(3, "normal"),
@@ -1168,6 +1169,22 @@ function Special:TestItem(encounterID, entry, group, ref)
     return self:Items(encounterID, entry, { group = group, ref = ref, all = true })[1]
 end
 
+-- Whether an entry is on a mechanic you ignore on the Timeline (its when.row by name, its when.spellID through the
+-- ability timeline's rows; Timeline:IgnoreMatcher), so it plays nothing: for a run, as the run reads it
+-- (Alerts:Muted); with no run, on ref (the ability timeline on show: the Special list greys it). A debuff list never is.
+function Special:Ignored(encounterID, entry, run, ref)
+    local when = type(entry) == "table" and entry.kind ~= DEBUFF_LIST and entry.when
+    if type(when) ~= "table" or not (when.row or when.spellID) then
+        return false
+    end
+    if run then
+        return Alerts.Muted ~= nil and Alerts:Muted(run, when.spellID, when.row)
+    end
+    local T = CRT.Timeline
+    local matcher = T and T.IgnoreMatcher and T:IgnoreMatcher(encounterID, ref)
+    return matcher ~= nil and matcher(when.spellID, when.row) == true
+end
+
 -- The block: every entry of the run's boss for its difficulty group that you turned on. A countdown run (the
 -- pull timer's) takes only the items before the pull; every other run (a pull, a rehearsal, a test) the rest.
 local function entries(run)
@@ -1192,7 +1209,8 @@ local function entries(run)
     return out
 end
 
-Alerts:RegisterBlock(BLOCK, { label = "Special alerts", group = true, Entries = entries })
+-- ignorable: an entry on a mechanic you ignore on the Timeline plays nothing (Alerts/Engine.lua, Ignored mechanics)
+Alerts:RegisterBlock(BLOCK, { label = "Special alerts", group = true, ignorable = true, Entries = entries })
 
 -- Whether an entry's who lets its untimed shield bar go to you: everyone, or a roles list that fits you. A rotation
 -- or a note's numbered lines count casts, which an untimed bar has none of, so they get none.
@@ -1222,7 +1240,8 @@ function Special:AbsorbWatches(run)
         local choices = self:Choices(run.encounterID, entry)
         local a = self:Absorb(run.encounterID, entry, choices)
         local fits = entry.difficulty == nil or run.anyDifficulty or entry.difficulty == group
-        if a and entry.kind ~= DEBUFF_LIST and (fits or a.anyDifficulty) and choices.on and choices.show.bar and untimedIsMine(entry) then
+        if a and entry.kind ~= DEBUFF_LIST and (fits or a.anyDifficulty) and choices.on and choices.show.bar and untimedIsMine(entry)
+            and not Special:Ignored(run.encounterID, entry, run) then
             local timed = fits and #self:Times(run.encounterID, entry, group, run.reference) > 0
             local Reference = CRT.TimelineReference
             out[#out + 1] = {

@@ -262,7 +262,8 @@ end
 -- The lanes as the Timeline shows them: Build, then the ability labels (yours, then the boss file's), without the
 -- hidden abilities (the boss file's hidden list) and with your ignored mechanics apart. The one list the
 -- view, the Rehearsal and the Mech Alerts tab all read, so they agree. Returns the lanes, the deaths with
--- no time, extra (see Build) and the ignored lanes.
+-- no time, extra (see Build) and the ignored lanes. With opts.keepIgnored (Mech Alerts, which lists them grey) the
+-- ignored lanes stay in their place in the lanes, each marked ignored = true, and are returned apart too.
 function Lanes.AsShown(base, rows, settings, encounterID, overlay, group, order, opts)
     local lanes, unknown, extra = Lanes.Build(base, rows, settings, encounterID, overlay, group, order, opts)
     local Timeline = CRT.Timeline
@@ -272,7 +273,12 @@ function Lanes.AsShown(base, rows, settings, encounterID, overlay, group, order,
     if Timeline.WithoutHidden then
         lanes = Timeline:WithoutHidden(lanes, encounterID)
     end
-    local ignored
-    lanes, ignored = Timeline:WithoutIgnored(lanes, encounterID)
-    return lanes, unknown, extra, ignored or {}
+    local shown, ignored = Timeline:WithoutIgnored(lanes, encounterID)
+    if opts and opts.keepIgnored then
+        for _, lane in ipairs(ignored or {}) do
+            lane.ignored = true
+        end
+        return lanes, unknown, extra, ignored or {}
+    end
+    return shown, unknown, extra, ignored or {}
 end

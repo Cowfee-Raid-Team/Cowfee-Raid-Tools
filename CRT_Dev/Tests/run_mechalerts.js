@@ -45,7 +45,8 @@ local function mock(kind, parent, template)
     if k == "IsEnabled" then return function(self) return self.enabled end end
     if k == "SetTexture" then return function(self, s) rawset(self, "texture", s) end end
     if k == "SetColorTexture" or k == "SetVertexColor" then return function(self, r, g, b, a) rawset(self, "color", { r, g, b, a }) end end
-    if k == "SetTextColor" then return function(self, r, g, b) rawset(self, "textColor", { r, g, b }) end end
+    if k == "SetTextColor" then return function(self, r, g, b, a) rawset(self, "textColor", { r, g, b, a }) end end
+    if k == "SetAlpha" then return function(self, a) rawset(self, "alphaSet", a) end end
     if k == "SetWordWrap" then return function(self, on) rawset(self, "wordWrap", on) end end
     if k == "SetNormalFontObject" then return function(self, f) rawset(self, "normalFont", f) end end
     -- a font string's words, 6 a letter
@@ -2688,7 +2689,28 @@ check("mech: the list follows the ability timeline", function()
   assert(dropdowns["Times from"].opts.get() ~= normal and names(f) == "Real Name", "Normal/Heroic: the Heroic timeline first: " .. names(f))
   dropdowns["Times from"].opts.set(normal)
   assert(dropdowns["Times from"].opts.get() == normal and dropdowns["Difficulty"].opts.get() == "nh", "Times from names the Normal timeline")
-  assert(names(f) == "Real Name,Extra Add,Other Spell", "Normal: its rows in order, less ignored, hidden, Mythic-only: " .. names(f))
+  assert(names(f) == "Real Name,Extra Add,Ignored Thing,Other Spell", "Normal: its rows in order, the ignored one kept, less hidden, Mythic-only: " .. names(f))
+  -- the mechanic ignored on the Timeline: listed grey (icon and name faded), "Ignored on the Timeline" on hover (#1292)
+  local ign = f.rows[3]
+  local muted = CRT.PALETTE.muted
+  assert(ign.name.textColor[1] == muted[1] and ign.name.textColor[4] == CRT.MechLook.IGNORED_ALPHA, "its name grey and faded")
+  assert(ign.icon.alphaSet == CRT.MechLook.IGNORED_ALPHA and f.rows[1].icon.alphaSet == 1, "its icon faded, the others not")
+  assert(f.rows[1].name.textColor[4] == nil, "another row keeps its colour")
+  local said = {}
+  GameTooltip = setmetatable({}, { __index = function(_, k) return function(_, a) said[#said + 1] = { k, a } end end })
+  ign.frame.OnEnter(ign.frame)
+  local tip = {}
+  for _, s in ipairs(said) do tip[#tip + 1] = s[1] .. ":" .. tostring(s[2]) end
+  assert(table.concat(tip, "|"):find("AddLine:Ignored on the Timeline", 1, true), "its hover says why: " .. table.concat(tip, "|"))
+  said = {}
+  f.rows[1].frame.OnEnter(f.rows[1].frame)
+  for _, s in ipairs(said) do assert(s[2] ~= "Ignored on the Timeline", "another row's hover doesn't") end
+  GameTooltip = nil
+  -- ticked again on the Timeline: the list refreshes, the row normal again; unticked: grey again
+  T:SetIgnored(ENC, "Ignored Thing", false)
+  assert(f.rows[3].name.text == "Ignored Thing" and f.rows[3].name.textColor[4] == nil and f.rows[3].icon.alphaSet == 1, "ticked again: normal")
+  T:SetIgnored(ENC, "Ignored Thing", true)
+  assert(f.rows[3].name.textColor[4] == CRT.MechLook.IGNORED_ALPHA, "unticked: grey again")
   -- a row the Journal doesn't have: its own alert, matched by name, following its casts
   local extra = f.rows[2]
   assert(extra.dot.shown and extra.icon.shown, "a timeline row with no Journal row")
@@ -2697,21 +2719,21 @@ check("mech: the list follows the ability timeline", function()
   setCheck(extra.check, true)
   local r = only()
   assert(r.text == "Extra Add" and r.spellID == nil and r.enabled == true, "ticked by name")
-  assert(names(f) == "Real Name,Extra Add,Other Spell" and f.rows[2].check.checked, "one row, ticked: " .. names(f))
+  assert(names(f) == "Real Name,Extra Add,Ignored Thing,Other Spell" and f.rows[2].check.checked, "one row, ticked: " .. names(f))
   -- the Mech Alerts hidden list on top
   CRT.db.dev = { mechHidden = { [tostring(ENC)] = { ["other spell"] = "Other Spell" } } }
   CRT.NoteReminders.Refresh()
-  assert(names(f) == "Real Name,Extra Add", "mechHidden on top: " .. names(f))
+  assert(names(f) == "Real Name,Extra Add,Ignored Thing", "mechHidden on top: " .. names(f))
   CRT.db.dev = nil
   -- a ticked alert of yours on an ability not on this timeline: kept, marked; unticked: not listed
   local id = R:Save(ENC, nil, { spellID = 999, boss = "Test Boss", text = "Third Thing", enabled = true })
   CRT.NoteReminders.Refresh()
-  assert(names(f) == "Real Name,Extra Add,Other Spell,(not on timeline) Third Thing", "ticked, off the timeline: " .. names(f))
+  assert(names(f) == "Real Name,Extra Add,Ignored Thing,Other Spell,(not on timeline) Third Thing", "ticked, off the timeline: " .. names(f))
   local third = R:Get(ENC, id)
   third.enabled = false
   R:Save(ENC, id, third)
   CRT.NoteReminders.Refresh()
-  assert(names(f) == "Real Name,Extra Add,Other Spell", "unticked, off the timeline: " .. names(f))
+  assert(names(f) == "Real Name,Extra Add,Ignored Thing,Other Spell", "unticked, off the timeline: " .. names(f))
   dropdowns["Difficulty"].opts.set("mythic")
   T:SetIgnored(ENC, "Ignored Thing", false)
   table.remove(shipped)
@@ -3504,6 +3526,33 @@ check("mech special (" .. LOOK .. "): a roles alert's Who, a time before the pul
   local m = f.rows[1]
   assert(s.rows[1].icon.w == 18 and m.icon.w == s.rows[1].icon.w and m.icon.pts[1][2] == s.rows[1].icon.pts[1][2], "the same icon")
   assert(nameX(m) == nameX(s.rows[1]), "the same name column")
+  CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- A special alert on a mechanic you ignored on the Timeline plays nothing, so its row is grey with "Ignored on the
+-- Timeline" on hover; ticked again there, the row is normal (#1292).
+check("mech special (" .. LOOK .. "): a special alert on an ignored mechanic is grey, its hover says why", function()
+  withSpecial({ { key = "row", label = "By row", when = { row = "Real Name" } },
+    { key = "none", label = "Typed", when = { times = "0:30" } } })
+  CRT.db.alerts.special = {}
+  local T = CRT.Timeline
+  T:SetIgnored(ENC, "Real Name", true)
+  local f = freshOpen()
+  local s = f.special
+  local look = CRT.MechLook
+  assert(s.rows[1].name.textColor[4] == look.IGNORED_ALPHA and s.rows[1].icon.alphaSet == look.IGNORED_ALPHA, "the row's alert: grey")
+  assert(s.rows[2].name.textColor[4] == nil and s.rows[2].icon.alphaSet == 1, "typed times: no mechanic, normal")
+  local said = {}
+  GameTooltip = setmetatable({}, { __index = function(_, k) return function(_, a) said[#said + 1] = { k, a } end end })
+  s.rows[1].frame.OnEnter(s.rows[1].frame)
+  local found = false
+  for _, x in ipairs(said) do if x[1] == "AddLine" and x[2] == "Ignored on the Timeline" then found = true end end
+  assert(found, "its hover says why")
+  GameTooltip = nil
+  T:SetIgnored(ENC, "Real Name", false)
+  assert(s.rows[1].name.textColor[4] == nil and s.rows[1].icon.alphaSet == 1, "ticked again on the Timeline: normal")
   CRT.db.alerts.specialView, CRT.db.alerts.specialViewPicked = "mechanics", true
   noSpecial()
   assert(#errors == 0, tostring(errors[1]))
