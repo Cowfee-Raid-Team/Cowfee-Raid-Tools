@@ -23,6 +23,8 @@ local ADDON, CRT = ...
 -- Assign tab's, with timers from one of the boss's mechanics, typed, or none; the palette drags onto its rows then.
 -- The note check (Notes/EditorCheck.lua, Notes/Check.lua) is a banner under those: double callouts and lines for
 -- players no row lists, with Remove old lines.
+-- A timed line can be deleted (Notes/EditorLines.lua): right-click it for Delete line or Delete all lines like it; click,
+-- Shift-click and Ctrl-click select lines for Delete selected in the footer.
 
 local Notes = CRT.Notes
 local Model = CRT.NoteEditModel
@@ -45,6 +47,11 @@ end
 -- The note check's banner (Notes/EditorCheck.lua, loaded after this file), or nil without it.
 local function noteCheck()
     return CRT.NoteEditorCheck
+end
+
+-- Deleting timed lines (Notes/EditorLines.lua, loaded after this file), or nil without it.
+local function lines()
+    return CRT.NoteEditorLines
 end
 
 local TEXT = {
@@ -82,7 +89,7 @@ local TEXT = {
     historyTip = "The note's last 5 earlier versions: when, how and who changed them. Compare one with the note now, or restore it.",
     spell = "Spell %s",
     invite = "Invite list (%d):",
-    timers = "Timers (from the note, not editable here)",
+    timers = "Timers (from the note; right-click one to delete it)",
     discard = "Close the note editor without saving your changes?",
     discardButton = "Discard",
     helpTitle = "Note editor",
@@ -98,6 +105,9 @@ local TEXT = {
         "Timers are shown as the note has them and can't be changed here, except that a timer line listing the "
             .. "same players as an assignment line follows it: change the line's names and the timer line gets them "
             .. "too. Only names change.",
+        { "Delete timers", "right-click a timer line to delete it, or every line with the same players and text. Click "
+            .. "a line to select it, Shift-click to select a range, Ctrl-click to add or remove one, then Delete "
+            .. "selected. Nothing is saved until Save." },
         { "Raw text", "shows the note as it will be saved." },
         { "Add assignment", "adds a heading and rows of players, with timer lines from one of the boss's mechanics, "
             .. "typed times, or none. Click a row of an assignment first to change that one." },
@@ -171,7 +181,14 @@ local function rowFrame(i)
     f.heading:SetPoint("TOPLEFT", 4, -2)
     f.heading:SetJustifyH("LEFT")
     f.heading:SetWordWrap(false)
-    f:SetScript("OnMouseDown", function(self)
+    f:SetScript("OnMouseDown", function(self, button)
+        -- a timed line: selected or deleted (Notes/EditorLines.lua)
+        if self.kind == "timer" then
+            if lines() and W.session then
+                lines().Click(self, button)
+            end
+            return
+        end
         -- Quick fill: a click on a line selects it for the palette's clicks
         if W.session and W.session.quickFill then
             W.session:Select(self.index)
@@ -241,7 +258,8 @@ local function drawRow(f, i, row, width)
     if el then
         el.Clear(f) -- its tag and hover, set again below for its kind
     end
-    f:EnableMouse(row.editable == true)
+    -- a timed line takes clicks to be selected or deleted (Notes/EditorLines.lua), never a drop
+    f:EnableMouse(row.editable == true or (row.kind == "timer" and lines() ~= nil))
     local kind = row.kind
     -- a timed line is shown dimmed, under the Timers heading: no drop target, nothing to drag or remove
     f:SetAlpha(kind == "timer" and L.timerAlpha or 1)
@@ -312,6 +330,9 @@ local function drawRow(f, i, row, width)
     end
     -- an editable row is a drop target: a box, its edge the heading colour when selected for Quick fill
     Palette.PaintRow(f, row.editable, W.session.selected == i)
+    if kind == "timer" and lines() then
+        lines().Paint(f, i) -- selected for Delete selected: tinted
+    end
     return height
 end
 
@@ -613,6 +634,9 @@ function Editor.Refresh()
     end
     -- Raw text can't show while Add assignment holds the left side: greyed until Done
     W.rawButton:SetEnabled(not W.assignOn)
+    -- Delete selected, left of Add assignment while lines are selected; the status line ends before it
+    local del = lines() and W.deleteButton and lines().RefreshButton()
+    W.status:SetPoint("RIGHT", del and W.deleteButton or W.assignButton, "LEFT", -8, 0)
     W.roster:SetChecked(rosterOn())
     refreshPush()
     local status = ""
@@ -702,6 +726,9 @@ local function loadSession()
     W.session = Model.New(text or "", { markdown = W.source.personal, readOnly = not editable, boss = record,
         players = CRT.NoteParser.Players(record) })
     W.notice, W.refused = nil, nil
+    if lines() then
+        lines().Clear() -- a new session (opened, saved, changed from elsewhere): no lines selected
+    end
     if W.source.personal then
         W.window.strip:SetTitle(TEXT.personalTitle)
     else
@@ -1012,6 +1039,10 @@ local function buildFooter(c)
         end
     end)
     W.assignButton:SetPoint("RIGHT", W.rawButton, "LEFT", -6, 0)
+    if lines() then
+        W.deleteButton = lines().BuildButton(c) -- Delete selected, shown while timed lines are selected
+        W.deleteButton:SetPoint("RIGHT", W.assignButton, "LEFT", -6, 0)
+    end
     W.status = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     W.status:SetPoint("LEFT", quickText, "RIGHT", 30, 0)
     W.status:SetPoint("RIGHT", W.assignButton, "LEFT", -8, 0)
