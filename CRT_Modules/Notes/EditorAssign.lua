@@ -15,6 +15,7 @@ local ADDON, CRT = ...
 -- saying what changes (Assign.AdoptChanges); a list named like a block the note has updates that block instead
 -- (Assign.AdoptInto), never a copy. When a note opens with such lists, a banner over the rows offers it; with two or
 -- more, its Make all makes every one a block at once (Assign.AdoptAll, #1294), after one confirmation that lists them.
+-- A block the note has is updated by the first list named like it only; a later one becomes its own block ("Name 2").
 -- Make all changes the session's text only, in one step: nothing reaches the note until Save (the editor has no undo:
 -- closing without Save drops it).
 -- Called by the editor:
@@ -74,6 +75,9 @@ local TEXT = {
     allLineOne = "%s: 1 timer line",
     allUpdate = "%s: %d timer lines (updates that block)",
     allUpdateOne = "%s: 1 timer line (updates that block)",
+    allOwn = "%s: %d timer lines (a block of its own: another list updates that block)",
+    allOwnOne = "%s: 1 timer line (a block of its own: another list updates that block)",
+    allMore = "And %d more lists, %d timer lines.",
     allButton = "Make all",
     allDone = "Made %d Assign blocks. Save keeps them.",
     allGone = "The note changed: Make all made nothing.",
@@ -631,6 +635,8 @@ end
 -- as the banner's Make an Assign block makes it (its lines' own times; a list named like a block the note has updates
 -- that block, against its timers). Asked first, listing each list with its line count; nothing changes unless the text
 -- is the same at Accept. The view stays closed.
+local ALL_MAX = 25 -- lists named in Make all's confirmation; the rest as a count (as the note check's groups)
+
 function EA.AskMakeAll()
     local s = W.session
     if not s or readOnly() then
@@ -644,11 +650,28 @@ function EA.AskMakeAll()
     end
     A.mechs = mechanics()
     local out = { string.format(TEXT.allTitle, #cands) }
-    for _, c in ipairs(cands) do
-        local update = Assign.MatchingBlock(text, c.heading) ~= nil
+    -- as Assign.AdoptAll does it: a block the note has is updated by the first list named like it only
+    local updating, rest, restLines = {}, 0, 0
+    for k, c in ipairs(cands) do
+        local key = Assign.MatchingBlock(text, c.heading)
+        local f
         local one = c.lines == 1
-        local f = update and (one and TEXT.allUpdateOne or TEXT.allUpdate) or (one and TEXT.allLineOne or TEXT.allLine)
-        out[#out + 1] = one and string.format(f, c.name) or string.format(f, c.name, c.lines)
+        if key and not updating[key] then
+            updating[key] = true
+            f = one and TEXT.allUpdateOne or TEXT.allUpdate
+        elseif key then
+            f = one and TEXT.allOwnOne or TEXT.allOwn
+        else
+            f = one and TEXT.allLineOne or TEXT.allLine
+        end
+        if k > ALL_MAX then
+            rest, restLines = rest + 1, restLines + c.lines
+        else
+            out[#out + 1] = one and string.format(f, c.name) or string.format(f, c.name, c.lines)
+        end
+    end
+    if rest > 0 then
+        out[#out + 1] = string.format(TEXT.allMore, rest, restLines)
     end
     local function accept()
         if not (W.session and not readOnly()) then

@@ -675,6 +675,16 @@ check("assign: AdoptAll updates a block a list is named like, and never folds a 
   -- (the first takes "Soaks 2": the second list still holds the name then, as Make an Assign block reads it)
   assert(table.concat(A.Keys(out2), ",") == "soaks 2,soaks", out2)
   assert(A.Read(out2, "soaks 2").rows[1].label == "Left" and A.Read(out2, "soaks").rows[1].label == "Right", "each its own rows")
+  -- two lists named like one block the note has: the first updates it, the second is its own block (review, #1294)
+  local l3 = { "EncounterID:3470;Difficulty:Mythic;Name:Twin Fangs" }
+  for _, x in ipairs(block) do l3[#l3 + 1] = x end
+  for _, x in ipairs(orbList()) do l3[#l3 + 1] = x end
+  for _, x in ipairs({ "", "Orb Carriers", "Right: Ned, Ola", "time:30;ph:1;tag:Ned Ola;text:Orbs;" }) do l3[#l3 + 1] = x end
+  local out3, made3 = A.AdoptAll(joined(l3))
+  assert(#made3 == 2 and made3[1].update == "orb carriers" and made3[2].update == nil, "an update, then a new block")
+  assert(table.concat(A.Keys(out3), ",") == "orb carriers,orb carriers 2", table.concat(A.Keys(out3), ","))
+  assert(A.Read(out3, "orb carriers").rows[1].label == "Odd" and A.Read(out3, "orb carriers 2").rows[1].label == "Right",
+    "the first list's rows kept in the block: " .. out3)
   -- the casts a block named like a list reads its lines against (a mechanic's), asked by key
   local asked
   A.AdoptAll(text, { castsFor = function(key) asked = key return nil end })
