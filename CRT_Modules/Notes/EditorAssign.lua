@@ -52,7 +52,6 @@ local TEXT = {
     adoptTitle = "Make an Assign block from %s?",
     adoptLines = "Its %d timer lines become the block's lines.",
     adoptTexts = "%s: the lines' different texts become one text per row.",
-    adoptDropped = "%d lines lose their colours and other settings.",
     adoptOff = "%d lines on no cast stay as they are.",
     adoptButton = "Make block",
     adoptGone = "The note changed: that group list isn't there any more.",
@@ -311,9 +310,6 @@ local function adoptText(heading, key)
     local out = { title or string.format(TEXT.adoptTitle, c.name), string.format(TEXT.adoptLines, c.lines) }
     if #c.texts > 0 then
         out[#out + 1] = string.format(TEXT.adoptTexts, table.concat(c.texts, ", "))
-    end
-    if c.dropped > 0 then
-        out[#out + 1] = string.format(TEXT.adoptDropped, c.dropped)
     end
     if c.off > 0 then
         out[#out + 1] = string.format(TEXT.adoptOff, c.off)

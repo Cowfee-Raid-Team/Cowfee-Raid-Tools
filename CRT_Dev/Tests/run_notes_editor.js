@@ -1352,13 +1352,13 @@ do
   confirm = nil
   b.make.scripts.OnClick(b.make)
   assert(confirm and confirm.text:find("Make an Assign block from Orbs?", 1, true) and confirm.text:find("Its 3 timer lines", 1, true)
-    and confirm.text:find("1 lines lose their colours", 1, true), "what changes: " .. tostring(confirm and confirm.text))
+    and not confirm.text:find("colours", 1, true), "what changes: " .. tostring(confirm and confirm.text))
   assert(W.session:Text() == pasted, "nothing changed yet")
   confirm.callback()
   local t = W.session:Text()
   assert(W.assignOn and ui.nameEdit:GetText() == "Orbs" and A.block.rows[1].casts == "rotate" and A.block.rows[2].casts == "rotate", "Odd and Even rotate")
   assert(lineCount(t, "assign:orbs/") == 3 and t:find("\\nassign:orbs;name:Orbs;times:1@36,1@96,1@156;\\n", 1, true) and t:find("\\nNotes$"), t)
-  assert(not t:find("colors:", 1, true), "the colours dropped, as it said")
+  assert(t:find("time:36;ph:1;tag:Abu Cheo;text:Orbs;colors:1 0 0 1;assign:orbs/1/1;", 1, true), "the line keeps its colour (#1288): " .. t)
   -- timers from the mechanic: the same casts, the rotation kept
   A.timersDrop.opts.set(1)
   t = W.session:Text()

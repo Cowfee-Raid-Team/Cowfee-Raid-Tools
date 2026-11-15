@@ -26,7 +26,11 @@ local ADDON, CRT = ...
 -- into one. The timed lines carry assign:<key>/<row>/<cast> (the cast's number, so a line follows its cast when the
 -- ability timeline moves it); FormatLine never writes it, so other writers keep it, and an older CRT reads the line
 -- as any other timed line. The note is the one source: Read gives the block back from the text. An untimed block is
--- its heading and rows; its rows' texts and casts are then not kept, as no line shows them.
+-- its heading and rows; its rows' texts and casts are then not kept, as no line shows them. A timed line's other
+-- fields (dur:, colors:, DisplayType:, a sound: its look, LookOf) stay with it when the block is read and written
+-- again, or a list is made a block (Alex, 2026-11-15, #1288): a row keeps each cast's look (row.looks) and its most
+-- common one (row.look) for a cast it gets later. A cast with no line in any row reads as no row being on it (the
+-- note check, Notes/Check.lua, says so and adds them back).
 -- A key is unique in its note (KeyTaken: another block's, or a typed group list's heading). Replace writes a block in
 -- place of its old lines, every other line byte for byte (MechNote.ReplaceLines); Write does it in the note the pull
 -- of that difficulty reads (MechNote.WriteWith, Notes:WriteTarget), and links each timed line to its row
@@ -35,7 +39,9 @@ local ADDON, CRT = ...
 --   Assign.Read(text, key, times)        the block with that key in a note's text, or nil
 --   Assign.BlocksFor(text, mech)         the keys of a mechanic's blocks
 --   Assign.KeyTaken(text, key, oldKey), Assign.FreeName(text, base)
---   Assign.Candidates(text)              group lists that timed lines follow but are no block yet (a pasted note)
+--   Assign.Candidates(text)              group lists that timed lines follow but are no block yet (a pasted note);
+--                                        never the kick block (KickLines: its intstart to intend lines)
+--   Assign.LookOf(line)                  a timed line's look: the fields Lines doesn't write itself
 --   Assign.FromRows(text, heading, times)   such a list as a block, and the lines it takes in; AdoptChanges says what
 --                                        making it a block changes
 --   Assign.Adopt(text, heading, times, opts)   the text with that list rewritten as a block
@@ -171,7 +177,14 @@ function Assign.Copy(block)
             end
             casts = list
         end
-        out.rows[r] = { label = row.label, text = row.text, tokens = tokens, casts = casts }
+        local looks
+        if type(row.looks) == "table" then
+            looks = {}
+            for c, v in pairs(row.looks) do
+                looks[c] = v
+            end
+        end
+        out.rows[r] = { label = row.label, text = row.text, tokens = tokens, casts = casts, look = row.look, looks = looks }
     end
     return out
 end
@@ -368,8 +381,15 @@ function Assign.Marker(key, r, c)
     return Assign.FIELD .. ":" .. key .. "/" .. r .. "/" .. c .. ";"
 end
 
+-- A row's look on cast c: the fields its line there had (looks[c]), else the row's most common (look), else none.
+local function lookOf(row, c)
+    local look = type(row.looks) == "table" and row.looks[c] or row.look
+    return type(look) == "string" and look or ""
+end
+
 -- The block's lines: its heading, a row line per row, then its timed lines in cast order (each cast's rows in
--- their order). times: the casts (nil or empty: none, an untimed block).
+-- their order), each with its look (lookOf: dur:, colors:, DisplayType: and any other field the line had, #1288)
+-- before its marker. times: the casts (nil or empty: none, an untimed block).
 function Assign.Lines(block, times, opts)
     opts = opts or {}
     local key = opts.key or Assign.Key(block.name)
@@ -397,7 +417,7 @@ function Assign.Lines(block, times, opts)
             if spellID then
                 t.kind, t.spellId = "spell", spellID
             end
-            out[#out + 1] = Parser.FormatLine(t) .. Assign.Marker(key, r, c)
+            out[#out + 1] = Parser.FormatLine(t) .. lookOf(row, c) .. Assign.Marker(key, r, c)
         end
     end
     return out
@@ -704,6 +724,44 @@ end
 
 -- Reading a block back --------------------------------------------------------------------------------------
 
+-- The fields a block writes on each timed line itself (Lines: FormatLine's, and the marker); every other field of a
+-- line is its look.
+local KEPT = { time = true, ph = true, tag = true, text = true, spellid = true, [Assign.FIELD] = true }
+
+-- A timed line's look (#1288): its other fields (dur:, colors:, DisplayType:, a sound, ...) as written and in order,
+-- each ending in ";", or "" for none. Lines writes it back, so a list made a block keeps how its callouts look.
+function Assign.LookOf(line)
+    local out = {}
+    for part in tostring(line or ""):gmatch("[^;]+") do
+        local k = part:match("^%s*([^:]+):")
+        if k and not KEPT[trim(k):lower()] then
+            out[#out + 1] = trim(part) .. ";"
+        end
+    end
+    return table.concat(out)
+end
+
+-- Each row's looks from its lines' (looks[row][cast] = look): looks by cast, and its most common one (look; on a tie,
+-- the earliest cast's), for a cast the row gets later.
+local function setLooks(block, looks)
+    for r, byCast in pairs(looks) do
+        local casts, count = {}, {}
+        for c, look in pairs(byCast) do
+            casts[#casts + 1] = c
+            count[look] = (count[look] or 0) + 1
+        end
+        table.sort(casts)
+        local best
+        for _, c in ipairs(casts) do
+            local look = byCast[c]
+            if not best or count[look] > count[best] then
+                best = look
+            end
+        end
+        block.rows[r].looks, block.rows[r].look = byCast, best
+    end
+end
+
 local function castOf(list, ph, t)
     for c, e in ipairs(list) do
         if e.ph == ph and math.abs(e.t - t) < Assign.SAME_TIME then
@@ -801,7 +859,7 @@ local function fromLines(block, entries, times)
         end
         block.times = #list > 0 and list or nil
     end
-    local sets, off = {}, {}
+    local sets, off, looks = {}, {}, {}
     for _, e in ipairs(entries) do
         -- a marked line is on its cast by number (the timeline may have moved it), else by its time
         local c = (e.cast and list[e.cast]) and e.cast or castOf(list, e.ph, e.t)
@@ -809,6 +867,8 @@ local function fromLines(block, entries, times)
         if c and row then
             sets[e.r] = sets[e.r] or {}
             sets[e.r][c] = true
+            looks[e.r] = looks[e.r] or {}
+            looks[e.r][c] = looks[e.r][c] or Assign.LookOf(e.raw)
             if row.text == "" and e.text and e.text ~= "" and e.text ~= Assign.CleanLabel(row.label, e.r) then
                 row.text = e.text
             end
@@ -818,6 +878,7 @@ local function fromLines(block, entries, times)
         end
     end
     inferCasts(block, sets, #list)
+    setLooks(block, looks)
     return off
 end
 
@@ -858,7 +919,7 @@ function Assign.Read(text, key, times)
                 block.rows[r].tokens = Parser.JoinClassWords(row.timer.tags or {})
             end
             entries[#entries + 1] = { r = r, cast = c, ph = row.timer.ph or 1, t = row.timer.time, text = row.timer.text,
-                spellId = row.timer.spellId }
+                spellId = row.timer.spellId, raw = row.raw }
         end
     end
     if #block.rows == 0 then
@@ -887,15 +948,38 @@ local function followers(s, m, li)
     return out
 end
 
+-- The lines of the raid note's kick block, intstart to intend (Interrupts/NoteBlock.lua), as a set: its lines read
+-- as headings where the kick block isn't drawn (no Interrupts), yet they are never a group list (#1288).
+function Assign.KickLines(src)
+    local s = session(src)
+    local K = CRT.InterruptNote
+    local first, last = K and K.START or "intstart", K and K.END or "intend"
+    local out, open = {}, nil
+    for i, p in ipairs(s.pieces) do
+        local word = trim(p.text):lower()
+        if not open and word == first then
+            open = i
+        elseif open and word == last then
+            for j = open, i do
+                out[j] = true
+            end
+            open = nil
+        end
+    end
+    return out
+end
+
 -- Group lists in a note's text that timed lines follow (Notes/Links.lua) and that are no block yet: a heading with
--- assignment lines under it, such as a pasted planner note. { { heading (its line), name, rows (their lines),
--- lines (how many timed lines follow them) } }.
+-- assignment lines under it, such as a pasted planner note; never the kick block's lines (KickLines). { { heading
+-- (its line), name, rows (their lines), lines (how many timed lines follow them) } }.
 function Assign.Candidates(text, saved)
     local s = session(text)
     local m = linkMatch(s, saved)
+    local kick = Assign.KickLines(s)
     local out = {}
     for i, row in ipairs(s.rows) do
-        if row.kind == "heading" and not row.assign then -- a block's marked heading is a block already
+        -- a block's marked heading is a block already
+        if row.kind == "heading" and not row.assign and not row.kicks and not kick[i] then
             local labels = labelsUnder(s, i)
             local n = 0
             for _, li in ipairs(labels) do
@@ -916,7 +1000,7 @@ end
 function Assign.FromRows(text, heading, times, saved)
     local s = session(text)
     local row = s.rows[heading]
-    if not (row and row.kind == "heading" and not row.assign) then
+    if not (row and row.kind == "heading" and not row.assign) or row.kicks or Assign.KickLines(s)[heading] then
         return nil
     end
     local labels = labelsUnder(s, heading)
@@ -951,19 +1035,15 @@ function Assign.FromRows(text, heading, times, saved)
     return block, taken
 end
 
--- The fields a block's timed line keeps; any other (colours, a display, a sound) is dropped when a list is adopted.
-local KEPT = { time = true, ph = true, tag = true, text = true, spellid = true }
-
 -- What making the group list at line `heading` a block changes, for the confirmation: { lines (the timed lines
--- rewritten), off (left as they are: on no cast), texts (the rows whose lines had several texts, now one), dropped
--- (lines that lose other fields) }, or nil.
+-- rewritten), off (left as they are: on no cast), texts (the rows whose lines had several texts, now one) }, or nil.
+-- The lines keep their looks (LookOf, #1288), so nothing else changes on them.
 function Assign.AdoptChanges(text, heading, times, saved)
     local block = Assign.FromRows(text, heading, times, saved)
     if not block then
         return nil
     end
-    local out = { name = block.name, lines = #block.adopted.entries - #block.adopted.off, off = #block.adopted.off, texts = {},
-        dropped = 0 }
+    local out = { name = block.name, lines = #block.adopted.entries - #block.adopted.off, off = #block.adopted.off, texts = {} }
     local textsOf, off = {}, {}
     for _, e in ipairs(block.adopted.off) do
         off[e] = true -- left as they are: nothing changes on them
@@ -972,13 +1052,6 @@ function Assign.AdoptChanges(text, heading, times, saved)
         if not off[e] then
             textsOf[e.r] = textsOf[e.r] or {}
             textsOf[e.r][e.text or ""] = true
-            for part in (e.raw or ""):gmatch("[^;]+") do
-                local k = part:match("^%s*([^:]+):")
-                if k and not KEPT[trim(k):lower()] then
-                    out.dropped = out.dropped + 1
-                    break
-                end
-            end
         end
     end
     for r, set in pairs(textsOf) do
