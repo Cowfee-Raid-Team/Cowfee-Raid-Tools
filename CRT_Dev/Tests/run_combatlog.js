@@ -30,6 +30,7 @@ local function mock()
     if k == "SetEnabled" then return function(self, on) rawset(self, "enabled", on and true or false) end end
     if k == "IsEnabled" then return function(self) return rawget(self, "enabled") ~= false end end
     if k == "SetFontObject" then return function(self, f) rawset(self, "font", f) end end
+    if k == "SetShown" then return function(self, on) rawset(self, "shown", on and true or false) end end
     if k == "SetWidth" then return function(self, w) rawset(self, "w", w) end end
     if k == "SetSize" then return function(self, w, h) rawset(self, "w", w) end end
     if k == "SetPoint" then return function(self, ...) table.insert(self.pts, { ... }) end end
@@ -77,6 +78,17 @@ local timers = {}
 C_Timer = { After = function(sec, fn) timers[#timers + 1] = { sec = sec, fn = fn } end }
 local function runTimers() local due = timers timers = {} for _, t in ipairs(due) do t.fn() end return #due end
 local function settle() for _ = 1, 5 do if runTimers() == 0 then return end end end
+-- the loaded addons (C_AddOns.IsAddOnLoaded: "error" raises), and the game's popups
+local addons = {}
+C_AddOns = { IsAddOnLoaded = function(name) local v = addons[name] if v == "error" then error("not allowed") end return v and true or false, v and true or false end }
+StaticPopupDialogs = {}
+local shown = {} -- every StaticPopup_Show: { which, text, data, frame }
+local visible = nil
+StaticPopup_Show = function(which, a1, a2, data) local f = mock() shown[#shown + 1] = { which = which, text = a1, data = data, frame = f } visible = which return f end
+StaticPopup_Visible = function(which) return visible == which and "StaticPopup1" or nil end
+local lifted = 0
+local function liftOver(d) if d then lifted = lifted + 1 end end
+local function shownPopup(ret) return ret end
 
 local defaults = { enabled = false, raid = { lfr = true, normal = true, heroic = true, mythic = true }, dungeon = { keys = true, mythic = false, normal = false }, stopOnLeave = true, announce = true }
 local function copy(t) local o = {} for k, v in pairs(t) do o[k] = type(v) == "table" and copy(v) or v end return o end
@@ -84,7 +96,7 @@ local CRT = { db = { qol = { combatLog = copy(defaults), lowHealth = {}, breakTi
 local printed = {}
 function CRT:Print(t) printed[#printed + 1] = t end
 local function lastPrint() return printed[#printed] end
-CRT.UI = {}
+CRT.UI = { LiftOver = liftOver, ShownPopup = shownPopup }
 assert(load(logSrc, "@CombatLog.lua"))("CowfeeRaidTools", CRT)
 local C = CRT.CombatLog
 check(C ~= nil, "CRT.CombatLog exists")
@@ -470,13 +482,170 @@ settle()
 check(logging == true and #calls == 0, "after a fresh login the log is left on when you leave")
 C:StopNow()
 
+-- Archon Logger: another addon that turns the combat log on and off ------------------------------------------------
+check(#shown == 0, "Archon Logger not loaded: no popup so far: " .. #shown)
+check(C.OtherLogger() == nil, "OtherLogger: nil when it isn't loaded")
+addons["!ArchonLogger"] = true
+local oName, oShort = C.OtherLogger()
+check(oName == "Archon Logger" and oShort == "Archon", "OtherLogger: its display name when loaded: " .. tostring(oName) .. " " .. tostring(oShort))
+addons["!ArchonLogger"] = "error"
+local okO, refusedO = pcall(C.OtherLogger)
+check(okO and refusedO == nil, "OtherLogger: a refused check is nil, no error")
+local keepAO = C_AddOns
+C_AddOns = nil
+IsAddOnLoaded = function(n) return n == "!ArchonLogger" end
+check(C.OtherLogger() == "Archon Logger", "OtherLogger: without C_AddOns, the global IsAddOnLoaded")
+IsAddOnLoaded = nil
+check(C.OtherLogger() == nil, "OtherLogger: no API at all is nil")
+C_AddOns = keepAO
+addons["!ArchonLogger"] = true
+
+local function popup() return shown[#shown] end
+local function clickButton(n)
+  local p = popup()
+  local d = StaticPopupDialogs[p.which]
+  visible = nil
+  if n == 1 then d.OnAccept(p.frame, p.data) else d.OnCancel(p.frame, p.data, "clicked") end
+end
+-- the game's Escape (StaticPopup_EscapePressed): OnCancel unless noCancelOnEscape, then hide
+local function escape()
+  local p = popup()
+  local d = StaticPopupDialogs[p.which]
+  if d.hideOnEscape then
+    if d.OnCancel and not d.noCancelOnEscape then d.OnCancel(p.frame, p.data, "clicked") end
+    visible = nil
+  end
+end
+local function answer() return CRTDBChar.combatLog.otherLoggerAnswer end
+local changed = 0
+C.onChange = function() changed = changed + 1 end
+
+-- ticking the master asks
+s.enabled = false
+shown, printed, lifted = {}, {}, 0
+C:SetEnabled(true)
+check(#shown == 1, "ticking with Archon Logger loaded: one popup: " .. #shown)
+local p1 = popup()
+local d1 = p1 and StaticPopupDialogs[p1.which]
+check(p1 and p1.text and p1.text:find("Two addons manage your combat log", 1, true) and p1.text:find("Archon Logger also turns your combat log on and off. With both on, they can switch it against each other and spam chat. Pick one to handle it.", 1, true), "the popup's title and body: " .. tostring(p1 and p1.text))
+check(d1 and d1.button1 == "Let Archon handle it" and d1.button2 == "Keep CRT on", "its two buttons: " .. tostring(d1 and d1.button1) .. " / " .. tostring(d1 and d1.button2))
+check(lifted == 1, "it is lifted over CRT's windows")
+check(d1 and d1.hideOnEscape and d1.noCancelOnEscape, "Escape closes it without running Keep CRT on")
+C:SetEnabled(true)
+check(#shown == 1, "ticking again while it shows: no second popup")
+escape()
+check(answer() == nil and s.enabled == true, "Escape: nothing saved, nothing changed")
+-- a popup hidden by the game (another dialog, reason override): nothing saved
+C:SetEnabled(false)
+C:SetEnabled(true)
+check(#shown == 2, "not answered: ticking again asks again")
+visible = nil
+d1.OnCancel(popup().frame, popup().data, "override")
+check(answer() == nil, "hidden by the game: nothing saved")
+
+-- Keep CRT on: nothing changes, saved, not asked again
+C:SetEnabled(false)
+C:SetEnabled(true)
+check(#shown == 3, "(asked)")
+printed, changed = {}, 0
+clickButton(2)
+check(answer() ~= nil and s.enabled == true, "Keep CRT on: the answer is saved, the master stays on")
+check(#printed == 0, "Keep CRT on: no chat line")
+C:SetEnabled(false)
+C:SetEnabled(true)
+check(#shown == 3, "answered: ticking again doesn't ask")
+fire("PLAYER_ENTERING_WORLD", true, false)
+settle()
+check(#shown == 3, "answered: a fresh login doesn't ask")
+
+-- a fresh login asks, a /reload and a zone change don't
+CRTDBChar.combatLog.otherLoggerAnswer = nil
+fire("PLAYER_ENTERING_WORLD", false, true)
+settle()
+check(#shown == 3, "a /reload doesn't ask")
+fire("PLAYER_ENTERING_WORLD", false, false)
+fire("ZONE_CHANGED_NEW_AREA")
+settle()
+check(#shown == 3, "a zone change doesn't ask")
+fire("PLAYER_ENTERING_WORLD", true, false)
+check(#shown == 4, "a fresh login with the master on asks")
+escape()
+s.enabled = false
+fire("PLAYER_ENTERING_WORLD", true, false)
+check(#shown == 4, "a fresh login with the master off doesn't ask")
+s.enabled = true
+
+-- in combat: asked when combat ends
+combat = true
+fire("PLAYER_ENTERING_WORLD", true, false)
+check(#shown == 4, "in combat: no popup")
+check(events.events.PLAYER_REGEN_ENABLED, "it waits for combat to end")
+combat = false
+fire("PLAYER_REGEN_ENABLED")
+check(#shown == 5, "combat ends: the popup shows")
+check(not events.events.PLAYER_REGEN_ENABLED, "and stops waiting")
+escape()
+combat = true
+C:SetEnabled(false)
+C:SetEnabled(true)
+check(#shown == 5, "ticking in combat: no popup yet")
+combat = false
+fire("PLAYER_REGEN_ENABLED")
+check(#shown == 6, "ticking in combat: asked when combat ends")
+-- answered while waiting: combat ending doesn't ask
+escape()
+combat = true
+C:SetEnabled(false)
+C:SetEnabled(true)
+CRTDBChar.combatLog.otherLoggerAnswer = "crt"
+combat = false
+fire("PLAYER_REGEN_ENABLED")
+check(#shown == 6, "answered before combat ends: no popup")
+CRTDBChar.combatLog.otherLoggerAnswer = nil
+
+-- Let Archon handle it: the master off, one chat line, the tab refreshed, saved
+C:SetEnabled(false)
+C:SetEnabled(true)
+check(#shown == 7, "(asked)")
+printed, changed = {}, 0
+clickButton(1)
+check(s.enabled == false, "Let Archon handle it: Log combat automatically is off")
+check(#printed == 1 and printed[1] == "Combat log: Archon Logger handles it, CRT's automatic logging is off.", "one chat line: " .. tostring(printed[1]))
+check(changed >= 1, "the tab is refreshed")
+check(answer() ~= nil, "the answer is saved")
+fire("PLAYER_ENTERING_WORLD", true, false)
+check(#shown == 7, "master off after Let Archon: a fresh login doesn't ask")
+-- ticking the master again by hand asks again
+C:SetEnabled(true)
+check(#shown == 8 and answer() == nil, "ticking again after Let Archon: the answer is cleared, asked again")
+clickButton(2)
+check(answer() ~= nil and s.enabled == true, "(Keep CRT on)")
+
+-- Archon Logger not loaded: never asked
+CRTDBChar.combatLog.otherLoggerAnswer = nil
+addons["!ArchonLogger"] = nil
+C:SetEnabled(false)
+C:SetEnabled(true)
+fire("PLAYER_ENTERING_WORLD", true, false)
+check(#shown == 8, "not loaded: no popup")
+-- no popup API: no error
+addons["!ArchonLogger"] = true
+local keepSP = StaticPopup_Show
+StaticPopup_Show = nil
+local okP, errP = pcall(function() C:SetEnabled(false) C:SetEnabled(true) end)
+check(okP, "no StaticPopup_Show: no error: " .. tostring(errP))
+StaticPopup_Show = keepSP
+addons["!ArchonLogger"] = nil
+settle()
+
 -- The tab: Quality of Life > Combat log ---------------------------------------------------------------------------
 local helps, tabs, build, buttons, controls = {}, {}, nil, {}, {}
 CRT.UI = {
   RegisterPage = function(_, k, title, fn) build = fn end,
   Dropdown = function() local r = mock() r.refresh = function() end return r end,
   Slider = function() local r = mock() r.refresh = function() end return r end,
-  HelpRight = function(target, title, text) helps[#helps + 1] = { target = target, title = title, text = text } return mock() end,
+  HelpRight = function(target, title, text) local icon = mock() helps[#helps + 1] = { target = target, title = title, text = text, icon = icon } return icon end,
+  LiftOver = liftOver, ShownPopup = shownPopup, WarnText = function(t) return "<warn>" .. t end,
   PreviewButton = function() return mock() end,
   PanelButton = function(parent, label, h, onClick) local b = CreateFrame("Button") b:SetText(label) b:SetWidth(#label * 7 + 28) rawset(b, "onClick", onClick) buttons[label] = b return b end,
   PanelButtonWidth = function(w) return math.ceil(w) + 28 end,
@@ -559,6 +728,35 @@ check(rawget(toggle, "w") == wantW, "the button is sized from its label: " .. to
 local titles = {}
 for _, h in ipairs(helps) do titles[h.title] = true end
 check(titles["Log combat automatically"] and titles["Setup"] and titles["Stop when I leave"], "a (?) on the master, Setup and Stop when I leave")
+
+-- the Archon Logger line in Setup: only with the master on and Archon Logger loaded
+local warnHelp
+for _, h in ipairs(helps) do if h.title == "Two addons manage your combat log" then warnHelp = h end end
+check(warnHelp ~= nil, "a (?) on the Archon Logger line, titled like the popup")
+check(warnHelp and type(warnHelp.text) == "string" and warnHelp.text:find("Pick one to handle it.", 1, true), "its (?) explains the popup's text: " .. tostring(warnHelp and warnHelp.text))
+local warnLine = warnHelp and warnHelp.target
+local function warnShown() return warnLine and rawget(warnLine, "shown") == true and rawget(warnHelp.icon, "shown") == true end
+local function warnHidden() return warnLine and rawget(warnLine, "shown") == false and rawget(warnHelp.icon, "shown") == false end
+CRTDBChar.combatLog.otherLoggerAnswer = "crt" -- (no popup in the way)
+s.enabled = true
+addons["!ArchonLogger"] = nil
+refreshAll()
+check(warnHidden(), "master on, Archon Logger not loaded: no line")
+addons["!ArchonLogger"] = true
+refreshAll()
+check(warnShown(), "master on, Archon Logger loaded: the line shows")
+check(warnLine and rawget(warnLine, "text") == "<warn>Archon Logger also changes your combat log.", "in the theme's warn colour: " .. tostring(warnLine and rawget(warnLine, "text")))
+s.enabled = false
+refreshAll()
+check(warnHidden(), "master off: no line")
+-- ticking the box with Archon Logger loaded and not answered: the popup
+CRTDBChar.combatLog.otherLoggerAnswer = nil
+local before = #shown
+master:SetChecked(true)
+master.scripts.OnClick(master)
+check(#shown == before + 1 and warnShown(), "ticking the box asks, and the line shows")
+clickButton(1)
+check(s.enabled == false and warnHidden() and master:GetChecked() == false, "Let Archon handle it from the tab: the box unticks and the line hides")
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error(fails .. " combat log checks failed") end
 `;
@@ -573,6 +771,12 @@ for (const [f, s] of [['CombatLog.lua', logSrc], ['CombatLogTab.lua', tabSrc]]) 
   if (/BigWigs|DBM|Northern Sky|NSRT|\bMRT\b|WeakAuras|Details!/i.test(s)) fail(f + ' names another addon');
   // never polled: no OnUpdate and no repeating ticker
   if (/OnUpdate|NewTicker/.test(s)) fail(f + ' polls (OnUpdate or a ticker)');
+}
+// the other loggers: one table near the top, a row each; colours only through the theme
+if (!/^local OTHER_LOGGERS = \{\r?\n\s*\{ addon = "!ArchonLogger", name = "Archon Logger", short = "Archon" \},/m.test(logSrc)) fail('CombatLog.lua lacks the OTHER_LOGGERS table with the Archon Logger row');
+if (logSrc.indexOf('local OTHER_LOGGERS') > logSrc.indexOf('local function settings')) fail('OTHER_LOGGERS is not at the top of CombatLog.lua');
+for (const [f, s] of [['CombatLog.lua', logSrc], ['CombatLogTab.lua', tabSrc]]) {
+  if (/\|c[fF]{2}[0-9a-fA-F]{6}|SetTextColor\(\s*[\d.]/.test(s)) fail(f + ' uses a raw colour instead of the theme');
 }
 if (!logSrc.includes('"advancedCombatLogging"')) fail('CombatLog.lua does not name the advancedCombatLogging CVar');
 const core = read('CRT_Core/Core.lua');

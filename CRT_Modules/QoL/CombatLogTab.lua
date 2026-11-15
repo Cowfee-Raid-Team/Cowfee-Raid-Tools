@@ -30,6 +30,7 @@ local TEXT = {
     turnOn = "Turn on Advanced Combat Logging",
     start = "Start logging now",
     stop = "Stop logging",
+    otherLine = "%s also changes your combat log.",
     now = "Now",
     announce = "Say in chat when logging starts or stops",
 }
@@ -154,13 +155,20 @@ local function buildSetup(pf, top, controls, refresh)
     resultText:SetWidth(LINE_W)
     resultText:SetJustifyH("LEFT")
 
-    heading(pf, x, top - 124, TEXT.now)
+    -- another logger loaded with the master on (Archon Logger): a warning line, its (?) the popup's text
+    local otherLine = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    otherLine:SetPoint("TOPLEFT", x + 2, top - 118)
+    otherLine:SetJustifyH("LEFT")
+    local otherTitle, otherBody = CombatLog.OtherLoggerText(CombatLog.OtherLogger())
+    local otherHelp = UI.HelpRight(otherLine, otherTitle, otherBody)
+
+    heading(pf, x, top - 146, TEXT.now)
     local nowLine = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    nowLine:SetPoint("TOPLEFT", x + 2, top - 146)
+    nowLine:SetPoint("TOPLEFT", x + 2, top - 168)
     nowLine:SetWidth(LINE_W)
     nowLine:SetJustifyH("LEFT")
 
-    local say = checkRow(pf, x - 2, top - 176, TEXT.announce)
+    local say = checkRow(pf, x - 2, top - 198, TEXT.announce)
     say:SetScript("OnClick", function(self)
         CRT.db.qol.combatLog.announce = self:GetChecked() and true or false
     end)
@@ -181,8 +189,14 @@ local function buildSetup(pf, top, controls, refresh)
             toggle:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
             resultText:SetText(result or "")
             nowLine:SetText(CombatLog:NowText())
+            local other = CRT.db.qol.combatLog.enabled and CombatLog.OtherLogger()
+            otherLine:SetText(UI.WarnText(string.format(TEXT.otherLine, other or "")))
+            otherLine:SetShown(other and true or false)
+            otherHelp:SetShown(other and true or false)
         end,
     }
+    -- an answer in the popup (Let Archon handle it unticks the master) redraws the page
+    CombatLog.onChange = refresh
 end
 
 CRT.CombatLogTab = {
