@@ -8,10 +8,11 @@ local ADDON, CRT = ...
 -- older versions, sharing and the other raid note addons read it as before. Which lines follow which row is
 -- worked out from the names, and remembered in CRTDB.notes.links by note.
 --   Links.Rows(src)                the assignment lines: { index (its line), block (the heading above it, or ""),
---                                  label, names }. src: a session (Notes/EditModel.lua's Model.New) or a note's text
---   Links.Lines(src)               the timed lines: { index, names, sig, timer }. sig is the line's key without
---                                  its names (time, phase, spell, text, and which repeat of those), so a saved
---                                  link survives a name change
+--                                  label, names, assign (the key of the Assign block it is a row of, or nil) }.
+--                                  src: a session (Notes/EditModel.lua's Model.New) or a note's text
+--   Links.Lines(src)               the timed lines: { index, names, sig, timer, marked (an Assign block's line) }.
+--                                  sig is the line's key without its names (time, phase, spell, text, and which
+--                                  repeat of those), so a saved link survives a name change
 --   Links.Match(rows, lines, saved)   { follow = line index -> { row, saved }, byRow = row index -> lines,
 --                                  exact = { { line, row } } (followed with no saved link: Link asks for them),
 --                                  near = { { line, row, extra, missing, saved } } }. A line follows a row when it
@@ -20,7 +21,9 @@ local ADDON, CRT = ...
 --                                  implicit link, which needs no saved data, so a note shared from another raid
 --                                  lead works too). A line one or two players off a row is a near-miss; so is a
 --                                  linked line that no longer lists its row's players (edited by hand: it stops
---                                  following until it matches again).
+--                                  following until it matches again). A line and row of one name match by the
+--                                  same player and wording (oneName, #1288): "Grab {cross} purple orb" for Sixz
+--                                  follows "{cross} purple orb: Sixz", never a row of someone else.
 --   Links.Summary(match)           for the editor's banner: exact and near grouped by row, the totals, and fix,
 --                                  the one obvious fix (every near-miss on one row, listing the same extra
 --                                  players and leaving no one out): { row, add = names }
@@ -40,7 +43,7 @@ CRT.NoteLinks = Links
 local Parser = CRT.NoteParser
 local Model = CRT.NoteEditModel
 
-Links.MIN_NAMES = 2 -- a row or line of one name links nothing: too likely by chance
+Links.MIN_NAMES = 2 -- by names alone, a row or line of one name links nothing (too likely by chance): oneName below
 Links.NEAR_MAX = 2 -- a near-miss differs from its row by at most this many players
 
 local function trim(s)
@@ -67,12 +70,12 @@ end
 
 function Links.Rows(src)
     local s = session(src)
-    local out, block = {}, ""
+    local out, block, key = {}, "", nil
     for i, row in ipairs(s.rows) do
         if row.kind == "heading" then
-            block = row.text or ""
+            block, key = row.text or "", row.assign and row.assign.key or nil
         elseif row.kind == "label" then
-            out[#out + 1] = { index = i, block = block, label = trim(row.label or ""), names = s:Names(i) }
+            out[#out + 1] = { index = i, block = block, label = trim(row.label or ""), names = s:Names(i), assign = key }
         end
     end
     return out
@@ -86,8 +89,9 @@ function Links.Lines(src)
             local t = row.timer
             local base = table.concat({ num(t.time), num(t.ph or 1), t.spellId and num(t.spellId) or "", t.text or "" }, "|")
             seen[base] = (seen[base] or 0) + 1
+            local mark = Parser.Field(row.raw or "", "assign")
             out[#out + 1] = { index = i, names = s:TimerNames(i), sig = base .. "#" .. seen[base], timer = t, time = row.time,
-                ph = row.ph }
+                ph = row.ph, marked = (mark ~= nil and mark ~= "") or nil }
         end
     end
     return out
@@ -155,9 +159,86 @@ local function follow(m, line, row, saved)
     end
 end
 
--- A line with no saved link: the first row with the same players, else the one row it is closest to.
+-- Wording, for a line of one name (#1288) --------------------------------------------------------------------
+
+-- A text in one form: lower case, one space between words.
+local function form(s)
+    return trim((tostring(s or ""):lower():gsub("%s+", " ")))
+end
+
+-- How a line's text (in form) fits a row's label (in form): "strong" when the label, its marker codes too, is inside
+-- the text ("Grab {cross} purple orb" fits "{cross} purple orb"); "weak" when every word of the text, with or without
+-- its first (a verb like "Grab"), is a word of the label ("CC Mindcontrol" fits "1st CC on Mindcontrol"); else nil.
+local function fits(text, label)
+    if text == "" or label == "" then
+        return nil
+    end
+    if text:find(label, 1, true) then
+        return "strong"
+    end
+    local set = {}
+    for w in label:gmatch("%S+") do
+        set[w] = true
+    end
+    local all, rest, k = true, true, 0
+    for w in text:gmatch("%S+") do
+        k = k + 1
+        if not set[w] then
+            all = false
+            if k > 1 then
+                rest = false
+            end
+        end
+    end
+    return (all or (k > 1 and rest)) and "weak" or nil
+end
+
+-- A line of one name with no saved link (Alex, 2026-11-15): the row of one name for that same player whose label its
+-- text fits (strong before weak); none fits: the player's only row of one name in the typed lists, unless the text
+-- fits another row (someone else's callout, or a block's) or the line is a spell's. Two rows that fit as well, or
+-- two rows and no wording: none (ambiguous). A block's rows never take a typed line here: its own lines are marked
+-- and linked on Save, and a typed line its wording fits is one the block replaced (Notes/Check.lua).
+local function oneName(m, line, rows)
+    local text = form(line.timer and line.timer.text)
+    if line.marked or text == "" then
+        return
+    end
+    local who = nameKey(line.names[1])
+    local strong, weak, own, other = {}, {}, {}, false
+    for _, row in ipairs(rows) do
+        local how = fits(text, form(row.label))
+        local set, n = keySet(row.names)
+        if n == 1 and set[who] and not row.assign then
+            if how == "strong" then
+                strong[#strong + 1] = row
+            elseif how == "weak" then
+                weak[#weak + 1] = row
+            end
+            own[#own + 1] = row
+        elseif how then
+            other = true
+        end
+    end
+    local pick
+    if #strong > 0 then
+        pick = #strong == 1 and strong[1] or nil
+    elseif #weak > 0 then
+        pick = #weak == 1 and weak[1] or nil
+    elseif not other and not line.timer.spellId and #own == 1 then
+        pick = own[1]
+    end
+    if pick then
+        follow(m, line, pick, false)
+    end
+end
+
+-- A line with no saved link: the first row with the same players, else the one row it is closest to; a line of one
+-- name by its player and wording (oneName).
 local function bestRow(m, line, rows)
     local _, lineN = keySet(line.names)
+    if lineN == 1 then
+        return oneName(m, line, rows)
+    end
     if lineN < Links.MIN_NAMES then
         return
     end
@@ -184,6 +265,48 @@ local function bestRow(m, line, rows)
     end
 end
 
+-- A list's distinct names (nameKey) in one sorted string, and how many.
+local function setKey(names)
+    local set, n = keySet(names)
+    local out = {}
+    for k in pairs(set) do
+        out[#out + 1] = k
+    end
+    table.sort(out)
+    return table.concat(out, " "), n
+end
+
+-- Rows that list the same players, two or more (a soak list's "P1 Soak 1" and "P3 Soak 2" alike, #1288): when as many
+-- lines with no saved link list those players as there are such rows, they follow the rows in turn (the first line
+-- the first row); else each follows the first such row (bestRow). Line index -> row.
+local function pairTies(rows, lines, savedRow)
+    local byKey = {}
+    for _, row in ipairs(rows) do
+        local key, n = setKey(row.names)
+        if n >= Links.MIN_NAMES then
+            byKey[key] = byKey[key] or { rows = {}, lines = {} }
+            local g = byKey[key].rows
+            g[#g + 1] = row
+        end
+    end
+    for _, line in ipairs(lines) do
+        local key, n = setKey(line.names)
+        local g = n >= Links.MIN_NAMES and not savedRow[line.sig] and byKey[key]
+        if g then
+            g.lines[#g.lines + 1] = line
+        end
+    end
+    local out = {}
+    for _, g in pairs(byKey) do
+        if #g.rows > 1 and #g.rows == #g.lines then
+            for k, line in ipairs(g.lines) do
+                out[line.index] = g.rows[k]
+            end
+        end
+    end
+    return out
+end
+
 function Links.Match(rows, lines, saved)
     local m = { rows = rows, lines = lines, follow = {}, byRow = {}, exact = {}, near = {} }
     local savedRow = {}
@@ -195,6 +318,7 @@ function Links.Match(rows, lines, saved)
             end
         end
     end
+    local tied = pairTies(rows, lines, savedRow)
     for _, line in ipairs(lines) do
         local row = savedRow[line.sig]
         if row then
@@ -204,6 +328,8 @@ function Links.Match(rows, lines, saved)
             else
                 m.near[#m.near + 1] = { line = line, row = row, extra = extra, missing = missing, saved = true }
             end
+        elseif tied[line.index] then
+            follow(m, line, tied[line.index], false)
         else
             bestRow(m, line, rows)
         end

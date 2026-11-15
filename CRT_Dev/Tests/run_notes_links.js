@@ -3,12 +3,12 @@
 // with an extra player). Rows, timer lines and their match (exact links, near-misses), Link saving links by note,
 // the one obvious fix, a row change rewriting only the names of the lines that follow it, implicit links with no
 // saved data, a hand-edited line that stops following, the note format unchanged, Not now, and a deleted note.
-// Usage: node run_notes_links.js <Parse.lua> <Data.lua> <EditModel.lua> <Links.lua>
+// Usage: node run_notes_links.js <Parse.lua> <Data.lua> <EditModel.lua> <Links.lua> <CRT_Core/MarkerText.lua>
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = String.raw`
-local parseSrc, dataSrc, modelSrc, linksSrc = ...
+local parseSrc, dataSrc, modelSrc, linksSrc, markerSrc = ...
 local function stub() return setmetatable({}, { __index = function() return function() end end }) end
 function CreateFrame() return stub() end
 function issecretvalue(v) return type(v) == "string" and v:find("^SECRET") ~= nil end
@@ -17,6 +17,7 @@ C_Timer = { After = function() end }
 date, time, format = os.date, os.time, string.format
 local CRT = { db = { notes = { list = {}, nextId = 1, history = {} } } }
 CRT.Bosses = { OnRouteChange = function() end, RouteIndex = function() end }
+assert(load(markerSrc, "MarkerText.lua"))("CowfeeRaidTools", CRT)
 assert(load(parseSrc, "Parse.lua"))("CowfeeRaidTools", CRT)
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
 assert(load(modelSrc, "EditModel.lua"))("CowfeeRaidTools", CRT)
@@ -112,11 +113,111 @@ check("match: 12 exact (6 Left, 6 Right), 6 near-misses on Center naming Notkvr"
   assert(sum.fix and sum.fix.row.label == "Center" and #sum.fix.add == 1 and sum.fix.add[1] == "Notkvr", "the one obvious fix: add Notkvr to Center")
 end)
 
-check("names compare case-insensitively and without the realm; a single name never links", function()
+check("names compare case-insensitively and without the realm", function()
   local text = "Soak: Solex, Rixxy-Sargeras\ntime:5;tag:solex-Draenor RIXXY;text:x;\nKick: Abu\ntime:6;tag:Abu;text:y;"
   local m = match(Model.New(text), "none")
-  assert(#m.exact == 1 and m.exact[1].row.label == "Soak", "the realm and case don't matter")
-  assert(m.follow[4] == nil and #m.near == 0, "a one-name row links nothing")
+  assert(m.exact[1].row.label == "Soak" and m.follow[2] and m.follow[2].row.label == "Soak", "the realm and case don't matter")
+  assert(#m.near == 0, "no near-miss")
+end)
+
+-- #1288: a row of one name links its player's lines by the same player and wording (Alex, 2026-11-15)
+local ONE = table.concat({
+  "Orb Carriers",                                                -- 1
+  "{cross} purple orb: Whitecrows",                              -- 2
+  "{square} purple orb: Sixz",                                   -- 3
+  "side green orb: Dotsanhots",                                  -- 4
+  "",                                                            -- 5
+  "CC Mindcontrol",                                              -- 6
+  "1st CC on Mindcontrol: Balevolence",                          -- 7
+  "3rd CC on Mindcontrol: Dotsanhots",                           -- 8
+  "4th CC on Mindcontrol: Lulu",                                 -- 9
+  "",                                                            -- 10
+  "Soak Ghosts",                                                 -- 11
+  "Soak Ghost at {square}: Lulu",                                -- 12
+  "Soak Ghost at {cross}: Cheoeqar",                             -- 13
+  "time:7;ph:3;tag:Whitecrows;text:Grab {cross} purple orb;dur:12;", -- 14 wording: the label inside the text
+  "time:7;ph:3;tag:Sixz;text:Grab {square} purple orb;",          -- 15
+  "time:7;ph:3;tag:Dotsanhots;text:Grab side green orb;",         -- 16 Dotsanhots on two rows: the wording settles it
+  "time:9;ph:2;tag:Balevolence;text:CC Mindcontrol;",             -- 17 the text's words in the label
+  "time:9;ph:2;tag:Lulu;text:CC Mindcontrol;",                    -- 18 Lulu on two rows: the wording settles it
+  "time:5;ph:2.5;tag:Lulu;text:Soak Ghost at {square};",          -- 19 the same text
+  "time:9;ph:2;tag:Dotsanhots;text:CC Mindcontrol;",              -- 20
+  "time:7;ph:1;tag:Sixz;text:Grab {cross} purple orb;",           -- 21 another row's wording ({cross}: Whitecrows): never Sixz's row
+  "time:7;ph:1;tag:Lulu;text:Grab side green orb;",               -- 22 Lulu on two rows, neither's wording: left alone
+  "time:3;ph:1;tag:Cheoeqar;spellid:200183;",                     -- 23 a cooldown: no wording, never linked
+  "time:30;ph:1;tag:Whitecrows;text:Use a healthstone;",          -- 24 Whitecrows on one row only, no row's wording: follows it
+  "time:30;ph:1;tag:Cheoeqar;spellid:64843;text:Hymn;",           -- 25 a spell line with a text of its own: never by the one row rule
+  "time:40;ph:1;tag:Nobody;text:Grab {square} purple orb;",       -- 26 a player on no row
+}, "\n")
+
+check("one name: a line follows its player's row by the wording, else his only row (#1288)", function()
+  local s = Model.New(ONE)
+  local m = match(s, "none")
+  local function row(i) return m.follow[i] and m.follow[i].row.label end
+  assert(row(14) == "{cross} purple orb" and row(15) == "{square} purple orb", "the label inside the text: " .. tostring(row(14)) .. " / " .. tostring(row(15)))
+  assert(row(16) == "side green orb" and row(20) == "3rd CC on Mindcontrol", "Dotsanhots by the wording: " .. tostring(row(16)) .. " / " .. tostring(row(20)))
+  assert(row(17) == "1st CC on Mindcontrol", "the text's words in the label: " .. tostring(row(17)))
+  assert(row(18) == "4th CC on Mindcontrol" and row(19) == "Soak Ghost at {square}", "Lulu by the wording: " .. tostring(row(18)) .. " / " .. tostring(row(19)))
+  assert(row(24) == "{cross} purple orb", "a player on one row only, no row's wording: his row: " .. tostring(row(24)))
+  -- never a row of another player; ambiguous or another row's callout: unlinked
+  assert(row(21) == nil, "Sixz's line with Whitecrows's wording follows nothing: " .. tostring(row(21)))
+  assert(row(22) == nil, "Lulu on two rows, neither's wording: ambiguous, unlinked: " .. tostring(row(22)))
+  assert(row(23) == nil and row(25) == nil, "spell lines never by the one row rule")
+  assert(row(26) == nil, "a player on no row")
+  for i, f in pairs(m.follow) do
+    local names = s:TimerNames(i)
+    assert(#f.row.names == 1 and names[1]:lower() == f.row.names[1]:lower(), "line " .. i .. " follows a row of its own player")
+  end
+  assert(#m.near == 0, "one name is never a near-miss")
+  -- the banner: every new link asks once, grouped by row
+  local sum = Links.Summary(m)
+  assert(sum.exactCount == 8 and sum.nearCount == 0 and sum.fix == nil, "eight lines to link: " .. sum.exactCount)
+end)
+
+check("one name: a row's names change and its one-name lines follow; saved links still win (#1288)", function()
+  local s = Model.New(ONE)
+  local snap = Links.Snapshot(s, nil)
+  assert(s:Remove(2, 1) and s:Add(2, "Abu"), "Whitecrows swapped for Abu")
+  assert(Links.Apply(s, snap) == 2, "both of Whitecrows's lines rewritten")
+  local out = split(s:Text())
+  assert(tagOf(out[14]) == "Abu" and tagOf(out[24]) == "Abu" and tagOf(out[21]) == "Sixz", "only the lines that followed: " .. out[14] .. " / " .. out[21])
+  -- a saved link wins over the wording: line 17 saved on the Lulu CC row is a near-miss there, not Balevolence's
+  CRT.db.notes.links = nil
+  local t = Model.New(ONE)
+  local lines = Links.Lines(t)
+  local sig
+  for _, l in ipairs(lines) do if l.index == 17 then sig = l.sig end end
+  CRT.db.notes.links = { one = { links = { { block = "CC Mindcontrol", row = "4th CC on Mindcontrol", sigs = { sig } } } } }
+  local m = match(t, "one")
+  assert(m.follow[17] == nil and m.near[1] and m.near[1].line.index == 17 and m.near[1].saved, "the saved link names the row")
+  CRT.db.notes.links = nil
+end)
+
+check("two rows of the same players: as many lines follow them in turn (#1288)", function()
+  local text = table.concat({ "Guillotine Soaks", "P1 Soak 1: Sixz Lichkingstoy Rixxy", "P1 Soak 2: Abu Cheo", "P3 Soak 2: Sixz Lichkingstoy Rixxy",
+    "time:48;ph:1;tag:Sixz Lichkingstoy Rixxy;text:Soak;", "time:133;ph:1;tag:Abu Cheo;text:Soak;", "time:86;ph:3;tag:Rixxy Sixz Lichkingstoy;text:Soak;" }, "\n")
+  local m = match(Model.New(text), "none")
+  assert(m.follow[5].row.label == "P1 Soak 1" and m.follow[7].row.label == "P3 Soak 2" and m.follow[6].row.label == "P1 Soak 2", "in turn")
+  -- a third line listing them: no telling which is whose, so the first row takes them all, as before
+  local more = text .. "\ntime:150;ph:3;tag:Sixz Lichkingstoy Rixxy;text:Soak;"
+  m = match(Model.New(more), "none")
+  assert(m.follow[5].row.label == "P1 Soak 1" and m.follow[7].row.label == "P1 Soak 1" and m.follow[8].row.label == "P1 Soak 1", "the first row")
+end)
+
+check("one name: a block's rows never take a typed line, the kick block is no row (#1288)", function()
+  local text = table.concat({
+    "assign:orbs;name:Orbs;times:1@7;",                                   -- 1
+    "{cross} purple orb: Sixz",                                           -- 2
+    "time:7;ph:1;tag:Sixz;text:{cross} purple orb;assign:orbs/1/1;",       -- 3 the block's own line
+    "time:7;ph:1;tag:Sixz;text:Grab {cross} purple orb;",                  -- 4 an old line the block replaced
+    "intstart", "Sixz", "intend",                                          -- 5-7
+    "Spare: Sixz",                                                        -- 8
+  }, "\n")
+  local s = Model.New(text)
+  local m = match(s, "none")
+  assert(m.follow[3] == nil and m.follow[4] == nil, "the block's wording: neither follows the spare row")
+  local rows = Links.Rows(s)
+  assert(rows[1].assign == "orbs" and rows[2].assign == nil and #rows == 2, "a row knows its block's key")
 end)
 
 check("Link saves links by note: the 12 exact lines then follow from saved data", function()
@@ -271,7 +372,7 @@ end)
 print(passed .. " passed, " .. failed .. " failed")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const files = process.argv.slice(2, 6);
+const files = process.argv.slice(2, 7);
 for (const f of files) {
   let src; try { src = fs.readFileSync(f, 'utf8'); } catch (e) { console.error('cannot read ' + f); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));
