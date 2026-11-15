@@ -54,10 +54,13 @@ local function lines(text) local out = {} for l in (text .. "\n"):gmatch("(.-)\r
 local function count(text, needle) return select(2, text:gsub((needle:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?{}]", "%%%0")), "")) end
 local function summary(r) return #r.doubles .. " doubles, " .. #r.old .. " old, " .. #r.missing .. " missing, " .. #r.orphans .. " orphans" end
 
--- COILED: the line numbers of the fixture
-local OLD_FIRST, OLD_LAST = 6, 53 -- the 48 phase 1 "Grab ... orb" lines from before the Orb Carriers P1 block
+-- COILED: the line numbers of the fixture. The 48 phase 1 "Grab ... orb" lines from before the Orb Carriers P1 block,
+-- six per player: Sixz 6-11, Notkvr 12-17, Sarrantha 18-23, Dotsanhots 24-29, Gadios 30-35, Lichkingstoy 36-41,
+-- Granddh 42-47, Lulu 48-53
+local OLD_FIRST, OLD_LAST = 6, 35 -- the ones in a block row's words: Sixz, Notkvr, Sarrantha (their own rows),
+                                  -- Dotsanhots ({diamond} purple orb) and Gadios ({star} green orb)
 
-check("Alex's note: the Lulu double, the old P1 lines a block replaced, the missing 3:40, no orphan", function()
+check("Alex's note: the Lulu double, the old P1 lines in the block's words, the missing 3:40, no orphan", function()
   local r = Check.Run(COILED)
   assert(#r.orphans == 0, "no orphans: " .. summary(r))
   -- double callouts: Sixz, Notkvr, Sarrantha and Lulu at each of the block's six casts (3:40 as it will be written)
@@ -73,36 +76,70 @@ check("Alex's note: the Lulu double, the old P1 lines a block replaced, the miss
   local texts = {}
   for _, i in ipairs(first.lines) do texts[#texts + 1] = lines(COILED)[i] end
   assert(table.concat(texts, "\n"):find("text:{diamond} purple orb;", 1, true) and table.concat(texts, "\n"):find("text:Grab side green orb;", 1, true), table.concat(texts, "\n"))
-  -- old lines: all 48 of them, Gadios, Dotsanhots, Lichkingstoy and Granddh's too (the block's casts, its wording)
-  assert(#r.old == 48, "48 old lines: " .. #r.old)
+  -- old lines: 30, those whose text fits a row of the block. Lulu's "Grab side green orb" fits none of its rows,
+  -- nor do Lichkingstoy's {skull} and Granddh's side green orb lines: they stay for Alex to judge
+  assert(#r.old == 30, "30 old lines: " .. #r.old)
   for k, i in ipairs(r.old) do assert(i == OLD_FIRST + k - 1, "line " .. i .. " in order, from " .. OLD_FIRST) end
-  -- missing: cast 6 of Orb Carriers P1
-  assert(#r.missing == 1 and r.missing[1].key == "orb carriers p1" and r.missing[1].name == "Orb Carriers P1", "the block")
+  -- missing: cast 6 of Orb Carriers P1, which Add missing casts can write (every row was on every other cast)
+  assert(#r.missing == 1 and r.missing[1].key == "orb carriers p1" and r.missing[1].name == "Orb Carriers P1" and r.missing[1].fixable, "the block")
   assert(#r.missing[1].casts == 1 and r.missing[1].casts[1] == 6 and r.missing[1].times[1].ph == 1 and r.missing[1].times[1].t == 220, "cast 6, P1 3:40")
   assert(not Check.Clean(r), "not clean")
 end)
 
-check("Alex's note: Remove old lines, then Add missing casts: clean; Lulu once per cast", function()
+check("Alex's note: Remove old lines, then Add missing casts: the cast back; Lulu's six doubles left to judge", function()
   local r = Check.Run(COILED)
   local text = Check.RemoveOld(COILED, r)
-  assert(#lines(text) == #lines(COILED) - 48, "48 lines out")
-  for _, l in ipairs(lines(text)) do assert(not l:find("^time:[%d%.]+;ph:1;tag:%w+;text:Grab "), "an old phase 1 line left: " .. l) end
+  assert(#lines(text) == #lines(COILED) - 30, "30 lines out")
+  for _, who in ipairs({ "Sixz", "Notkvr", "Sarrantha", "Dotsanhots", "Gadios" }) do
+    assert(not text:find("ph:1;tag:" .. who .. ";text:Grab ", 1, true), who .. "'s old P1 lines out")
+  end
+  assert(count(text, "ph:1;tag:Lulu;text:Grab side green orb;") == 6 and count(text, "ph:1;tag:Granddh;text:Grab side green orb;") == 6, "not in the block's words: kept")
   assert(text:find("time:7;ph:3;tag:Dotsanhots;text:Grab side green orb;", 1, true), "phase 3's lines stay")
   local mid = Check.Run(text)
-  assert(#mid.doubles == 0 and #mid.old == 0 and #mid.missing == 1, "after Remove: the missing cast left: " .. summary(mid))
+  assert(#mid.doubles == 6 and #mid.old == 0 and #mid.missing == 1, "after Remove: Lulu's doubles and the missing cast: " .. summary(mid))
   text = Check.AddMissing(text)
   local after = Check.Run(text)
-  assert(Check.Clean(after), "clean: " .. summary(after))
+  assert(#after.missing == 0 and #after.old == 0 and #after.orphans == 0 and #after.doubles == 6, "the cast back: " .. summary(after))
+  for _, d in ipairs(after.doubles) do assert(d.name == "Lulu" and not d.planned, "only Lulu's") end
   assert(count(text, "assign:orb carriers p1/") == 30, "6 casts of 5 rows: " .. count(text, "assign:orb carriers p1/"))
   assert(text:find("time:220;ph:1;tag:Lulu;text:{diamond} purple orb;assign:orb carriers p1/4/6;", 1, true), "Lulu at 3:40")
-  for _, t in ipairs({ 7, 50, 92, 135, 177, 220 }) do
-    assert(count(text, "time:" .. t .. ";ph:1;tag:Lulu;") == 1, "Lulu once at " .. t)
-  end
+  -- Alex takes Lulu's six old lines out by hand: clean
+  local done = text:gsub("time:[%d%.]+;ph:1;tag:Lulu;text:Grab side green orb;[^\n]*\n", "")
+  assert(Check.Clean(Check.Run(done)), "clean: " .. summary(Check.Run(done)))
   -- the other order gives the same note
   local other = Check.RemoveOld(Check.AddMissing(COILED), Check.Run(Check.AddMissing(COILED)))
   assert(other == text, "Add, then Remove: the same note")
   -- the lists are still there to make blocks of
   assert(#A.Candidates(text) == 5, "five lists to make blocks")
+end)
+
+check("old lines: a line of another list's row, or for a role, is never old (review, #1288)", function()
+  local typed = { { ph = 1, t = 30 }, { ph = 1, t = 47.97 } }
+  local orbs = table.concat(A.Lines({ name = "Orbs", times = typed, rows = { { label = "{cross} orb", text = "", tokens = { "Abu" }, casts = "all" } } }, typed), "\n")
+  local guill = table.concat(A.Lines({ name = "Guillotine", times = typed, rows = { { label = "Soak Guillotine", text = "", tokens = { "Cheo", "Kip" }, casts = "all" } } }, typed), "\n")
+  local text = table.concat({ orbs, guill, "",
+    "Kicks: Abu",
+    "time:30;ph:1;tag:Abu;text:Kicks;",                         -- follows the Kicks row, at the Orbs block's cast
+    "time:47.97;ph:1;tag:healers;text:Raid CD for Guillotine;", -- a role line, at the Guillotine block's cast
+    "time:47.97;ph:1;tag:Zed;text:Soak Guillotine;",            -- a player's line in the block's words: old
+  }, "\n")
+  local r = Check.Run(text)
+  local kicks, healers, zed
+  for n, l in ipairs(lines(text)) do
+    if l == "time:30;ph:1;tag:Abu;text:Kicks;" then kicks = n end
+    if l:find("tag:healers", 1, true) then healers = n end
+    if l:find("tag:Zed", 1, true) then zed = n end
+  end
+  local isOld = {}
+  for _, i in ipairs(r.old) do isOld[i] = true end
+  assert(not isOld[kicks], "Abu's Kicks line follows its own row: never old")
+  assert(not isOld[healers], "a role line is never old")
+  assert(isOld[zed] and #r.old == 1, "Zed's line in the block's words is: " .. table.concat(r.old, ","))
+  local doubleAbu
+  for _, d in ipairs(r.doubles) do if d.name == "Abu" then doubleAbu = d end end
+  assert(doubleAbu and doubleAbu.block == "orbs", "Abu's two callouts at 0:30 still show as a double")
+  local out = Check.RemoveOld(text, r)
+  assert(out:find("time:30;ph:1;tag:Abu;text:Kicks;", 1, true) and out:find("Raid CD for Guillotine", 1, true) and not out:find("tag:Zed", 1, true), out)
 end)
 
 check("doubles: spell lines and two typed lines; only a block's double has old lines", function()
@@ -144,12 +181,24 @@ check("missing casts: only a block with typed times; a cast some row is on is no
     { label = "Even", text = "", tokens = { "Cheo" }, casts = { 2 } } } }
   local text = table.concat(A.Lines(b, typed), "\n")
   assert(#Check.Run(text).missing == 0, "every cast has a row on it")
-  -- cast 3's line taken out by hand: missing; added back on the rows that are on a list of casts
+  -- cast 3's line taken out by hand: missing, but picked-cast rows never get it (Alex, 2026-11-15): the warning stays
   local cut = text:gsub("\ntime:150;[^\n]*", "")
   local r = Check.Run(cut)
-  assert(#r.missing == 1 and r.missing[1].casts[1] == 3, summary(r))
-  local back = Check.AddMissing(cut)
-  assert(back:find("time:150;ph:1;tag:Abu;text:Odd;assign:orbs/1/3;", 1, true) and back:find("time:150;ph:1;tag:Cheo;text:Even;assign:orbs/2/3;", 1, true), back)
+  assert(#r.missing == 1 and r.missing[1].casts[1] == 3 and not r.missing[1].fixable, summary(r))
+  assert(Check.AddMissing(cut) == cut, "no row is put on cast 3")
+  assert(#Check.Run(cut).missing == 1, "still missing")
+  -- rotate rows: the same
+  local T4 = { { ph = 1, t = 30 }, { ph = 1, t = 90 }, { ph = 1, t = 150 }, { ph = 1, t = 210 } }
+  local rot = table.concat(A.Lines({ name = "Turns", times = T4, rows = { { label = "Odd", text = "", tokens = { "Abu" }, casts = "rotate" },
+    { label = "Even", text = "", tokens = { "Cheo" }, casts = "rotate" } } }, T4), "\n")
+  local rotCut = rot:gsub("\ntime:210;[^\n]*", "")
+  assert(#Check.Run(rotCut).missing == 1 and Check.AddMissing(rotCut) == rotCut, "a rotate block's lost cast isn't given to every row")
+  -- a row on every cast but the lost one: back on all of them; a picked row beside it stays as it was
+  local mixed = table.concat(A.Lines({ name = "Mixed", times = typed, rows = { { label = "Left", text = "", tokens = { "Abu" }, casts = "all" },
+    { label = "Right", text = "", tokens = { "Cheo" }, casts = { 1 } } } }, typed), "\n")
+  local mixedCut = mixed:gsub("\ntime:150;[^\n]*", "")
+  local back = Check.AddMissing(mixedCut)
+  assert(back:find("time:150;ph:1;tag:Abu;text:Left;assign:mixed/1/3;", 1, true) and not back:find("time:150;ph:1;tag:Cheo", 1, true), back)
   assert(#Check.Run(back).missing == 0, "none missing")
   -- a mechanic's block (for:, no typed times): its casts aren't in the note, so nothing is missing
   local mech = table.concat(A.Lines({ name = "Feast", rows = { { label = "Left", text = "", tokens = { "Abu" }, casts = { 1 } } } }, typed, { mech = "1234" }), "\n")

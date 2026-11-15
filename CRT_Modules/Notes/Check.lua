@@ -8,28 +8,30 @@ local ADDON, CRT = ...
 --     doubles   one player with two callouts at the same moment (phase and time) from different lines:
 --               { { name, ph, t, lines = { line }, block (the Assign block's key when one of them is a block's), planned
 --               (the block's callout is on a cast it has no line for yet: see missing) } }, by phase, time and name
---     old       the typed lines an Assign block replaced, which Remove old lines takes out (a set's sorted line
---               numbers): a typed line that doubles a block's callout for the same player; and a typed line at
---               one of a block's casts that follows no row and shares a word with the block's lines ("Grab {skull}
---               green orb" beside a block of "{star} green orb" rows: the callout from before the block)
+--     old       the typed lines an Assign block replaced, which Remove old lines takes out (sorted line numbers). Only
+--               a typed line that follows no row of a list (nor is close to one) and whose text fits a block row's
+--               wording (Links.Fits): one that doubles that row's callout for the same player ("Grab {cross} purple
+--               orb" for Sixz beside the block's "{cross} purple orb: Sixz"), or one for players only, at one of the
+--               block's casts ("Grab {star} green orb" for Gadios where the block's "{star} green orb" row now names
+--               someone else). A line that follows another list's row ("Kicks: Abu") or is for a role is never old.
 --     missing   a block's typed casts (times: on its heading) that no row has a line for, when it has players:
---               { { key, name, casts = { cast number }, times = { { ph, t } } } }
+--               { { key, name, casts = { cast number }, times = { { ph, t } }, fixable (Add missing casts can write
+--               them: some row is on every cast) } }
 --     orphans   typed text lines for a player that no group row, block row or the kick block mentions (warning
 --               only), sorted line numbers
 --   Never a double or an orphan: a spell's line (a cooldown: spellid: on a line no block marked) or the kick block.
 --   Check.Clean(result)       whether it found nothing
 --   Check.RemoveOld(text, result)   the text without the old lines (result: Run's, else run now), every other byte kept
---   Check.AddMissing(text)    the text with each block's missing casts written (Assign.Lines in its place, Replace):
---                             every row on a list of casts takes them, so a block whose last cast lost its lines
---                             gets them back; its lines keep their looks
+--   Check.AddMissing(text)    the text with each block's missing casts written (Assign.Lines in its place, Replace),
+--                             only on rows set to every cast (Alex, 2026-11-15): "all", or a row whose lines are on
+--                             every cast but the missing ones (its lines for them went, so Read sees a list). Rotate
+--                             and picked-cast rows never get them; then the warning stays. Its lines keep their looks.
 
 local Check = {}
 CRT.NoteCheck = Check
 
 local Parser = CRT.NoteParser
 local Model = CRT.NoteEditModel
-
-Check.MIN_WORD = 3 -- a word shared with a block's lines counts from this many letters ("orb")
 
 local function session(src)
     if type(src) == "table" then
@@ -62,24 +64,20 @@ local function isPlayer(word)
     return Parser.ClassOf(word) == nil
 end
 
--- The words of a text a block's lines share with an old line: lower case, MIN_WORD letters or more, no marker code.
-local function wordsOf(text, set)
-    set = set or {}
-    for w in tostring(text or ""):lower():gmatch("%S+") do
-        if #w >= Check.MIN_WORD and not w:find("^{") then
-            set[w] = true
+-- Whether every name of a line is a player's (and it has one).
+local function allPlayers(names)
+    for _, name in ipairs(names) do
+        if not isPlayer(name) then
+            return false
         end
     end
-    return set
+    return #names > 0
 end
 
-local function shares(text, set)
-    for w in pairs(wordsOf(text)) do
-        if set[w] then
-            return true
-        end
-    end
-    return false
+-- Whether a line's text fits a block row's wording (its label or its own text), as Links reads wording.
+local function fitsRow(text, row)
+    local Links = CRT.NoteLinks
+    return Links.Fits(text, row.label) ~= nil or (row.text ~= nil and Links.Fits(text, row.text) ~= nil)
 end
 
 -- A callout line: a timed line with a text, never a cooldown (a spell's line no block marked).
@@ -98,33 +96,49 @@ local function castAt(list, ph, t)
     return nil
 end
 
--- Rows on a list of casts take the casts given; a row then on every one of n casts is on all.
-local function fill(block, add, n)
-    local Assign = CRT.NoteAssign
-    if #add == 0 then
-        return
+-- The rows set to every cast of n, the casts in `gone` having lost their lines: "all", or a list of every other cast.
+local function everyCast(row, gone, n)
+    if row.casts == CRT.NoteAssign.ALL then
+        return true
     end
-    for _, row in ipairs(block.rows) do
-        if type(row.casts) == "table" then
-            local set, list = {}, {}
-            for _, c in ipairs(row.casts) do
-                set[c] = true
-            end
-            for _, c in ipairs(add) do
-                set[c] = true
-            end
-            for c in pairs(set) do
-                list[#list + 1] = c
-            end
-            table.sort(list)
-            row.casts = #list >= n and Assign.ALL or list
+    if type(row.casts) ~= "table" then
+        return false
+    end
+    local set = {}
+    for _, c in ipairs(row.casts) do
+        set[c] = true
+    end
+    for _, c in ipairs(gone) do
+        set[c] = true
+    end
+    for c = 1, n do
+        if not set[c] then
+            return false
         end
     end
+    return true
 end
 
--- One block: its missing casts (out.missing), the callouts it plans (planned[moment \1 name] = { key, line: its
--- marked line there, or nil }), as written once its missing casts are back, and its casts' moments with the words
--- of its lines (casts[moment] = { words }).
+-- Rows set to every cast are on all of them again (gone back); every other row stays as it is. How many rows changed.
+local function fill(block, gone, n)
+    local count = 0
+    if #gone == 0 then
+        return 0
+    end
+    for _, row in ipairs(block.rows) do
+        if #row.tokens > 0 and type(row.casts) == "table" and everyCast(row, gone, n) then
+            row.casts = CRT.NoteAssign.ALL
+            count = count + 1
+        elseif #row.tokens > 0 and row.casts == CRT.NoteAssign.ALL then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+-- One block: its missing casts (out.missing), the callouts it plans (planned[moment \1 name] = { key, row, line: its
+-- marked line there, or nil }), as written once Add missing casts ran, and its casts' moments with its rows
+-- (casts[moment] = { { key, rows } }).
 local function readBlock(s, key, out, planned, casts)
     local Assign = CRT.NoteAssign
     local b = Assign.Read(s, key, nil)
@@ -158,24 +172,21 @@ local function readBlock(s, key, out, planned, casts)
             end
         end
         if #gone > 0 then
-            out.missing[#out.missing + 1] = { key = key, name = b.name, casts = gone, times = times }
+            out.missing[#out.missing + 1] = { key = key, name = b.name, casts = gone, times = times, fixable = fill(b, gone, #list) > 0 }
         end
     end
-    fill(b, gone, #list)
-    local words = {}
     for r, entries in ipairs(Assign.RowLines(b, list)) do
         for _, e in ipairs(entries) do
             for _, token in ipairs(b.rows[r].tokens) do
                 local k = moment(e.ph, e.t) .. "\1" .. nameKey(token)
-                planned[k] = planned[k] or { key = key, line = marked[k] }
+                planned[k] = planned[k] or { key = key, row = b.rows[r], line = marked[k] }
             end
-            wordsOf(e.text, words)
         end
     end
     for _, e in ipairs(list) do
         local mk = moment(e.ph, e.t)
         casts[mk] = casts[mk] or {}
-        casts[mk][#casts[mk] + 1] = words
+        casts[mk][#casts[mk] + 1] = { key = key, rows = b.rows }
     end
 end
 
@@ -237,6 +248,22 @@ local function mentioned(s, rows, kick)
     return out
 end
 
+-- Whether a typed line at one of a block's casts is that block's old callout: for players only, and its text fits one
+-- of the block's rows.
+local function blockWording(line, list)
+    if not (list and allPlayers(line.names)) then
+        return false
+    end
+    for _, blk in ipairs(list) do
+        for _, row in ipairs(blk.rows) do
+            if fitsRow(line.timer.text, row) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 function Check.Run(src, saved)
     local s = session(src)
     local Links, Assign = CRT.NoteLinks, CRT.NoteAssign
@@ -248,14 +275,18 @@ function Check.Run(src, saved)
     for _, key in ipairs(Assign.Keys(s)) do
         readBlock(s, key, out, planned, casts)
     end
-    local byIndex, near = {}, {}
+    -- a typed line that follows a list's row, or is close to one, is that list's: never old
+    local byIndex, listed = {}, {}
     for _, line in ipairs(lines) do
         byIndex[line.index] = line
+        if m.follow[line.index] then
+            listed[line.index] = true
+        end
     end
     for _, e in ipairs(m.near) do
-        near[e.line.index] = true
+        listed[e.line.index] = true
     end
-    -- doubles, and the typed lines that double a block's callout
+    -- doubles, and the typed lines that double a block's callout in its row's words
     local old = {}
     local at, keys = calloutsOf(lines, kick)
     for _, k in ipairs(keys) do
@@ -263,30 +294,22 @@ function Check.Run(src, saved)
         local virtual = p ~= nil and p.line == nil
         if #g.lines + (virtual and 1 or 0) >= 2 then
             out.doubles[#out.doubles + 1] = { name = g.name, ph = g.ph, t = g.t, lines = g.lines, block = p and p.key, planned = virtual or nil }
-            if p then
-                for _, i in ipairs(g.lines) do
-                    if not byIndex[i].marked then
-                        old[i] = true
-                    end
+            for _, i in ipairs(p and g.lines or {}) do
+                local line = byIndex[i]
+                if not line.marked and not listed[i] and fitsRow(line.timer.text, p.row) then
+                    old[i] = true
                 end
             end
         end
     end
-    -- typed lines at a block's cast, following no row, in the block's words: the callouts from before it
+    -- typed lines for players at a block's cast, following no row, in a block row's words: the callouts from before it
     local who = mentioned(s, rows, kick)
     for _, line in ipairs(lines) do
         local t = line.timer
         if callout(line) and not line.marked and not kick[line.index] and not old[line.index] then
-            local list = casts[moment(t.ph, t.time)]
-            if list and not m.follow[line.index] and not near[line.index] then
-                for _, words in ipairs(list) do
-                    if shares(t.text, words) then
-                        old[line.index] = true
-                        break
-                    end
-                end
-            end
-            if not old[line.index] then
+            if not listed[line.index] and blockWording(line, casts[moment(t.ph, t.time)]) then
+                old[line.index] = true
+            else
                 for _, name in ipairs(line.names) do
                     if isPlayer(name) and not who[nameKey(name)] then
                         out.orphans[#out.orphans + 1] = line.index
@@ -343,7 +366,7 @@ function Check.AddMissing(text)
     local Assign = CRT.NoteAssign
     text = text or ""
     for _, miss in ipairs(Check.Run(text).missing) do
-        local b = Assign.Read(text, miss.key, nil)
+        local b = miss.fixable and Assign.Read(text, miss.key, nil)
         if b and b.times then
             fill(b, miss.casts, #b.times)
             text = Assign.Replace(text, miss.key, Assign.Lines(b, b.times, { key = miss.key }))

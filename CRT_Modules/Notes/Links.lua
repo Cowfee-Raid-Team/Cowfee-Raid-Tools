@@ -76,6 +76,8 @@ function Links.Rows(src)
             block, key = row.text or "", row.assign and row.assign.key or nil
         elseif row.kind == "label" then
             out[#out + 1] = { index = i, block = block, label = trim(row.label or ""), names = s:Names(i), assign = key }
+        else
+            key = nil -- a block's rows are the assignment lines right under its heading (Assign's labelsUnder)
         end
     end
     return out
