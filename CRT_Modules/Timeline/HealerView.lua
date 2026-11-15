@@ -729,7 +729,8 @@ function HV.Build(view, lanes, length)
             local block = Order and { key = who.key, spellKey = Order.SpellKey(who) } or nil
             out[#out + 1] = { key = "healers:" .. p.key:lower(), kind = "healer", label = label, class = who.class,
                 marks = {}, tip = headerTip(who), note = note, noteWarn = head and head.warn and #who.rows > 0 or nil,
-                tint = classTint(who.class, NAME_TINT), hvMenu = who.menu, hvSlot = who.slot, hvOrder = block }
+                tint = classTint(who.class, NAME_TINT), hvMenu = who.menu, hvSlot = who.slot, hvOrder = block,
+                hvPlayer = not who.slot and p or nil }
             for _, r in ipairs(who.rows) do
                 r.hvOrder = block
                 r.hvMenu = who.menu -- a right-click on any of a player's rows picks their rows (HV.LabelMenu)
@@ -1218,11 +1219,15 @@ end
 
 -- A right-click on a player's name or spell row in the label column (View:LabelMenu): the menu that shows or hides
 -- their rows (Timeline/HealerRows.lua), the view drawn again after each pick; on a healer slot's name row, the
--- slot's menu (Timeline/HealerSlots.lua). True when lane was one.
+-- slot's menu, and on a named healer's, Reassign player, Clear player and Duplicate all CDs above their rows
+-- (Timeline/HealerSlots.lua). True when lane was one.
 function HV.LabelMenu(view, owner, lane)
     local Slots = CRT.TimelineHealerSlots
     if lane and lane.kind == "healer" and lane.hvSlot and Slots then
         return Slots.HeaderMenu(view, owner, lane)
+    end
+    if lane and lane.kind == "healer" and lane.hvPlayer and Slots and Slots.PlayerMenu(view, owner, lane) then
+        return true
     end
     local Picks = CRT.TimelineHealerRows
     if not (lane and lane.hvMenu and Picks) then

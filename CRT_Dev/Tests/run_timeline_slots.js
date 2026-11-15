@@ -20,7 +20,7 @@ const FILES = [
   'CRT_Modules/Alerts/Reminders.lua', 'CRT_Modules/Alerts/CooldownData.lua', 'CRT_Modules/Alerts/Cooldowns.lua',
   'CRT_Modules/Timeline/AbilityTip.lua', 'CRT_Modules/Timeline/View.lua', 'CRT_Modules/Timeline/HealerView.lua',
   'CRT_Core/Sound/Engine.lua', 'CRT_Modules/Alerts/Draft.lua', 'CRT_Modules/Alerts/Saved.lua', 'CRT_Modules/Timeline/Undo.lua',
-  'CRT_Modules/Timeline/HealerRows.lua', 'CRT_Modules/Timeline/HealerSlots.lua',
+  'CRT_Modules/Timeline/HealerRows.lua', 'CRT_Modules/Timeline/HealerSlots.lua', 'CRT_Modules/Timeline/HealerOrder.lua',
   'CRT_Core/Core.lua', 'CRT_Core/Profiles.lua', // read as text only: the saved data's defaults and share rules
 ];
 const harness = require('./theme_stub')(W) + `
@@ -156,8 +156,10 @@ local function description(kind, text, fn)
   function d:CreateCheckbox(s, isSel, set) local x = description("checkbox", s, set) x.isSel = isSel table.insert(self.items, x) return x end
   function d:SetScrollMode() end
   function d:SetEnabled(on) self.enabled = on and true or false end
+  function d:SetTooltip(f) self.tooltip = function(t) f(t, self) end end
   return d
 end
+function GameTooltip_AddNormalLine(t, s) t[#t + 1] = s end
 MenuUtil = { CreateContextMenu = function(owner, gen) local root = description("root") gen(owner, root) menus[#menus + 1] = root return {} end }
 StaticPopupDialogs = {}
 local CRT = {
@@ -210,6 +212,7 @@ run("CRT_Modules/Timeline/HealerView.lua", CRT)
 run("CRT_Modules/Timeline/HealerPanel.lua", CRT)
 run("CRT_Modules/Timeline/HealerRows.lua", CRT)
 run("CRT_Modules/Timeline/HealerSlots.lua", CRT)
+run("CRT_Modules/Timeline/HealerOrder.lua", CRT)
 run("CRT_Core/Sound/Engine.lua", CRT)
 run("CRT_Modules/Alerts/Draft.lua", CRT)
 run("CRT_Modules/Alerts/Saved.lua", CRT)
@@ -698,6 +701,150 @@ do
   check(t.tags[1] == "RestoDruid", "Clear player finds the line by the plain name: " .. tostring(t.tags[1]))
   setNote({})
   CRT.db.timeline.healerSlots = {}
+end
+
+-- #1293: a named healer's menu: Reassign player, Clear player, Duplicate all CDs, then the rows ------------------------------
+do
+  setLayout({ "Halo-Home", "Me-Home", "Leafy-Home", "Bark-Home" })
+  liveRoster = { { "Halo", "PRIEST", "HEALER" }, { "Me", "PALADIN", "HEALER" }, { "Leafy", "DRUID", "HEALER" }, { "Bark", "DRUID", "HEALER" } }
+  CRT.db.specCache["leafy-home"], CRT.db.specCache["bark-home"] = 105, 105
+  now = now + 10
+  S.Reset()
+  CRT.db.timeline.healerSlots = {}
+  CRT.db.timeline.healerOrder = nil
+  local LINES = { "time:20;ph:1;tag:Leafy;spellid:740;", "time:50;ph:2;tag:Leafy Halo;spellid:391528;",
+    "time:70;ph:1;tag:Leafy;spellid:12345;", "time:80;ph:1;tag:Halo;spellid:64843;" }
+  setNote(LINES)
+  v:Refresh()
+  local function timers() -- the note's timed lines in line order
+    local out = {}
+    for n = 1, #N:RawLines(1) do local tm = N:TimerAt(1, n) if tm then out[#out + 1] = tm end end
+    return out
+  end
+  local function line(n) return N:RawLines(1)[n + 1] end -- after the header line
+  local function tagsOf(tm) return table.concat(tm.tags, " ") end
+  local menu = headerMenu(v, "healers:leafy-home")
+  local texts = {}
+  for i = 1, 5 do texts[i] = menu.items[i].kind == "divider" and "-" or menu.items[i].text end
+  check(table.concat(texts, "|") == "Leafy|Reassign player|Clear player|Duplicate all CDs|-",
+    "the menu: Reassign player, Clear player, Duplicate all CDs, a divider: " .. table.concat(texts, "|"))
+  check(menu.items[6].kind == "checkbox" and find(menu.items, "Reset to defaults"), "then the rows ticks and Reset to defaults")
+  local dup = find(menu.items, "Duplicate all CDs")
+  check(dup.enabled ~= false and find(menu.items, "Clear player").enabled ~= false, "Duplicate and Clear are on for a known spec")
+
+  -- Duplicate all CDs: a new open Resto Druid slot with copies of Leafy's cooldown casts, Leafy keeps hers
+  dup.fn()
+  local saved = CRT.db.timeline.healerSlots[3001]
+  check(saved and #saved == 1 and saved[1].spec == 105 and saved[1].n == 1 and saved[1].player == nil, "a Resto Druid slot, no player")
+  local t = timers()
+  check(#t == 6, "two copies added: " .. #t)
+  check(line(1) == LINES[1] and line(2) == LINES[2] and line(3) == LINES[3] and line(4) == LINES[4], "Leafy's and Halo's lines stay as they were")
+  check(t[5].tags[1] == "RestoDruid" and #t[5].tags == 1 and t[5].spellId == 740 and t[5].time == 20 and t[5].ph == 1,
+    "Tranquility copied at 0:20 in phase 1 with the spec word: " .. tostring(line(5)))
+  check(tagsOf(t[6]) == "RestoDruid" and t[6].spellId == 391528 and t[6].time == 50 and t[6].ph == 2,
+    "the shared Convoke copied for the slot alone, phase 2: " .. tostring(line(6)))
+  local leafy = laneIndex(v, "healers:leafy-home")
+  local j = leafy
+  while v.lanes[j + 1] and v.lanes[j + 1].key and v.lanes[j + 1].key:find("^healers:leafy%-home:") do j = j + 1 end
+  check(laneIndex(v, "healers:slot:105:1") == j + 1, "the slot comes right under Leafy's block: " .. labels(v))
+  check(laneIndex(v, "healers:me-home") > laneIndex(v, "healers:slot:105:1"), "not at the end: Me comes after it: " .. labels(v))
+  check(#flagsOn(v, laneIndex(v, "healers:slot:105:1:740")) == 1 and #flagsOn(v, laneIndex(v, "healers:leafy-home:740")) == 1,
+    "the slot's Tranquility is drawn, and Leafy's")
+
+  -- a second duplicate: slot 2, and slot 1's plain word is numbered
+  find(headerMenu(v, "healers:leafy-home").items, "Duplicate all CDs").fn()
+  saved = CRT.db.timeline.healerSlots[3001]
+  check(#saved == 2 and saved[2].n == 2, "a second duplicate is slot 2")
+  t = timers()
+  check(#t == 8 and t[5].tags[1] == "RestoDruid1" and t[6].tags[1] == "RestoDruid1" and t[7].tags[1] == "RestoDruid2"
+    and t[8].tags[1] == "RestoDruid2", "slot 1's lines say RestoDruid1, the new ones RestoDruid2: " .. table.concat(N:RawLines(1), " / "))
+
+  -- Reassign player: the raid's Resto Druids first, then Type a name; only Leafy's cooldown lines change
+  local sub = find(headerMenu(v, "healers:leafy-home").items, "Reassign player")
+  check(sub and sub.items[1].text:find("Bark", 1, true) and not find(sub.items, "Leafy") and sub.items[#sub.items].text == "Type a name...",
+    "Bark (a Resto Druid in the raid) first, not Leafy herself, Type a name... last")
+  find(sub.items, "Bark").fn()
+  t = timers()
+  check(tagsOf(t[1]) == "Bark" and tagsOf(t[2]) == "Bark Halo", "Leafy's cooldown lines name Bark; the shared line keeps Halo: " .. tagsOf(t[2]))
+  check(line(3) == LINES[3] and line(4) == LINES[4], "a line for another spell and Halo's line are untouched")
+  check(t[5].tags[1] == "RestoDruid1" and t[7].tags[1] == "RestoDruid2", "the slots' lines are untouched")
+  -- Type a name
+  find(find(headerMenu(v, "healers:bark-home").items, "Reassign player").items, "Type a name").fn()
+  check(typed and typed.text == "Who takes Bark's cooldowns?", "Type a name asks who: " .. tostring(typed and typed.text))
+  typeName("Moss")
+  t = timers()
+  check(tagsOf(t[1]) == "Moss" and tagsOf(t[2]) == "Moss Halo", "the typed name takes the lines")
+
+  -- a spec CRT doesn't know (Moss, only in the note): Duplicate and Clear are greyed, Reassign still works
+  menu = headerMenu(v, "healers:moss")
+  local clear = find(menu.items, "Clear player")
+  dup = find(menu.items, "Duplicate all CDs")
+  check(clear.enabled == false and dup.enabled == false and find(menu.items, "Reassign player").enabled ~= false,
+    "unknown spec: Clear and Duplicate greyed, Reassign on")
+  local lines = {}
+  check(dup.tooltip and clear.tooltip, "each greyed one has a tooltip")
+  dup.tooltip(lines)
+  check(lines[1] == "Spec not known", "it says the spec is not known: " .. tostring(lines[1]))
+  find(find(menu.items, "Reassign player").items, "Leafy").fn()
+  check(tagsOf(timers()[1]) == "Leafy", "Reassign on an unknown spec renames the lines")
+
+  -- Clear player: the lane becomes a slot of her spec, her lines take its word
+  setNote({ "time:20;ph:1;tag:Leafy;spellid:740;", "time:30;ph:1;tag:Leafy Halo;spellid:33891;", "time:40;ph:1;tag:Leafy;spellid:12345;" })
+  CRT.db.timeline.healerSlots = {}
+  v:Refresh()
+  find(headerMenu(v, "healers:leafy-home").items, "Clear player").fn()
+  saved = CRT.db.timeline.healerSlots[3001]
+  check(saved and #saved == 1 and saved[1].spec == 105 and saved[1].n == 1 and saved[1].player == nil, "Clear: a saved Resto Druid slot, no player")
+  t = timers()
+  check(tagsOf(t[1]) == "RestoDruid" and tagsOf(t[2]) == "RestoDruid Halo" and tagsOf(t[3]) == "Leafy",
+    "her cooldown lines take the spec word, the shared one keeps Halo, another spell's stays hers")
+  check(lane(v, "healers:slot:105:1") and #flagsOn(v, laneIndex(v, "healers:slot:105:1:740")) == 1, "drawn as the slot")
+  -- with a Resto Druid slot already: the new one is 2, the old plain word numbered
+  setNote({ "time:20;ph:1;tag:RestoDruid;spellid:740;", "time:60;ph:1;tag:Leafy;spellid:740;" })
+  CRT.db.timeline.healerSlots = { [3001] = { { spec = 105, n = 1 } } }
+  v:Refresh()
+  find(headerMenu(v, "healers:leafy-home").items, "Clear player").fn()
+  t = timers()
+  check(t[1].tags[1] == "RestoDruid1" and t[2].tags[1] == "RestoDruid2" and CRT.db.timeline.healerSlots[3001][2].n == 2,
+    "Clear beside a slot of the spec: RestoDruid1 and RestoDruid2: " .. table.concat(N:RawLines(1), " / "))
+
+  -- only the shown note changes: Duplicate on the Mythic view leaves the Heroic note byte for byte
+  local HEROIC = "EncounterID:3001;Difficulty:Heroic;Name:Nek\\r\\ntime:20;ph:1;tag:Leafy;spellid:740;\\r\\n"
+  CRT.db.notes.list = {
+    [1] = { raw = "EncounterID:3001;Difficulty:Mythic;Name:Nek\\ntime:30;ph:1;tag:Leafy;spellid:740;", encounterID = 3001,
+      difficulty = "Mythic", name = "Nek" },
+    [2] = { raw = HEROIC, encounterID = 3001, difficulty = "Heroic", name = "Nek" },
+  }
+  CRT.db.notes.nextId = 3
+  CRT.db.timeline.healerSlots = {}
+  local mv = View.Create(mock("Frame"))
+  mv:SetData({ reference = ref }, 3001, nil, "Nek", "mythic")
+  mv:SetMode("healers")
+  find(headerMenu(mv, "healers:leafy-home").items, "Duplicate all CDs").fn()
+  t = timers()
+  check(#t == 2 and t[2].tags[1] == "RestoDruid" and t[2].time == 30 and N:Get(2).raw == HEROIC,
+    "the Mythic note gets the copy; the Heroic note is as it was")
+  find(find(headerMenu(mv, "healers:leafy-home").items, "Reassign player").items, "Bark").fn()
+  check(N:Get(2).raw == HEROIC and timers()[1].tags[1] == "Bark", "Reassign on Mythic leaves the Heroic note too")
+
+  -- not the raid leader or an assistant: the note stays; Reassign is greyed, the slots are your own
+  setNote(LINES)
+  CRT.db.timeline.healerSlots = {}
+  group.leader = false
+  v:Refresh()
+  local before = N:Get(1).raw
+  menu = headerMenu(v, "healers:leafy-home")
+  local re = find(menu.items, "Reassign player")
+  check(re.enabled == false and re.tooltip, "Reassign is greyed, with a tooltip")
+  find(menu.items, "Duplicate all CDs").fn()
+  check(N:Get(1).raw == before and CRT.db.timeline.healerSlots[3001] and #CRT.db.timeline.healerSlots[3001] == 1,
+    "Duplicate: your own slot, the raid note as it was")
+  find(headerMenu(v, "healers:leafy-home").items, "Clear player").fn()
+  check(N:Get(1).raw == before and #CRT.db.timeline.healerSlots[3001] == 2, "Clear: your own slot, the raid note as it was")
+  group.leader = true
+  setNote({})
+  CRT.db.timeline.healerSlots = {}
+  CRT.db.timeline.healerOrder = nil
 end
 
 if fails > 0 then error(fails .. " healer slot checks failed") end

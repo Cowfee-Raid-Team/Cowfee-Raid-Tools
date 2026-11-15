@@ -15,7 +15,8 @@ local ADDON, CRT = ...
 -- leave the note (a line naming others too keeps them, without the slot). Each change is made only in the notes the
 -- view shows (View:ShownNoteIds), never another difficulty's. Only the raid leader or an assistant changes the raid
 -- note (Notes:CanEditRaid); for anyone else the slots are their own, the note stays as it is, and a cast on an open
--- slot is one of their reminders.
+-- slot is one of their reminders. A named healer's name row (no slot) has Reassign player, Clear player (their block
+-- becomes a slot of their spec) and Duplicate all CDs (a new open slot with copies of their casts): "A named healer".
 -- Saved on this computer per boss (every difficulty), declared for the dev season purge:
 --   CRTDB.timeline.healerSlots[encounterID] = { { spec = SpecializationID, n = number, player = "Name-Realm" or nil } }
 -- A spec word in the boss's note with no slot here (a note planned on another computer) shows as a slot too, and is
@@ -50,6 +51,11 @@ local TEXT = {
     -- an assigned slot's casts are every one naming its player for these cooldowns, planned before too
     castOneFor = "1 planned cast leaves the raid note: every cast of these cooldowns that names %s.",
     castManyFor = "%d planned casts leave the raid note: every cast of these cooldowns that names %s.",
+    -- a named healer's menu (Slots.PlayerMenu)
+    reassign = "Reassign player",
+    reassignPrompt = "Who takes %s's cooldowns?",
+    duplicate = "Duplicate all CDs",
+    leadOnly = "Only the raid leader or an assistant can change the raid note.",
     slotTip = "A healer slot for this boss.",
     slotTipMenu = "Right-click to assign a player, change the spec or remove the slot.",
 }
@@ -291,6 +297,11 @@ end
 -- a listed cooldown of s's class (every line naming them for those cooldowns, planned before they were assigned too).
 local function slotTag(s, list, t)
     local S = Specs()
+    local class = s.class -- a named healer's (Slots.Named), whose spec may not be known
+    if not class then
+        local e = S.ByID(s.spec)
+        class = e and e.class
+    end
     for i, tag in ipairs(t.tags or {}) do
         local e, n = S.ReadTag(tag)
         if e then
@@ -300,7 +311,7 @@ local function slotTag(s, list, t)
         elseif s.player and sameName(tag, s.player) then
             local HV = CRT.TimelineHealerView
             local listed = HV and HV.Listed(t.spellId)
-            if listed and listed.class == S.ByID(s.spec).class then
+            if listed and class and listed.class == class then
                 return i
             end
         end
@@ -309,26 +320,36 @@ local function slotTag(s, list, t)
 end
 
 -- Calls each(timer, tagIndex) for every line of slot s in ctx's notes, and writes back what it returns: a new tag
--- list, false to take the line out, nil to leave it. One change per note. Returns how many lines it matched.
--- write false: only counts them.
+-- list, false to take the line out, nil to leave it; and as a second value, a tag list for a copy of the line (the
+-- same time, phase and spell) added at the note's end, as a dropped cooldown is. One change per note. Returns how
+-- many lines it matched. write false: only counts them.
 local function eachLine(ctx, s, each, write)
     local Notes, Parser = CRT.Notes, CRT.NoteParser
     local matched = 0
     for _, id in ipairs(ctx.notes or {}) do
         local record, parsed = Notes:Get(id), Notes:Parsed(id)
         local pieces = record and Notes.SplitPieces(record.raw or "") or {}
-        local drop, touched = {}, false
+        local drop, copies, touched = {}, {}, false
         for _, t in ipairs(record and parsed and parsed.timers or {}) do
             local i = slotTag(s, ctx.list, t)
             local piece = i and pieces[t.line]
             if piece then
                 matched = matched + 1
-                local tags = each and each(t, i)
+                local was = piece.text
+                local tags, copy
+                if each then
+                    tags, copy = each(t, i)
+                end
+                local copied = copy and Parser.ReplaceField(was, "tag", Parser.TagValue(copy))
+                if copied then
+                    copies[#copies + 1] = copied
+                    touched = true
+                end
                 if tags == false then
                     drop[t.line], touched = true, true
                 elseif tags then
-                    local line = Parser.ReplaceField(piece.text, "tag", Parser.TagValue(tags)) -- no realms (#1280)
-                    if line and line ~= piece.text then
+                    local line = Parser.ReplaceField(was, "tag", Parser.TagValue(tags)) -- no realms (#1280)
+                    if line and line ~= was then
                         piece.text, touched = line, true
                     end
                 end
@@ -341,7 +362,16 @@ local function eachLine(ctx, s, each, write)
                     out[#out + 1] = piece.text .. piece.eol
                 end
             end
-            Notes:UpdateRaw(id, table.concat(out), "edited", { lines = true })
+            local text = table.concat(out)
+            local style = (pieces[1] and pieces[1].eol == "\r\n") and "\r\n" or "\n"
+            for _, line in ipairs(copies) do
+                -- each on a line of its own, in the note's own style; the last with no line end, as Notes:AddLineTo
+                if text ~= "" and text:sub(-1) ~= "\n" then
+                    text = text .. style
+                end
+                text = text .. line
+            end
+            Notes:UpdateRaw(id, text, "edited", { lines = true })
         end
     end
     return matched
@@ -422,19 +452,29 @@ local function rekey(encounterID, old, new, keepOld)
     end
 end
 
--- Whether key (lower case) is a healer on the roster, so a block of their own once they leave a slot.
-local function rosterHealer(key)
+-- Whether key (lower case) is a healer on the roster, so a block of their own once they leave a slot; anyRole: a
+-- player on the roster in any role (Healer CDs keys their block by that key, anyone else's by the note's name).
+local function rosterHealer(key, anyRole)
     local HV = CRT.TimelineHealerView
     local ok, players = false, nil
     if HV and HV.Players then
         ok, players = pcall(HV.Players)
     end
     for _, p in ipairs(ok and type(players) == "table" and players or {}) do
-        if p.role == "HEALER" and type(p.key) == "string" and p.key:lower() == key then
+        if (anyRole or p.role == "HEALER") and type(p.key) == "string" and p.key:lower() == key then
             return true
         end
     end
     return false
+end
+
+-- A new block (newKey) right after afterKey's in the boss's saved order (Timeline/HealerOrder.lua), from the view's
+-- blocks' keys top to bottom (shown).
+local function placeAfter(encounterID, shown, afterKey, newKey)
+    local Order = CRT.TimelineHealerOrder
+    if Order and Order.PlaceAfter then
+        Order.PlaceAfter(encounterID, shown, afterKey, newKey)
+    end
 end
 
 -- Assigns player name ("Name" or "Name-Realm") to slot s: its lines (by its word, or by the player it had) name them.
@@ -549,6 +589,89 @@ function Slots.Remove(ctx, s, confirmed)
         CRT.db.timeline.healerSlots[encounterID] = nil
     end
     return true
+end
+
+-- A named healer (#1293) ---------------------------------------------------------------------------------------------
+-- A healer's block that is no slot (a healer on the roster, or a player the note names for a listed cooldown) has its
+-- own menu (Slots.PlayerMenu). Reassign player writes every line naming them for their class's listed cooldowns with
+-- another name, as Assign does (a line naming the new player already only loses the old name). Clear player makes their
+-- block a slot of their spec, saved like any other, its lines with its word (Slots.Add, then Slots.Clear). Duplicate
+-- all CDs adds an open slot of their spec with a copy of each of those lines, tagged with its word, at the note's end;
+-- they keep theirs. Both new slots come right under the healer's block. Clear and Duplicate need their healer spec;
+-- Reassign only changes the raid note, so it is for the raid leader or an assistant. The others make their own slots.
+
+-- The named healer a name row is for (lane.hvPlayer, Timeline/HealerView.lua), as a slot the line helpers read:
+-- { player = their key, name, class, spec = their healer spec or nil, orderKey = their block's key on Healer CDs }.
+function Slots.Named(lane)
+    local p = lane and lane.hvPlayer
+    if not (p and type(p.key) == "string" and p.key ~= "") then
+        return nil
+    end
+    local Groups, S = CRT.Groups, Specs()
+    local key = Groups and Groups.Normalize and Groups.Normalize(p.key) or p.key
+    local spec = S and S.ByID(p.spec) and p.spec or nil
+    return { player = key, name = p.name or p.key, class = lane.class, spec = spec,
+        orderKey = lane.hvOrder and lane.hvOrder.key or p.key:lower() }
+end
+
+-- Named healer h's cooldown lines name player name ("Name" or "Name-Realm") instead. For the raid leader or an
+-- assistant. True when changed.
+function Slots.Reassign(ctx, h, name)
+    local Groups = CRT.Groups
+    local key = Groups and Groups.Normalize and Groups.Normalize(name) or name
+    if type(key) ~= "string" or key == "" or key:lower() == h.player:lower() or not canEditRaid() then
+        return false
+    end
+    local display = Groups and Groups.Display and Groups.Display(key) or key
+    eachLine(ctx, h, function(t, i)
+        for k, tag in ipairs(t.tags) do
+            if k ~= i and sameName(tag, key) then
+                return leave(t, i) -- the line names them already
+            end
+        end
+        return withTag(display)(t, i)
+    end)
+    -- the block keeps its place under the new name; the old player, a roster healer still, keeps theirs
+    local newKey = rosterHealer(key:lower(), true) and key:lower() or display:lower()
+    rekey(ctx.encounterID, h.orderKey, newKey, rosterHealer(h.orderKey))
+    h.player, h.orderKey = key, newKey
+    return true
+end
+
+-- A new saved slot of named healer h's spec (Slots.Add) in ctx's slots, as the view lists them, right under h's block.
+local function slotFor(ctx, h, shown)
+    local saved = h.spec and Slots.Add(ctx, h.spec)
+    if not saved then
+        return nil
+    end
+    local s = { spec = saved.spec, n = saved.n, saved = saved }
+    ctx.list[#ctx.list + 1] = s
+    placeAfter(ctx.encounterID, shown, h.orderKey, "slot:" .. s.spec .. ":" .. s.n)
+    return s
+end
+
+-- Named healer h's block becomes a slot of their spec with no player: their cooldown lines take its word. shown: the
+-- view's blocks' keys, top to bottom. True when changed.
+function Slots.ClearPlayer(ctx, h, shown)
+    local s = slotFor(ctx, h, shown)
+    if not s then
+        return false
+    end
+    s.player, s.saved.player = h.player, h.player
+    return Slots.Clear(ctx, s)
+end
+
+-- A new open slot of named healer h's spec with a copy of each of h's cooldown lines, tagged with its word (for
+-- someone who may change the raid note). shown as for ClearPlayer. Returns the slot.
+function Slots.Duplicate(ctx, h, shown)
+    local s = slotFor(ctx, h, shown)
+    if s and canEditRaid() then
+        local word = Slots.Word(s, ctx.list)
+        eachLine(ctx, h, function()
+            return nil, { word }
+        end)
+    end
+    return s
 end
 
 -- Menus and questions ----------------------------------------------------------------------------------------
@@ -666,11 +789,15 @@ function Slots.AddMenu(view, owner)
     end)
 end
 
--- Who may take slot s (the Assign player submenu): the roster's players of its spec, then the roster's players of its
--- class whose spec isn't known. Each { key, name, class, on = the label of the other slot they have, or nil }.
-local function candidates(s, list)
+-- Who may take slot s (the Assign player submenu), or a named healer's lines (Reassign player, Slots.Named: s.class,
+-- s.spec when known; skip: their own key): the roster's players of its spec, then the roster's players of its class
+-- whose spec isn't known (with no spec, the class's players). Each { key, name, class, on = the label of the other slot they have, or nil }.
+local function candidates(s, list, skip)
     local S, Groups, Roster = Specs(), CRT.Groups, CRT.AlertRoster
-    local e = S.ByID(s.spec)
+    local e = { class = s.class }
+    if s.spec then
+        e = S.ByID(s.spec)
+    end
     local onSlot = {}
     for _, other in ipairs(list) do
         if other ~= s and other.player then
@@ -678,18 +805,26 @@ local function candidates(s, list)
         end
     end
     local ofSpec, unknown, seen = {}, {}, {}
-    for _, p in ipairs(S.Players(s.spec)) do
+    if skip then
+        seen[skip:lower()] = true
+    end
+    for _, p in ipairs(s.spec and S.Players(s.spec) or {}) do
+        if not seen[p.key:lower()] then
+            ofSpec[#ofSpec + 1] = { key = p.key, name = p.name, class = p.class, on = onSlot[p.key:lower()] }
+        end
         seen[p.key:lower()] = true
-        ofSpec[#ofSpec + 1] = { key = p.key, name = p.name, class = p.class, on = onSlot[p.key:lower()] }
     end
     local ok, roster = false, nil
     if Roster and Roster.Players then
         ok, roster = pcall(Roster.Players, Roster)
     end
+    -- with no spec to go by (a named healer's not known), every player of the class comes first
+    local into = s.spec and unknown or ofSpec
     for _, p in ipairs(ok and roster or {}) do
         local spec = Groups and Groups.CachedSpec and Groups.CachedSpec(p.key)
-        if not seen[p.key:lower()] and p.class == e.class and spec == nil then
-            unknown[#unknown + 1] = { key = p.key, name = p.name, class = p.class, on = onSlot[p.key:lower()] }
+        if not seen[p.key:lower()] and p.class == e.class and (spec == nil or not s.spec) then
+            seen[p.key:lower()] = true
+            into[#into + 1] = { key = p.key, name = p.name, class = p.class, on = onSlot[p.key:lower()] }
         end
     end
     return ofSpec, unknown
@@ -706,6 +841,56 @@ local function playerButton(menu, p, pick)
     if p.on and b and b.SetEnabled then
         b:SetEnabled(false)
     end
+end
+
+-- Fills sub (Assign player, Reassign player) with who may take s (candidates; skip as there), then Type a name...
+-- (prompt). pick(key or typed name) on a click.
+local function pickPlayer(sub, s, list, prompt, pick, skip)
+    local ofSpec, unknown = candidates(s, list, skip)
+    local e = s.spec and Specs().ByID(s.spec)
+    if #ofSpec == 0 and e then
+        local none = sub:CreateButton(string.format(TEXT.noneOfSpec, e.label))
+        if none and none.SetEnabled then
+            none:SetEnabled(false)
+        end
+    end
+    for _, p in ipairs(ofSpec) do
+        playerButton(sub, p, pick)
+    end
+    if #unknown > 0 then
+        sub:CreateDivider()
+        sub:CreateTitle(TEXT.specUnknown)
+        for _, p in ipairs(unknown) do
+            playerButton(sub, p, pick)
+        end
+    end
+    sub:CreateDivider()
+    sub:CreateButton(TEXT.typeName, function()
+        askName(prompt, pick)
+    end)
+end
+
+-- A menu line greyed, with why in its tooltip.
+local function greyed(b, why)
+    if b and b.SetEnabled then
+        b:SetEnabled(false)
+    end
+    if b and b.SetTooltip then
+        b:SetTooltip(function(tooltip)
+            if GameTooltip_AddNormalLine then
+                GameTooltip_AddNormalLine(tooltip, why)
+            end
+        end)
+    end
+end
+
+-- The view's healer blocks' keys, top to bottom (Timeline/HealerOrder.lua's Blocks).
+local function shownKeys(view)
+    local Order, out = CRT.TimelineHealerOrder, {}
+    for _, b in ipairs(Order and Order.Blocks and Order.Blocks(view) or {}) do
+        out[#out + 1] = b.order.key
+    end
+    return out
 end
 
 -- Runs action (a Slots function's call), asking first when it says "ask" (question: its "%s" the casts that leave,
@@ -740,29 +925,7 @@ function Slots.HeaderMenu(view, owner, lane)
     end
     return openMenu(owner, function(root)
         root:CreateTitle(label)
-        local sub = root:CreateButton(TEXT.assign)
-        local ofSpec, unknown = candidates(s, list)
-        local e = S.ByID(s.spec)
-        if #ofSpec == 0 then
-            local none = sub:CreateButton(string.format(TEXT.noneOfSpec, e.label))
-            if none and none.SetEnabled then
-                none:SetEnabled(false)
-            end
-        end
-        for _, p in ipairs(ofSpec) do
-            playerButton(sub, p, assign)
-        end
-        if #unknown > 0 then
-            sub:CreateDivider()
-            sub:CreateTitle(TEXT.specUnknown)
-            for _, p in ipairs(unknown) do
-                playerButton(sub, p, assign)
-            end
-        end
-        sub:CreateDivider()
-        sub:CreateButton(TEXT.typeName, function()
-            askName(string.format(TEXT.typePrompt, label), assign)
-        end)
+        pickPlayer(root:CreateButton(TEXT.assign), s, list, string.format(TEXT.typePrompt, label), assign)
         local change = root:CreateButton(TEXT.changeSpec)
         for _, other in ipairs(S.List()) do
             local b = change:CreateButton(classColored(other.label, other.class), function()
@@ -793,6 +956,49 @@ function Slots.HeaderMenu(view, owner, lane)
             Rows.Fill(rows, lane.hvMenu, function()
                 view:Refresh()
             end)
+        end
+    end)
+end
+
+-- A right-click on a named healer's name row (lane.hvPlayer, no slot): Reassign player, Clear player, Duplicate all
+-- CDs, then their rows (Timeline/HealerRows.lua). True when it was one.
+function Slots.PlayerMenu(view, owner, lane)
+    local h = Slots.Named(lane)
+    if not (h and view:EncounterNumber()) then
+        return false
+    end
+    local ctx = Slots.Context(view)
+    local function refresh()
+        view:Refresh()
+    end
+    local function reassign(name)
+        Slots.Reassign(ctx, h, name)
+        refresh()
+    end
+    return openMenu(owner, function(root)
+        root:CreateTitle(h.name)
+        local re = root:CreateButton(TEXT.reassign)
+        if canEditRaid() then
+            pickPlayer(re, h, ctx.list, string.format(TEXT.reassignPrompt, h.name), reassign, h.player)
+        else
+            greyed(re, TEXT.leadOnly)
+        end
+        local clear = root:CreateButton(TEXT.clear, function()
+            Slots.ClearPlayer(ctx, h, shownKeys(view))
+            refresh()
+        end)
+        local dup = root:CreateButton(TEXT.duplicate, function()
+            Slots.Duplicate(ctx, h, shownKeys(view))
+            refresh()
+        end)
+        if not h.spec then
+            greyed(clear, TEXT.specUnknown)
+            greyed(dup, TEXT.specUnknown)
+        end
+        local Rows = CRT.TimelineHealerRows
+        if Rows and Rows.Fill and lane.hvMenu then
+            root:CreateDivider()
+            Rows.Fill(root, lane.hvMenu, refresh)
         end
     end)
 end
