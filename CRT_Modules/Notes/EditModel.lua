@@ -411,7 +411,7 @@ function Model.New(text, opts)
     -- opts.players: the known players (Parse.lua's Players: { [lower-case name] = "Name-Realm" }), whose realms come off
     -- the names already in the text when a row is written again (#1280); the note's invite list counts too (Known)
     local s = setmetatable({ base = opts.base or text, readOnly = opts.readOnly and true or false, markdown = opts.markdown,
-        quickFill = false, rows = {}, players = opts.players }, Session)
+        quickFill = false, rows = {}, players = opts.players, boss = opts.boss }, Session)
     local note = Parser.Parse(text)
     local byLine = {}
     for _, t in ipairs(note.timers) do

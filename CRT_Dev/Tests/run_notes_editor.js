@@ -1584,7 +1584,7 @@ do
   local shiftDown, ctrlDown = false, false
   IsShiftKeyDown = function() return shiftDown end
   IsControlKeyDown = function() return ctrlDown end
-  local function press(i, button) local f = W.rowFrames[i] assert(f and f.shown and f.index == i, "row " .. i .. " shown") f.scripts.OnMouseDown(f, button or "LeftButton") end
+  local function press(i, button) local f = W.rowFrames[i] assert(f and f.shown and f.index == i, "row " .. i .. " shown: " .. tostring(f and f.shown) .. " " .. tostring(f and f.index) .. " rows " .. #W.session.rows .. " " .. W.session:Text():sub(1, 60)) f.scripts.OnMouseDown(f, button or "LeftButton") end
   local function item(label) for _, d in ipairs(menu and menu.items or {}) do if d.label:find(label, 1, true) then return d end end end
   local function nLines(text) return #lines(text) end
   local cid = Notes:Import(COILED)
@@ -1633,16 +1633,53 @@ do
   assert(not W.session:Text():find("ph:1;tag:Lulu;text:Grab side green orb;", 1, true) and W.session:Text():find("ph:1;tag:Granddh;text:Grab side green orb;", 1, true),
     "Lulu's gone, Granddh's stay")
   assert(W.status:GetText():find("Deleted 5 lines.", 1, true), W.status:GetText())
-  -- a block's line: asked, saying so
+  -- a block's line: one line never asks (Alex, 2026-11-15)
   Editor.Discard()
   assert(Editor.Open({ id = cid }))
   press(60, "RightButton")
   confirm = nil
   item("Delete line").fn()
-  assert(confirm and confirm.text:find("1 of these is in Orb Carriers P1.", 1, true), "a block's line: asked: " .. tostring(confirm and confirm.text))
-  assert(W.session:Text() == saved, "nothing yet")
-  confirm.callback()
-  assert(nLines(W.session:Text()) == nLines(saved) - 1, "gone from the block")
+  assert(confirm == nil, "a block's single line: not asked")
+  assert(nLines(W.session:Text()) == nLines(saved) - 1 and not W.session:Text():find("time:7;ph:1;tag:Sixz;text:{cross} purple orb;assign", 1, true), "gone from the block")
+  -- the menu opened, then the note changed under it: Delete line does nothing
+  Editor.Discard()
+  assert(Editor.Open({ id = cid }))
+  press(48, "RightButton")
+  local stale = item("Delete line")
+  press(36, "RightButton")
+  item("Delete line").fn() -- line 36 goes; 48 is now another line
+  local before = W.session:Text()
+  stale.fn()
+  assert(W.session:Text() == before, "a menu opened on a line that moved does nothing")
+  -- one line selected: Delete selected doesn't ask either
+  Editor.Discard()
+  assert(Editor.Open({ id = cid }))
+  press(42)
+  confirm = nil
+  W.deleteButton.scripts.OnClick(W.deleteButton)
+  assert(confirm == nil and nLines(W.session:Text()) == nLines(saved) - 1, "one selected: not asked")
+  -- a long text: the Delete all item cut short, never inside a marker code
+  Editor.Discard()
+  local long = "EncounterID:9001;Difficulty:Mythic;Name:Long\\nOrbs\\n{cross} orb: Abu\\n"
+    .. "time:7;ph:1;tag:Abu;text:Grab {cross} orb;\\n"
+    .. "time:9;ph:1;tag:Kip;text:Run to the far side of the room and wait there for the {skull} orb;\\n"
+    .. "time:19;ph:1;tag:Kip;text:Run to the far side of the room and wait there for the {skull} orb;"
+  local lid = Notes:Import(long)
+  assert(Editor.Open({ id = lid }))
+  press(5, "RightButton")
+  local cutItem = item("Delete all")
+  assert(cutItem and cutItem.label:find('"Run to the far side of the room and wait..."', 1, true) and cutItem.label:find("lines for Kip", 1, true),
+    "cut short: " .. tostring(cutItem and cutItem.label))
+  Editor.Discard()
+  -- a spell line with no text: listed by the spell's name
+  local sp = Notes:Import("EncounterID:9002;Difficulty:Mythic;Name:Spells\\ntime:10;ph:1;tag:Kip;spellid:740;\\ntime:20;ph:1;tag:Kip;spellid:740;")
+  assert(Editor.Open({ id = sp }))
+  press(2, "RightButton")
+  assert(item("Delete all") and item("Delete all").label == 'Delete all "Spell name 740" lines for Kip', tostring(item("Delete all") and item("Delete all").label))
+  confirm = nil
+  item("Delete all").fn()
+  assert(confirm and confirm.text:find("Kip: Spell name 740, 2 lines (P1 0:10 to 0:20)", 1, true), "no empty text: " .. tostring(confirm and confirm.text))
+  Editor.Discard()
 
   -- select: click, Shift-click a range, Ctrl-click one out; Delete selected
   Editor.Discard()
@@ -2018,7 +2055,9 @@ do
   rawset(left.chips[1], "over", true)
   drag(left.chips[2], 3)
   rawset(left.chips[1], "over", false)
-  assert(table.concat(s:Names(3), " ") == "Gadios Abu", "reordered: " .. table.concat(s:Names(3), " "))
+  -- (a kick block changed in place is a new session over its text: its line numbers match the text again, #1294)
+  assert(W.session ~= s and W.session.rows[4].kind == "kick" and W.session.rows[4].label == "Right", "made again: Right is a line now")
+  assert(table.concat(W.session:Names(3), " ") == "Gadios Abu", "reordered: " .. table.concat(W.session:Names(3), " "))
   assert(W.raw:GetText():find("intstart\\nGadios Abu\\nRixxy\\nintend\\n", 1, true), "the raw text: " .. W.raw:GetText())
   -- Save: the block written, Interrupts' lists follow
   assert(Editor.Save(), "saved")
@@ -2038,6 +2077,78 @@ do
   inRaid = false
 end
 print("ok the Kick order block: rows per group, numbered chips, a full group refused, a drop on a chip, Save and the Interrupts lists, read-only")
+
+-- 12f. #1294 review: a name dropped on a kick group with no line yet adds a line to the text; a timed line below the
+-- block deleted afterwards is the one shown, never its neighbour
+if CRT.NoteEditorLines then
+  local ELn = CRT.NoteEditorLines
+  inRaid, leader = true, true
+  local kick2 = "EncounterID:4747;Difficulty:Mythic;Name:Kicks Two\\nintstart\\nAbu Gadios\\nintend\\ntime:10;ph:1;tag:Kip;text:First;\\ntime:20;ph:1;tag:Kip;text:Second;"
+  local function rowWith(text) for i, r in ipairs(W.session.rows) do if r.kind == "timer" and r.timer.text == text then return i end end end
+  local menu
+  CRT.UI.ContextMenu = function(owner, fill)
+    menu = {}
+    fill({ CreateButton = function(_, label, fn) local d = { label = label, fn = fn } function d:SetEnabled() end function d:SetTooltip() end menu[#menu + 1] = d return d end })
+    return {}
+  end
+  local k2 = Notes:Import(kick2)
+  assert(Editor.Open({ id = k2 }))
+  local right
+  for i, r in ipairs(W.session.rows) do if r.kind == "kick" and r.label == "Right" then right = i end end
+  assert(right and W.session.rows[right].virtual, "Right has no line yet")
+  drag(paletteChip("Rixxy"), right)
+  assert(W.session:Text():find("intstart\\nAbu Gadios\\nRixxy\\nintend\\n", 1, true), "Rixxy's line added: " .. W.session:Text())
+  local second = rowWith("Second")
+  local f = W.rowFrames[second]
+  assert(f.shown and f.index == second and f.info:GetText():find("Second", 1, true), "the row shows Second")
+  f.scripts.OnMouseDown(f, "RightButton")
+  menu[1].fn()
+  local t = W.session:Text()
+  assert(not t:find("text:Second;", 1, true) and t:find("text:First;", 1, true) and t:find("\\nRixxy\\nintend\\n", 1, true), "Second gone, First and Rixxy stay: " .. t)
+  -- an in-place kick change that skipped the editor's resync: the delete is refused, nothing lost, and works again
+  Editor.Discard()
+  assert(Editor.Open({ id = k2 }))
+  local s2 = W.session
+  for i, r in ipairs(s2.rows) do if r.kind == "kick" and r.label == "Right" then right = i end end
+  assert(s2:Add(right, "Rixxy"), "added in place")
+  local wrong = rowWith("Second")
+  local text = s2:Text()
+  assert(not ELn.Delete({ wrong }) and W.status:GetText():find("lines moved", 1, true), "refused: " .. W.status:GetText())
+  assert(W.session:Text() == text and W.session ~= s2, "nothing deleted; the session made again")
+  assert(ELn.Delete({ rowWith("Second") }) and not W.session:Text():find("text:Second;", 1, true) and W.session:Text():find("text:First;", 1, true), "then the right line")
+  Editor.Discard()
+  inRaid, leader = false, false
+  print("ok a kick group's new line: a timed line deleted after it is the one shown")
+end
+
+-- 12g. #1294 review: Make all's confirm says which list updates a block and which becomes its own; a long list capped
+do
+  local T2 = { { ph = 1, t = 30 } }
+  local blk = table.concat(Assign.Lines({ name = "Orbs", times = T2, rows = { { label = "Left", text = "", tokens = { "Kip", "Zed" }, casts = "all" } } }, T2), "\\n")
+  local note = "EncounterID:9003;Difficulty:Mythic;Name:Twice\\n" .. blk
+    .. "\\nOrbs\\nOdd: Abu, Cheo\\ntime:30;ph:1;tag:Abu Cheo;text:Orbs;\\n\\nOrbs\\nEven: Ned, Ola\\ntime:30;ph:1;tag:Ned Ola;text:Orbs;"
+  local tid = Notes:Import(note)
+  assert(Editor.Open({ id = tid }))
+  confirm = nil
+  EA.AskMakeAll()
+  assert(confirm and confirm.text:find("Orbs: 1 timer line (updates that block)", 1, true)
+    and confirm.text:find("Orbs: 1 timer line (a block of its own: another list updates that block)", 1, true), tostring(confirm and confirm.text))
+  confirm.callback()
+  assert(table.concat(Assign.Keys(W.session:Text()), ",") == "orbs,orbs 2", "as it said: " .. W.session:Text())
+  Editor.Discard()
+  local many = { "EncounterID:9004;Difficulty:Mythic;Name:Many" }
+  for k = 1, 27 do
+    many[#many + 1] = "List " .. k .. "\\nRow: Pa" .. k .. ", Pb" .. k .. "\\ntime:" .. (k * 10) .. ";ph:1;tag:Pa" .. k .. " Pb" .. k .. ";text:Go;\\n"
+  end
+  local mid = Notes:Import(table.concat(many, "\\n"))
+  assert(Editor.Open({ id = mid }))
+  confirm = nil
+  EA.AskMakeAll()
+  assert(confirm and confirm.text:find("Make all 27 group lists", 1, true) and confirm.text:find("List 25: 1 timer line", 1, true)
+    and not confirm.text:find("List 26:", 1, true) and confirm.text:find("And 2 more lists, 2 timer lines.", 1, true), tostring(confirm and confirm.text))
+  Editor.Discard()
+end
+print("ok Make all's confirm: an update once, the next list its own block; capped with a count")
 
 -- 13. Add assignment on a note with a Kick order block (Alex, 2026-10-30): the new group after a blank line, its names
 -- as the kick lines have them (no realm, spaces), the Raw text the same, and read as the other groups are

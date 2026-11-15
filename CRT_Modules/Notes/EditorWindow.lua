@@ -480,7 +480,20 @@ local function followInvite()
     end
 end
 
+-- After a change made in place (a drop, a click, an x): a kick block changed in place is written whole from its rows
+-- (Session:Text), which can add or drop lines, so the session's line numbers no longer match its text. A new session
+-- over that text then, so a timed line's row is its line again (Notes/EditorLines.lua deletes by line number).
+function Editor.Resync()
+    local s = W.session
+    if s and not s.readOnly and s:KickNames() then
+        Editor.ApplyText(s:Text())
+        return true
+    end
+    return false
+end
+
 local function changed()
+    Editor.Resync()
     Editor.Refresh()
     followInvite()
 end
@@ -745,7 +758,8 @@ end
 function Editor.ApplyText(text)
     local s = W.session
     local quick, selected = s.quickFill, s.selected
-    W.session = Model.New(text, { markdown = s.markdown, readOnly = s.readOnly, base = s.base, players = s.players })
+    W.session = Model.New(text, { markdown = s.markdown, readOnly = s.readOnly, base = s.base, players = s.players,
+        boss = s.boss }) -- the boss names the kick block's groups when the text has no header
     W.session:SetQuickFill(quick)
     W.session.selected = selected
 end
