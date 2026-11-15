@@ -6,6 +6,17 @@ local ADDON, CRT = ...
 -- CRT_Dev/Tests/run_whatsnew.js checks every entry.
 CRT.WhatsNewData = {
     {
+        version = "1.4.7",
+        lines = {
+            "Note editor: delete leftover and selected lines",
+            "Note check flags stale lines, with Remove",
+            "Make all turns every list into a block",
+            "Healer CDs: Duplicate, Reassign or Clear a healer",
+            "Ignored Timeline mechanics play no alerts",
+        },
+        more = 3,
+    },
+    {
         version = "1.4.6",
         lines = {
             "Interrupts: a Macros tab for target markers",

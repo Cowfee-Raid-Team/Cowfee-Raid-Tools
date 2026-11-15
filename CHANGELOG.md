@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.7 (2026-11-15)
+
+- **Clean up a note's leftover lines:** in the note editor, right-click a timed line to delete it, or delete every line with the same text for that player. Click, Shift-click and Ctrl-click to select lines, then Delete selected. Deleting one line never asks; deleting several shows what goes first.
+- **Note check:** the editor now flags double lines, old lines and lines for players no list names, plus stale lines left at a block's cast times, with a button to remove them. A cast you emptied on purpose is never flagged.
+- **Assignment blocks:** a list for one player becomes a block too, block lines keep their raid markers and colours, and Make all turns every list into a block in one go. Nothing is saved until you press Save.
+- **Healer CDs:** right-click a named healer to Duplicate all CDs into a new slot, Reassign every line to another player, or Clear the player.
+- **Ignored mechanics stay quiet:** untick a mechanic on the Timeline and its Mech Alerts and Special alert no longer play. Raid Notes > Mech Alerts shows it greyed. Lines in the raid note still play.
+- **Combat log warning:** if another addon also manages your combat log, CRT asks which one should, and reminds you in chat when you enter an instance.
+- **The Coiled Altar:** its ability types and tags now ship with the addon.
+- **Fixes:** wishlists show raiders without their server, and Late Tracker's Edit night no longer shows a Lua error.
+
 ## 1.4.6 (2026-11-14)
 
 - **Interrupts macros:** Interrupts has a new Macros tab with eight target marker macros, CRT Mk Star to CRT Mk Skull. Each puts its marker on your mouseover, or your target, and pressing it again leaves the marker on. Only the raid leader and assists can mark in a raid.
