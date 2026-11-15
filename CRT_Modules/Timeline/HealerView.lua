@@ -1262,6 +1262,9 @@ function HV.DoubleClick(view, t, lane)
     if raid then
         if slot and Slots and view:EncounterNumber() then
             Slots.Ensure(view:EncounterNumber(), slot)
+            if Slots.Tidy then
+                Slots.Tidy(Slots.Context(view), slot) -- a lone slot 2's old plain-word lines take its number first
+            end
         end
         view:PlaceCooldownAt(t, e, lane.player.tag or lane.player.name)
     elseif lane.player.me or (slot and not slot.player) then

@@ -176,7 +176,8 @@ local function personal(noteID)
 end
 
 -- The slots a view of the boss draws: the saved ones, then one per spec word of the shown raid note lines (marks) that
--- no slot covers. Each is { spec, n, player, saved = the saved slot or nil }, fresh for each build.
+-- no slot covers. Each is { spec, n, player, saved = the saved slot or nil }, fresh for each build; the list's info is
+-- the first shown raid note's spec info (Notes/SpecWords.lua's Mark), for the slots' hints (Slots.Header).
 function Slots.ForView(encounterID, marks)
     local out = {}
     for _, s in ipairs(Slots.List(encounterID)) do
@@ -184,6 +185,10 @@ function Slots.ForView(encounterID, marks)
     end
     local S = Specs()
     for _, m in ipairs(S and marks or {}) do
+        if m.kind == "note" and not personal(m.noteID) and out.info == nil then
+            local parsed = CRT.Notes and CRT.Notes:Parsed(m.noteID)
+            out.info = parsed and parsed.specInfo or nil
+        end
         if m.kind == "note" and not personal(m.noteID) then
             for _, tag in ipairs(m.tags or {}) do
                 local e, n = S.ReadTag(tag)
@@ -245,8 +250,8 @@ function Slots.Person(s, list, players)
 end
 
 -- A slot's name row: its label ("Resto Druid 1 · Leafy" once assigned), and while it has no player the hint on its
--- row: the one player of its spec when the boss has one slot of it, "Open slot, nobody in the raid", or "Pick a
--- player: 2 Resto Druids in the raid" (warn) when it is not clear who. { label, note, warn }
+-- row: the one player of its spec when the boss has one slot of it and its word alerts them, "Open slot, nobody in the
+-- raid", or "Pick a player: 2 Resto Druids in the raid" (warn) when it is not clear who. { label, note, warn }
 function Slots.Header(s, list, name)
     local S = Specs()
     local label = Slots.Label(s, list)
@@ -257,10 +262,13 @@ function Slots.Header(s, list, name)
     if #players == 0 then
         return { label = label, note = TEXT.open }
     end
-    if #players == 1 and Slots.Count(list, s.spec) == 1 then
+    -- the player its word alerts, by the alerts' own rule (Notes/SpecWords.lua's Matching, with the note's info): a
+    -- numbered word beside a named healer of its spec means nobody until a player is assigned
+    local e = S.ByID(s.spec)
+    local means = S.Matching(e, numbered(s, list), list.info)
+    if #players == 1 and Slots.Count(list, s.spec) == 1 and #means == 1 then
         return { label = label, note = players[1].name }
     end
-    local e = S.ByID(s.spec)
     return { label = label, note = string.format(TEXT.pick, #players, e.label .. (#players == 1 and "" or "s")), warn = true }
 end
 
@@ -435,36 +443,38 @@ local function numberTheOther(ctx, spec)
     end)
 end
 
--- Whether ctx's notes name a player of spec on the roster (other than skip, a key) for a listed cooldown of its
--- class: a named healer of that spec, whom a numbered word never means (Notes/SpecWords.lua's Matching).
+-- Whether ctx's notes name a player of spec on the roster (other than skip, a key) for one of the spec's major healing
+-- cooldowns: a named healer of that spec, whom a numbered word never means (Notes/SpecWords.lua's Named and Matching,
+-- from the note's own info).
 local function namedOfSpec(ctx, spec, skip)
-    local S, Notes, HV = Specs(), CRT.Notes, CRT.TimelineHealerView
-    local e = S.ByID(spec)
-    local players = {}
-    for _, p in ipairs(e and S.Players(spec) or {}) do
-        if not (skip and p.key:lower() == skip:lower()) then
-            players[#players + 1] = p
-        end
-    end
-    if #players == 0 or not (HV and HV.Listed) then
-        return false
-    end
+    local S, Notes = Specs(), CRT.Notes
     for _, id in ipairs(ctx.notes or {}) do
         local parsed = Notes:Parsed(id)
-        for _, t in ipairs(parsed and parsed.timers or {}) do
-            local listed = HV.Listed(t.spellId)
-            if listed and listed.class == e.class then
-                for _, tag in ipairs(t.tags or {}) do
-                    for _, p in ipairs(players) do
-                        if sameName(tag, p.key) then
-                            return true
-                        end
-                    end
-                end
+        local info = parsed and parsed.specInfo
+        for _, p in ipairs(info and S.Named and S.Players(spec) or {}) do
+            if not (skip and p.key:lower() == skip:lower()) and S.Named(p, spec, info) then
+                return true
             end
         end
     end
     return false
+end
+
+-- A lone slot numbered above 1 (its word numbered, Slots.Word) with lines in the plain word left from before: those
+-- lines take its numbered word, so its lines never mix the two (as numberTheOther does for a first slot). For someone
+-- who may change the raid note; the view calls it before it adds a cast to the slot.
+function Slots.Tidy(ctx, s)
+    if not canEditRaid() or s.player or not numbered(s, ctx.list) then
+        return
+    end
+    local S, word = Specs(), Slots.Word(s, ctx.list)
+    eachLine(ctx, s, function(t, i)
+        local e, n = S.ReadTag(t.tags[i])
+        if e and n == nil then
+            return withTag(word)(t, i)
+        end
+        return nil
+    end)
 end
 
 -- Adds a slot of spec with the next free number among ctx's slots, from 2 when least is 2 or the note names a healer

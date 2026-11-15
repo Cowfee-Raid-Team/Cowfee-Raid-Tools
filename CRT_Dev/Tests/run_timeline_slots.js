@@ -762,8 +762,11 @@ do
   -- the copies never alert Leafy: alone of her spec, or with Bark
   for _, only in ipairs({ true, false }) do
     onlyLeafy(only)
+    v:Refresh()
     t = timers()
     local what = only and "the only Resto Druid" or "with Bark"
+    local head = lane(v, "healers:slot:105:2")
+    check(head.note ~= "Leafy" and head.note ~= "Bark", what .. ": the slot's hint names nobody, as its alerts: " .. tostring(head.note))
     check(mineAs("Leafy-Home", t[1]) and mineAs("Leafy-Home", t[2]), what .. ": Leafy's own lines are hers")
     check(not mineAs("Leafy-Home", t[6]) and not mineAs("Leafy-Home", t[7]), what .. ": the copies are not")
   end
@@ -834,6 +837,28 @@ do
   t = timers()
   check(t[2].tags[1] == "RestoDruid2", "its cast writes RestoDruid2: " .. tostring(line(2)))
   check(mineAs("Leafy-Home", t[1]) and not mineAs("Leafy-Home", t[2]), "Leafy gets her own Tranquility, not the slot's")
+  check(lane(v, "healers:slot:105:2").note ~= "Leafy", "and its hint doesn't name her: " .. tostring(lane(v, "healers:slot:105:2").note))
+  -- named only for a utility cooldown (Flourish): not a named healer; a RestoDruid2 slot alone means her
+  setNote({ "time:20;ph:1;tag:Leafy;spellid:197721;", "time:40;ph:1;tag:RestoDruid2;spellid:740;" })
+  CRT.db.timeline.healerSlots = { [3001] = { { spec = 105, n = 2 } } }
+  v:Refresh()
+  t = timers()
+  check(mineAs("Leafy-Home", t[2]) and lane(v, "healers:slot:105:2").note == "Leafy",
+    "named only for Flourish: RestoDruid2 alerts Leafy and its hint names her: " .. tostring(lane(v, "healers:slot:105:2").note))
+  setNote({ "time:20;ph:1;tag:Leafy;spellid:197721;" })
+  CRT.db.timeline.healerSlots = {}
+  v:Refresh()
+  v.hvAdd.buttons.add.OnClick(v.hvAdd.buttons.add)
+  menus[#menus].items[2].fn()
+  check(CRT.db.timeline.healerSlots[3001][1].n == 1, "+ Add healer beside a Flourish-only Leafy: slot 1, as before")
+  -- a saved lone slot 2 with a plain-word line left from before: a new cast on it numbers that line too
+  setNote({ "time:10;ph:1;tag:RestoDruid;spellid:740;" })
+  CRT.db.timeline.healerSlots = { [3001] = { { spec = 105, n = 2 } } }
+  v:Refresh()
+  HV.DoubleClick(v, 100, v.lanes[laneIndex(v, "healers:slot:105:2:33891")])
+  t = timers()
+  check(#t == 2 and t[1].tags[1] == "RestoDruid2" and t[2].tags[1] == "RestoDruid2",
+    "the old plain line and the new cast both say RestoDruid2: " .. table.concat(N:RawLines(1), " / "))
   -- Duplicate beside a first slot's plain word: that slot's lines numbered, the copy RestoDruid2
   setNote({ "time:10;ph:1;tag:RestoDruid;spellid:740;", "time:20;ph:1;tag:Leafy;spellid:740;" })
   CRT.db.timeline.healerSlots = { [3001] = { { spec = 105, n = 1 } } }
@@ -855,6 +880,15 @@ do
   check(tagsOf(t[1]) == "RestoDruid" and tagsOf(t[2]) == "RestoDruid Halo" and tagsOf(t[3]) == "Leafy",
     "her cooldown lines take the spec word, the shared one keeps Halo, another spell's stays hers")
   check(lane(v, "healers:slot:105:1") and #flagsOn(v, laneIndex(v, "healers:slot:105:1:740")) == 1, "drawn as the slot")
+  -- beside another named Resto Druid (Bark): slot 2, and its hint names neither
+  setNote({ "time:20;ph:1;tag:Leafy;spellid:740;", "time:30;ph:1;tag:Bark;spellid:33891;" })
+  CRT.db.timeline.healerSlots = {}
+  v:Refresh()
+  find(headerMenu(v, "healers:leafy-home").items, "Clear player").fn()
+  t = timers()
+  local head = lane(v, "healers:slot:105:2")
+  check(CRT.db.timeline.healerSlots[3001][1].n == 2 and t[1].tags[1] == "RestoDruid2" and head and head.note ~= "Leafy" and head.note ~= "Bark",
+    "Clear beside the named Bark: RestoDruid2, the hint names nobody: " .. tostring(head and head.note))
   -- with a Resto Druid slot already: the new one is 2, the old plain word numbered
   setNote({ "time:20;ph:1;tag:RestoDruid;spellid:740;", "time:60;ph:1;tag:Leafy;spellid:740;" })
   CRT.db.timeline.healerSlots = { [3001] = { { spec = 105, n = 1 } } }
