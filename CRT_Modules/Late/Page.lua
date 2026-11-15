@@ -452,9 +452,10 @@ local function statusOptions(night, p)
 end
 
 -- The selected night and the player an edit row stands for, found by name (the rows re-sort after every edit).
+-- Nothing while the row is still being made: the game's SetupMenu builds the menu before UI.Dropdown returns it.
 local function editTarget(row)
     local night = selected ~= TOTALS and Late:Find(selected)
-    if not night or not row.playerKey then
+    if not night or not row or not row.playerKey then
         return nil
     end
     for _, p in ipairs(night.players) do
