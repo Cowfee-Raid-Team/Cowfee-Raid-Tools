@@ -16,8 +16,9 @@ local ADDON, CRT = ...
 --               ("Grab {star} green orb" for Gadios where the block's "{star} green orb" row now names someone else).
 --               A line that follows another list's row ("Kicks: Abu") or is for a role is never old.
 --     stale     (#1294) typed text lines for players only, at one of a block's casts (same phase, time within
---               Assign.SAME_TIME), in none of that block's rows' words, following no row of a list (nor close to
---               one): leftovers from before the block whose wording fits no row ("Grab side green orb" for Lulu beside
+--               Assign.SAME_TIME), in none of that block's rows' words but sharing a real word (raid markers and
+--               Links.STOP_WORDS left out) with one of them or the block's name, following no row of a list (nor close
+--               to one): leftovers from before the block whose wording fits no row ("Grab side green orb" for Lulu beside
 --               the block's "{diamond} purple orb: Lulu"). Remove stale lines takes them. Sorted line numbers; a stale
 --               line is no orphan as well
 --     orphans   typed text lines for a player that no group row, block row or the kick block mentions (warning
@@ -32,9 +33,11 @@ local ADDON, CRT = ...
 --   Check.RemoveLines(text, lines)    the one way lines leave a note (the editor's deletes too): lines a list or a set
 --                                     of line numbers; every other byte kept, CRLF and the note's last line end too
 -- The note editor's line helpers (Notes/EditorLines.lua, Notes/EditorCheck.lua), src a text or a session:
---   Check.SameLines(src, i)      the timed lines with line i's players and text, any time or phase (i among them)
---   Check.Groups(src, lines)     alike lines (the same players and text) grouped, in order: { { who, text, n, first,
---                                last (their timers), lines } }
+--   Check.SameLines(src, i)      the timed lines with line i's players, spell and text, any time or phase (i among
+--                                them)
+--   Check.Groups(src, lines)     alike lines (the same players, spell and text) grouped, in order: { { who, text (a
+--                                spell line with none: the spell's name), n, first, last (their timers), lines } }
+--   Check.ShownText(timer)       a timed line's text, else its spell's name
 --   Check.InBlocks(src, lines)   the Assign blocks those lines belong to (marked assign:): { { key, name, n } }
 
 local Check = {}
@@ -144,7 +147,7 @@ local function readBlock(s, key, planned, casts)
         local mk = moment(e.ph, e.t)
         casts[mk] = casts[mk] or {}
         casts[mk][#casts[mk] + 1] = { key = key, rows = b.rows }
-        casts.all[#casts.all + 1] = { ph = e.ph or 1, t = e.t, rows = b.rows }
+        casts.all[#casts.all + 1] = { ph = e.ph or 1, t = e.t, rows = b.rows, name = b.name }
     end
 end
 
@@ -236,20 +239,46 @@ end
 
 -- Whether a typed line is a leftover at a block's cast (#1294): for players only, at one of a block's casts (its phase,
 -- its time within Assign.SAME_TIME), and in none of the rows' words of any block cast then.
+-- A text's words that tell something (Alex, 2026-11-15): lower case, raid marker codes ({cross}, {rt3}) and
+-- Links.STOP_WORDS left out, as a set.
+local function realWords(text)
+    local set = {}
+    local stop = CRT.NoteLinks.STOP_WORDS or {}
+    for w in tostring(text or ""):lower():gsub("{[^}]*}", " "):gmatch("[%w']+") do
+        if not stop[w] then
+            set[w] = true
+        end
+    end
+    return set
+end
+
+local function sharesWord(words, text)
+    for w in pairs(realWords(text)) do
+        if words[w] then
+            return true
+        end
+    end
+    return false
+end
+
+-- ... and shares a real word with one of the rows of a block cast then, or the block's name (Alex, 2026-11-15: "Use a
+-- defensive" at an orb cast is no leftover of the orb block).
 local function staleAt(line, all)
     if not allPlayers(line.names) then
         return false
     end
     local t, at = line.timer, false
+    local words = realWords(t.text)
     local near = CRT.NoteAssign.SAME_TIME or 0.05
     for _, c in ipairs(all) do
         if c.ph == (t.ph or 1) and math.abs(c.t - (t.time or 0)) < near then
-            at = true
             for _, row in ipairs(c.rows) do
                 if fitsRow(t.text, row) then
                     return false
                 end
+                at = at or sharesWord(words, row.label) or sharesWord(words, row.text)
             end
+            at = at or sharesWord(words, c.name)
         end
     end
     return at
@@ -378,8 +407,23 @@ local function likeKey(s, i)
         keys[#keys + 1] = nameKey(name)
     end
     table.sort(keys)
-    return table.concat(keys, " ") .. "\1" .. (s.rows[i].timer.text or "")
+    local t = s.rows[i].timer
+    return table.concat(keys, " ") .. "\1" .. tostring(t.spellId or "") .. "\1" .. (t.text or "")
 end
+
+-- A timed line's text as a list shows it: its text, else its spell's name ("Spell 740" until the game has it).
+local function shownText(t)
+    if t.text and t.text ~= "" then
+        return t.text
+    end
+    if t.spellId then
+        local Notes = CRT.Notes
+        local info = Notes and Notes.SpellInfo and Notes:SpellInfo(t.spellId)
+        return info and info.name or ("Spell " .. tostring(t.spellId))
+    end
+    return ""
+end
+Check.ShownText = shownText
 
 local function isTimer(s, i)
     local row = s.rows[i]
@@ -415,7 +459,7 @@ function Check.Groups(src, list)
         local key = likeKey(s, i)
         local g = byKey[key]
         if not g then
-            g = { who = table.concat(s:TimerNames(i), " "), text = t.text or "", n = 0, first = t, last = t, lines = {} }
+            g = { who = table.concat(s:TimerNames(i), " "), text = shownText(t), n = 0, first = t, last = t, lines = {} }
             byKey[key] = g
             groups[#groups + 1] = g
         end

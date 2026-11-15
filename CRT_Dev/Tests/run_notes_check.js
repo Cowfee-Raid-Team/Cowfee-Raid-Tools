@@ -228,7 +228,7 @@ check("stale: Alex's note: Lichkingstoy's, Granddh's and Lulu's 18 P1 lines, not
   assert(not Check.Clean({ doubles = {}, old = {}, orphans = {}, stale = { 1 } }), "a stale line is something to say")
 end)
 
-check("stale: never a spell, a role, a line that follows a row, a near-miss, or a line off the block's casts (#1294)", function()
+check("stale: shares a word; never a spell, a role, a line that follows a row, a near-miss, or a line off the block's casts (#1294)", function()
   local typed = { { ph = 1, t = 30 }, { ph = 1, t = 90 } }
   local blk = table.concat(A.Lines({ name = "Orbs", times = typed, rows = { { label = "{cross} orb", text = "", tokens = { "Abu" }, casts = "all" } } }, typed), "\n")
   local text = table.concat({ "EncounterID:1;Name:Stale", blk, "",
@@ -236,8 +236,10 @@ check("stale: never a spell, a role, a line that follows a row, a near-miss, or 
     "Healers: Kip, Ned",
     "Soaks",
     "Left: Cheo, Kip, Quin, Rob",
-    "time:30;ph:1;tag:Kip;text:Use a defensive;",          -- a player, at a cast, in no row's words: stale
-    "time:90.03;ph:1;tag:Quin;text:Move out;",            -- within the same-time tolerance: stale
+    "time:30;ph:1;tag:Kip;text:Carry the orb out;",       -- a player, at a cast, in no row's words, sharing "orb": stale
+    "time:90.03;ph:1;tag:Quin;text:Move to the orbs;",    -- within the same-time tolerance, sharing the block's name: stale
+    "time:30;ph:1;tag:Kip;text:Use a defensive;",         -- shares no word with the block (Alex, 2026-11-15): kept
+    "time:30;ph:1;tag:Kip;text:Stack on {cross};",        -- shares only a raid marker: kept
     "time:30;ph:1;tag:Zed;text:Kicks;",                   -- follows Kicks: Zed
     "time:30;ph:1;tag:healers;text:Raid CD;",             -- a role
     "time:30;ph:1;tag:Warrior;text:Shout;",               -- a class
@@ -258,14 +260,15 @@ check("stale: never a spell, a role, a line that follows a row, a near-miss, or 
   assert(near, "the fixture's near-miss is one")
   assert(m.follow[at["time:30;ph:1;tag:Zed;text:Kicks;"]], "the fixture's Kicks line follows its row")
   local r = Check.Run(text)
-  local want = { at["time:30;ph:1;tag:Kip;text:Use a defensive;"], at["time:90.03;ph:1;tag:Quin;text:Move out;"] }
+  local want = { at["time:30;ph:1;tag:Kip;text:Carry the orb out;"], at["time:90.03;ph:1;tag:Quin;text:Move to the orbs;"] }
   table.sort(want)
   assert(table.concat(r.stale, ",") == table.concat(want, ","), "only Kip's and Quin's: " .. table.concat(r.stale, ",") .. " want " .. table.concat(want, ","))
   assert(#r.old == 1 and r.old[1] == at["time:30;ph:1;tag:Abu;text:Grab {cross} orb;"], "the old line stays old")
   local out = Check.RemoveStale(text, r)
-  assert(#lines(out) == #lines(text) - 2 and not out:find("Move out", 1, true) and out:find("time:60;ph:1;tag:Kip;text:Use a defensive;", 1, true), out)
+  assert(#lines(out) == #lines(text) - 2 and not out:find("Move to the orbs", 1, true) and out:find("time:30;ph:1;tag:Kip;text:Use a defensive;", 1, true)
+    and out:find("Stack on {cross}", 1, true), out)
   -- a stale line for a player no row lists is stale, not an orphan as well
-  local lone = text .. "\ntime:90;ph:1;tag:Nobody;text:Stand here;"
+  local lone = text .. "\ntime:90;ph:1;tag:Nobody;text:Stand on the orb;"
   local r2 = Check.Run(lone)
   assert(r2.stale[#r2.stale] == #lines(lone) and #r2.orphans == 0, "stale, no orphan: " .. summary(r2))
 end)
@@ -278,6 +281,7 @@ check("RemoveLines: one helper for every delete; every other byte kept, CRLF and
   assert(Check.RemoveLines(text, { [3] = true, [4] = true }) == "a\r\nb", "a set works too")
   assert(Check.RemoveLines(text, {}) == text, "nothing")
   assert(Check.RemoveLines("a\nb\n", { 1 }) == "b\n", "a trailing line end kept")
+  assert(Check.RemoveLines(text, { 4, 2, 2 }) == "a\r\nc", "unsorted, a line twice: each once")
 end)
 
 check("SameLines: every line with the same players and text, any time and phase (#1294)", function()
@@ -286,6 +290,11 @@ check("SameLines: every line with the same players and text, any time and phase 
   assert(#Check.SameLines(COILED, 42) == 6, "Granddh's six, not Lulu's")
   assert(#Check.SameLines(COILED, 85) == 3, "Whitecrows' P3 three")
   assert(#Check.SameLines(COILED, 158) == 0, "a heading: none")
+  -- a spell line: the same spell only; listed by the spell's name when it has no text (review, #1294)
+  local spells = "time:10;ph:1;tag:Kip;spellid:740;\ntime:20;ph:1;tag:Kip;spellid:98008;\ntime:30;ph:1;tag:Kip;spellid:740;"
+  assert(table.concat(Check.SameLines(spells, 1), ",") == "1,3", "Tranquility twice, not the other spell")
+  local g = Check.Groups(spells, { 1, 2, 3 })
+  assert(#g == 2 and g[1].text == "Spell740" and g[1].n == 2 and g[2].text == "Spell98008", "by spell: " .. tostring(g[1] and g[1].text))
 end)
 
 check("Groups and InBlocks: what a confirm lists (#1294)", function()
