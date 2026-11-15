@@ -45,7 +45,8 @@ local function frame(kind, template)
     function f:ClearFocus() if self.focus then self.focus = false if self.OnEditFocusLost then self.OnEditFocusLost(self) end end end
   end
   if template == "WowStyle1DropdownTemplate" then
-    function f:SetupMenu(gen) self.gen = gen end
+    -- as the game's (DropdownButtonMixin:SetupMenu): a shown dropdown builds its menu at once, before UI.Dropdown returns
+    function f:SetupMenu(gen) self.gen = gen self.setupGenerated = false if self.shown then self:GenerateMenu() self.setupGenerated = true end end
     function f:GenerateMenu()
       local radios = {}
       local element
@@ -145,6 +146,16 @@ enabled = false d.refresh()
 print("disabled: dropdown enabled " .. tostring(d.Dropdown.enabled) .. ", label grey " .. tostring(d.Label.color[1] == 0.5))
 enabled = true d.refresh()
 print("enabled again: label color restored " .. tostring(d.Label.color[2] == 0.82))
+-- The game's SetupMenu builds the menu at once: options and get run before UI.Dropdown returns, so a caller's
+-- closures can't rely on the row it is assigning.
+do
+  local asked, early
+  early = UI.Dropdown({}, "Early", { options = function() asked = (asked or "") .. "o" return { { key = "a", label = "A" } } end,
+    get = function() asked = (asked or "") .. "g" assert(early == nil, "early: row assigned before the menu was built") return "a" end, set = function() end })
+  assert(early.Dropdown.setupGenerated == true and asked and asked:find("o", 1, true) and asked:find("g", 1, true),
+    "dropdown: options and get run while UI.Dropdown builds the row: " .. tostring(asked))
+  print("ok dropdown: options and get run during construction, as the game's SetupMenu does")
+end
 -- Options from a function, read each time the menu opens.
 local list = { { key = "none", label = "None picked" } }
 local d2 = UI.Dropdown({}, "Expected roster", { options = function() return list end, get = function() return "a" end, set = function() end })
