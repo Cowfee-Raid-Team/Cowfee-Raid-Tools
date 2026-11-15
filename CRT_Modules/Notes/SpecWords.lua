@@ -18,7 +18,8 @@ local ADDON, CRT = ...
 -- Who a word means: a word with no number means every player of that spec, as a class word does. A numbered word
 -- ("RestoDruid2") is a healer slot no player was assigned to yet (an assigned slot writes its player's name), so it
 -- means a player only when that is not in doubt: the one player of that spec in the raid, while the note names only one
--- slot number of that spec. Only the note counts, so every raider reads it the same way, whoever planned it.
+-- slot number of that spec, and the note doesn't name them for a listed cooldown of the class (a named healer is not
+-- the open slot, #1293). Only the note counts, so every raider reads it the same way, whoever planned it.
 -- More specs are more rows of SPECS, never more code. SpecializationIDs are from
 -- warcraft.wiki.gg/wiki/SpecializationID, as the season's GameIDs.lua cites them.
 
@@ -170,14 +171,29 @@ local function slotCount(spec, info)
     return info and info.counts and info.counts[spec] or 0
 end
 
+-- Whether the note names player p by name for a listed cooldown of class (info.named, Specs.Mark).
+local function namedInNote(p, class, info)
+    local named = info and info.named
+    if not named then
+        return false
+    end
+    for _, k in ipairs({ p.key, p.name, type(p.key) == "string" and (p.key:gsub("%-.*$", "")) or nil }) do
+        if usable(k) and named[k:lower()] == class then
+            return true
+        end
+    end
+    return false
+end
+
 -- The players spec word e (slot n, or nil for no number) means: every player of its spec, or for a numbered word
--- the one player of its spec while the boss has one slot of it, else nobody. info: the note's slot counts.
+-- the one player of its spec while the boss has one slot of it, else nobody. A numbered word never means a player the
+-- note names for a listed cooldown of the class (a named healer, not the open slot, #1293). info: the note's (Mark).
 function Specs.Matching(e, n, info)
     local players = Specs.Players(e.spec)
     if n == nil then
         return players
     end
-    if #players == 1 and slotCount(e.spec, info) <= 1 then
+    if #players == 1 and slotCount(e.spec, info) <= 1 and not namedInNote(players[1], e.class, info) then
         return players
     end
     return {}
@@ -200,14 +216,38 @@ function Specs.Display(word, info, who)
     return Specs.Label(e.spec, n), e.class, nil
 end
 
+-- spellID -> class for the season's listed class cooldowns (CRT.Bosses:Cooldowns()).
+local function listedClasses()
+    local B, out = CRT.Bosses, {}
+    local ok, list = false, nil
+    if B and B.Cooldowns then
+        ok, list = pcall(B.Cooldowns, B)
+    end
+    for _, c in ipairs(ok and type(list) == "table" and list or {}) do
+        if type(c) == "table" and type(c.spellID) == "number" and type(c.class) == "string" then
+            out[c.spellID] = c.class
+        end
+    end
+    return out
+end
+
 -- Gives every timer of a parsed note whose tags hold a spec word the note's slot counts, one table for the note:
--- t.specInfo = { encounterID, counts = { [spec] = how many slot numbers the note names } }. Nothing else changes.
+-- t.specInfo = { encounterID, counts = { [spec] = how many slot numbers the note names }, named = { [a tag that is
+-- no spec word, lower case] = the class of a listed cooldown the note gives it } }. Nothing else changes.
 function Specs.Mark(note)
-    local info = { encounterID = note.encounterID, counts = {} }
+    local info = { encounterID = note.encounterID, counts = {}, named = {} }
     local seen, any = {}, false
+    local classOf
     for _, t in ipairs(note.timers or {}) do
         for _, tag in ipairs(t.tags or {}) do
             local e, n = Specs.Read(tag)
+            if not e and usable(tag) and type(t.spellId) == "number" then
+                classOf = classOf or listedClasses()
+                local class = classOf[t.spellId]
+                if class then
+                    info.named[tag:lower()] = class
+                end
+            end
             if e then
                 t.specInfo, any = info, true
                 if n then

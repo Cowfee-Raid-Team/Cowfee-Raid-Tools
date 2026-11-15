@@ -122,6 +122,18 @@ do
   slotCounts[3001] = { [105] = 2 }
   check(E:IsMine(item({ "RestoDruid2" }, { [105] = 1 })), "slots planned on this computer don't count: the note alone decides")
   slotCounts = {}
+  -- #1293: a numbered word never means a player the note names for a listed cooldown of the class (a named healer)
+  CRT.Bosses = { Cooldowns = function() return { { class = "DRUID", spellID = 740 }, { class = "PRIEST", spellID = 62618 } } end }
+  local named = P.Parse("EncounterID:3001\\ntime:10;tag:Me;spellid:740;\\ntime:20;tag:RestoDruid2;spellid:740;")
+  check(named.timers[2].specInfo.named["me"] == "DRUID", "the note's info keeps the names it gives a listed cooldown, with its class")
+  check(E:IsMine(named.timers[1]) and not E:IsMine(named.timers[2]), "named for Tranquility: your own line, not RestoDruid2's")
+  local other = P.Parse("EncounterID:3001\\ntime:10;tag:Me;spellid:1;\\ntime:20;tag:RestoDruid2;spellid:740;")
+  check(E:IsMine(other.timers[2]), "named only for a spell not listed: RestoDruid2 is still yours")
+  local priest = P.Parse("EncounterID:3001\\ntime:10;tag:Me;spellid:62618;\\ntime:20;tag:RestoDruid2;spellid:740;")
+  check(E:IsMine(priest.timers[2]), "named for another class's cooldown: RestoDruid2 is still yours")
+  local plain = P.Parse("EncounterID:3001\\ntime:10;tag:Me;spellid:740;\\ntime:20;tag:RestoDruid;spellid:740;")
+  check(E:IsMine(plain.timers[2]), "a plain word still means every player of the spec")
+  CRT.Bosses = nil
   -- a tag that is a group member's name is only that name, never a spec word
   roster[#roster + 1] = { key = "Mistweaver-Home", name = "Mistweaver", class = "PRIEST" }
   cache["mistweaver-home"] = 270

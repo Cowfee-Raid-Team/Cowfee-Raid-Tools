@@ -459,12 +459,13 @@ do
   local remaining = 0
   for _, tm in ipairs(N:Parsed(1).timers) do remaining = remaining + 1 end
   check(remaining == 0, "every line of slot 1 left the note (Leafy's, RestoDruid's and RestoDruid1's)")
-  check(lane(v, "healers:slot:105:2") and lane(v, "healers:slot:105:2").label == "Resto Druid", "the lone slot 2 reads Resto Druid")
+  -- #1293: a slot numbered above 1 keeps its number alone too (the plain word means every player of the spec)
+  check(lane(v, "healers:slot:105:2") and lane(v, "healers:slot:105:2").label == "Resto Druid 2", "the lone slot 2 reads Resto Druid 2")
   HV.DoubleClick(v, 40, v.lanes[laneIndex(v, "healers:slot:105:2:740")])
   local _, t2 = lastLine()
-  check(t2.tags[1] == "RestoDruid", "the only slot of its spec writes the word with no number")
+  check(t2.tags[1] == "RestoDruid2", "the lone slot 2 writes RestoDruid2")
   v:Refresh()
-  check(#flagsOn(v, laneIndex(v, "healers:slot:105:2:740")) == 1, "and the plain word's cast is on it")
+  check(#flagsOn(v, laneIndex(v, "healers:slot:105:2:740")) == 1, "and the numbered word's cast is on it")
   -- adding again takes the free number 1
   v.hvAdd.buttons.add.OnClick(v.hvAdd.buttons.add)
   menus[#menus].items[2].fn()
@@ -510,7 +511,7 @@ do
   setNote({ "time:20;ph:1;tag:RestoShaman2;spellid:108280;", "time:30;ph:1;tag:mistweaver;spellid:115310;" })
   v:Refresh()
   local head = lane(v, "healers:slot:264:2")
-  check(head and head.label == "Resto Shaman" and #flagsOn(v, laneIndex(v, "healers:slot:264:2:108280")) == 1,
+  check(head and head.label == "Resto Shaman 2" and #flagsOn(v, laneIndex(v, "healers:slot:264:2:108280")) == 1,
     "RestoShaman2 from the note: its slot and its cast")
   check(lane(v, "healers:slot:270:1") and #flagsOn(v, laneIndex(v, "healers:slot:270:1:115310")) == 1, "a plain word in any case: slot 1")
   check(CRT.db.timeline.healerSlots[3001] == nil, "not kept until it is changed")
@@ -705,15 +706,16 @@ end
 
 -- #1293: a named healer's menu: Reassign player, Clear player, Duplicate all CDs, then the rows ------------------------------
 do
-  setLayout({ "Halo-Home", "Me-Home", "Leafy-Home", "Bark-Home" })
-  liveRoster = { { "Halo", "PRIEST", "HEALER" }, { "Me", "PALADIN", "HEALER" }, { "Leafy", "DRUID", "HEALER" }, { "Bark", "DRUID", "HEALER" } }
-  CRT.db.specCache["leafy-home"], CRT.db.specCache["bark-home"] = 105, 105
+  setLayout({ "Halo-Home", "Me-Home", "Leafy-Home", "Bark-Home", "Rain-Home" })
+  liveRoster = { { "Halo", "PRIEST", "HEALER" }, { "Me", "PALADIN", "HEALER" }, { "Leafy", "DRUID", "HEALER" }, { "Bark", "DRUID", "HEALER" },
+    { "Rain", "SHAMAN", "DAMAGER" } }
+  CRT.db.specCache["leafy-home"], CRT.db.specCache["bark-home"], CRT.db.specCache["rain-home"] = 105, 105, 262
   now = now + 10
   S.Reset()
   CRT.db.timeline.healerSlots = {}
   CRT.db.timeline.healerOrder = nil
   local LINES = { "time:20;ph:1;tag:Leafy;spellid:740;", "time:50;ph:2;tag:Leafy Halo;spellid:391528;",
-    "time:70;ph:1;tag:Leafy;spellid:12345;", "time:80;ph:1;tag:Halo;spellid:64843;" }
+    "time:70;ph:1;tag:Leafy;spellid:12345;", "time:80;ph:1;tag:Halo;spellid:64843;", "time:90;ph:1;tag:Leafy;spellid:197721;" }
   setNote(LINES)
   v:Refresh()
   local function timers() -- the note's timed lines in line order
@@ -723,6 +725,11 @@ do
   end
   local function line(n) return N:RawLines(1)[n + 1] end -- after the header line
   local function tagsOf(tm) return table.concat(tm.tags, " ") end
+  local E = CRT.NoteEngine
+  local realPreview, previewAs = CRT.Alerts.PreviewAs, nil
+  CRT.Alerts.PreviewAs = function() return previewAs end
+  local function mineAs(who, tm) previewAs = who local r = E:IsMine(tm) previewAs = nil return r end
+  local function onlyLeafy(only) CRT.db.specCache["bark-home"] = (not only) and 105 or nil now = now + 10 S.Reset() end
   local menu = headerMenu(v, "healers:leafy-home")
   local texts = {}
   for i = 1, 5 do texts[i] = menu.items[i].kind == "divider" and "-" or menu.items[i].text end
@@ -732,32 +739,43 @@ do
   local dup = find(menu.items, "Duplicate all CDs")
   check(dup.enabled ~= false and find(menu.items, "Clear player").enabled ~= false, "Duplicate and Clear are on for a known spec")
 
-  -- Duplicate all CDs: a new open Resto Druid slot with copies of Leafy's cooldown casts, Leafy keeps hers
+  -- Duplicate all CDs: a new open Resto Druid slot, numbered 2, with copies of Leafy's casts of its cooldowns
   dup.fn()
   local saved = CRT.db.timeline.healerSlots[3001]
-  check(saved and #saved == 1 and saved[1].spec == 105 and saved[1].n == 1 and saved[1].player == nil, "a Resto Druid slot, no player")
+  check(saved and #saved == 1 and saved[1].spec == 105 and saved[1].n == 2 and saved[1].player == nil, "a Resto Druid slot 2, no player")
   local t = timers()
-  check(#t == 6, "two copies added: " .. #t)
-  check(line(1) == LINES[1] and line(2) == LINES[2] and line(3) == LINES[3] and line(4) == LINES[4], "Leafy's and Halo's lines stay as they were")
-  check(t[5].tags[1] == "RestoDruid" and #t[5].tags == 1 and t[5].spellId == 740 and t[5].time == 20 and t[5].ph == 1,
-    "Tranquility copied at 0:20 in phase 1 with the spec word: " .. tostring(line(5)))
-  check(tagsOf(t[6]) == "RestoDruid" and t[6].spellId == 391528 and t[6].time == 50 and t[6].ph == 2,
-    "the shared Convoke copied for the slot alone, phase 2: " .. tostring(line(6)))
+  check(#t == 7, "two copies added (not Flourish, which the slot has no row for): " .. #t)
+  check(line(1) == LINES[1] and line(2) == LINES[2] and line(3) == LINES[3] and line(4) == LINES[4] and line(5) == LINES[5],
+    "Leafy's and Halo's lines stay as they were")
+  check(t[6].tags[1] == "RestoDruid2" and #t[6].tags == 1 and t[6].spellId == 740 and t[6].time == 20 and t[6].ph == 1,
+    "Tranquility copied at 0:20 in phase 1 with the numbered word: " .. tostring(line(6)))
+  check(tagsOf(t[7]) == "RestoDruid2" and t[7].spellId == 391528 and t[7].time == 50 and t[7].ph == 2,
+    "the shared Convoke copied for the slot alone, phase 2: " .. tostring(line(7)))
   local leafy = laneIndex(v, "healers:leafy-home")
   local j = leafy
   while v.lanes[j + 1] and v.lanes[j + 1].key and v.lanes[j + 1].key:find("^healers:leafy%-home:") do j = j + 1 end
-  check(laneIndex(v, "healers:slot:105:1") == j + 1, "the slot comes right under Leafy's block: " .. labels(v))
-  check(laneIndex(v, "healers:me-home") > laneIndex(v, "healers:slot:105:1"), "not at the end: Me comes after it: " .. labels(v))
-  check(#flagsOn(v, laneIndex(v, "healers:slot:105:1:740")) == 1 and #flagsOn(v, laneIndex(v, "healers:leafy-home:740")) == 1,
+  check(laneIndex(v, "healers:slot:105:2") == j + 1, "the slot comes right under Leafy's block: " .. labels(v))
+  check(lane(v, "healers:slot:105:2").label == "Resto Druid 2", "it reads Resto Druid 2")
+  check(laneIndex(v, "healers:me-home") > laneIndex(v, "healers:slot:105:2"), "not at the end: Me comes after it: " .. labels(v))
+  check(#flagsOn(v, laneIndex(v, "healers:slot:105:2:740")) == 1 and #flagsOn(v, laneIndex(v, "healers:leafy-home:740")) == 1,
     "the slot's Tranquility is drawn, and Leafy's")
+  -- the copies never alert Leafy: alone of her spec, or with Bark
+  for _, only in ipairs({ true, false }) do
+    onlyLeafy(only)
+    t = timers()
+    local what = only and "the only Resto Druid" or "with Bark"
+    check(mineAs("Leafy-Home", t[1]) and mineAs("Leafy-Home", t[2]), what .. ": Leafy's own lines are hers")
+    check(not mineAs("Leafy-Home", t[6]) and not mineAs("Leafy-Home", t[7]), what .. ": the copies are not")
+  end
+  check(not mineAs("Bark-Home", t[6]), "with two Resto Druids, the copies are nobody's")
 
-  -- a second duplicate: slot 2, and slot 1's plain word is numbered
+  -- a second duplicate: slot 3; the slot 2 lines stay
   find(headerMenu(v, "healers:leafy-home").items, "Duplicate all CDs").fn()
   saved = CRT.db.timeline.healerSlots[3001]
-  check(#saved == 2 and saved[2].n == 2, "a second duplicate is slot 2")
+  check(#saved == 2 and saved[2].n == 3, "a second duplicate is slot 3")
   t = timers()
-  check(#t == 8 and t[5].tags[1] == "RestoDruid1" and t[6].tags[1] == "RestoDruid1" and t[7].tags[1] == "RestoDruid2"
-    and t[8].tags[1] == "RestoDruid2", "slot 1's lines say RestoDruid1, the new ones RestoDruid2: " .. table.concat(N:RawLines(1), " / "))
+  check(#t == 9 and t[6].tags[1] == "RestoDruid2" and t[7].tags[1] == "RestoDruid2" and t[8].tags[1] == "RestoDruid3"
+    and t[9].tags[1] == "RestoDruid3", "RestoDruid2 stays, the new ones RestoDruid3: " .. table.concat(N:RawLines(1), " / "))
 
   -- Reassign player: the raid's Resto Druids first, then Type a name; only Leafy's cooldown lines change
   local sub = find(headerMenu(v, "healers:leafy-home").items, "Reassign player")
@@ -765,9 +783,10 @@ do
     "Bark (a Resto Druid in the raid) first, not Leafy herself, Type a name... last")
   find(sub.items, "Bark").fn()
   t = timers()
-  check(tagsOf(t[1]) == "Bark" and tagsOf(t[2]) == "Bark Halo", "Leafy's cooldown lines name Bark; the shared line keeps Halo: " .. tagsOf(t[2]))
+  check(tagsOf(t[1]) == "Bark" and tagsOf(t[2]) == "Bark Halo" and tagsOf(t[5]) == "Bark",
+    "Leafy's cooldown lines name Bark; the shared line keeps Halo: " .. tagsOf(t[2]))
   check(line(3) == LINES[3] and line(4) == LINES[4], "a line for another spell and Halo's line are untouched")
-  check(t[5].tags[1] == "RestoDruid1" and t[7].tags[1] == "RestoDruid2", "the slots' lines are untouched")
+  check(t[6].tags[1] == "RestoDruid2" and t[8].tags[1] == "RestoDruid3", "the slots' lines are untouched")
   -- Type a name
   find(find(headerMenu(v, "healers:bark-home").items, "Reassign player").items, "Type a name").fn()
   check(typed and typed.text == "Who takes Bark's cooldowns?", "Type a name asks who: " .. tostring(typed and typed.text))
@@ -787,6 +806,43 @@ do
   check(lines[1] == "Spec not known", "it says the spec is not known: " .. tostring(lines[1]))
   find(find(menu.items, "Reassign player").items, "Leafy").fn()
   check(tagsOf(timers()[1]) == "Leafy", "Reassign on an unknown spec renames the lines")
+  -- a known spec that is no healer's (Rain, Elemental, given Spirit Link): "Not a healer spec"
+  setNote({ "time:20;ph:1;tag:Rain;spellid:98008;" })
+  v:Refresh()
+  menu = headerMenu(v, "healers:rain-home")
+  lines = {}
+  find(menu.items, "Duplicate all CDs").tooltip(lines)
+  check(find(menu.items, "Clear player").enabled == false and lines[1] == "Not a healer spec", "a damage spec: Not a healer spec: " .. tostring(lines[1]))
+  -- Reassign on a healer with no lines of theirs: nothing changes, the order neither
+  CRT.db.timeline.healerOrder = { [3001] = { "halo-home", "me-home", "leafy-home" } }
+  local noteBefore = N:Get(1).raw
+  find(find(headerMenu(v, "healers:me-home").items, "Reassign player").items, "Type a name").fn()
+  typeName("Zed")
+  check(N:Get(1).raw == noteBefore and table.concat(CRT.db.timeline.healerOrder[3001], ",") == "halo-home,me-home,leafy-home",
+    "no lines to rename: the note and the order stay as they were")
+  CRT.db.timeline.healerOrder = nil
+
+  -- + Add healer while the note names a Resto Druid: slot 2, never the plain word, and its casts don't alert her
+  onlyLeafy(true)
+  setNote({ "time:20;ph:1;tag:Leafy;spellid:740;" })
+  CRT.db.timeline.healerSlots = {}
+  v:Refresh()
+  v.hvAdd.buttons.add.OnClick(v.hvAdd.buttons.add)
+  menus[#menus].items[2].fn()
+  check(CRT.db.timeline.healerSlots[3001][1].n == 2, "+ Add healer beside the named Leafy: slot 2")
+  HV.DoubleClick(v, 100, v.lanes[laneIndex(v, "healers:slot:105:2:740")])
+  t = timers()
+  check(t[2].tags[1] == "RestoDruid2", "its cast writes RestoDruid2: " .. tostring(line(2)))
+  check(mineAs("Leafy-Home", t[1]) and not mineAs("Leafy-Home", t[2]), "Leafy gets her own Tranquility, not the slot's")
+  -- Duplicate beside a first slot's plain word: that slot's lines numbered, the copy RestoDruid2
+  setNote({ "time:10;ph:1;tag:RestoDruid;spellid:740;", "time:20;ph:1;tag:Leafy;spellid:740;" })
+  CRT.db.timeline.healerSlots = { [3001] = { { spec = 105, n = 1 } } }
+  v:Refresh()
+  find(headerMenu(v, "healers:leafy-home").items, "Duplicate all CDs").fn()
+  t = timers()
+  check(t[1].tags[1] == "RestoDruid1" and t[3].tags[1] == "RestoDruid2" and CRT.db.timeline.healerSlots[3001][2].n == 2,
+    "the first slot's plain word is RestoDruid1, the copy RestoDruid2: " .. table.concat(N:RawLines(1), " / "))
+  onlyLeafy(false)
 
   -- Clear player: the lane becomes a slot of her spec, her lines take its word
   setNote({ "time:20;ph:1;tag:Leafy;spellid:740;", "time:30;ph:1;tag:Leafy Halo;spellid:33891;", "time:40;ph:1;tag:Leafy;spellid:12345;" })
@@ -822,12 +878,12 @@ do
   mv:SetMode("healers")
   find(headerMenu(mv, "healers:leafy-home").items, "Duplicate all CDs").fn()
   t = timers()
-  check(#t == 2 and t[2].tags[1] == "RestoDruid" and t[2].time == 30 and N:Get(2).raw == HEROIC,
+  check(#t == 2 and t[2].tags[1] == "RestoDruid2" and t[2].time == 30 and N:Get(2).raw == HEROIC,
     "the Mythic note gets the copy; the Heroic note is as it was")
   find(find(headerMenu(mv, "healers:leafy-home").items, "Reassign player").items, "Bark").fn()
   check(N:Get(2).raw == HEROIC and timers()[1].tags[1] == "Bark", "Reassign on Mythic leaves the Heroic note too")
 
-  -- not the raid leader or an assistant: the note stays; Reassign is greyed, the slots are your own
+  -- not the raid leader or an assistant: the note stays; Reassign and Clear are greyed, Duplicate is your own empty slot
   setNote(LINES)
   CRT.db.timeline.healerSlots = {}
   group.leader = false
@@ -835,13 +891,18 @@ do
   local before = N:Get(1).raw
   menu = headerMenu(v, "healers:leafy-home")
   local re = find(menu.items, "Reassign player")
-  check(re.enabled == false and re.tooltip, "Reassign is greyed, with a tooltip")
+  clear = find(menu.items, "Clear player")
+  lines = {}
+  check(re.enabled == false and re.tooltip and clear.enabled == false and clear.tooltip, "Reassign and Clear are greyed, with a tooltip")
+  clear.tooltip(lines)
+  check(lines[1] == Slots.TEXT.leadOnly, "Clear says only the raid leader or an assistant: " .. tostring(lines[1]))
   find(menu.items, "Duplicate all CDs").fn()
   check(N:Get(1).raw == before and CRT.db.timeline.healerSlots[3001] and #CRT.db.timeline.healerSlots[3001] == 1,
     "Duplicate: your own slot, the raid note as it was")
-  find(headerMenu(v, "healers:leafy-home").items, "Clear player").fn()
-  check(N:Get(1).raw == before and #CRT.db.timeline.healerSlots[3001] == 2, "Clear: your own slot, the raid note as it was")
+  check(not Slots.ClearPlayer(Slots.Context(v), Slots.Named(lane(v, "healers:leafy-home")), {}) and N:Get(1).raw == before,
+    "Clear player does nothing for you")
   group.leader = true
+  CRT.Alerts.PreviewAs = realPreview
   setNote({})
   CRT.db.timeline.healerSlots = {}
   CRT.db.timeline.healerOrder = nil
