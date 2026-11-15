@@ -88,7 +88,7 @@ StaticPopup_Show = function(which, a1, a2, data) local f = mock() shown[#shown +
 StaticPopup_Visible = function(which) return visible == which and "StaticPopup1" or nil end
 local lifted = 0
 local function liftOver(d) if d then lifted = lifted + 1 end end
-local function shownPopup(ret) return ret end
+local function shownPopup(ret) return ret or mock() end -- with no frame, the real one finds any visible dialog
 
 local defaults = { enabled = false, raid = { lfr = true, normal = true, heroic = true, mythic = true }, dungeon = { keys = true, mythic = false, normal = false }, stopOnLeave = true, announce = true }
 local function copy(t) local o = {} for k, v in pairs(t) do o[k] = type(v) == "table" and copy(v) or v end return o end
@@ -549,7 +549,7 @@ C:SetEnabled(true)
 check(#shown == 3, "(asked)")
 printed, changed = {}, 0
 clickButton(2)
-check(answer() ~= nil and s.enabled == true, "Keep CRT on: the answer is saved, the master stays on")
+check(answer() == "crt" and s.enabled == true, "Keep CRT on: the answer is saved as crt, the master stays on: " .. tostring(answer()))
 check(#printed == 0, "Keep CRT on: no chat line")
 C:SetEnabled(false)
 C:SetEnabled(true)
@@ -612,14 +612,14 @@ clickButton(1)
 check(s.enabled == false, "Let Archon handle it: Log combat automatically is off")
 check(#printed == 1 and printed[1] == "Combat log: Archon Logger handles it, CRT's automatic logging is off.", "one chat line: " .. tostring(printed[1]))
 check(changed >= 1, "the tab is refreshed")
-check(answer() ~= nil, "the answer is saved")
+check(answer() == "other", "the answer is saved as other: " .. tostring(answer()))
 fire("PLAYER_ENTERING_WORLD", true, false)
 check(#shown == 7, "master off after Let Archon: a fresh login doesn't ask")
 -- ticking the master again by hand asks again
 C:SetEnabled(true)
 check(#shown == 8 and answer() == nil, "ticking again after Let Archon: the answer is cleared, asked again")
 clickButton(2)
-check(answer() ~= nil and s.enabled == true, "(Keep CRT on)")
+check(answer() == "crt" and s.enabled == true, "(Keep CRT on)")
 
 -- Archon Logger not loaded: never asked
 CRTDBChar.combatLog.otherLoggerAnswer = nil
@@ -635,7 +635,64 @@ StaticPopup_Show = nil
 local okP, errP = pcall(function() C:SetEnabled(false) C:SetEnabled(true) end)
 check(okP, "no StaticPopup_Show: no error: " .. tostring(errP))
 StaticPopup_Show = keepSP
+-- StaticPopup_Show gives no frame (no free dialog): nothing is lifted, not counted as shown
+StaticPopup_Show = function(which) shown[#shown + 1] = { which = which } return nil end
+CRTDBChar.combatLog.otherLoggerAnswer = nil
+visible = nil
+lifted = 0
+C:SetEnabled(false)
+check(C:SetEnabled(true) == nil and C:AskAboutOtherLogger() == false, "no frame from StaticPopup_Show: AskAboutOtherLogger is false")
+check(lifted == 0, "no frame: nothing is lifted (no unrelated dialog): " .. lifted)
+StaticPopup_Show = keepSP
+settle()
+
+-- CRT's zone logic starting the log with Archon Logger loaded: one chat line every time, even with Say in chat off
+local ARCHON_LINE = "Archon Logger is also running and may change your combat log."
+local function archonLines() local n = 0 for _, p in ipairs(printed) do if p == ARCHON_LINE then n = n + 1 end end return n end
+local function zoneStart()
+  logging = false
+  printed = {}
+  itype, diff = "raid", 15
+  fire("PLAYER_ENTERING_WORLD", false, false)
+  settle()
+end
+local function zoneLeave()
+  itype, diff = "none", 0
+  fire("PLAYER_ENTERING_WORLD", false, false)
+  settle()
+end
+zoneLeave()
+CRTDBChar.combatLog.otherLoggerAnswer = "crt"
+zoneStart()
+check(logging == true and C:Status().ours and archonLines() == 1, "a zone start with Archon Logger loaded (Keep CRT on): the line once: " .. archonLines())
+zoneLeave()
+CRTDBChar.combatLog.otherLoggerAnswer = nil
+visible = "CRT_COMBATLOG_OTHER_LOGGER" -- (a popup still open)
+zoneStart()
+check(archonLines() == 1, "unanswered: the line too")
+visible = nil
+zoneLeave()
+s.announce = false
+CRTDBChar.combatLog.otherLoggerAnswer = "crt"
+zoneStart()
+check(logging == true and archonLines() == 1 and #printed == 1, "Say in chat off: still the line, nothing else: " .. #printed)
+s.announce = true
+-- already on (CRT didn't start it): no line
+printed = {}
+fire("ZONE_CHANGED_NEW_AREA")
+settle()
+check(archonLines() == 0, "the log already on: no line")
+zoneLeave()
+-- the manual button: no line
+printed = {}
+C:StartNow()
+check(logging == true and archonLines() == 0, "Start logging now: no line")
+C:StopNow()
+-- without Archon Logger: no line
 addons["!ArchonLogger"] = nil
+zoneStart()
+check(logging == true and archonLines() == 0, "without Archon Logger: no line")
+zoneLeave()
 settle()
 
 -- The tab: Quality of Life > Combat log ---------------------------------------------------------------------------

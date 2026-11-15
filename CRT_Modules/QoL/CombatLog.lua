@@ -43,7 +43,9 @@ local ADDON, CRT = ...
 -- ticked and on a fresh login with it ticked (never on a /reload or a zone change; in combat, when combat ends).
 -- Let Archon handle it unticks the master; Keep CRT on changes nothing. The answer is saved per character in
 -- CRTDBChar.combatLog.otherLoggerAnswer ("other" or "crt"; nil, the default: not asked yet), Escape saves nothing,
--- and ticking the master by hand after Let Archon handle it clears the answer and asks again.
+-- and ticking the master by hand after Let Archon handle it clears the answer and asks again. Each time the zone logic
+-- starts the log with it loaded, chat says it is also running (whatever the answer, even with Say in chat off; not
+-- for Start logging now, a deliberate press).
 --   C_AddOns.IsAddOnLoaded(name) -> loadedOrLoading, loaded (warcraft.wiki.gg API_C_AddOns.IsAddOnLoaded, read
 --   2026-11-15), the global IsAddOnLoaded on older clients. The popup is the game's StaticPopup with CRT's own dialog,
 --   not StaticPopup_ShowCustomGenericConfirmation: that one runs the same cancelCallback for its second button and for
@@ -105,6 +107,7 @@ local TEXT = {
     letOther = "Let %s handle it",
     keepCRT = "Keep CRT on",
     otherHandles = "Combat log: %s handles it, CRT's automatic logging is off.",
+    otherRunning = "%s is also running and may change your combat log.", -- each start by the zone logic
 }
 
 CombatLog.ACL_CVAR = "advancedCombatLogging"
@@ -323,6 +326,11 @@ function decide(myGen, retried)
             state.logging, state.now = true, "crt"
             setOurs(true, label)
             announce(string.format(TEXT.on, label))
+            -- another logger loaded: said every time, whatever the popup's answer and Say in chat
+            local other = CombatLog.OtherLogger()
+            if other then
+                CRT:Print(string.format(TEXT.otherRunning, other))
+            end
         elseif started == nil and why2 == "busy" then
             busyAgain(myGen, retried)
         end
@@ -467,8 +475,8 @@ local function showAsk(name, short)
     d.button2 = TEXT.keepCRT
     local title, body = CombatLog.OtherLoggerText(name)
     local ok, frame = pcall(StaticPopup_Show, POPUP, title .. "\n\n" .. body, nil, { name = name })
-    if not ok then
-        return false
+    if not ok or type(frame) ~= "table" then
+        return false -- not shown (no free dialog): lift nothing, so no unrelated dialog is raised
     end
     local UI = CRT.UI
     if UI and UI.LiftOver and UI.ShownPopup then
