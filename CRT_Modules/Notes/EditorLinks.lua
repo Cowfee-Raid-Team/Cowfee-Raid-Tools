@@ -13,7 +13,8 @@ local ADDON, CRT = ...
 --   EL.Build(left)          makes the banner at the top of the rows' side
 --   EL.Clear(f)             a row frame redrawn: no tag, no hover, until LabelTag or TimerRow set them again
 --   EL.Tag(f)               a row frame's tag, or nil
---   EL.Refresh(width)       works the links out for the session (W.match) and draws the banner; its height, 0 hidden
+--   EL.Refresh(width, short)   works the links out for the session (W.match) and draws the banner; its height, 0
+--                           hidden. short (no room, EditorWindow's banner budget): the title and buttons only
 --   EL.LabelTag(f, i, x)    row i's tag at x right of its label; the width it takes, 0 for none
 --   EL.TimerRow(f, i)       a timer row's hover
 --   EL.Edit(fn)             runs fn, a change to the session's names that returns whether it changed anything, and
@@ -225,7 +226,7 @@ local function label(button, text)
     button:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
 end
 
-local function drawBanner(sum, width)
+local function drawBanner(sum, width, short)
     local b = W.banner
     local inner = width - 2 * L.pad
     local y = L.pad
@@ -235,10 +236,10 @@ local function drawBanner(sum, width)
     b.title:SetText(titleText(sum))
     y = y + math.ceil(b.title:GetStringHeight() or 14) + L.gap
     local texts = {}
-    for _, g in ipairs(sum.exact) do
+    for _, g in ipairs(short and {} or sum.exact) do
         texts[#texts + 1] = groupText(g, true)
     end
-    for _, g in ipairs(sum.near) do
+    for _, g in ipairs(short and {} or sum.near) do
         texts[#texts + 1] = groupText(g, false)
     end
     if #texts > L.maxGroups then
@@ -292,7 +293,7 @@ local function drawBanner(sum, width)
     return y
 end
 
-function EL.Refresh(width)
+function EL.Refresh(width, short)
     local s = W.session
     W.match, W.linkSummary = nil, nil
     if not s then
@@ -310,7 +311,7 @@ function EL.Refresh(width)
         end
         return 0
     end
-    return drawBanner(sum, width or 400) + L.below
+    return drawBanner(sum, width or 400, short) + L.below
 end
 
 -- Row tags and hover ---------------------------------------------------------------------------------------------

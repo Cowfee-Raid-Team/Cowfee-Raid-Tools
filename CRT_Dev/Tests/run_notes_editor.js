@@ -578,6 +578,9 @@ do
   assert(pop and pop:IsEnabled(), "a Pop out editor button by the Note text")
   assert(button("Pop out"), "and one by the Personal note")
   pop.scripts.OnClick(pop)
+  -- a roomy window, so every banner shows in full (section 12d tests a small one)
+  rawset(W.left, "height", 900)
+  Editor.Refresh()
   assert(W.window.shown and W.session and W.session.base == NOTE and not W.session.readOnly, "it opens the selected note, editable")
   assert(rawget(W.window, "title"):find("Nek'zali", 1, true), "titled with the note")
   assert(W.window.opts.kind == "popout" and W.window.opts.layer == "popups" and W.window.opts.saved() == CRT.db.notes.editor, "a pop-out on the popups layer, its place saved in notes.editor")
@@ -1469,13 +1472,17 @@ do
   assert(b.doubles.button:GetText() == "Remove old lines" and b.missing.button:GetText() == "Add missing casts", "the buttons' labels")
   -- each (?) lists them
   local function tip(k) local t = rawget(k.help, "helpText") return CRT.UI.TooltipPlain(t) end
-  assert(tip(b.doubles):find("P1 0:30 Abu: ", 1, true) and tip(b.doubles):find("Grab ", 1, true) and tip(b.doubles):find("Remove old lines takes out the typed line", 1, true), tip(b.doubles))
-  assert(tip(b.missing):find("Orbs: cast 2 (P1 1:30)", 1, true), tip(b.missing))
+  local dt = tip(b.doubles)
+  assert(dt:find("P1 0:30 Abu: ", 1, true) and dt:find("Remove old lines takes out these lines", 1, true), "doubles tip: " .. dt)
+  -- every line Remove old lines takes, with its time, names and text
+  assert(select(2, dt:gsub("P1 0:30 Abu: [^\\n]*Grab ", "")) == 2, "the double and the old line listed: " .. dt)
+  assert(tip(b.missing):find("Orbs: cast 2 (P1 1:30)", 1, true) and tip(b.missing):find("on the rows set to every cast", 1, true), tip(b.missing))
   assert(tip(b.orphans):find("P1 1:00 Quinn: Use a defensive", 1, true), tip(b.orphans))
   -- Remove old lines: asked first, nothing changes until it is accepted
   confirm = nil
   b.doubles.button.scripts.OnClick(b.doubles.button)
-  assert(confirm and confirm.text == "Take 1 old line out of the note? An Assign block replaced it." and confirm.acceptText == "Remove", tostring(confirm and confirm.text))
+  assert(confirm and confirm.text:find("Take 1 old line out of the note? An Assign block replaced it:\\nP1 0:30 Abu: ", 1, true) and confirm.text:find("Grab ", 1, true)
+    and confirm.acceptText == "Remove", "the confirm lists the line: " .. tostring(confirm and confirm.text))
   assert(W.session:Text() == note, "nothing changed yet")
   confirm.callback()
   local t = W.session:Text()
@@ -1499,6 +1506,36 @@ do
   assert(W.assignOn and not b.shown, "hidden under Add assignment")
   EA.state.done.scripts.OnClick(EA.state.done)
   assert(b.shown, "back")
+  -- three banners (Link, Make an Assign block, Note check) in the smallest window with Raw text open: the rows keep
+  -- their room, the note check and the Link banner go short, then the lower banners wait
+  Editor.Discard()
+  local busy = Notes:Import(note .. "\\nSoaks\\nLeft: Kip Zed\\ntime:40;ph:1;tag:Kip Zed;text:Soak;\\ntime:70;ph:1;tag:Kip Zed;text:Soak;")
+  assert(Editor.Open({ id = busy }), "opened")
+  assert(W.banner.shown and EA.state.banner.shown and b.shown and b.title.shown, "roomy: all three, the check in full")
+  local roomy = W.bannerH
+  W.rawShown = true
+  rawset(W.left, "height", 340)
+  Editor.Refresh()
+  local room = 340 - 66 - (150 + 6)
+  assert(W.bannerH <= room and W.bannerH < roomy, "the banners fit over the rows: " .. W.bannerH .. " of " .. room)
+  assert(W.banner.shown, "the Link banner always shows")
+  local short = b.shown and b.short.shown
+  assert(not b.shown or short, "the note check short, or waiting")
+  -- a bit more room: the check comes back short
+  rawset(W.left, "height", 450)
+  Editor.Refresh()
+  assert(b.shown and b.short.shown and not b.title.shown and b.short:GetText():find("Note check: 1 double, 1 old, 1 missing cast, 1 no row.", 1, true),
+    "short: " .. tostring(b.short:GetText()))
+  assert(b.doubles.button.shown and b.missing.button.shown and not b.doubles.text.shown, "its buttons still there")
+  assert(W.bannerH <= 450 - 66 - 156, "and it fits: " .. W.bannerH)
+  rawset(W.left, "height", 900)
+  W.rawShown = false
+  Editor.Refresh()
+  assert(b.title.shown and not b.short.shown, "full again")
+  -- Link saves links: the check is run again, not taken from before
+  local sig, before = EC.state.sig, EC.state.result
+  W.banner.link.scripts.OnClick(W.banner.link)
+  assert(EC.state.sig ~= sig and EC.state.result ~= before, "the check follows the saved links")
   -- a clean note: no banner
   Editor.Discard()
   local clean = Notes:Import("EncounterID:3470;Difficulty:Mythic;Name:Check Two\\nLeft: Abu\\ntime:30;ph:1;tag:Abu;text:Left;")
