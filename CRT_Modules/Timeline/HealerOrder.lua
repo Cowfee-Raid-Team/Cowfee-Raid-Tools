@@ -190,6 +190,29 @@ function Order.Rekey(encounterID, oldKey, newKey, keepOld)
     Order.SetHealers(encounterID, out)
 end
 
+-- A new block (newKey, Timeline/HealerSlots.lua: a slot made from a named healer, by Duplicate all CDs or Clear player)
+-- right after afterKey's: shown is the view's blocks' keys top to bottom, and the boss's saved order becomes that
+-- order with newKey after afterKey (a place newKey had already goes), the saved keys not shown after it. Nothing
+-- changes when afterKey isn't shown.
+function Order.PlaceAfter(encounterID, shown, afterKey, newKey)
+    if type(encounterID) ~= "number" or type(newKey) ~= "string" or afterKey == newKey then
+        return
+    end
+    local out, found = {}, false
+    for _, k in ipairs(type(shown) == "table" and shown or {}) do
+        if k ~= newKey then
+            out[#out + 1] = k
+        end
+        if k == afterKey then
+            out[#out + 1] = newKey
+            found = true
+        end
+    end
+    if found then
+        Order.SetHealers(encounterID, merged(out, Order.Healers(encounterID), Order.MAX_KEYS))
+    end
+end
+
 -- A slot of spec on the boss got a player (key, any case; Timeline/HealerSlots.lua's Assign): the block keeps its
 -- place, so slotKey (the open slot's "slot:<spec>:<n>", or the player it had) becomes the player's key in the boss's
 -- order (once: a place they had already goes), or with keepOld comes right after it (the player it had is a roster

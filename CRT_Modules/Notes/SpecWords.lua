@@ -15,10 +15,12 @@ local ADDON, CRT = ...
 --                                 spec seen last (Groups.CachedSpec); unknown spec is nobody's
 --   Specs.Matching(e, n, info)    who a spec word means (below)
 --   Specs.Mark(note)              gives a parsed note's timers with a spec word the note's slot counts (Parse.lua)
+--   Specs.Named(p, spec, info)    whether the note names player p for one of spec's major healing cooldowns
 -- Who a word means: a word with no number means every player of that spec, as a class word does. A numbered word
 -- ("RestoDruid2") is a healer slot no player was assigned to yet (an assigned slot writes its player's name), so it
 -- means a player only when that is not in doubt: the one player of that spec in the raid, while the note names only one
--- slot number of that spec. Only the note counts, so every raider reads it the same way, whoever planned it.
+-- slot number of that spec, and the note doesn't name them for a listed cooldown of the class (a named healer is not
+-- the open slot, #1293). Only the note counts, so every raider reads it the same way, whoever planned it.
 -- More specs are more rows of SPECS, never more code. SpecializationIDs are from
 -- warcraft.wiki.gg/wiki/SpecializationID, as the season's GameIDs.lua cites them.
 
@@ -170,14 +172,32 @@ local function slotCount(spec, info)
     return info and info.counts and info.counts[spec] or 0
 end
 
+-- Whether the note names player p by name for one of spec's major healing cooldowns (info.named, Specs.Mark).
+local function namedInNote(p, spec, info)
+    local named = info and info.named
+    if not named then
+        return false
+    end
+    for _, k in ipairs({ p.key, p.name, type(p.key) == "string" and (p.key:gsub("%-.*$", "")) or nil }) do
+        local specs = usable(k) and named[k:lower()]
+        if specs and specs[spec] then
+            return true
+        end
+    end
+    return false
+end
+Specs.Named = namedInNote
+
 -- The players spec word e (slot n, or nil for no number) means: every player of its spec, or for a numbered word
--- the one player of its spec while the boss has one slot of it, else nobody. info: the note's slot counts.
+-- the one player of its spec while the boss has one slot of it, else nobody. A numbered word never means a player the
+-- note names for one of the spec's major healing cooldowns (a named healer, not the open slot, #1293): it means nobody
+-- until a player is assigned. info: the note's (Mark). Healer CDs' slot hints read it too (Timeline/HealerSlots.lua).
 function Specs.Matching(e, n, info)
     local players = Specs.Players(e.spec)
     if n == nil then
         return players
     end
-    if #players == 1 and slotCount(e.spec, info) <= 1 then
+    if #players == 1 and slotCount(e.spec, info) <= 1 and not namedInNote(players[1], e.spec, info) then
         return players
     end
     return {}
@@ -200,14 +220,51 @@ function Specs.Display(word, info, who)
     return Specs.Label(e.spec, n), e.class, nil
 end
 
--- Gives every timer of a parsed note whose tags hold a spec word the note's slot counts, one table for the note:
--- t.specInfo = { encounterID, counts = { [spec] = how many slot numbers the note names } }. Nothing else changes.
+-- spellID -> { [healer spec] = true } for the season's major healing cooldowns (CRT.Bosses:Cooldowns(): an entry
+-- with major set, for the specs its spec field lists), as Healer CDs' slots have rows for (HealerView's
+-- HV.Majors(class, spec, true)). A utility cooldown (no major) is none.
+local function majorSpecs()
+    local B, out = CRT.Bosses, {}
+    local ok, list = false, nil
+    if B and B.Cooldowns then
+        ok, list = pcall(B.Cooldowns, B)
+    end
+    for _, c in ipairs(ok and type(list) == "table" and list or {}) do
+        if type(c) == "table" and c.major and type(c.spellID) == "number" then
+            local specs = type(c.spec) == "table" and c.spec or { c.spec }
+            for _, spec in ipairs(specs) do
+                local e = byID[spec]
+                if e and e.class == c.class then
+                    out[c.spellID] = out[c.spellID] or {}
+                    out[c.spellID][spec] = true
+                end
+            end
+        end
+    end
+    return out
+end
+
+-- Gives every timer of a parsed note whose tags hold a spec word the note's slot counts, one table for the note, also
+-- kept as note.specInfo: { encounterID, counts = { [spec] = how many slot numbers the note names }, named = { [a tag
+-- that is no spec word, lower case, with and without its realm] = { [spec] = true for each spec one of whose major
+-- healing cooldowns the note gives it } } }. Nothing else changes.
 function Specs.Mark(note)
-    local info = { encounterID = note.encounterID, counts = {} }
+    local info = { encounterID = note.encounterID, counts = {}, named = {} }
+    note.specInfo = info
     local seen, any = {}, false
+    local majors
     for _, t in ipairs(note.timers or {}) do
         for _, tag in ipairs(t.tags or {}) do
             local e, n = Specs.Read(tag)
+            if not e and usable(tag) and type(t.spellId) == "number" then
+                majors = majors or majorSpecs()
+                for spec in pairs(majors[t.spellId] or {}) do
+                    for _, k in ipairs({ tag:lower(), (tag:lower():gsub("%-.*$", "")) }) do
+                        info.named[k] = info.named[k] or {}
+                        info.named[k][spec] = true
+                    end
+                end
+            end
             if e then
                 t.specInfo, any = info, true
                 if n then
