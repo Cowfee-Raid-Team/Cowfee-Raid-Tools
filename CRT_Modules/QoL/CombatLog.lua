@@ -36,6 +36,29 @@ local ADDON, CRT = ...
 --   key counts as Mythic+ keys. Events PLAYER_LOGIN, ZONE_CHANGED_NEW_AREA, PLAYER_REGEN_ENABLED, PLAYER_ENTERING_WORLD
 --   (isInitialLogin, isReloadingUi: warcraft.wiki.gg PLAYER_ENTERING_WORLD, read 2026-11-14; isInitialLogin is true
 --   on a login, also after character select; neither is true for a zone change); C_Timer.After(seconds, callback).
+--
+-- Another addon that also turns the combat log on and off (Archon Logger; an integration, so it is named): with it
+-- loaded and Log combat automatically on, the two can switch the log against each other, so a popup asks once per
+-- character which one runs it. Only whether the addon is loaded is checked, never its files. Asked when the master is
+-- ticked and on a fresh login with it ticked (never on a /reload or a zone change; in combat, when combat ends).
+-- Let Archon handle it unticks the master; Keep CRT on changes nothing. The answer is saved per character in
+-- CRTDBChar.combatLog.otherLoggerAnswer ("other" or "crt"; nil, the default: not asked yet), Escape saves nothing,
+-- and ticking the master by hand after Let Archon handle it clears the answer and asks again. Each time the zone logic
+-- starts the log with it loaded, chat says it is also running (whatever the answer, even with Say in chat off; not
+-- for Start logging now, a deliberate press).
+--   C_AddOns.IsAddOnLoaded(name) -> loadedOrLoading, loaded (warcraft.wiki.gg API_C_AddOns.IsAddOnLoaded, read
+--   2026-11-15), the global IsAddOnLoaded on older clients. The popup is the game's StaticPopup with CRT's own dialog,
+--   not StaticPopup_ShowCustomGenericConfirmation: that one runs the same cancelCallback for its second button and for
+--   Escape. Here button2 runs OnCancel(dialog, data, "clicked"), noCancelOnEscape makes Escape hide it without
+--   OnCancel, and a dialog the game hides calls OnCancel with "override" or no reason, ignored (Gethe/wow-ui-source
+--   live, Blizzard_StaticPopup/StaticPopup.lua StaticPopup_OnClick, StaticPopup_EscapePressed; text "" shows
+--   text_arg1 as is, Blizzard_StaticPopup_Game/GameDialog.lua; buttons size to their labels, GameDialogMixin:Resize).
+
+-- The other addons that turn the combat log on and off: addon is its folder name, name and short are what the player
+-- reads. Add another logger as a row.
+local OTHER_LOGGERS = {
+    { addon = "!ArchonLogger", name = "Archon Logger", short = "Archon" },
+}
 
 local CombatLog = {}
 CRT.CombatLog = CombatLog
@@ -78,6 +101,13 @@ local TEXT = {
     mythicDungeon = "Mythic dungeon",
     heroicDungeon = "Heroic dungeon",
     normalDungeon = "Normal dungeon",
+    -- another logger loaded (the popup, and the tab's (?) on its line)
+    askTitle = "Two addons manage your combat log",
+    askBody = "%s also turns your combat log on and off. With both on, they can switch it against each other and spam chat. Pick one to handle it.",
+    letOther = "Let %s handle it",
+    keepCRT = "Keep CRT on",
+    otherHandles = "Combat log: %s handles it, CRT's automatic logging is off.",
+    otherRunning = "%s is also running and may change your combat log.", -- each start by the zone logic
 }
 
 CombatLog.ACL_CVAR = "advancedCombatLogging"
@@ -123,6 +153,8 @@ local refusalSaid = false
 local gen = 0 -- each zone change bumps it, so an older retry does nothing
 local pending = false -- a decision is waiting on its timer
 local waitingForCombat = false -- a turn-on of Advanced Combat Logging waits for combat to end
+local askAfterCombat = false -- the other-logger question waits for combat to end
+local POPUP = "CRT_COMBATLOG_OTHER_LOGGER"
 
 local function settings()
     return CRT.db and CRT.db.qol and CRT.db.qol.combatLog
@@ -294,6 +326,11 @@ function decide(myGen, retried)
             state.logging, state.now = true, "crt"
             setOurs(true, label)
             announce(string.format(TEXT.on, label))
+            -- another logger loaded: said every time, whatever the popup's answer and Say in chat
+            local other = CombatLog.OtherLogger()
+            if other then
+                CRT:Print(string.format(TEXT.otherRunning, other))
+            end
         elseif started == nil and why2 == "busy" then
             busyAgain(myGen, retried)
         end
@@ -366,13 +403,122 @@ function CombatLog:TurnOnAdvanced()
     return false
 end
 
--- The master tick: on also turns Advanced Combat Logging on and decides for where you are now.
+-- Another logger ---------------------------------------------------------------------------------------------------
+
+-- The first other logger that is loaded: its name and short name ("Archon Logger", "Archon"), or nil.
+function CombatLog.OtherLogger()
+    local loaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
+    if not loaded then
+        return nil
+    end
+    for _, row in ipairs(OTHER_LOGGERS) do
+        local ok, v = pcall(loaded, row.addon)
+        if ok and v then
+            return row.name, row.short
+        end
+    end
+    return nil
+end
+
+-- The popup's title and body for the logger called name, the first row's when nil (also the tab's (?) on its line).
+function CombatLog.OtherLoggerText(name)
+    return TEXT.askTitle, string.format(TEXT.askBody, name or OTHER_LOGGERS[1].name)
+end
+
+-- The tab, when it is built: told when an answer changes the settings.
+local function changed()
+    if CombatLog.onChange then
+        pcall(CombatLog.onChange)
+    end
+end
+
+-- Let the other logger handle it: the master off, said in chat, saved.
+local function letOther(name)
+    saved().otherLoggerAnswer = "other"
+    local s = settings()
+    if s then
+        s.enabled = false
+    end
+    CRT:Print(string.format(TEXT.otherHandles, name or ""))
+    changed()
+end
+
+-- The game's popup with CRT's own dialog (see the top: Escape must not count as Keep CRT on). True when shown.
+local function showAsk(name, short)
+    if not (StaticPopupDialogs and StaticPopup_Show) then
+        return false
+    end
+    if StaticPopup_Visible and StaticPopup_Visible(POPUP) then
+        return true -- already asking
+    end
+    local d = StaticPopupDialogs[POPUP]
+    if not d then
+        d = {
+            text = "", -- text_arg1 is shown as it is
+            showAlert = 1,
+            hideOnEscape = 1,
+            noCancelOnEscape = 1,
+            timeout = 0,
+            whileDead = 1,
+            OnAccept = function(_, data)
+                letOther(data and data.name)
+            end,
+            OnCancel = function(_, _, reason)
+                if reason == "clicked" then -- Keep CRT on; the game hiding it is no answer
+                    saved().otherLoggerAnswer = "crt"
+                end
+            end,
+        }
+        StaticPopupDialogs[POPUP] = d
+    end
+    d.button1 = string.format(TEXT.letOther, short or name)
+    d.button2 = TEXT.keepCRT
+    local title, body = CombatLog.OtherLoggerText(name)
+    local ok, frame = pcall(StaticPopup_Show, POPUP, title .. "\n\n" .. body, nil, { name = name })
+    if not ok or type(frame) ~= "table" then
+        return false -- not shown (no free dialog): lift nothing, so no unrelated dialog is raised
+    end
+    local UI = CRT.UI
+    if UI and UI.LiftOver and UI.ShownPopup then
+        UI.LiftOver(UI.ShownPopup(frame, POPUP))
+    end
+    return true
+end
+
+-- Asks which addon runs the combat log, when the master is on, another logger is loaded and this character hasn't
+-- answered; in combat, when combat ends. True when the popup shows.
+function CombatLog:AskAboutOtherLogger()
+    local s = settings()
+    if not (s and s.enabled) then
+        return false
+    end
+    local name, short = CombatLog.OtherLogger()
+    if not name or saved().otherLoggerAnswer then
+        return false
+    end
+    if inCombat() then
+        if not askAfterCombat then
+            askAfterCombat = true
+            events:RegisterEvent("PLAYER_REGEN_ENABLED")
+        end
+        return false
+    end
+    return showAsk(name, short)
+end
+
+-- The master tick: on also turns Advanced Combat Logging on and decides for where you are now. Ticked by hand after
+-- Let Archon handle it, the answer is cleared, so it asks again.
 function CombatLog:SetEnabled(on)
     local s = settings()
     s.enabled = on and true or false
     if s.enabled then
         self:TurnOnAdvanced()
         self:Schedule()
+        local mine = saved()
+        if mine.otherLoggerAnswer == "other" then
+            mine.otherLoggerAnswer = nil
+        end
+        self:AskAboutOtherLogger()
     end
 end
 
@@ -438,14 +584,22 @@ events:SetScript("OnEvent", function(_, event, isInitialLogin, isReloadingUi)
         -- a turn-on asked for in combat, by the master tick, a login or the button, whatever the master is now
         if waitingForCombat then
             waitingForCombat = false
-            events:UnregisterEvent("PLAYER_REGEN_ENABLED")
             CombatLog:TurnOnAdvanced()
+        end
+        -- the other-logger question, asked again (it checks the master and the answer again)
+        if askAfterCombat then
+            askAfterCombat = false
+            CombatLog:AskAboutOtherLogger()
+        end
+        if not (waitingForCombat or askAfterCombat) then
+            events:UnregisterEvent("PLAYER_REGEN_ENABLED")
         end
         return
     end
     if event == "PLAYER_ENTERING_WORLD" then
         if isInitialLogin then
             setOurs(false) -- a new session: a log from before is not CRT's to stop
+            CombatLog:AskAboutOtherLogger() -- only on a fresh login, never a /reload
         elseif isReloadingUi then
             local mine = saved()
             if mine.ours then
