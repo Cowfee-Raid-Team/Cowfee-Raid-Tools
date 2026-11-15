@@ -21,6 +21,8 @@ local ADDON, CRT = ...
 -- why). Saving it, Interrupts' lists for that boss follow (NoteBlock's Saved).
 -- Add assignment (Notes/EditorAssign.lua) shows an assignment block in place of the rows, the same as the Mech Alerts
 -- Assign tab's, with timers from one of the boss's mechanics, typed, or none; the palette drags onto its rows then.
+-- The note check (Notes/EditorCheck.lua, Notes/Check.lua) is a banner under those: double callouts, a block's missing
+-- casts and lines for players no row lists, with Remove old lines and Add missing casts.
 
 local Notes = CRT.Notes
 local Model = CRT.NoteEditModel
@@ -38,6 +40,11 @@ end
 -- Add assignment (Notes/EditorAssign.lua, loaded after this file), or nil without it.
 local function assign()
     return CRT.NoteEditorAssign
+end
+
+-- The note check's banner (Notes/EditorCheck.lua, loaded after this file), or nil without it.
+local function noteCheck()
+    return CRT.NoteEditorCheck
 end
 
 local TEXT = {
@@ -591,6 +598,10 @@ function Editor.Refresh()
     if assign() then
         W.bannerH = W.bannerH + assign().RefreshBanner(W.rowsWidth + UI.ScrollGutter(), W.bannerH)
     end
+    -- under them, the note check: double callouts, missing casts, lines for players no row lists
+    if noteCheck() then
+        W.bannerH = W.bannerH + noteCheck().RefreshBanner(W.rowsWidth + UI.ScrollGutter(), W.bannerH)
+    end
     layoutLeft()
     Editor.DrawRows()
     if W.assignOn and assign() then
@@ -671,6 +682,16 @@ local function loadSession()
         end
         W.window.strip:SetTitle(string.format(TEXT.title, name))
     end
+end
+
+-- The session's text replaced by `text` (Add assignment's block, the note check's fixes), as a new session whose base
+-- stays the saved text, so it shows unsaved until Save; Quick fill and the selected row kept.
+function Editor.ApplyText(text)
+    local s = W.session
+    local quick, selected = s.quickFill, s.selected
+    W.session = Model.New(text, { markdown = s.markdown, readOnly = s.readOnly, base = s.base, players = s.players })
+    W.session:SetQuickFill(quick)
+    W.session.selected = selected
 end
 
 function Editor.Save()
@@ -856,6 +877,9 @@ local function buildLeft(c)
     end
     if assign() then
         assign().Build(left) -- Add assignment's block, hidden until opened
+    end
+    if noteCheck() then
+        noteCheck().Build(left) -- the note check's banner
     end
     local scroll = CreateFrame("ScrollFrame", "CowfeeRaidToolsNoteEditorRows", left, "UIPanelScrollFrameTemplate")
     UI:SkinScrollBar(scroll.ScrollBar)

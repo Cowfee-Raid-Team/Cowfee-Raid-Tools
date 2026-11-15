@@ -24,7 +24,6 @@ local ADDON, CRT = ...
 
 local UI = CRT.UI
 local Notes = CRT.Notes
-local Model = CRT.NoteEditModel
 local Assign = CRT.NoteAssign
 local Editor = CRT.NoteEditor
 local W = Editor.state
@@ -140,11 +139,7 @@ end
 
 -- The session's text with the block written in it, as a new session (its base the saved text, so it stays unsaved).
 local function apply(text)
-    local s = W.session
-    local quick, selected = s.quickFill, s.selected
-    W.session = Model.New(text, { markdown = s.markdown, readOnly = s.readOnly, base = s.base, players = s.players })
-    W.session:SetQuickFill(quick)
-    W.session.selected = selected
+    Editor.ApplyText(text)
 end
 
 -- The mechanic picked in Timers, as its key on the block's heading (for:), or nil.

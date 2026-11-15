@@ -12,7 +12,7 @@
 //   linked one first, picked when solo), class colours, search, the tokens written, and when the list redraws.
 //   Timer lines that follow an assignment line (Links.lua, EditorLinks.lua): the Link banner, Link, the one obvious
 //   fix, the row tags and the hover, a row change rewriting the lines that follow it, Not now, read-only.
-// Usage: node run_notes_editor.js <Parse.lua> <Data.lua> <Engine.lua> <EditModel.lua> <Render.lua> <EditorWindow.lua> <Settings.lua> <Page.lua> <Links.lua> <EditorLinks.lua> <Palette.lua> <MechNote.lua> <Assign.lua> <AssignBlock.lua> <AssignTab.lua> <EditorAssign.lua> <Interrupts/NoteBlock.lua>
+// Usage: node run_notes_editor.js <Parse.lua> <Data.lua> <Engine.lua> <EditModel.lua> <Render.lua> <EditorWindow.lua> <Settings.lua> <Page.lua> <Links.lua> <EditorLinks.lua> <Palette.lua> <MechNote.lua> <Assign.lua> <AssignBlock.lua> <AssignTab.lua> <EditorAssign.lua> <Interrupts/NoteBlock.lua> <Check.lua> <EditorCheck.lua>
 const fs = require('fs');
 const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
@@ -535,6 +535,11 @@ assert(load(assignTabSrc, "AssignTab.lua"))("CowfeeRaidTools", CRT)
 assert(load(windowSrc, "EditorWindow.lua"))("CowfeeRaidTools", CRT)
 assert(load(editorLinksSrc, "EditorLinks.lua"))("CowfeeRaidTools", CRT)
 assert(load(editorAssignSrc, "EditorAssign.lua"))("CowfeeRaidTools", CRT)
+local checkSrc, editorCheckSrc = select(18, ...)
+if checkSrc then
+  assert(load(checkSrc, "Check.lua"))("CowfeeRaidTools", CRT)
+  assert(load(editorCheckSrc, "EditorCheck.lua"))("CowfeeRaidTools", CRT)
+end
 assert(load(settingsSrc, "Settings.lua"))("CowfeeRaidTools", CRT)
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
 local Editor = CRT.NoteEditor
@@ -1443,6 +1448,66 @@ do
 end
 print("ok a group list named like a block: Update block in place, no copy, its own dropdown label, refused when the block went")
 
+-- 12d. #1288: the note check's banner: double callouts, a missing cast, a line no row lists; Remove old lines (asked
+-- first), Add missing casts, Not now; hidden read-only and while Add assignment is open
+do
+  local EC = CRT.NoteEditorCheck
+  assert(EC and EC.state, "CRT.NoteEditorCheck")
+  W.session = nil
+  W.window:Hide()
+  local T2 = { { ph = 1, t = 30 }, { ph = 1, t = 90 } }
+  local blk = table.concat(Assign.Lines({ name = "Orbs", times = T2, rows = { { label = "{cross} orb", text = "", tokens = { "Abu" }, casts = { 1 } } } }, T2), "\\n")
+  local note = "EncounterID:3470;Difficulty:Mythic;Name:Check One\\n" .. blk
+    .. "\\ntime:30;ph:1;tag:Abu;text:Grab {cross} orb;colors:1 0 0 1;\\ntime:60;ph:1;tag:Quinn;text:Use a defensive;"
+  local nid = Notes:Import(note)
+  assert(Editor.Open({ id = nid }), "opened")
+  local b = EC.state.banner
+  assert(b and b.shown and b.title:GetText() == "Note check", "the banner on opening")
+  assert(b.doubles.text.shown and b.doubles.text:GetText():find("1 double callout: a player gets two callouts at once.", 1, true), "doubles: " .. b.doubles.text:GetText())
+  assert(b.missing.text:GetText():find("1 missing cast", 1, true) and b.orphans.text:GetText():find("1 line for a player no group row lists.", 1, true), "missing and orphans")
+  assert(b.doubles.button.shown and b.missing.button.shown and b.orphans.button == nil, "Remove old lines and Add missing casts; the orphans have no button")
+  assert(b.doubles.button:GetText() == "Remove old lines" and b.missing.button:GetText() == "Add missing casts", "the buttons' labels")
+  -- each (?) lists them
+  local function tip(k) local t = rawget(k.help, "helpText") return CRT.UI.TooltipPlain(t) end
+  assert(tip(b.doubles):find("P1 0:30 Abu: ", 1, true) and tip(b.doubles):find("Grab ", 1, true) and tip(b.doubles):find("Remove old lines takes out the typed line", 1, true), tip(b.doubles))
+  assert(tip(b.missing):find("Orbs: cast 2 (P1 1:30)", 1, true), tip(b.missing))
+  assert(tip(b.orphans):find("P1 1:00 Quinn: Use a defensive", 1, true), tip(b.orphans))
+  -- Remove old lines: asked first, nothing changes until it is accepted
+  confirm = nil
+  b.doubles.button.scripts.OnClick(b.doubles.button)
+  assert(confirm and confirm.text == "Take 1 old line out of the note? An Assign block replaced it." and confirm.acceptText == "Remove", tostring(confirm and confirm.text))
+  assert(W.session:Text() == note, "nothing changed yet")
+  confirm.callback()
+  local t = W.session:Text()
+  assert(not t:find("Grab {cross} orb", 1, true) and t:find("Use a defensive", 1, true), "the old line out: " .. t)
+  assert(W.status:GetText():find("Removed 1 old line.", 1, true) and W.save:IsEnabled(), "said, unsaved: " .. W.status:GetText())
+  assert(not b.doubles.text.shown and b.missing.text.shown, "no double left")
+  -- Add missing casts: the block's line for cast 2
+  b.missing.button.scripts.OnClick(b.missing.button)
+  t = W.session:Text()
+  assert(t:find("time:90;ph:1;tag:Abu;text:{cross} orb;assign:orbs/1/2;", 1, true), "cast 2 written: " .. t)
+  assert(W.status:GetText():find("Added the missing casts.", 1, true), W.status:GetText())
+  assert(b.shown and not b.missing.text.shown and b.orphans.text.shown, "only the orphan line left")
+  -- Not now: hidden until the text changes
+  b.later.scripts.OnClick(b.later)
+  assert(not b.shown, "Not now")
+  EC.state.dismissed = nil
+  Editor.Refresh()
+  assert(b.shown, "shown again")
+  -- Add assignment open: hidden
+  W.assignButton.scripts.OnClick(W.assignButton)
+  assert(W.assignOn and not b.shown, "hidden under Add assignment")
+  EA.state.done.scripts.OnClick(EA.state.done)
+  assert(b.shown, "back")
+  -- a clean note: no banner
+  Editor.Discard()
+  local clean = Notes:Import("EncounterID:3470;Difficulty:Mythic;Name:Check Two\\nLeft: Abu\\ntime:30;ph:1;tag:Abu;text:Left;")
+  assert(Editor.Open({ id = clean }) and not b.shown, "nothing to say: no banner")
+  W.session = nil
+  W.window:Hide()
+end
+print("ok the note check: the banner, its lists, Remove old lines asked first, Add missing casts, Not now, hidden under Add assignment")
+
 -- 12c. #1280: Make an Assign block and Update block from a list whose names carry realms write them without
 do
   local list = "Orbs\\nOdd: Abu-Sargeras, Cheo-Elsewhere\\nEven: Kip\\ntime:36;ph:1;tag:Abu-Sargeras Cheo-Elsewhere;text:Orbs;\\ntime:96;ph:1;tag:Kip;text:Orbs;"
@@ -1962,7 +2027,7 @@ end
 print("ok Send my roster: on by default, Push note sends the roster after the note and says how it went; off sends none")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const files = process.argv.slice(2, 19);
+const files = process.argv.slice(2, 21);
 for (const f of files) {
   let src; try { src = fs.readFileSync(f, 'utf8'); } catch (e) { console.error('cannot read ' + f); process.exit(1); }
   lua.lua_pushstring(L, to_luastring(src));
