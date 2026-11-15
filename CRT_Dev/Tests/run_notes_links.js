@@ -204,6 +204,18 @@ check("two rows of the same players: every line follows the first, as before #12
   assert(m.follow[5].row.label == "P1 Soak 1" and m.follow[7].row.label == "P1 Soak 1" and m.follow[6].row.label == "P1 Soak 2", "the first row")
 end)
 
+check("a block's rows are the lines right under its heading; a row after a blank line is a typed row (#1288)", function()
+  local text = table.concat({ "assign:orbs;name:Orbs;", "{cross} orb: Abu", "{square} orb: Cheo", "", "Kicks: Abu", "Text line", "Soaks: Kip" }, "\n")
+  local rows = Links.Rows(Model.New(text))
+  assert(#rows == 4, "four rows: " .. #rows)
+  assert(rows[1].assign == "orbs" and rows[2].assign == "orbs", "the block's two rows")
+  assert(rows[3].label == "Kicks" and rows[3].assign == nil, "after the blank line: a typed row")
+  assert(rows[4].label == "Soaks" and rows[4].assign == nil, "after a text line too")
+  -- so its one-name line follows it, though the block names Abu too
+  local m = match(Model.New(text .. "\ntime:30;ph:1;tag:Abu;text:Kicks;"), "none")
+  assert(m.follow[8] and m.follow[8].row.label == "Kicks", "Abu's Kicks line follows the typed row")
+end)
+
 check("one name: a block's rows never take a typed line, the kick block is no row (#1288)", function()
   local text = table.concat({
     "assign:orbs;name:Orbs;times:1@7;",                                   -- 1

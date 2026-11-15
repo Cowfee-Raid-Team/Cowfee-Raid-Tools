@@ -505,7 +505,7 @@ end)
 
 check("assign: a cast whose lines went is read as no row being on it, and stays so when written (#1288)", function()
   -- Orb Carriers P1 in Alex's note: times for 6 casts, lines for 5. Read infers every row on casts 1-5 (inferCasts),
-  -- so every later write keeps it that way; the note check (Notes/Check.lua) now says so and adds them back
+  -- so every later write keeps it that way: no one is called then, as Alex means it (2026-11-15)
   local b = A.Read(COILED, "orb carriers p1", nil)
   assert(#b.times == 6 and #b.rows == 5, "6 casts, 5 rows")
   for r = 1, 5 do assert(type(b.rows[r].casts) == "table" and table.concat(b.rows[r].casts, ",") == "1,2,3,4,5", "row " .. r .. ": 1-5") end

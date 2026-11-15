@@ -30,7 +30,7 @@ local ADDON, CRT = ...
 -- fields (dur:, colors:, DisplayType:, a sound: its look, LookOf) stay with it when the block is read and written
 -- again, or a list is made a block (Alex, 2026-11-15, #1288): a row keeps each cast's look (row.looks) and its most
 -- common one (row.look) for a cast it gets later. A cast with no line in any row reads as no row being on it (the
--- note check, Notes/Check.lua, says so and adds them back).
+-- way Alex means it: no one is called on that cast, and every later write keeps it so).
 -- A key is unique in its note (KeyTaken: another block's, or a typed group list's heading). Replace writes a block in
 -- place of its old lines, every other line byte for byte (MechNote.ReplaceLines); Write does it in the note the pull
 -- of that difficulty reads (MechNote.WriteWith, Notes:WriteTarget), and links each timed line to its row
