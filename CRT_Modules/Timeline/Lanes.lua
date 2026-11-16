@@ -14,7 +14,10 @@ local ADDON, CRT = ...
 local Lanes = {}
 CRT.TimelineLanes = Lanes
 
-local SKULL = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
+-- CRT's own white skull for a death (CRT_Media/Media/Skull.tga, drawn by CRT_Dev/Tools/make-media.mjs): the death
+-- lanes' icon here, and View.lua's death marks read it from Lanes.SKULL. The fallback is for test harnesses without Core.lua.
+local SKULL = (CRT.MEDIA or ("Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\")) .. "Skull"
+Lanes.SKULL = SKULL
 local UNNAMED_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 
 -- A row's name as rows are matched and hidden by it (timeline.rows[boss].hiddenNames): trimmed, curly
