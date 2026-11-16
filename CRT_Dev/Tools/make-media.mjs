@@ -2,6 +2,8 @@
 //
 //     Skull.tga   the Timeline's death skull (CRT_Modules/Timeline/View.lua and Lanes.lua): a white skull with
 //                 eye sockets, a nose and a jaw with tooth gaps, on clear alpha, centred inside the round mask
+//     DiscLarge.tga  a filled white circle, 254 px across: the Timeline's death ring, its black disc, the face mask
+//                 and the reference rows' type dots (View.lua), smooth at every UI scale (Disc.tga is only 32 px)
 //
 // Each shape is a set of simple geometric parts (circles, ellipses, rounded boxes, a triangle) tested per point.
 // Every pixel takes SUPER x SUPER samples and its alpha is the share inside the shape, so the edges are smooth at
@@ -9,8 +11,8 @@
 // 32-bit uncompressed TGA, top-left origin, the same layout as the Ring and Disc files beside it.
 //
 // Run from anywhere: node CRT_Dev/Tools/make-media.mjs [out folder]   (defaults to CRT_Media/Media)
-// The output is the same bytes every run; the view test (CRT_Dev/Tests/run_timeline_view.js) checks the
-// committed file against a fresh run.
+// The output is the same bytes every run (plain + - * / only, no ** or Math.pow, so every Node version agrees);
+// the view test (CRT_Dev/Tests/run_timeline_view.js) checks the committed files against a fresh run.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -48,8 +50,20 @@ function render(inside) {
 }
 
 // The parts, each a point test.
-const circle = (cx, cy, r) => (x, y) => (x - cx) ** 2 + (y - cy) ** 2 <= r * r;
-const ellipse = (cx, cy, rx, ry) => (x, y) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1;
+function circle(cx, cy, r) {
+  return (x, y) => {
+    const dx = x - cx;
+    const dy = y - cy;
+    return dx * dx + dy * dy <= r * r;
+  };
+}
+function ellipse(cx, cy, rx, ry) {
+  return (x, y) => {
+    const dx = (x - cx) / rx;
+    const dy = (y - cy) / ry;
+    return dx * dx + dy * dy <= 1;
+  };
+}
 function roundBox(left, top, right, bottom, r) {
   return (x, y) => {
     if (x < left || x > right || y < top || y > bottom) return false;
@@ -70,7 +84,8 @@ function triangle(ax, ay, bx, by, cx, cy) {
 
 // The skull, drawn in a 256 box and scaled up by SKULL_SCALE about the centre: a round cranium over a narrower jaw,
 // about 35 to 221 high, so every corner stays well inside the circle the Timeline masks it with. Cut out: two eye
-// sockets, a nose pointing up, and three gaps between teeth that run out through the bottom of the jaw.
+// sockets, a nose pointing up, and two wide gaps between three teeth that run out through the bottom of the jaw, wide
+// enough to read with the skull about 20 px on screen.
 const SKULL_SCALE = 1.1;
 function skull() {
   const head = [circle(128, 114, 70), roundBox(84, 150, 172, 212, 14)];
@@ -78,9 +93,8 @@ function skull() {
     ellipse(98, 120, 21, 23),
     ellipse(158, 120, 21, 23),
     triangle(128, 142, 115, 168, 141, 168),
-    roundBox(102, 184, 109, 220, 3),
-    roundBox(124.5, 184, 131.5, 220, 3),
-    roundBox(147, 184, 154, 220, 3),
+    roundBox(104, 184, 118, 220, 4),
+    roundBox(138, 184, 152, 220, 4),
   ];
   return (px, py) => {
     const x = 128 + (px - 128) / SKULL_SCALE;
@@ -92,5 +106,8 @@ function skull() {
 const here = path.dirname(fileURLToPath(import.meta.url));
 const outDir = process.argv[2] ? path.resolve(process.argv[2]) : path.join(here, '..', '..', 'CRT_Media', 'Media');
 fs.mkdirSync(outDir, { recursive: true });
-fs.writeFileSync(path.join(outDir, 'Skull.tga'), render(skull()));
-console.log('wrote ' + path.join(outDir, 'Skull.tga'));
+const files = { 'Skull.tga': skull(), 'DiscLarge.tga': circle(128, 128, 127) };
+for (const [name, inside] of Object.entries(files)) {
+  fs.writeFileSync(path.join(outDir, name), render(inside));
+  console.log('wrote ' + path.join(outDir, name));
+}

@@ -74,8 +74,9 @@ local LEAD_GREEN = { 0.72, 0.88, 0.72 }
 local DUR_H = 18 -- the height of a duration bar
 local BAR_ALPHA = 0.45
 local TINT_ALPHA = 0.08 -- a reference row's background, in its type's color
--- CRT_Media/Media/Disc.tga: a smooth white circle, colored per type (the fallback is for test harnesses without Core.lua)
-local DOT = (CRT.MEDIA or ("Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\")) .. "Disc"
+-- CRT_Media/Media/DiscLarge.tga: a smooth 256 px white circle, colored per type, sharp at every UI scale (drawn by
+-- CRT_Dev/Tools/make-media.mjs; the fallback is for test harnesses without Core.lua)
+local DOT = (CRT.MEDIA or ("Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\")) .. "DiscLarge"
 local DOT_SIZE = 8
 local MAX_DOTS = 3
 local TAG_SIZE = 14 -- the Journal's icons at the right of a row's name (Reference.TAGS atlases)
@@ -556,7 +557,7 @@ function View.DeathName(d)
 end
 
 -- An icon button's round parts for a death, hidden until one is drawn: the ring, a dark disc and the face,
--- masked round (Texture:AddMaskTexture with a MaskTexture). All three use CRT's anti-aliased Disc.tga, so the edges
+-- masked round (Texture:AddMaskTexture with a MaskTexture). All three use CRT's anti-aliased DiscLarge.tga, so the edges
 -- stay smooth: the ring is a class-coloured disc with the black disc DEATH_ICON.ring px inside it, which keeps the
 -- ring that wide at every icon size. Made once with the button.
 function View.MakeDeathParts(b)
