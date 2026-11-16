@@ -31,7 +31,7 @@ local function mock(kind)
     if k == "SetTexture" then return function(self, file) rawset(self, "texFile", file) end end
     if k == "SetTexCoord" then return function(self, ...) rawset(self, "coords", { ... }) end end
     if k == "CreateMaskTexture" then return function() return mock("MaskTexture") end end
-    if k == "AddMaskTexture" then return function(self, m) rawset(self, "masks", (rawget(self, "masks") or 0) + (m and 1 or 0)) end end
+    if k == "AddMaskTexture" then return function(self, m) rawset(self, "masks", (rawget(self, "masks") or 0) + (m and 1 or 0)) rawset(self, "mask", m) end end
     if k == "GetLeft" then return function() return 100 end end
     if k == "GetTop" then return function() return 500 end end
     if k == "GetEffectiveScale" then return function() return 1 end end
@@ -434,11 +434,16 @@ do
   assert(lone.ring.vcolor[1] == t1[2].b and lone.ring.vcolor[2] == t1[2].c and lone.ring.vcolor[3] == t1[2].d, "stacked deaths: lone ring colour matches its name")
   assert(lone.ring:IsShown() and lone.face:IsShown() and not lone.bg:IsShown() and not lone.tex:IsShown(), "death icons: the round look, not the square one")
   assert(lone.face.masks == 1, "death icons: the face is masked round, once")
+  -- the round parts are CRT's own smooth Disc.tga (#1295): the ring is a class-colour disc under a black disc 2 px in
+  local DISC = "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\Disc"
+  assert(lone.ring.texFile == DISC and lone.disc.texFile == DISC and lone.face.mask.texFile == DISC,
+    "death icons: ring, disc and mask are CRT_Media/Media/Disc: " .. tostring(lone.ring.texFile) .. ", " .. tostring(lone.disc.texFile) .. ", " .. tostring(lone.face.mask.texFile))
+  assert(lone.disc.pt[1] == "BOTTOMRIGHT" and lone.disc.pt[2] == -2 and lone.disc.pt[3] == 2, "death icons: the black disc sits 2 px inside the ring")
   assert(lone.count:GetText() == "" or lone.count:GetText() == nil, "stacked deaths: a lone death shows no count")
   -- the stack: a neutral death colour with the count, and a tooltip listing every death in class colour
   assert(many.count:GetText() == "4", "stacked deaths: the stack shows its count, got " .. tostring(many.count:GetText()))
   assert(many.ring.vcolor[1] == 0.89 and many.ring.vcolor[2] == 0.29 and many.ring.vcolor[3] == 0.29, "stacked deaths: the stack is the neutral death red")
-  assert(many.face.texFile == "Interface\\\\TargetingFrame\\\\UI-TargetingFrame-Skull", "stacked deaths: the stack keeps the skull, got " .. tostring(many.face.texFile))
+  assert(many.face.texFile == "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\Skull", "stacked deaths: the stack shows CRT's skull, got " .. tostring(many.face.texFile))
   local t2 = tip(many)
   assert(t2[2].k == "SetText" and t2[2].a == "4 deaths", "stacked deaths: tooltip heading: " .. tostring(t2[2].a))
   local listed = {}
@@ -520,7 +525,7 @@ do
   assert(d.texture == CIRCLES and d.coords and d.coords[1] == 0 and d.coords[2] == 0.25 and d.coords[3] == 0.5 and d.coords[4] == 0.75
     and ring(d, colors.PALADIN), "death look: a death from before specs, the round class icon")
   local e = look({ death = { name = "Who" } })
-  assert(e.skull and e.texture == "Interface\\\\TargetingFrame\\\\UI-TargetingFrame-Skull" and ring(e, { 1, 1, 1 }), "death look: no class, the skull")
+  assert(e.skull and e.texture == "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\Skull" and ring(e, { 1, 1, 1 }), "death look: no class, the skull")
   local f = look({ death = { name = "Healy", class = "PALADIN", spec = 65 }, deaths = { { name = "Healy", class = "PALADIN", spec = 65 }, { name = "Old", class = "MAGE" } } })
   assert(f.skull and ring(f, { 0.89, 0.29, 0.29 }), "death look: a stack stays the skull in the death red")
   CLASS_ICON_TCOORDS = nil
@@ -578,6 +583,7 @@ do
   assert(same(la.dots[1].vcolor, R.TYPES.spread.color) and same(la.dots[2].vcolor, R.TYPES.soak.color), "types: dots in reading order, last rightmost")
   assert(not lb.dots[1]:IsShown() and same(lb.stripe.color, R.TYPES.raid.color), "types: single type, no dots")
   assert(lc.stripe.color[4] == 0.04 and not lc.dots[1]:IsShown(), "types: untyped row keeps the plain stripe")
+  assert(la.dots[1].texFile == "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\Disc", "types: the dots are CRT_Media/Media/Disc: " .. tostring(la.dots[1].texFile))
   assert(v.bars[1].h == 18, "types: bars are 18 px, got " .. tostring(v.bars[1].h))
   print("ok row tint, type dots and taller bars")
   -- five types: the dots are types 2, 3 and 4, in reading order, the leftmost being type 2
@@ -1278,3 +1284,37 @@ for (const p of files) {
   lua.lua_pushstring(L, to_luastring(src));
 }
 if (lua.lua_pcall(L, 9, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+
+// The death skull (#1295): CRT's own CRT_Media/Media/Skull.tga, written by CRT_Dev/Tools/make-media.mjs. The committed
+// file is a 256x256 32-bit top-left TGA, white with alpha: solid at the cranium, clear at the corners and in an eye
+// socket; and the script, run into a temp folder, writes the same bytes.
+{
+  const root = path.dirname(path.dirname(path.dirname(path.resolve(process.argv[6]))));
+  const skullFile = path.join(root, 'CRT_Media', 'Media', 'Skull.tga');
+  const fail = (why) => { console.error('FAIL skull: ' + why); process.exit(1); };
+  let b; try { b = fs.readFileSync(skullFile); } catch (e) { fail('no ' + skullFile); }
+  const ok = b.length === 18 + 256 * 256 * 4 && b[0] === 0 && b[1] === 0 && b[2] === 2 && b.readUInt16LE(12) === 256 && b.readUInt16LE(14) === 256 && b[16] === 32 && b[17] === 0x28;
+  if (!ok) fail('header is not 256x256 32-bit top-left');
+  const at = (x, y) => b[18 + (y * 256 + x) * 4 + 3];
+  let opaque = 0, soft = 0, notWhite = 0;
+  for (let i = 0; i < 256 * 256; i++) {
+    const a = b[18 + i * 4 + 3];
+    if (a === 255) opaque++; else if (a > 0) soft++;
+    if (b[18 + i * 4] !== 255 || b[18 + i * 4 + 1] !== 255 || b[18 + i * 4 + 2] !== 255) notWhite++;
+  }
+  if (notWhite) fail(notWhite + ' pixels are not white (the art is tinted in game)');
+  if (opaque < 10000 || soft < 500) fail('no solid skull or no anti-aliased edge: ' + opaque + ' solid, ' + soft + ' soft');
+  if (at(0, 0) || at(255, 0) || at(0, 255) || at(255, 255) || at(128, 4) || at(128, 251)) fail('the edges are not clear padding');
+  if (at(128, 70) !== 255) fail('the cranium is not solid');
+  if (at(98, 120) !== 0 || at(158, 120) !== 0) fail('the eye sockets are not cut out');
+  for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
+    if (at(x, y) && (x - 127.5) ** 2 + (y - 127.5) ** 2 > 120 * 120) fail('a pixel at ' + x + ',' + y + ' falls outside the round mask');
+  }
+  const os = require('os');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'crt-media-'));
+  require('child_process').execFileSync(process.execPath, [path.join(root, 'CRT_Dev', 'Tools', 'make-media.mjs'), tmp]);
+  const made = fs.readFileSync(path.join(tmp, 'Skull.tga'));
+  fs.rmSync(tmp, { recursive: true, force: true });
+  if (!made.equals(b)) fail('make-media.mjs does not write the committed Skull.tga');
+  console.log('ok skull art: 256x256 32-bit white TGA with alpha, made by make-media.mjs');
+}

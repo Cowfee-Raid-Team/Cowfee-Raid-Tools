@@ -144,6 +144,11 @@ do
   local lanes = build(overlay)
   assert(#lanes == 14 and lanes[1].kind == "deaths" and lanes[2].kind == "deaths" and lanes[3].kind == "reference", "per-player deaths: two death lanes ahead of reference rows")
   assert(lanes[1].label == "Abu" and #lanes[1].marks == 1 and lanes[2].label == "Bo", "per-player deaths: lane per player")
+  local SKULL = "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\Skull"
+  assert(lanes[1].icon == SKULL and lanes[2].icon == SKULL, "per-player deaths: CRT's skull at each lane's left: " .. tostring(lanes[1].icon))
+  S.deathRows = "combined"
+  assert(build(overlay)[1].icon == SKULL, "combined deaths: CRT's skull at the Deaths lane's left")
+  S.deathRows = "player"
   lanes = build()
   assert(#lanes == 11 and lanes[1].kind == "reference", "per-player deaths: none without overlay")
   S.deathRows = "combined"

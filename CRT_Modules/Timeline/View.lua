@@ -74,13 +74,14 @@ local LEAD_GREEN = { 0.72, 0.88, 0.72 }
 local DUR_H = 18 -- the height of a duration bar
 local BAR_ALPHA = 0.45
 local TINT_ALPHA = 0.08 -- a reference row's background, in its type's color
-local DOT = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask" -- a white circle, colored per type
+-- CRT_Media/Media/Disc.tga: a smooth white circle, colored per type (the fallback is for test harnesses without Core.lua)
+local DOT = (CRT.MEDIA or ("Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\")) .. "Disc"
 local DOT_SIZE = 8
 local MAX_DOTS = 3
 local TAG_SIZE = 14 -- the Journal's icons at the right of a row's name (Reference.TAGS atlases)
 local MAX_TAGS = 4
 local TICK_W, TICK_H = 3, 10 -- one cast of an overlaid pull
-local SKULL = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull"
+local SKULL = CRT.TimelineLanes.SKULL -- CRT's own white skull (CRT_Media/Media/Skull.tga), shared with the death lanes
 -- A death's round icon (View.DeathLook): a ring in its class colour around the face, masked round. The class
 -- icons are the game's round ones (Blizzard_SharedXML/PortraitFrame.lua's SetPortraitToClassIcon: this file
 -- with CLASS_ICON_TCOORDS from SharedConstants.lua); a spec icon is cut in a little so its square frame
@@ -555,8 +556,9 @@ function View.DeathName(d)
 end
 
 -- An icon button's round parts for a death, hidden until one is drawn: the ring, a dark disc and the face,
--- masked round with the game's circle mask (Texture:AddMaskTexture with a MaskTexture of TempPortraitAlphaMask,
--- as Blizzard's own CircleMask templates do). Made once with the button.
+-- masked round (Texture:AddMaskTexture with a MaskTexture). All three use CRT's anti-aliased Disc.tga, so the edges
+-- stay smooth: the ring is a class-coloured disc with the black disc DEATH_ICON.ring px inside it, which keeps the
+-- ring that wide at every icon size. Made once with the button.
 function View.MakeDeathParts(b)
     b.ring = b:CreateTexture(nil, "BACKGROUND", nil, 1)
     b.ring:SetAllPoints()
