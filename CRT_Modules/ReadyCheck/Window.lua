@@ -587,25 +587,26 @@ function Table:Row(i)
     return row
 end
 
--- A cell's tooltip: the player and the check, then the buff and its time left, or why it is missing.
+-- A cell's tooltip: the player and the check, then the buff and its time left, or why it is missing. Table:Draw
+-- leaves what it shows on the cell itself (tipPlayer, tipLabel, tipDurability, tipCell), so a redraw makes no table
+-- per cell.
 local function cellEnter(cell)
-    local info = cell.info
-    if not info then
+    if not cell.tipPlayer then
         return
     end
     CRT.UI.TooltipOwner(GameTooltip, cell, "ANCHOR_TOP")
-    GameTooltip:SetText(info.player .. ": " .. info.label, 1, 1, 1)
-    local c = info.cell
-    if info.durability then
-        GameTooltip:AddLine("Lowest item durability: " .. info.durability .. "%", 1, 1, 1)
+    GameTooltip:SetText(cell.tipPlayer .. ": " .. cell.tipLabel, 1, 1, 1)
+    local c = cell.tipCell
+    if cell.tipDurability then
+        GameTooltip:AddLine("Lowest item durability: " .. cell.tipDurability .. "%", 1, 1, 1)
     elseif not c then
         GameTooltip:AddLine("Durability only shows for players who run Cowfee Raid Tools.", 0.6, 0.6, 0.6, true)
     elseif c.state == "ok" or c.state == "low" then
         local left = c.left and (CRT.ConsumablesBar.LongTime(c.left) .. " left") or "no time limit"
         if c.state == "low" then
-            GameTooltip:AddLine((c.name or info.label) .. ": " .. left .. " (running low)", 1, 0.82, 0)
+            GameTooltip:AddLine((c.name or cell.tipLabel) .. ": " .. left .. " (running low)", 1, 0.82, 0)
         else
-            GameTooltip:AddLine((c.name or info.label) .. ": " .. left, 0.4, 1, 0.4)
+            GameTooltip:AddLine((c.name or cell.tipLabel) .. ": " .. left, 0.4, 1, 0.4)
         end
     elseif c.state == "missing" then
         GameTooltip:AddLine("Missing", 1, 0.3, 0.3)
@@ -646,6 +647,9 @@ local function getCell(row, j)
     row.cells[j] = cell
     return cell
 end
+
+-- The cell a member without one for a column shows. Shared, so it is never changed.
+local MISSING = { state = "missing" }
 
 -- c.state: "ok", "low", "missing" or "unknown".
 local function drawCell(cell, c)
@@ -740,13 +744,14 @@ function Table:Draw(members, columns, dim)
             local cell = getCell(row, j)
             cell:Show()
             cell:SetAlpha(dim[col.key] and 0.25 or 1)
+            cell.tipPlayer, cell.tipLabel = m.name, col.label
             if col.key == "durability" then
                 drawDurability(cell, m.dur)
-                cell.info = { player = m.name, label = col.label, durability = m.dur }
+                cell.tipDurability, cell.tipCell = m.dur, nil
             else
-                local c = m.cells[col.key] or { state = "missing" }
+                local c = m.cells[col.key] or MISSING
                 drawCell(cell, c)
-                cell.info = { player = m.name, label = col.label, cell = c }
+                cell.tipDurability, cell.tipCell = nil, c
             end
         end
         for j = #columns + 1, #row.cells do
@@ -797,6 +802,15 @@ local function liveMembers(members, columns)
 end
 
 local windowTable
+
+-- A refresh reads every player's buffs again, which makes thousands of tables in a raid. A ready check brings two
+-- addon replies and an answer from almost every player within a second or two, so those ask for a refresh soon
+-- (within REFRESH_SOON seconds, by the window's OnUpdate) instead of one each: a burst of them is one refresh.
+local REFRESH_SOON = 0.2
+local sinceRefresh = 0 -- seconds since the last refresh; the OnUpdate refreshes at 1
+local function refreshSoon()
+    sinceRefresh = math.max(sinceRefresh, 1 - REFRESH_SOON)
+end
 
 -- Shift-click posting ------------------------------------------------------------------------------
 
@@ -874,6 +888,7 @@ function Window:Refresh()
     if not frame or not frame:IsShown() then
         return
     end
+    sinceRefresh = 0
     local members, columns
     if previewOn or sampleOn then
         members = Window.SampleMembers()
@@ -1037,19 +1052,18 @@ function build()
     frame.timer:SetPoint("RIGHT", frame.close, "LEFT", -4, 0)
 
 
-    -- Its time is checked every frame, so the mouse leaving is seen at once; it refreshes once a second.
-    local elapsed = 0
+    -- Its time is checked every frame, so the mouse leaving is seen at once; it refreshes once a second, or sooner
+    -- when refreshSoon asks.
     frame:SetScript("OnUpdate", function(_, dt)
         followPullFade()
         if not previewOn and GetTime() >= shownUntil and not heldOpen() then
             Window:Hide()
             return
         end
-        elapsed = elapsed + dt
-        if elapsed < 1 then
+        sinceRefresh = sinceRefresh + dt
+        if sinceRefresh < 1 then
             return
         end
-        elapsed = 0
         Window:Refresh()
     end)
     frame.reset = CRT.UI.ResetButton(frame, function()
@@ -1189,7 +1203,7 @@ events:SetScript("OnEvent", function(_, event, ...)
         if name and not isSecret(name) and not isSecret(isReady) then
             readyState[Ambiguate(name, "short")] = isReady and "ready" or "notready"
         end
-        Window:Refresh()
+        refreshSoon()
     elseif event == "CHAT_MSG_ADDON" then
         local prefix, text, _, sender = ...
         if prefix == PREFIX and type(text) == "string" and sender and not isSecret(sender) then
@@ -1199,10 +1213,10 @@ events:SetScript("OnEvent", function(_, event, ...)
                 answerRequest()
             elseif percent then
                 durability[Ambiguate(sender, "short")] = math.min(100, percent)
-                Window:Refresh()
+                refreshSoon()
             elseif mh then
                 weapons[Ambiguate(sender, "short")] = { mh = decodeHand(mh), oh = decodeHand(oh), at = GetTime() }
-                Window:Refresh()
+                refreshSoon()
             end
         end
     end
