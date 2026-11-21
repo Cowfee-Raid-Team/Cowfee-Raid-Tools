@@ -9,7 +9,13 @@
 //     and regions made. All of them must stay flat after the first checks.
 //   - churn (garbage the collector takes back): it counts every Lua table made (fengari's luaH_new), per second while
 //     the window is open, per UNIT_AURA burst, and per second while nothing is shown. Each has a budget.
+// Behaviour checks next to it, so fewer tables never means a different answer: a secret or unreadable aura still makes
+// the player "couldn't check", buffs found by fallback name or by a raid buff's name still count, the shared missing
+// cell is never changed, tooltips follow a redraw, the Ready lock still locks and unlocks, and a new rank or fleeting
+// item in the bags is still the one a click uses.
 // Prints the numbers as "measure" lines, with Node's heap after a full collect.
+// Re-baseline: after a change that is meant to make more or fewer tables, run this file, read the "measure churn" line,
+// and set openBudget, auraBudget and checkBudget (at the bottom) to about 15% over its numbers.
 // Usage: node run_readycheck_memory.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -123,7 +129,8 @@ local clock = 1000
 function GetTime() return clock end
 function time() return math.floor(clock) end
 function GetServerTime() return math.floor(clock) end
-function issecretvalue() return false end
+local SECRET = setmetatable({}, { __tostring = function() return "secret" end })
+function issecretvalue(v) return rawequal(v, SECRET) end
 function InCombatLockdown() return false end
 function IsShiftKeyDown() return false end
 function GetCursorPosition() return 0, 0 end
@@ -215,12 +222,14 @@ end
 local auraLists = {}
 for i = 1, RAID do auraLists[i] = auraIds(i) end
 local function refreshAuras() for i = 1, RAID do auraLists[i] = auraIds(i) end end
+local auraOverride = {} -- raid index -> function(index) returning that unit's aura, for the behaviour checks
 local function auraData(id)
   return { spellId = id, name = (id == 1001) and "Well Fed" or ("Spell" .. id), expirationTime = clock + 1800, icon = id }
 end
 C_UnitAuras = {
   GetAuraDataByIndex = function(unit, index)
     local i = (unit == "player") and 1 or unitIndex(unit)
+    if i and auraOverride[i] then return auraOverride[i](index) end
     local id = i and auraLists[i][index]
     return id and auraData(id) or nil
   end,
@@ -235,9 +244,16 @@ C_Item = {
   GetItemSpell = function() return nil end,
   GetItemNameByID = function(id) return "Item" .. id end,
 }
+local bagExtra = {} -- { itemID, itemName } after the six listed items, for the behaviour checks
+-- Crafted quality: rank 3 for the new rank the behaviour checks put in the bags, 1 for the rest.
+C_TradeSkillUI = { GetItemCraftedQualityByItemInfo = function(id) return id == 3102 and 3 or 1 end }
 C_Container = {
-  GetContainerNumSlots = function(bag) return bag == 0 and 6 or 0 end,
-  GetContainerItemInfo = function(_, slot) return { itemID = 2000 + slot, itemName = "Item" .. (2000 + slot) } end,
+  GetContainerNumSlots = function(bag) return bag == 0 and (6 + #bagExtra) or 0 end,
+  GetContainerItemInfo = function(_, slot)
+    local extra = bagExtra[slot - 6]
+    if extra then return { itemID = extra[1], itemName = extra[2] } end
+    return { itemID = 2000 + slot, itemName = "Item" .. (2000 + slot) }
+  end,
 }
 C_PaperDollInfo = { GetTemporaryEnchantmentInfo = function(slot) if slot == 16 then return { remainingTimeMs = 1800000, hasExpirationTime = true } end end }
 local sent = 0
@@ -468,6 +484,102 @@ check(perCheck[CYCLES] <= CHECK_BUDGET, format("a ready check makes at most %d t
 check(perSecond[CYCLES] <= OPEN_BUDGET, format("the open window makes at most %d tables a second with 20 players: %.0f", OPEN_BUDGET, perSecond[CYCLES]))
 check(perBurst[CYCLES] <= AURA_BUDGET, format("a UNIT_AURA burst from 20 players makes at most %d tables: %.0f", AURA_BUDGET, perBurst[CYCLES]))
 check(idle[CYCLES] <= IDLE_BUDGET, format("nothing is built while nothing shows: %.1f tables a second", idle[CYCLES]))
+
+-- Behaviour: fewer tables, the same answers ---------------------------------------------------------------------
+do
+  local Report = CRT.RaidReport
+  local function filler(id) return { spellId = id, name = "Spell" .. id, expirationTime = clock + 1800, icon = id } end
+  local function memberOf(list, i) for _, m in ipairs(list) do if m.unit == "raid" .. i then return m end end end
+  -- a 25th aura the game hides, after 24 the filter drops: the player still can't be checked
+  auraOverride[7] = function(index)
+    if index <= 24 then return filler(50000 + index) end
+    if index == 25 then return { spellId = SECRET, name = "Hidden", expirationTime = SECRET, icon = SECRET } end
+  end
+  -- a read that errors
+  auraOverride[8] = function(index) if index == 3 then error("unreadable aura") end return filler(50000 + index) end
+  -- buffs found only by their fallback names
+  auraOverride[10] = function(index)
+    local list = { { 70001, "Flask of X" }, { 70002, "Hearty Well Fed" }, { 70003, "Vantus Rune: Y" } }
+    local a = list[index]
+    if a then return { spellId = a[1], name = a[2], expirationTime = clock + 1800, icon = a[1] } end
+    if index <= 30 then return filler(50000 + index) end
+  end
+  -- Arcane Intellect under another spell ID, with the same spell name
+  auraOverride[11] = function(index)
+    if index == 1 then return { spellId = 99999, name = "Spell1459", expirationTime = clock + 1800, icon = 1 } end
+    if index <= 30 then return filler(50000 + index) end
+  end
+  local group = Report:ReadGroup()
+  local m7, m8, m10, m11 = memberOf(group, 7), memberOf(group, 8), memberOf(group, 10), memberOf(group, 11)
+  check(m7 and m7.auras == nil and m7.why == "hidden by the game", "a secret 25th aura after 24 dropped ones: hidden by the game: " .. tostring(m7 and m7.why))
+  check(m8 and m8.auras == nil and m8.why == "unreadable", "an aura read that errors: unreadable: " .. tostring(m8 and m8.why))
+  check(m7 and Report.Cell(m7, "flask").state == "unknown", "and their cells say couldn't check")
+  for _, key in ipairs({ "flask", "food", "vantus" }) do
+    local state = m10 and Report.Cell(m10, key).state
+    check(state == "ok", "a buff found only by its fallback name counts: " .. key .. " " .. tostring(state))
+  end
+  check(m11 and Report.Cell(m11, "intellect").state == "ok", "a raid buff under another spell ID with the same name counts")
+  local named = false
+  for _, line in ipairs(Report:Run({ "buffs" })) do if line:find("^Spell1459 missing") and line:find("Raider11", 1, true) then named = true end end
+  check(not named, "and the raid report doesn't list that player as missing Arcane Intellect")
+  wipe(auraOverride)
+
+  -- the shared missing cell stays as it is, and a cell's tooltip follows a redraw
+  local W = CRT.ReadyCheckWindow
+  local parent = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+  W.Dress(parent)
+  local t = W.NewTable(parent, false)
+  local cols = { { key = "food", short = "Food", label = "Food" }, { key = "flask", short = "Flask", label = "Flask" } }
+  local a, b = { name = "Aaa", order = 1, cells = {} }, { name = "Bbb", order = 2, cells = {} }
+  local shared
+  for n = 1, 4 do
+    t:Draw((n % 2 == 1) and { a, b } or { b, a }, cols)
+    shared = shared or t.rows[1].cells[1].tipCell
+  end
+  local keys = 0
+  for _ in pairs(shared or {}) do keys = keys + 1 end
+  check(shared and shared.state == "missing" and keys == 1, 'the shared missing cell is still { state = "missing" } after several draws')
+  check(t.rows[2].cells[2].tipCell == shared, "every missing cell is that one table")
+  local cell = t.rows[1].cells[2]
+  cell.scripts.OnEnter(cell)
+  check(GameTooltip.text == "Bbb: Flask", "after a redraw, a cell's tooltip names its player and check: " .. tostring(GameTooltip.text))
+
+  -- the Ready lock: you a mage, raid5 without Arcane Intellect
+  buffed = false
+  refreshAuras()
+  local yes = ReadyCheckFrameYesButton
+  yes.enabled = true
+  ReadyCheckFrame:Show()
+  fire("READY_CHECK", "Raider2-OtherRealm", 35)
+  tick(0.3)
+  check(yes.enabled == false, "Ready is greyed out while raid5 lacks your Arcane Intellect")
+  buffed = true
+  refreshAuras()
+  fire("UNIT_AURA", "raid5")
+  tick(0.5)
+  check(yes.enabled == true, "and works again once they have it")
+  fire("READY_CHECK_FINISHED")
+  ReadyCheckFrame:Hide()
+  tick(35)
+
+  -- the bags: a new rank, then a fleeting one, is what a click uses
+  local C = CRT.Consumables
+  local function nextId() local item = C:NextItem("flask") return item and item.id end
+  C:RefreshBags(true)
+  check(nextId() == 2002, "a flask click uses the listed flask in your bags: " .. tostring(nextId()))
+  bagExtra[1] = { 3102, "Item2002" }
+  fire("BAG_UPDATE_DELAYED")
+  C:RefreshBags()
+  check(nextId() == 3102, "after the bags change, a higher rank of it is used: " .. tostring(nextId()))
+  bagExtra[2] = { 3002, "Fleeting Item2002" }
+  fire("BAG_UPDATE_DELAYED")
+  C:RefreshBags()
+  check(nextId() == 3002, "a fleeting one comes first: " .. tostring(nextId()))
+  wipe(bagExtra)
+  fire("BAG_UPDATE_DELAYED")
+  C:RefreshBags()
+  check(nextId() == 2002, "and once they are gone, the listed flask again: " .. tostring(nextId()))
+end
 
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error(fails .. " ready check memory checks failed") end
