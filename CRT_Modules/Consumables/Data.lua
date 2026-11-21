@@ -57,9 +57,11 @@ end
 -- Each category's list, built once and kept until something that changes it calls Fire. The bar and
 -- the ready check read the lists twice a second, so rebuilding them every time made a lot of garbage.
 local entriesCache = {}
+local bagIdsCache = {} -- item ID -> the item IDs in your bags for it (bagIds), until the bags are read again
 
 function Consumables:Fire()
     wipe(entriesCache)
+    wipe(bagIdsCache)
     for _, fn in ipairs(self.listeners) do
         fn()
     end
@@ -295,6 +297,7 @@ function Consumables:RefreshBags(force)
     bagsDirty = false
     wipe(bagNames)
     wipe(bagByName)
+    wipe(bagIdsCache)
     if not (C_Container and C_Container.GetContainerItemInfo and C_Container.GetContainerNumSlots) then
         return
     end
@@ -351,9 +354,17 @@ local FLEETING = "Fleeting "
 
 -- The item IDs in your bags for an entry: its own ID, its other quality ranks (items of the same
 -- name) and its fleeting versions, in the order a click should use them: fleeting first, then the
--- highest rank. Each is { id, fleeting }. Read from the last bag read.
+-- highest rank. Each is { id, fleeting }. Read from the last bag read, and kept until the bags are read
+-- again or the lists change (bagIdsCache, by item ID): the bar asks for every entry twice a second. A list built
+-- while the game didn't know the item's name yet is not kept, so its other ranks are found once it does.
+-- Callers must not change the list.
 local function bagIds(entry)
+    local cached = bagIdsCache[entry.item]
+    if cached then
+        return cached
+    end
     local name = Consumables:ItemName(entry)
+    local known = bagNames[entry.item] ~= nil or name ~= (entry.name or ("Item " .. entry.item))
     local out, seen = {}, {}
     local function add(id, fleeting)
         if not seen[id] then
@@ -379,6 +390,9 @@ local function bagIds(entry)
         end
         return a.id < b.id
     end)
+    if known then
+        bagIdsCache[entry.item] = out
+    end
     return out
 end
 Consumables.BagIds = bagIds
@@ -386,9 +400,10 @@ Consumables.BagIds = bagIds
 -- The entry a click on this slot should use. Fleeting items (which expire) come first, in your
 -- item order, then the first listed item in your bags at its highest quality rank. Returns
 -- { id, name, icon, count } or nil. The name is the one the game gave your bags.
+local PASSES = { true, false } -- fleeting first
 function Consumables:NextItem(key)
     local entries = self:Entries(key)
-    for _, fleetingPass in ipairs({ true, false }) do
+    for _, fleetingPass in ipairs(PASSES) do
         for _, entry in ipairs(entries) do
             for _, found in ipairs(bagIds(entry)) do
                 local count = itemCount(found.id)
@@ -487,6 +502,33 @@ local function helpfulAuras()
         end
     end
     return out
+end
+
+-- The longest food buff on you, by the hardcoded food check: { left, icon, name } or nil. It reads the same
+-- buffs as helpfulAuras but keeps only the food one, so the bar's refresh copies no other buff.
+local function bestFood(ids)
+    if not (C_UnitAuras and C_UnitAuras.GetAuraDataByIndex) then
+        return nil
+    end
+    local best, bestLeft
+    for index = 1, 80 do
+        local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, "player", index, "HELPFUL")
+        if not ok or not aura then
+            break
+        end
+        local id, name, expires, icon = aura.spellId, aura.name, aura.expirationTime, aura.icon
+        if id and not (isSecret(id) or isSecret(name) or isSecret(expires)) and (ids[id] or Consumables.IsFoodName(name)) then
+            local left = (type(expires) == "number" and expires > 0) and (expires - GetTime()) or nil
+            if not best or (left or math.huge) > (bestLeft or math.huge) then
+                best, bestLeft = aura, left
+            end
+        end
+    end
+    if not best then
+        return nil
+    end
+    local icon = best.icon
+    return { left = bestLeft, icon = (not isSecret(icon)) and icon or nil, name = best.name }
 end
 
 -- Learning which buff an item gives -------------------------------------------------
@@ -772,15 +814,7 @@ function Consumables:Status(key)
     end
     local best, unknown
     if key == "food" then
-        -- The longest food buff on you, by the hardcoded food check.
-        local ids = self:FoodBuffIds()
-        for _, aura in ipairs(helpfulAuras()) do
-            if ids[aura.id] or Consumables.IsFoodName(aura.name) then
-                if not best or (aura.left or math.huge) > (best.left or math.huge) then
-                    best = aura
-                end
-            end
-        end
+        best = bestFood(self:FoodBuffIds())
     else
         best, unknown = bestBuff(entries)
     end
