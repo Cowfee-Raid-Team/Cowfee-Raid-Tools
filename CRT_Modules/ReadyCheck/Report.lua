@@ -137,9 +137,11 @@ local function wanted(id, name)
     sameFrame()
     if not wantedBuilt then
         wantedBuilt = true
-        for _, key in ipairs({ "food", "flask", "rune" }) do
-            for spellId in pairs((consumableIds(key))) do
-                wantedIds[spellId] = true
+        for _, check in ipairs(Report.CHECKS) do
+            if check.key ~= "buffs" then -- the raid buffs, read below
+                for spellId in pairs((consumableIds(check.key))) do
+                    wantedIds[spellId] = true
+                end
             end
         end
         for _, buff in ipairs(Report.Buffs()) do

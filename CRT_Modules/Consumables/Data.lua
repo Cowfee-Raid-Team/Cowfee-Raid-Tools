@@ -364,7 +364,11 @@ local function bagIds(entry)
         return cached
     end
     local name = Consumables:ItemName(entry)
-    local known = bagNames[entry.item] ~= nil or name ~= (entry.name or ("Item " .. entry.item))
+    local known = bagNames[entry.item] ~= nil
+    if not known then
+        local ok, gameName = pcall(C_Item.GetItemNameByID, entry.item)
+        known = ok and type(gameName) == "string" and gameName ~= ""
+    end
     local out, seen = {}, {}
     local function add(id, fleeting)
         if not seen[id] then
