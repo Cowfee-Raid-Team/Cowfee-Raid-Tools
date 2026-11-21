@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.8 (2026-11-21)
+
+- **Sharper Timeline death marks:** single deaths sit in a smooth class-colour ring and grouped deaths show a new crisp skull, at every UI scale. The Deaths lanes use the new skull too. New art needs a full game restart, not a /reload.
+- **Lighter ready checks:** the ready check window makes far less garbage, so CRT's memory no longer climbs with every ready check until you reload. Replies from the raid may show up to a fraction of a second later.
+
 ## 1.4.7 (2026-11-15)
 
 - **Clean up a note's leftover lines:** in the note editor, right-click a timed line to delete it, or delete every line with the same text for that player. Click, Shift-click and Ctrl-click to select lines, then Delete selected. Deleting one line never asks; deleting several shows what goes first.
