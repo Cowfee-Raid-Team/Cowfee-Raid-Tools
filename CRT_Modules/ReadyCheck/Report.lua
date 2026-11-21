@@ -94,7 +94,84 @@ local function units()
     return out
 end
 
--- Helpful auras on a unit: { { id, name, left }, ... }, or nil and why they couldn't be read.
+-- What the checks look for, kept for the rest of the frame (GetTime() doesn't change within one), so reading a raid
+-- builds each list once instead of once per player and column. Rebuilt in the next frame, so a changed list or a
+-- buff learned from use counts at once.
+local NO_IDS = {}
+local frameAt
+local cellIds = {} -- consumable key -> { [spellId] = entry }, as checkConsumable reads them
+local wantedIds, wantedNames, wantedBuilt = {}, {}, false -- every ID and raid buff name a check looks for
+local function sameFrame()
+    local now = GetTime()
+    if frameAt == now then
+        return
+    end
+    frameAt = now
+    wipe(cellIds)
+    wipe(wantedIds)
+    wipe(wantedNames)
+    wantedBuilt = false
+end
+
+-- The buff IDs and the name check for a consumable key.
+local function consumableIds(key)
+    sameFrame()
+    local ids = cellIds[key]
+    if not ids then
+        if key == "food" then
+            ids = Consumables:FoodBuffIds()
+        elseif key == "vantus" then
+            ids = NO_IDS
+        else
+            ids = Consumables:BuffIds(key)
+        end
+        cellIds[key] = ids
+    end
+    return ids, FALLBACK[key]
+end
+
+-- Whether any check could use an aura: a raid buff (by its ID or its spell's name), a listed consumable buff, or a
+-- name a fallback matches (Report.CHECKS and the raid buffs, as checkConsumable, checkBuffs and Report.Cell read
+-- them). A raider has thirty or more buffs and only a few of them count, so only those are kept.
+local function wanted(id, name)
+    sameFrame()
+    if not wantedBuilt then
+        wantedBuilt = true
+        for _, key in ipairs({ "food", "flask", "rune" }) do
+            for spellId in pairs((consumableIds(key))) do
+                wantedIds[spellId] = true
+            end
+        end
+        for _, buff in ipairs(Report.Buffs()) do
+            wantedIds[buff.spell] = true
+            local spellName = C_Spell.GetSpellName(buff.spell)
+            if spellName then
+                wantedNames[spellName] = true
+            end
+        end
+    end
+    if wantedIds[id] or wantedNames[name] then
+        return true
+    end
+    for _, fallback in pairs(FALLBACK) do
+        if type(name) == "string" and fallback(name) then
+            return true
+        end
+    end
+    return false
+end
+
+-- One helpful aura's fields, run under pcall. A named function, so a read makes no new closure per aura.
+local function readAura(unit, index)
+    local aura = C_UnitAuras.GetAuraDataByIndex(unit, index, "HELPFUL")
+    if not aura then
+        return nil
+    end
+    return aura.spellId, aura.name, aura.expirationTime, aura.icon
+end
+
+-- Helpful auras on a unit that a check could use (wanted): { { id, name, left }, ... }, or nil and why they couldn't
+-- be read. Every aura is still looked at, so one the game hides makes the whole unit unreadable, as before.
 local function unitAuras(unit)
     if not UnitIsConnected(unit) then
         return nil, "offline"
@@ -104,13 +181,7 @@ local function unitAuras(unit)
     end
     local out = {}
     for index = 1, 80 do
-        local ok, id, name, expires, icon = pcall(function()
-            local aura = C_UnitAuras.GetAuraDataByIndex(unit, index, "HELPFUL")
-            if not aura then
-                return nil
-            end
-            return aura.spellId, aura.name, aura.expirationTime, aura.icon
-        end)
+        local ok, id, name, expires, icon = pcall(readAura, unit, index)
         if not ok then
             return nil, "unreadable"
         end
@@ -120,8 +191,10 @@ local function unitAuras(unit)
         if isSecret(id) or isSecret(name) or isSecret(expires) then
             return nil, "hidden by the game"
         end
-        local left = (type(expires) == "number" and expires > 0) and (expires - GetTime()) or nil
-        out[#out + 1] = { id = id, name = name or "", left = left, icon = (not isSecret(icon)) and icon or nil }
+        if wanted(id, name) then
+            local left = (type(expires) == "number" and expires > 0) and (expires - GetTime()) or nil
+            out[#out + 1] = { id = id, name = name or "", left = left, icon = (not isSecret(icon)) and icon or nil }
+        end
     end
     return out
 end
@@ -325,15 +398,7 @@ function Report.Cell(member, key)
             end
         end
     else
-        local ids, fallback
-        if key == "food" then
-            ids, fallback = foodIds()
-        elseif key == "vantus" then
-            ids, fallback = {}, FALLBACK.vantus
-        else
-            ids, fallback = Consumables:BuffIds(key), FALLBACK[key]
-        end
-        aura, entry = findAura(member.auras, ids, fallback)
+        aura, entry = findAura(member.auras, consumableIds(key))
     end
     if not aura then
         return { state = "missing" }
