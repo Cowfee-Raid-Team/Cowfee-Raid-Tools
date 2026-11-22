@@ -897,11 +897,9 @@ function GC.ItemLink(piece)
     return string.format(GC.TEXT.item, piece.id or 0)
 end
 
+-- A player's name as the lines show it: without the realm (CRT.ShortName, CRT_Core/Names.lua), "" for none.
 local function shortName(name)
-    if Ambiguate then
-        return Ambiguate(name or "", "short")
-    end
-    return (tostring(name or ""):gsub("%-.*$", ""))
+    return CRT.ShortName(name) or ""
 end
 
 local function slotName(slot)

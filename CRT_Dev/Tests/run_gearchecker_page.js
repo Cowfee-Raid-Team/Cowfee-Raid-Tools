@@ -13,7 +13,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local themesSrc, panelSrc, controlsSrc, windowSrc, scrollSrc, gearSrc, dataSrc, inspectSrc, commSrc, pageSrc, tooltipSrc = ...
+local themesSrc, panelSrc, controlsSrc, windowSrc, scrollSrc, gearSrc, dataSrc, inspectSrc, commSrc, pageSrc, tooltipSrc, namesSrc = ...
 unpack = unpack or table.unpack -- the harness runs Lua 5.3
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
@@ -189,7 +189,7 @@ IsShiftKeyDown = function() return shift end
 local CRT = { db = { ui = { modern = false, layers = {}, theme = "blizzard" }, window = { scale = 100 }, gearChecker = { filter = "all", popout = {} } } }
 function CRT:ApplyFonts() end
 function CRT:Print() end
-for _, src in ipairs({ themesSrc, panelSrc, tooltipSrc, controlsSrc, windowSrc, scrollSrc, gearSrc, dataSrc, inspectSrc, commSrc, pageSrc }) do
+for _, src in ipairs({ namesSrc, themesSrc, panelSrc, tooltipSrc, controlsSrc, windowSrc, scrollSrc, gearSrc, dataSrc, inspectSrc, commSrc, pageSrc }) do
   assert(load(src))("CowfeeRaidTools", CRT)
 end
 local UI, GC, Gear = CRT.UI, CRT.GearChecker, CRT.Gear
@@ -257,6 +257,15 @@ eq(#rows, 4, "everyone: four rows")
 local function rowOf(name) for _, f in ipairs(rows) do if f.data.name == name .. "-Sargeras" then return f end end end
 local me, quick, arrow, halo = rowOf("Solex"), rowOf("Quick"), rowOf("Arrow"), rowOf("Halo")
 eq(me.name.text, "Solex", "your row, first")
+-- #1297: the name is drawn through CRT.ShortName, not the game's Ambiguate (stubbed here to keep the realm)
+do
+  local realAmbiguate = Ambiguate
+  Ambiguate = function(n) return n end
+  local again
+  for _, f in ipairs(drawRows()) do if f.data.name == "Quick-Sargeras" then again = f end end
+  eq(again and again.name.text, "Quick", "a row's name is drawn without the realm")
+  Ambiguate = realAmbiguate
+end
 eq(rows[1], me, "you first")
 check(near(quick.name.color, { 1, 0.96, 0.41 }), "Quick's name in the rogue colour")
 eq(quick.ilvl.text, string.format("%.1f", 578 / 16), "the average item level")
@@ -841,6 +850,6 @@ const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = ['CRT_Core/Themes.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/Window.lua', 'CRT_Core/UI/ScrollBar.lua',
   'CRT_Core/Gear.lua', 'CRT_Modules/GearChecker/Data.lua', 'CRT_Modules/GearChecker/Inspect.lua', 'CRT_Modules/GearChecker/Comm.lua',
-  'CRT_Modules/GearChecker/Page.lua', 'CRT_Core/UI/Tooltip.lua'];
+  'CRT_Modules/GearChecker/Page.lua', 'CRT_Core/UI/Tooltip.lua', 'CRT_Core/Names.lua'];
 for (const f of files) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
 if (lua.lua_pcall(L, files.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
