@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.9 (2026-11-21)
+
+- **Names without realms:** player names now show without their realm across CRT, including Timeline death tooltips and death rows, Healer CDs, raid note messages, Tattlebot, the Addon check, Gear Checker, the Loot authority list and the share messages for kick lists, pace plans and healer orders. Raid Groups and the Late Tracker keep realms, and invites and whispers still reach the right player.
+- **Late Tracker realm setting:** the General Settings checkbox is now called "Leave realm names out of the Late Tracker". Tattlebot always shows names without realms.
+
 ## 1.4.8 (2026-11-21)
 
 - **Sharper Timeline death marks:** single deaths sit in a smooth class-colour ring and grouped deaths show a new crisp skull, at every UI scale. The Deaths lanes use the new skull too. New art needs a full game restart, not a /reload.
