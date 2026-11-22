@@ -70,7 +70,8 @@ local raid, inRaid, inGroup = {}, true, true
 local function setRaid(list) raid = list end
 local function defaultRaid()
   local out, roles = {}, { "TANK", "HEALER", "DAMAGER", "DAMAGER", "DAMAGER" }
-  for i = 1, 10 do out[i] = { name = "P" .. string.char(64 + ((i * 7) % 26) + 1) .. i, group = math.floor((i - 1) / 2) + 1, role = roles[(i - 1) % 5 + 1] } end
+  -- raid4 is from another realm (#1297): its bar is drawn without the realm
+  for i = 1, 10 do out[i] = { name = "P" .. string.char(64 + ((i * 7) % 26) + 1) .. i .. (i == 4 and "-Kil'jaeden" or ""), group = math.floor((i - 1) / 2) + 1, role = roles[(i - 1) % 5 + 1] } end
   return out
 end
 setRaid(defaultRaid())
@@ -363,7 +364,8 @@ for _ = 1, 20 do fire("UNIT_AURA", "raid4", {}) end
 fire("UNIT_AURA", "nameplate3", {})
 frame()
 check(auraCalls - calls == 1, "twenty UNIT_AURA for raid4: one lookup, on the next frame: " .. (auraCalls - calls))
-check(d.bars[2][1].shown and d.bars[2][1].name.text == roster[4].name, "raid4 shows on the right")
+check(d.bars[2][1].shown and d.bars[2][1].name.text == roster[4].name:gsub("%-.*$", ""), "raid4 shows on the right")
+check(roster[4].name:find("-Kil'jaeden", 1, true) and not d.bars[2][1].name.text:find("Kil'jaeden", 1, true), "raid4, from another realm, is drawn without the realm: " .. tostring(d.bars[2][1].name.text))
 frame()
 check(auraCalls - calls == 1, "no event, no work")
 calls = auraCalls
@@ -426,7 +428,7 @@ print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error("debuff list: " .. fails .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
-const files = ['CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Special.lua',
+const files = ['CRT_Core/Names.lua', 'CRT_Modules/Alerts/Rules.lua', 'CRT_Modules/Alerts/Engine.lua', 'CRT_Modules/Alerts/Special.lua',
   'CRT_Modules/Alerts/DebuffList.lua', 'CRT_Modules/Alerts/DebuffListView.lua'];
 for (const f of files) { lua.lua_pushstring(L, to_luastring(f)); lua.lua_pushstring(L, to_luastring(read(f))); }
 if (lua.lua_pcall(L, 2 * files.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
