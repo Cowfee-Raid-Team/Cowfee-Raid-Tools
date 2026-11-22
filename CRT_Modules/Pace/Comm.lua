@@ -138,7 +138,7 @@ events:SetScript("OnEvent", function(_, _, prefix, message, _, sender)
     end
     local n, err = Pace:ReceiveShared(id, (text:gsub(";", "\n")), short)
     if n then
-        CRT:Print(string.format("%s shared the pace plan for %s (%d checkpoint%s). It's now your plan in use; your own plan is kept.", short, Pace:BossName(id), n, n == 1 and "" or "s"))
+        CRT:Print(string.format("%s shared the pace plan for %s (%d checkpoint%s). It's now your plan in use; your own plan is kept.", CRT.ShortName(short), Pace:BossName(id), n, n == 1 and "" or "s"))
     else
         CRT:Print("A pace plan from " .. CRT.ShortName(short) .. " could not be read: " .. tostring(err))
     end

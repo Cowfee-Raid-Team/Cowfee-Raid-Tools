@@ -352,7 +352,7 @@ function KickComm:Receive(message, sender)
     finished[key] = { at = GetTime(), parts = buffer.parts }
     local body = table.concat(buffer.parts, "", 1, buffer.total)
     if Shared.Fingerprint(body) ~= p.hash then
-        CRT:Print(string.format(TEXT.damaged, short))
+        CRT:Print(string.format(TEXT.damaged, CRT.ShortName(short))) -- printed without the realm; short stays the key
         return
     end
     local key, def, made = self.SetupFor(p.id, p.difficulty, p.shape, p.label, #split(body))
@@ -369,9 +369,9 @@ function KickComm:Receive(message, sender)
     local n, group = Interrupts:Mine(key)
     local boss = Interrupts:BossName(key)
     if n then
-        CRT:Print(string.format(TEXT.got, short, boss, n, group or ""))
+        CRT:Print(string.format(TEXT.got, CRT.ShortName(short), boss, n, group or ""))
     else
-        CRT:Print(string.format(TEXT.notOn, short, boss))
+        CRT:Print(string.format(TEXT.notOn, CRT.ShortName(short), boss))
     end
 end
 

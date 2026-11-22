@@ -575,13 +575,13 @@ local function cap(who)
 end
 
 -- The chat line per sender, once their burst of proposals is in.
-local told = {} -- the sender's full name -> count waiting to be told (one line each, the name drawn without the realm)
+local told = {} -- the sender's key (as the group and owner checks use it) -> { n, name }: one line each, named without the realm
 local chatSet = false
 
 local function tell()
     chatSet = false
-    for sender, n in pairs(told) do
-        CRT:Print(string.format(TEXT.proposed, CRT.ShortName(sender), n, n == 1 and "" or "s"))
+    for _, t in pairs(told) do
+        CRT:Print(string.format(TEXT.proposed, CRT.ShortName(t.name), t.n, t.n == 1 and "" or "s"))
     end
     told = {}
 end
@@ -636,7 +636,9 @@ function P:Hear(prefix, text, ch, sender)
             driver:RegisterEvent("ENCOUNTER_END")
         end
     end
-    told[sender] = (told[sender] or 0) + 1
+    local t = told[who] or { n = 0, name = sender }
+    t.n = t.n + 1
+    told[who] = t
     if not chatSet then
         chatSet = true
         C_Timer.After(P.CHAT_DELAY, tell)

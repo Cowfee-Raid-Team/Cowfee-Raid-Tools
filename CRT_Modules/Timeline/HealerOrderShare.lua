@@ -371,7 +371,7 @@ local function store(short, text)
         return
     end
     if Share.Apply(encounterID, healers, spells) then
-        CRT:Print(string.format(TEXT.received, short, bossName(encounterID)))
+        CRT:Print(string.format(TEXT.received, CRT.ShortName(short), bossName(encounterID))) -- printed without the realm
     end
 end
 

@@ -102,6 +102,7 @@ local popup
 StaticPopup_ShowCustomGenericConfirmation = function(data) popup = data return mock() end
 local function acceptPopup() local p = popup popup = nil if p then p.callback() end end
 local pageBuild
+local dropdowns = {} -- each dropdown's options by its label
 CRT_UI = {
   PAGE_W = 1026, PAGE_H = 560,
   TITLE_STRIP = { neutral = { bg = "background" } },
@@ -124,7 +125,7 @@ CRT_UI = {
   SkinCheckButton = function() end,
   -- a list-form help text (UI.AddTooltipText) kept as one string (the real UI.TooltipPlain, theme_stub.js), so the checks can search it
   Help = function(p, title, text) if type(text) == "table" then text = CRT_HELP_PLAIN(text) end helps[title] = text return mock() end,
-  Dropdown = function() local d = mock() d.refresh = function() end d.Dropdown = mock() return d end,
+  Dropdown = function(_, label, opts) local d = mock() d.refresh = function() end d.Dropdown = mock() dropdowns[label or ""] = opts return d end,
   Slider = function() local s = mock() s.refresh = function() end return s end,
   SpotPicker = function() local s = mock() s.refresh = function() end return s end, SPOT_PICKER_W = 126, SPOT_PICKER_H = 70, SPOT_PICKER_GAP = 12,
   SortHeaders = function() return { refresh = function() end } end,
@@ -197,6 +198,31 @@ eq(buttons["My popup"], nil, "Tonight: no My popup button (the My Loot card repl
 check(type(helps["Held boss loot"]) == "string", "Tonight: Held boss loot has (?) help")
 check((helps["Master loot"] or ""):find("Test boss kill", 1, true) ~= nil, "Tonight: the Master loot help says what Test boss kill does")
 eq(start.enabled, false, "Start session: off with nothing held")
+-- #1297: Settings > Loot authority draws names without realms: the guild picker's labels and the named looters'
+-- rows; the picker's key and the saved list keep the full name
+do
+  local realGroups = CRT.Groups
+  CRT.Groups = setmetatable({ ReadGuild = function() return { { key = "Guildie-Area 52" } } end }, { __index = realGroups })
+  local addPick = dropdowns["Add"]
+  check(addPick ~= nil, "Loot authority: the Add dropdown")
+  local opts = addPick.options()
+  local last = opts[#opts]
+  check(last.key == "Guildie-Area 52" and last.label:find("Guildie", 1, true) and not last.label:find("Area 52", 1, true), "Loot authority: a guild member's label has no realm: " .. tostring(last.label))
+  strtrim = strtrim or function(x) return (x:gsub("^%s+", ""):gsub("%s+$", "")) end -- the game's, for the typed name
+  addPick.set("Looter-Kil'jaeden")
+  local names = CRT.db.lootmaster.authority.names
+  eq(names[#names], "Looter-Kil'jaeden", "Loot authority: the saved list keeps the full name")
+  local drawn, realm = false, false
+  for _, t in ipairs(texts) do
+    if type(t.text) == "string" then
+      drawn = drawn or t.text == "Looter"
+      realm = realm or t.text:find("Kil'jaeden", 1, true) ~= nil
+    end
+  end
+  check(drawn and not realm, "Loot authority: the looter's row is drawn without the realm")
+  table.remove(names)
+  CRT.Groups = realGroups
+end
 
 -- 1. Three test kills hold the right rows
 printed = {}
