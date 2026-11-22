@@ -12,7 +12,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc, kickSrc, markerTextSrc = ...
+local registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc, kickSrc, markerTextSrc, namesSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -58,7 +58,7 @@ local function boot(name)
   local CRT = { db = { interrupts = { enabled = true, own = {}, shared = {}, use = {}, accept = true, test = false, plates = {}, reminder = {} } } }
   local printed = {}
   function CRT:Print(m) printed[#printed + 1] = m end
-  for _, src in ipairs({ markerTextSrc, registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
+  for _, src in ipairs({ namesSrc, markerTextSrc, registrySrc, seasonSrc, bossSrc, commSrc, latticeSrc, setupSrc, dataSrc }) do assert(load(src))("CowfeeRaidTools", CRT) end
   CRT.Bosses:Get(3470).interrupts = copy(RAW)
   assert(load(kickSrc))("CowfeeRaidTools", CRT)
   return { name = name, CRT = CRT, I = CRT.Interrupts, C = CRT.InterruptComm, on = handlers, printed = printed }
@@ -162,6 +162,19 @@ eq(as(B, function() return select(2, IB:Mine(id)) end), "Right", "receive: your 
 eq(received, 1, "receive: one change")
 eq(IB:Shared(id).from, "Brenn", "receive: the sender without realm")
 eq(B.printed[#B.printed], "Brenn shared the kick list for Nek'zali the Soulcoiler. Your kick: #4 Right.", "receive: the chat line")
+-- #1297: where the game's Ambiguate keeps another realm, the printed lines still name the sender without it
+do
+  local realAmbiguate, realLeader, realReceived = Ambiguate, leader, received
+  Ambiguate = function(n) return n end
+  leader = "Brenn-Illidan"
+  B.CRT.db.interrupts.kicks[id][16].shared = nil
+  deliver(B, msg, "Brenn-Illidan")
+  check(B.printed[#B.printed]:find("^Brenn shared the kick list") and not B.printed[#B.printed]:find("Illidan", 1, true), "receive: the chat line has no realm: " .. tostring(B.printed[#B.printed]))
+  local bad = msg:gsub("Player1,", "Player8,")
+  deliver(B, bad, "Brenn-Illidan")
+  eq(B.printed[#B.printed], "A kick list from Brenn arrived damaged. Ask them to share it again.", "receive: the damaged line has no realm")
+  Ambiguate, leader, received = realAmbiguate, realLeader, realReceived
+end
 deliver(A, outbox[1].text, "Brenn")
 eq(A.I:Shared(id), nil, "receive: your own message is skipped")
 deliver(B, msg, "Nobody"); eq(received, 1, "receive: not from a non-leader")
@@ -337,7 +350,7 @@ if fails > 0 then error("failures") end
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const FILES = ['CRT_Data/Bosses/Registry.lua', 'CRT_Dev/Tests/SamplePack/Season.lua', 'CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua',
-  'CRT_Core/Comm.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Setup.lua', 'CRT_Modules/Interrupts/Data.lua', 'CRT_Modules/Interrupts/Comm.lua', 'CRT_Core/MarkerText.lua'];
+  'CRT_Core/Comm.lua', 'CRT_Modules/Interrupts/Lattice.lua', 'CRT_Modules/Interrupts/Setup.lua', 'CRT_Modules/Interrupts/Data.lua', 'CRT_Modules/Interrupts/Comm.lua', 'CRT_Core/MarkerText.lua', 'CRT_Core/Names.lua'];
 for (const f of FILES) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));

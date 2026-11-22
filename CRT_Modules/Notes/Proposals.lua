@@ -31,7 +31,7 @@ local ADDON, CRT = ...
 -- Game calls (warcraft.wiki.gg, read 2026-10-24): C_ChatInfo.RegisterAddonMessagePrefix, SendAddonMessage
 -- (Enum.SendAddonMessageResult), InChatMessagingLockdown, CHAT_MSG_ADDON (prefix, text, channel, sender),
 -- PLAYER_REGEN_ENABLED, ENCOUNTER_END, IsEncounterInProgress, IsInRaid, IsInGroup (LE_PARTY_CATEGORY_INSTANCE),
--- GetNumGroupMembers, GetNumSubgroupMembers, GetRaidRosterInfo, UnitName, InCombatLockdown, Ambiguate.
+-- GetNumGroupMembers, GetNumSubgroupMembers, GetRaidRosterInfo, UnitName, InCombatLockdown.
 
 local Notes = CRT.Notes
 local Shifts = CRT.NoteShifts
@@ -575,13 +575,13 @@ local function cap(who)
 end
 
 -- The chat line per sender, once their burst of proposals is in.
-local told = {} -- short name -> count waiting to be told
+local told = {} -- the sender's key (as the group and owner checks use it) -> { n, name }: one line each, named without the realm
 local chatSet = false
 
 local function tell()
     chatSet = false
-    for short, n in pairs(told) do
-        CRT:Print(string.format(TEXT.proposed, short, n, n == 1 and "" or "s"))
+    for _, t in pairs(told) do
+        CRT:Print(string.format(TEXT.proposed, CRT.ShortName(t.name), t.n, t.n == 1 and "" or "s"))
     end
     told = {}
 end
@@ -603,8 +603,8 @@ function P:Hear(prefix, text, ch, sender)
     if not e then
         return nil
     end
-    local short = Ambiguate and Ambiguate(sender, "none") or sender
-    e.sender, e.who, e.short = sender, who, short
+    -- short: the sender as every window and printed line shows them, without the realm (CRT.ShortName)
+    e.sender, e.who, e.short = sender, who, CRT.ShortName(sender)
     local id, line = self:Locate(e)
     local owns, timer = P.Owns(e, id, line)
     if id and not owns then
@@ -636,7 +636,9 @@ function P:Hear(prefix, text, ch, sender)
             driver:RegisterEvent("ENCOUNTER_END")
         end
     end
-    told[short] = (told[short] or 0) + 1
+    local t = told[who] or { n = 0, name = sender }
+    t.n = t.n + 1
+    told[who] = t
     if not chatSet then
         chatSet = true
         C_Timer.After(P.CHAT_DELAY, tell)

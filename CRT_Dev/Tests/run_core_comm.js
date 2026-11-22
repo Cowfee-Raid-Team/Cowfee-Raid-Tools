@@ -9,7 +9,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local commSrc, paceSrc = ...
+local commSrc, paceSrc, namesSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -151,7 +151,11 @@ end
 
 -- Pace on top: its share goes through the queue, with its own lines
 CRT.Pace = { Export = function() return "mode phase\\n1 30 boss1 72" end, BossName = function() return "Boss" end }
+assert(load(namesSrc))("CowfeeRaidTools", CRT) -- CRT.ShortName, which Pace's printed lines use
+local realCreateFrame, paceEvents = CreateFrame, nil
+CreateFrame = function(...) local f = realCreateFrame(...) paceEvents = paceEvents or f return f end
 assert(load(paceSrc))("CowfeeRaidTools", CRT)
+CreateFrame = realCreateFrame
 local PC = CRT.PaceComm
 leaders.player = "lead"
 local n = #sent
@@ -165,13 +169,31 @@ leaders.player = nil
 local ok, why = PC:CanShare()
 check(not ok and why == "Only the raid leader or an assistant can share pace plans.", "pace: CanShare's reason kept")
 
+-- #1297: a plan from another realm's leader: the printed line names them without the realm, even where the game's
+-- Ambiguate keeps it; Pace:ReceiveShared still gets the name as the game gave it
+do
+  local realAmbiguate, realUnitName = Ambiguate, UnitName
+  Ambiguate = function(n) return n end
+  UnitName = function() return "Me" end
+  leaders["Lead-Kil'jaeden"] = "lead"
+  local gotFrom
+  CRT.Pace.ReceiveShared = function(_, id, text, from) gotFrom = from return 2 end
+  local body = "mode phase;1 30 boss1 72"
+  local p0 = #printed
+  paceEvents.fn(paceEvents, "CHAT_MSG_ADDON", "CRTPace1", "3129|" .. Comm.Fingerprint(body) .. "|1|1|" .. body, "RAID", "Lead-Kil'jaeden")
+  check(#printed > p0 and printed[#printed]:find("^Lead shared the pace plan") and not printed[#printed]:find("Kil'jaeden", 1, true), "pace: the shared line names the sender without the realm: " .. tostring(printed[#printed]))
+  eq(gotFrom, "Lead-Kil'jaeden", "pace: the plan keeps who sent it")
+  Ambiguate, UnitName = realAmbiguate, realUnitName
+  leaders["Lead-Kil'jaeden"] = nil
+end
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-for (const f of ['CRT_Core/Comm.lua', 'CRT_Modules/Pace/Comm.lua']) {
+for (const f of ['CRT_Core/Comm.lua', 'CRT_Modules/Pace/Comm.lua', 'CRT_Core/Names.lua']) {
   const p = path.join(dir, f);
   lua.lua_pushstring(L, to_luastring(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : 'error("missing ' + f + '")'));
 }
-if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

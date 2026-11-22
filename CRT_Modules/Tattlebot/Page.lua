@@ -83,9 +83,10 @@ local function duration(seconds)
     return format("%d:%02d", math.floor(seconds / 60), seconds % 60)
 end
 
+-- A player's name in their class colour, without the realm (CRT.ShortName); the colour is found by the full key.
 local function name(key, class)
     local r, g, b = Groups.ClassColor(key, class)
-    return format("|cff%02x%02x%02x%s|r", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255), Groups.ReportName(key))
+    return format("|cff%02x%02x%02x%s|r", math.floor(r * 255), math.floor(g * 255), math.floor(b * 255), CRT.ShortName(key))
 end
 
 local function difficulty(id)
@@ -392,7 +393,7 @@ local function summaryExport(title, nights)
     for _, block in ipairs(blocks) do
         wMech = math.max(wMech, #block.name)
         for _, row in ipairs(block.rows) do
-            wPlayer = math.max(wPlayer, #Groups.ReportName(row.key))
+            wPlayer = math.max(wPlayer, #CRT.ShortName(row.key))
         end
     end
     wMech, wPlayer = math.min(wMech, 28) + 2, math.min(wPlayer, 24) + 2
@@ -402,7 +403,7 @@ local function summaryExport(title, nights)
             lines[#lines + 1] = ""
         end
         for r, row in ipairs(block.rows) do
-            lines[#lines + 1] = pad(r == 1 and block.name or "", wMech) .. pad(Groups.ReportName(row.key), wPlayer) .. pad(tostring(row.hits), 11) .. lpad(Tattle.Short(row.damage), 8)
+            lines[#lines + 1] = pad(r == 1 and block.name or "", wMech) .. pad(CRT.ShortName(row.key), wPlayer) .. pad(tostring(row.hits), 11) .. lpad(Tattle.Short(row.damage), 8)
         end
     end
     lines[#lines + 1] = "```"

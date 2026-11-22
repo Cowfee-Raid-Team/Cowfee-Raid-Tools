@@ -179,6 +179,7 @@ CRT.db.alerts = { bars = {}, reminders = {}, phases = {}, overrides = {}, nextId
 run("CRT_Core/UI/Panel.lua", CRT)
 CRT_TOOLTIP(CRT)
 CRT_MARKERS(CRT) -- CRT.MarkerText, the real CRT_Core/MarkerText.lua
+CRT_NAMES(CRT) -- CRT.ShortName, the real CRT_Core/Names.lua
 run("CRT_Core/UI/Controls.lua", CRT)
 run("CRT_Modules/Groups/Data.lua", CRT)
 run("CRT_Modules/Alerts/Roster.lua", CRT)
@@ -356,6 +357,11 @@ do
   local hint
   for _, fs in ipairs(v.hvNotes or {}) do if fs:IsShown() and fs.text == HV.TEXT.classUnknown then hint = fs end end
   check(hint and hint.pt[5] == -(zi - 1) * 30 - 15, "with the hint on its row")
+  -- #1297: another realm's healer is drawn without the realm, on the row and in its tooltip; the row keeps the full key
+  check(v.lanes[zi].label == "Zorp" and v.lanes[zi].key == "healers:zorp-elsewhere", "another realm's healer: the row says Zorp: " .. tostring(v.lanes[zi].label))
+  local zl = v.labels[zi]
+  zl.OnEnter(zl)
+  check(tip[1] == "Zorp" and not table.concat(tip, "|"):find("Elsewhere", 1, true), "and its tooltip names Zorp, no realm: " .. table.concat(tip, "|"))
   G:SetHandRole("Zorp-Elsewhere", nil)
   flush()
   -- a role the game hides is not compared, and counts as unknown
@@ -1222,9 +1228,16 @@ do
   group.leader = true
   local p = P:Hear("CRTCDMove", msg(45), "RAID", "Halo-Home")
   check(p and not p.stale and #P.list == 1 and p.short == "Halo", "Halo's own line: a proposal")
+  -- #1297: the name a proposal is shown by is the short one even where the game's Ambiguate would keep the realm
+  local realAmbiguate = Ambiguate
+  Ambiguate = function(n) return n end
+  local pr = P:Hear("CRTCDMove", msg(46), "RAID", "Halo-Home")
+  Ambiguate = realAmbiguate
+  check(pr and pr.short == "Halo" and pr.sender == "Halo-Home", "a proposal is shown by the name without the realm, sent by the full name: " .. tostring(pr and pr.short))
   check(P:Hear("CRTCDMove", msg(47), "RAID", "Halo-Home") and #P.list == 1 and P.list[1].newT == 47, "a newer one for the same line replaces it")
   flush()
-  check(printed[#printed] == "Halo proposed 2 cooldown changes: /crt timeline", "one chat line for the burst: " .. tostring(printed[#printed]))
+  -- three heard from Halo (0:45, the realm check's 0:46, 0:47): one line, by the name without the realm
+  check(printed[#printed] == "Halo proposed 3 cooldown changes: /crt timeline", "one chat line for the burst: " .. tostring(printed[#printed]))
   -- the box on Healer CDs
   local v = newView()
   check(v.hvHead and v.hvHead:IsShown() and v.hvHead.text.text == "Proposed changes (1)", "a Proposed changes box")

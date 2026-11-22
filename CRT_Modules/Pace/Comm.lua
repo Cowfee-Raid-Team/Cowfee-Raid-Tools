@@ -133,13 +133,13 @@ events:SetScript("OnEvent", function(_, _, prefix, message, _, sender)
     incoming[key] = nil
     local text = table.concat(buffer.parts, "", 1, buffer.total)
     if Shared.Fingerprint(text) ~= hash then
-        CRT:Print("A pace plan from " .. short .. " arrived damaged. Ask them to share it again.")
+        CRT:Print("A pace plan from " .. CRT.ShortName(short) .. " arrived damaged. Ask them to share it again.")
         return
     end
     local n, err = Pace:ReceiveShared(id, (text:gsub(";", "\n")), short)
     if n then
-        CRT:Print(string.format("%s shared the pace plan for %s (%d checkpoint%s). It's now your plan in use; your own plan is kept.", short, Pace:BossName(id), n, n == 1 and "" or "s"))
+        CRT:Print(string.format("%s shared the pace plan for %s (%d checkpoint%s). It's now your plan in use; your own plan is kept.", CRT.ShortName(short), Pace:BossName(id), n, n == 1 and "" or "s"))
     else
-        CRT:Print("A pace plan from " .. short .. " could not be read: " .. tostring(err))
+        CRT:Print("A pace plan from " .. CRT.ShortName(short) .. " could not be read: " .. tostring(err))
     end
 end)

@@ -347,12 +347,12 @@ local function asOptions()
     for _, p in ipairs(Roster and Roster:Players() or {}) do
         if type(p.name) == "string" and not seen[p.name] then
             seen[p.name] = true
-            list[#list + 1] = { key = p.name, label = p.name }
+            list[#list + 1] = { key = p.name, label = CRT.ShortName(p.name) } -- the key keeps the roster's name
         end
     end
     local as = saved().as
     if type(as) == "string" and as ~= "*" and not seen[as] then
-        list[#list + 1] = { key = as, label = as }
+        list[#list + 1] = { key = as, label = CRT.ShortName(as) }
     end
     return list
 end

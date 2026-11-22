@@ -178,6 +178,7 @@ CRT.db.alerts = { bars = {}, reminders = {}, phases = {}, overrides = {}, nextId
 run("CRT_Core/UI/Panel.lua", CRT)
 CRT_TOOLTIP(CRT)
 CRT_MARKERS(CRT) -- CRT.MarkerText, the real CRT_Core/MarkerText.lua
+CRT_NAMES(CRT) -- CRT.ShortName, the real CRT_Core/Names.lua
 run("CRT_Core/UI/Controls.lua", CRT)
 run("CRT_Modules/Groups/Data.lua", CRT)
 run("CRT_Modules/Alerts/Roster.lua", CRT)

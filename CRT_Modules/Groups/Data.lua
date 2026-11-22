@@ -37,7 +37,7 @@ function Groups.Display(key)
     return Ambiguate(key, "none")
 end
 
--- A name for reports, chat posts and Discord exports (the Late Tracker and Tattlebot): without its
+-- A name for the Late Tracker's page, reports, chat posts and Discord exports: without its
 -- realm when "Leave realm names out" is ticked on General Settings, else as Display shows it.
 function Groups.ReportName(key)
     if not key or key == "" then

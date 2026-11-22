@@ -413,7 +413,7 @@ local function headerTip(who)
     return function(l)
         local p = who.p
         tooltipOwner(l)
-        GameTooltip:SetText(p.name, CRT.Groups.ClassColor(p.key, who.class))
+        GameTooltip:SetText(CRT.ShortName(p.name), CRT.Groups.ClassColor(p.key, who.class))
         local Slots = who.slot and CRT.TimelineHealerSlots
         if Slots then
             for _, line in ipairs(Slots.TipLines()) do
@@ -429,7 +429,7 @@ local function headerTip(who)
         if who.marker == TEXT.yours then
             GameTooltip:AddLine(TEXT.ownTip, 0.85, 0.85, 0.85, true)
         elseif who.marker == TEXT.locked then
-            GameTooltip:AddLine(string.format(TEXT.lockedTip, p.name), 0.85, 0.85, 0.85, true)
+            GameTooltip:AddLine(string.format(TEXT.lockedTip, CRT.ShortName(p.name)), 0.85, 0.85, 0.85, true)
         end
         if who.menu and #who.menu.options > 0 then
             GameTooltip:AddLine(TEXT.pickRows, 0.85, 0.85, 0.85, true)
@@ -482,7 +482,7 @@ local function claim(view, r, c, lead, length)
     if not r.player.me then
         if not lead then
             c.hvLocked = true
-            c.tipLines = { string.format(TEXT.lockedCast, r.player.name) }
+            c.tipLines = { string.format(TEXT.lockedCast, CRT.ShortName(r.player.name)) }
         end
         return
     end
@@ -719,7 +719,7 @@ function HV.Build(view, lanes, length)
             local spec = not head and specName(p.spec)
             -- yours or locked, for someone who may not change the raid note
             who.marker = not lead and (p.me and TEXT.yours or TEXT.locked) or nil
-            local label = (head and head.label or (p.name .. (spec and (DOT .. spec) or "")))
+            local label = (head and head.label or (CRT.ShortName(p.name) .. (spec and (DOT .. spec) or "")))
                 .. (who.marker and (DOT .. who.marker) or "")
             local note = head and head.note
             if #who.rows == 0 then
@@ -1076,7 +1076,7 @@ function HV.Hover(view, over)
         return
     end
     placeShadow(view, lane, t)
-    view.hover:SetText(string.format(TEXT.shadowAt, lane.label, CRT.TimelineView.Format(t), lane.player.name))
+    view.hover:SetText(string.format(TEXT.shadowAt, lane.label, CRT.TimelineView.Format(t), CRT.ShortName(lane.player.name)))
 end
 
 -- A left click on the track (the view's TrackClick, not the second of a double-click): on an empty spot of a

@@ -5,7 +5,7 @@ const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = require('./placement_stub')(process.argv[2]) + `
-local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc, macrosSrc, windowSrc, tooltipSrc, areasSrc, teamSrc, shareSrc, listSrc, checkSrc = ...
+local coreSrc, panelSrc, controlsSrc, pageSrc, alertSrc, profilesSrc, themesSrc, macrosSrc, windowSrc, tooltipSrc, areasSrc, teamSrc, shareSrc, listSrc, checkSrc, namesSrc = ...
 -- FAIL lines are counted, and the count printed last, so a failure shows past the runner's tail
 local failCount, rawPrint = 0, print
 print = function(s, ...) if type(s) == "string" and s:find("^FAIL ") then failCount = failCount + 1 end rawPrint(s, ...) end
@@ -100,6 +100,7 @@ assert(load(listSrc, "CRT_Core/TeamList.lua"))("CowfeeRaidTools", CRT)
 -- the addon check, which General Settings' third tab shows (CRT_Core/AddonCheck.lua; its own harness is run_addoncheck.js)
 UnitFullName = function(u) if u == "player" then return "Solex", nil end end
 UnitClass = function() return "Paladin", "PALADIN" end
+assert(load(namesSrc, "CRT_Core/Names.lua"))("CowfeeRaidTools", CRT) -- CRT.ShortName, which the addon check's rows draw names with
 assert(load(checkSrc, "CRT_Core/AddonCheck.lua"))("CowfeeRaidTools", CRT)
 CRT.AddonCheck:Register({ key = "pace", label = "Pace", order = 40, on = function() return CRT.db.pace.shown ~= false end })
 if CRT.MEDIA == "Interface\\\\AddOns\\\\CowfeeRaidTools\\\\CRT_Media\\\\Media\\\\" then print("ok CRT.MEDIA") else print("FAIL CRT.MEDIA: " .. tostring(CRT.MEDIA)) end
@@ -733,5 +734,5 @@ if failCount > 0 then print(failCount .. " failed") end
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const d = process.argv[2];
-for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Themes.lua', 'CRT_Core/Macros.lua', 'CRT_Core/UI/Window.lua', 'CRT_Core/UI/Tooltip.lua', 'CRT_Modules/Alerts/Areas.lua', 'CRT_Core/Team.lua', 'CRT_Core/Share.lua', 'CRT_Core/TeamList.lua', 'CRT_Core/AddonCheck.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
-if (lua.lua_pcall(L, 15, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+for (const p of ['CRT_Core/Core.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/SettingsPage.lua', 'CRT_Modules/Notes/Alert.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Themes.lua', 'CRT_Core/Macros.lua', 'CRT_Core/UI/Window.lua', 'CRT_Core/UI/Tooltip.lua', 'CRT_Modules/Alerts/Areas.lua', 'CRT_Core/Team.lua', 'CRT_Core/Share.lua', 'CRT_Core/TeamList.lua', 'CRT_Core/AddonCheck.lua', 'CRT_Core/Names.lua']) lua.lua_pushstring(L, to_luastring(fs.readFileSync(d + '/' + p, 'utf8')));
+if (lua.lua_pcall(L, 16, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

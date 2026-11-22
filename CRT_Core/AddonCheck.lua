@@ -466,8 +466,8 @@ end
 
 -- The roster ---------------------------------------------------------------------------------------------------------
 
--- The group as rows: { key, name (your own realm left off, another realm kept, as Raid Groups shows names), full
--- (the name as the game gave it, for a whisper), class (file name), online, me, subgroup }, you first, then roster
+-- The group as rows: { key, name (drawn without the realm, CRT.ShortName), full (the name as the game gave it, for a
+-- whisper), class (file name), online, me, subgroup }, you first, then roster
 -- order. Solo, only you.
 function Check:Roster()
     local out, mine = {}, me()
@@ -477,9 +477,7 @@ function Check:Roster()
             return
         end
         local full = name
-        if Ambiguate then
-            name = Ambiguate(name, "none")
-        end
+        name = CRT.ShortName(name)
         local row = { key = key, name = name, full = full, class = readable(classFile) and classFile or nil, online = online and true or false, me = key == mine, subgroup = subgroup or 1 }
         if row.me then
             table.insert(out, 1, row)
@@ -615,8 +613,8 @@ end
 -- Announce posts who is missing CRT or on an older version where Announce to says (only you, the group channel,
 -- a raid warning or officer chat; CRTDB.addonCheck.announceTo, never in Export settings only), through the raid
 -- report's output (ReadyCheck/Report.lua, which prefixes "[CRT] " and splits long lines, as Tattlebot's posts
--- go); a click on a No CRT or older row whispers that player. Names follow Leave realm names out
--- (Groups.ReportName). Nothing posts by itself.
+-- go); a click on a No CRT or older row whispers that player (its full name). Names show without their realm
+-- (CRT.ShortName). Nothing posts by itself.
 
 Check.URL = "https://www.curseforge.com/wow/addons/cowfee-raid-tools"
 Check.TEXT = {
@@ -633,10 +631,7 @@ Check.TEXT = {
 }
 
 local function reportName(row)
-    if CRT.Groups and CRT.Groups.ReportName then
-        return CRT.Groups.ReportName(row.full or row.name)
-    end
-    return row.name
+    return CRT.ShortName(row.full or row.name)
 end
 
 local function groupWord()

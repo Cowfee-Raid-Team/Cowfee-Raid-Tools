@@ -329,7 +329,7 @@ function Page.Status(encounterID)
     local kick = n and string.format(TEXT.yourKick, def.label, n, group or "") or TEXT.notOn
     if source == "raid" then
         local shared = Interrupts:Shared(encounterID)
-        return string.format(TEXT.statusRaid, shared and shared.from or "?") .. " " .. kick, n and "good" or "warn"
+        return string.format(TEXT.statusRaid, shared and CRT.ShortName(shared.from) or "?") .. " " .. kick, n and "good" or "warn"
     end
     return TEXT.statusOwn .. " " .. kick, "warn"
 end
@@ -468,7 +468,7 @@ local function buildButtons(f)
         local id = boss()
         local shared = id and Interrupts:Shared(id)
         if shared then
-            confirm(string.format(TEXT.useRaidAsk, shared.from or "?", Interrupts:BossName(id)), function()
+            confirm(string.format(TEXT.useRaidAsk, CRT.ShortName(shared.from) or "?", Interrupts:BossName(id)), function()
                 Interrupts:CopyRaids(id)
             end)
         end

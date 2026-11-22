@@ -256,7 +256,7 @@ function Slots.Header(s, list, name)
     local S = Specs()
     local label = Slots.Label(s, list)
     if s.player then
-        return { label = label .. DOT .. name }
+        return { label = label .. DOT .. CRT.ShortName(name) }
     end
     local players = S.Players(s.spec)
     if #players == 0 then
@@ -267,7 +267,7 @@ function Slots.Header(s, list, name)
     local e = S.ByID(s.spec)
     local means = S.Matching(e, numbered(s, list), list.info)
     if #players == 1 and Slots.Count(list, s.spec) == 1 and #means == 1 then
-        return { label = label, note = players[1].name }
+        return { label = label, note = CRT.ShortName(players[1].name) }
     end
     return { label = label, note = string.format(TEXT.pick, #players, e.label .. (#players == 1 and "" or "s")), warn = true }
 end
@@ -902,9 +902,9 @@ local function candidates(s, list, skip)
 end
 
 local function playerButton(menu, p, pick)
-    local text = classColored(p.name, p.class)
+    local text = classColored(CRT.ShortName(p.name), p.class)
     if p.on then
-        text = string.format(TEXT.onSlot, p.name, p.on)
+        text = string.format(TEXT.onSlot, CRT.ShortName(p.name), p.on)
     end
     local b = menu:CreateButton(text, function()
         pick(p.key)
@@ -989,7 +989,7 @@ function Slots.HeaderMenu(view, owner, lane)
     local list = ctx.list
     local S = Specs()
     local label = Slots.Label(s, list)
-    local named = s.player and s.who and s.who.p and s.who.p.name or nil
+    local named = s.player and s.who and s.who.p and CRT.ShortName(s.who.p.name) or nil
     local function assign(name)
         Slots.Assign(ctx, s, name)
         view:Refresh()
@@ -1047,10 +1047,10 @@ function Slots.PlayerMenu(view, owner, lane)
         refresh()
     end
     return openMenu(owner, function(root)
-        root:CreateTitle(h.name)
+        root:CreateTitle(CRT.ShortName(h.name))
         local re = root:CreateButton(TEXT.reassign)
         if canEditRaid() then
-            pickPlayer(re, h, ctx.list, string.format(TEXT.reassignPrompt, h.name), reassign, h.player)
+            pickPlayer(re, h, ctx.list, string.format(TEXT.reassignPrompt, CRT.ShortName(h.name)), reassign, h.player)
         else
             greyed(re, TEXT.leadOnly)
         end

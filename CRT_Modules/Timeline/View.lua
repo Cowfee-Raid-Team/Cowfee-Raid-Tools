@@ -452,7 +452,7 @@ local function iconEnter(b)
         end
     elseif mark.death then
         local d = mark.death
-        GameTooltip:SetText(d.name or "Unknown", CRT.Groups.ClassColor(d.name, d.class))
+        GameTooltip:SetText(CRT.ShortName(d.name) or "Unknown", CRT.Groups.ClassColor(d.name, d.class))
         local who = View.DeathWho(d) -- "Holy Paladin", or the class alone
         if who then
             GameTooltip:AddLine(who, CRT.Groups.ClassColor(d.name, d.class))
@@ -549,10 +549,10 @@ function View.DeathWho(d)
     return spec or class
 end
 
--- A death's name in a stack's tooltip, with its saved spec: "Healy (Holy)".
+-- A death's name in a stack's tooltip, without its realm, with its saved spec: "Healy (Holy)".
 function View.DeathName(d)
     local spec = specOf(d)
-    local name = d.name or "Unknown"
+    local name = CRT.ShortName(d.name) or "Unknown"
     return spec and (name .. " (" .. spec .. ")") or name
 end
 
@@ -2502,7 +2502,7 @@ function Methods:AssignMenu(root, e, t, roster)
         end
     end
     local function forPlayer(menu, p)
-        menu:CreateButton(classColored(p.name, p.class), function()
+        menu:CreateButton(classColored(CRT.ShortName(p.name), p.class), function() -- drawn short; placed by the roster's name
             self:PlaceCooldownAt(t, e, p.name)
         end)
     end
@@ -4588,7 +4588,7 @@ function Methods:Refresh(relayout)
         l.icon:SetTexture(lane.icon)
         l.text:SetText(lane.label or "")
         if lane.class then
-            l.text:SetTextColor(CRT.Groups.ClassColor(lane.label, lane.class))
+            l.text:SetTextColor(CRT.Groups.ClassColor(lane.name or lane.label, lane.class)) -- a death lane's full name
         elseif lane.color then
             l.text:SetTextColor(lane.color[1], lane.color[2], lane.color[3])
         elseif lane.kind == "ticks" then
@@ -4647,7 +4647,7 @@ function Methods:Refresh(relayout)
 
     local names = {}
     for _, death in ipairs(self.unknown) do
-        names[#names + 1] = death.name or "Unknown"
+        names[#names + 1] = CRT.ShortName(death.name) or "Unknown"
     end
     self.unknownText:SetText(#names > 0 and ("Time unknown: " .. table.concat(names, ", ")) or "")
     self:DrawHighlight(lanes)

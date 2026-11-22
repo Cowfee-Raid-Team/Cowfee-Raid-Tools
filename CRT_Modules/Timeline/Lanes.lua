@@ -48,10 +48,12 @@ local function addDeaths(lanes, unknown, sources, settings, combined)
             else
                 local lane = deathLane
                 if not combined then
+                    -- one lane per full name (two realms' players of one name stay two); the label drawn without the realm
                     local name = death.name or "Unknown"
                     lane = byName[name]
                     if not lane then
-                        lane = { key = "death:" .. name, label = name, class = death.class, icon = SKULL, kind = "deaths", marks = {} }
+                        lane = { key = "death:" .. name, label = CRT.ShortName(name), name = name, class = death.class, icon = SKULL,
+                            kind = "deaths", marks = {} }
                         byName[name] = lane
                         lanes[#lanes + 1] = lane
                     end

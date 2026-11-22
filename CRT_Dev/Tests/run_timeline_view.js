@@ -502,6 +502,65 @@ end
 print("ok stacked deaths share one icon whose colour and tooltip agree")
 
 do
+  -- #1297: a recorded Name-Realm death is drawn without its realm: the lone death's tooltip, a stack's lines, the
+  -- time-unknown list and a per-player death lane's label. The class colour still comes from the full name.
+  local said = {}
+  GameTooltip = setmetatable({}, { __index = function(_, k)
+    return function(_, a, b2, c, d, e) said[#said + 1] = { k = k, a = a, b = b2, c = c, d = d, e = e } end
+  end })
+  local realColor = CRT.Groups.ClassColor
+  local asked = {}
+  CRT.Groups.ClassColor = function(key, class) asked[#asked + 1] = tostring(key) return 1, 1, 1 end
+  local pull = { id = 51, encounterID = 3001, length = 300, casts = {}, deaths = {
+    { t = 59, name = "Thisisfartaa-Kil'jaeden", class = "PALADIN", role = "DAMAGER", spellID = 7 },
+    { t = 150, name = "Abu-Area 52", class = "MAGE", role = "DAMAGER", spellID = 7 },
+    { t = 150, name = "Bo-Sargeras", class = "PRIEST", role = "HEALER", spellID = 7 },
+    { name = "Unknowntime-Draenor", class = "ROGUE", role = "DAMAGER" } } }
+  local v = View.Create(mock("Frame"))
+  v:SetData(pull, 3001)
+  v:Refresh()
+  local lone, many
+  for _, b in ipairs(v.icons) do
+    if b:IsShown() and b.mark.death then if b.mark.t == 59 then lone = b else many = b end end
+  end
+  for i = #said, 1, -1 do said[i] = nil end
+  lone.OnEnter(lone)
+  local first
+  for _, l in ipairs(said) do if l.k == "SetText" and l.a ~= nil and l.a ~= "" then first = first or l.a end end
+  assert(first == "Thisisfartaa", "realm-less deaths: the lone tooltip names Thisisfartaa: " .. tostring(first))
+  local joined = {}
+  for _, l in ipairs(said) do joined[#joined + 1] = tostring(l.a) end
+  assert(not table.concat(joined, "|"):find("Kil'jaeden", 1, true), "realm-less deaths: no realm anywhere in the lone tooltip: " .. table.concat(joined, "|"))
+  for i = #said, 1, -1 do said[i] = nil end
+  many.OnEnter(many)
+  local listed = {}
+  for _, l in ipairs(said) do if l.k == "AddDoubleLine" then listed[#listed + 1] = l.a end end
+  table.sort(listed)
+  assert(table.concat(listed, ",") == "Abu,Bo", "realm-less deaths: a stack's lines name Abu and Bo: " .. table.concat(listed, ","))
+  assert(v.unknownText:GetText() == "Time unknown: Unknowntime", "realm-less deaths: the time-unknown list: " .. tostring(v.unknownText:GetText()))
+  local fullAsked = false
+  for _, k in ipairs(asked) do if k == "Thisisfartaa-Kil'jaeden" then fullAsked = true end end
+  assert(fullAsked, "realm-less deaths: the class colour is still asked by the full name")
+  -- per-player death lanes: the label drawn without the realm, coloured by the full name
+  S.deathRows = "player"
+  asked = {}
+  v:SetData(pull, 3001)
+  v:Refresh()
+  local labels = {}
+  for _, l in ipairs(v.labels) do if l.text and l.text:GetText() then labels[#labels + 1] = l.text:GetText() end end
+  local text = table.concat(labels, ",")
+  assert(text:find("Thisisfartaa", 1, true) and not text:find("Kil'jaeden", 1, true) and not text:find("Area 52", 1, true),
+    "realm-less deaths: per-player lane labels have no realm: " .. text)
+  fullAsked = false
+  for _, k in ipairs(asked) do if k == "Thisisfartaa-Kil'jaeden" then fullAsked = true end end
+  assert(fullAsked, "realm-less deaths: a per-player lane's colour is asked by the full name")
+  S.deathRows = "combined"
+  CRT.Groups.ClassColor = realColor
+  GameTooltip = mock("GameTooltip")
+end
+print("ok deaths are drawn without realms")
+
+do
   -- A death's round icon: its saved spec's icon, else the meter's spec icon saved with it, else its class's
   -- round icon, else the skull; always in a ring of its class colour. A stack is the skull in the death red.
   -- Only what the death saved is used: the spec cache is never asked when drawing.

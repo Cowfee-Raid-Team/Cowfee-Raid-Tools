@@ -214,7 +214,7 @@ local function draw(d, view, look)
             b:SetPoint("TOPLEFT", x, -(L.HEAD_H + (j - 1) * (h + L.ROW_GAP)))
             b:SetSize(w, h)
             ok = View.Paint(b, row, colors) and ok
-            b.name:SetText(row.name)
+            b.name:SetText(CRT.ShortName(row.name)) -- drawn without the realm
             b.edge:SetShown(row.isMe and true or false)
             b:Show()
         end

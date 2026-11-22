@@ -484,7 +484,7 @@ local function buildSync(f)
                     class = nil
                 end
                 local c = class and (C_ClassColor and C_ClassColor.GetClassColor(class) or RAID_CLASS_COLORS[class])
-                local label = Ambiguate(name, "none")
+                local label = CRT.ShortName(name) -- drawn without the realm; the key keeps the full name to sync to
                 out[#out + 1] = { key = name, label = c and c:WrapTextInColorCode(label) or label }
             end
             if #targets == 0 then
@@ -898,7 +898,8 @@ local function buildSettings(f)
             end)
             for _, m in ipairs(list) do
                 local c = m.class and (C_ClassColor and C_ClassColor.GetClassColor(m.class) or RAID_CLASS_COLORS[m.class])
-                out[#out + 1] = { key = m.key, label = c and c:WrapTextInColorCode(m.key) or m.key }
+                local shown = CRT.ShortName(m.key) -- drawn without the realm; the key keeps the full name
+                out[#out + 1] = { key = m.key, label = c and c:WrapTextInColorCode(shown) or shown }
             end
             return out
         end,
@@ -923,7 +924,7 @@ local function buildSettings(f)
         local names = auth().names
         for i, r in ipairs(rows) do
             r:SetShown(names[i] ~= nil or i == 1)
-            r.text:SetText(names[i] or ("|cff9c8a78" .. TEXT.authorityNone .. "|r"))
+            r.text:SetText(CRT.ShortName(names[i]) or ("|cff9c8a78" .. TEXT.authorityNone .. "|r")) -- saved full, drawn short
             r.remove:SetShown(names[i] ~= nil)
         end
         -- the Add row sits just under the last name shown

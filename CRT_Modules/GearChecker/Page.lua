@@ -179,8 +179,9 @@ end
 -- Text into the chat box (GC.ToChatBox), for the player to edit and send.
 P.ToChatBox = GC.ToChatBox
 
+-- A player's name as the page draws it: without the realm (CRT.ShortName, CRT_Core/Names.lua), "" for none.
 local function shortName(name)
-    return Ambiguate and Ambiguate(name or "", "short") or name
+    return CRT.ShortName(name) or ""
 end
 
 -- A menu entry's tooltip, when the game's menu has them.

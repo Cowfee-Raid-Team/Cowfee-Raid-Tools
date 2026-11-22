@@ -163,6 +163,19 @@ LM:ShowAnswers()
 check(answers.shown, "after the end: All Loot Rolls opens again")
 check(headerName.text == "[Item]", "after the end: it shows the last session's item (got " .. tostring(headerName.text) .. ")")
 check(answers.strip.note == "last session, read only", "after the end: the title bar says last session, read only (got " .. tostring(answers.strip.note) .. ")")
+-- #1297: Halo-Realm won the item: every drawn text names Halo without the realm
+do
+  local named, realm = false, false
+  for _, f in ipairs(made) do
+    for _, r in ipairs(f.regions or {}) do
+      if type(r.text) == "string" then
+        named = named or r.text:find("Halo", 1, true) ~= nil
+        realm = realm or r.text:find("Halo-Realm", 1, true) ~= nil
+      end
+    end
+  end
+  check(named and not realm, "the winner is drawn as Halo, without the realm")
+end
 -- a new session takes over
 LM.incoming = { test = true, items = { { itemString = "item:1" } }, mine = {}, view = ended.view }
 for _, fn in ipairs(handlers) do fn("incoming") end

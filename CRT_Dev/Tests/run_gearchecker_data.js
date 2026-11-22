@@ -7,10 +7,11 @@
 // Usage: node run_gearchecker_data.js <addon folder>
 const fs = require('fs');
 const path = require('path');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv[2]) + `
 local gearSrc, registrySrc, seasonSrc, gearChecksSrc, tracksSrc, dataSrc, inspectSrc, commSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
@@ -88,6 +89,7 @@ CreateFrame = function() local f = { events = {} } f.RegisterEvent = function(se
 local printed = {}
 local CRT = { db = { gearChecker = { filter = "all", popout = {} } } }
 function CRT:Print(t) printed[#printed + 1] = t end
+CRT_NAMES(CRT) -- CRT.ShortName, the real CRT_Core/Names.lua
 for name, src in pairs({ Gear = gearSrc }) do assert(load(src, name))("CowfeeRaidTools", CRT) end
 assert(load(registrySrc, "Registry.lua"))("CowfeeRaidTools", CRT)
 assert(load(seasonSrc, "Season.lua"))("CowfeeRaidTools", CRT)
@@ -205,6 +207,17 @@ local w = GC.WhisperLines(arrow)
 eq(#w, 1, "whisper: one line per slot with an issue")
 eq(w[1], "Gear check: Head |cffa335ee|Hitem:101::::::::90|h[Helm]|h|r 280 - missing enchant", "whisper: the slot, the item and what is missing")
 eq(GC.RaidLines(quick)[1], line, "raid: the shift-click line")
+-- #1297: a Name-Realm row's lines name the player without the realm, through CRT.ShortName (not the game's
+-- Ambiguate, stubbed here to keep the realm)
+do
+  local realAmbiguate = Ambiguate
+  Ambiguate = function(n) return n end
+  local far = { name = "Quick-Kil'jaeden", slots = quick.slots, rowFindings = quick.rowFindings }
+  local farLine = GC.SlotLine(far, far.slots[11])
+  check(farLine and farLine:find("^%[Quick%] Finger") and not farLine:find("Kil'jaeden", 1, true), "shift-click: another realm's player without the realm: " .. tostring(farLine))
+  check(not table.concat(GC.RaidLines(far), "|"):find("Kil'jaeden", 1, true), "raid lines: no realm")
+  Ambiguate = realAmbiguate
+end
 NAMES[111] = nil
 check(GC.SlotLine(quick, quick.slots[11]):find("[item 111]", 1, true) ~= nil, "an item the game hasn't loaded is named by its ID")
 NAMES[111] = "Band"

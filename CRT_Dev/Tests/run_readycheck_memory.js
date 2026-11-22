@@ -550,8 +550,14 @@ do
   local yes = ReadyCheckFrameYesButton
   yes.enabled = true
   ReadyCheckFrame:Show()
+  -- #1297: half the raid has a realm on its name; the window draws every name without it
+  local drawn, realSetText = {}, methods.SetText
+  methods.SetText = function(self, s) if type(s) == "string" then drawn[#drawn + 1] = s end return realSetText(self, s) end
   fire("READY_CHECK", "Raider2-OtherRealm", 35)
   tick(0.3)
+  methods.SetText = realSetText
+  local all = table.concat(drawn, "|")
+  check(all:find("Raider2", 1, true) ~= nil and not all:find("OtherRealm", 1, true), "the ready check window draws names without realms")
   check(yes.enabled == false, "Ready is greyed out while raid5 lacks your Arcane Intellect")
   buffed = true
   refreshAuras()

@@ -12,7 +12,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local checkSrc = ...
+local checkSrc, namesSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -104,6 +104,7 @@ local function boot(name, version, flags)
   local CRT = { version = version, db = { addonCheck = { announceTo = "raid" } } }
   local printed = {}
   function CRT:Print(s) printed[#printed + 1] = s end
+  assert(load(namesSrc, "CRT_Core/Names.lua"))("CowfeeRaidTools", CRT) -- CRT.ShortName, loaded before it as in the .toc
   assert(load(checkSrc, "CRT_Core/AddonCheck.lua"))("CowfeeRaidTools", CRT)
   local AC = CRT.AddonCheck
   if flags then
@@ -210,8 +211,10 @@ rows = as(solex, function() return solex.AC:Rows() end)
 local byName = {} for _, r in ipairs(rows) do byName[r.name] = r end
 eq(byName.Quick.state .. ":" .. byName.Quick.version, "same:1.1.5", "Quick is on your version")
 eq(tostring(byName.Quick.modules.pace), "false", "Quick's pace is off")
-eq(byName["Olden-Aerie Peak"] and byName["Olden-Aerie Peak"].state, "older", "Olden, cross-realm with a space in the realm, is older")
-eq(tostring(byName["Olden-Aerie Peak"].modules.pace), "nil", "Olden's CRT doesn't report pace: nil, shown as a dash")
+-- #1297: a row's name is drawn without the realm; its key and full name keep it, for the whisper
+eq(byName.Olden and byName.Olden.state, "older", "Olden, cross-realm with a space in the realm, is older")
+eq(byName.Olden and byName.Olden.full, "Olden-Aerie Peak", "Olden's row keeps the full name for a whisper")
+eq(tostring(byName.Olden.modules.pace), "nil", "Olden's CRT doesn't report pace: nil, shown as a dash")
 eq(byName.Newer.state, "newer", "Newer is newer")
 eq(tostring(byName.Newer.modules.interrupts), "true", "a module you don't have yet is still kept")
 eq(byName.Nocrt.state, "waiting", "no answer yet: still waiting inside the window")
@@ -244,8 +247,8 @@ eq(names(solex.AC.Filter(rows, nil, "on")), "Solex,Quick,Olden,Newer,Nocrt,Gone"
 do
   local lines = solex.AC.AnnounceLines(rows, "1.1.5")
   eq(#lines, 2, "the announcement: the names, then the link on its own line")
-  -- the raid roster writes a realm with its space; Groups.ReportName (not loaded here) would shorten it the same way
-  eq(lines[1], "Missing Cowfee Raid Tools: Nocrt. Older version: Olden-Aerie Peak (1.1.4).", "who is missing and who is older (offline and waiting left out)")
+  -- names without their realm (CRT.ShortName), as every line CRT posts (#1297)
+  eq(lines[1], "Missing Cowfee Raid Tools: Nocrt. Older version: Olden (1.1.4).", "who is missing and who is older (offline and waiting left out)")
   eq(lines[2], "Get it: https://www.curseforge.com/wow/addons/cowfee-raid-tools", "the link")
   local fine = {}
   for _, r in ipairs(rows) do if r.state ~= "none" and r.state ~= "older" then fine[#fine + 1] = r end end
@@ -287,9 +290,9 @@ do
   local whispers = {}
   C_ChatInfo.SendChatMessage = function(text, kind, _, target) whispers[#whispers + 1] = kind .. ">" .. target .. ": " .. text end
   eq(solex.AC.WhisperText(byName.Nocrt, "1.1.5"), "[CRT] You're missing Cowfee Raid Tools, which the raid uses for its notes, alerts and plans. Get it: https://www.curseforge.com/wow/addons/cowfee-raid-tools", "the whisper to a player without CRT")
-  eq(solex.AC.WhisperText(byName["Olden-Aerie Peak"], "1.1.5"), "[CRT] Your Cowfee Raid Tools is 1.1.4; the raid is on 1.1.5. Update it: https://www.curseforge.com/wow/addons/cowfee-raid-tools", "the whisper to an older one")
+  eq(solex.AC.WhisperText(byName.Olden, "1.1.5"), "[CRT] Your Cowfee Raid Tools is 1.1.4; the raid is on 1.1.5. Update it: https://www.curseforge.com/wow/addons/cowfee-raid-tools", "the whisper to an older one")
   eq(solex.AC.WhisperText(byName.Quick), nil, "no whisper for a player on your version")
-  check(as(solex, function() return solex.AC:Whisper(byName["Olden-Aerie Peak"]) end), "the whisper goes")
+  check(as(solex, function() return solex.AC:Whisper(byName.Olden) end), "the whisper goes")
   eq(whispers[1]:match("^(WHISPER>[^:]+):"), "WHISPER>Olden-AeriePeak", "to Name-Realm with no space in the realm")
   eq(as(solex, function() return solex.AC:Whisper(byName.Quick) end), false, "nothing to whisper: not sent")
   C_ChatInfo.SendChatMessage = nil
@@ -390,7 +393,7 @@ shape = "party"
 eq(as(solex, function() return solex.AC:CanCheck() end), true, "can check in a party")
 rows = as(solex, function() return solex.AC:Rows() end)
 eq(#rows, 5, "a party lists its members")
-eq(rows[2].name .. "," .. rows[3].name, "Quick,Olden-AeriePeak", "a party member's own realm is left off, another realm kept")
+eq(rows[2].name .. "," .. rows[3].name, "Quick,Olden", "a party member's name is drawn without the realm")
 as(solex, function() solex.AC:Check() end)
 eq(outbox[#outbox].channel, "PARTY", "on the party channel")
 
@@ -400,4 +403,5 @@ if fails > 0 then error("failures") end
 const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Core/AddonCheck.lua'), 'utf8')));
-if (lua.lua_pcall(L, 1, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Core/Names.lua'), 'utf8')));
+if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

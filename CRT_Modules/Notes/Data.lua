@@ -436,9 +436,9 @@ function Notes:ClaimForGuild(id, shared)
     end
 end
 
--- A player's name without the realm: "Rixxy" for "Rixxy-TwistingNether".
+-- A player's name without the realm: "Rixxy" for "Rixxy-TwistingNether" (CRT.ShortName, CRT_Core/Names.lua).
 function Notes.ShortName(name)
-    return name and (name:match("^([^%-]+)") or name) or nil
+    return CRT.ShortName(name)
 end
 
 -- How a note came, short: CRT, MRT, NSRT, Imported or Timeline (older notes kept the long name).
@@ -455,8 +455,7 @@ function Notes.SourceLabel(record)
     if guild then
         return guild
     end
-    local from = record and record.from
-    return from and (from:match("^([^%-]+)") or from) or nil
+    return Notes.ShortName(record and record.from)
 end
 
 -- kind: "shared" or "personal" lists only those, nil every note.

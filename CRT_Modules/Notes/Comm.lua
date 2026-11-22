@@ -358,9 +358,9 @@ local function received(text, short)
         if CRT.NoteWindow then
             CRT.NoteWindow:Flash()
         end
-        CRT:Print("Received a note from " .. short .. ". " .. result)
+        CRT:Print("Received a note from " .. CRT.ShortName(short) .. ". " .. result)
     else
-        CRT:Print("Received a note from " .. short .. " that could not be read: " .. tostring(result))
+        CRT:Print("Received a note from " .. CRT.ShortName(short) .. " that could not be read: " .. tostring(result))
     end
 end
 
@@ -413,7 +413,7 @@ events:SetScript("OnEvent", function(_, _, prefix, message, _, sender)
         local id = buffer.skip
         if CRT.db.notes.list[id] and Notes:Active() ~= id then
             Notes:SetActive(id)
-            CRT:Print(short .. " shared " .. (CRT.db.notes.list[id].name or "a note") .. ", which you already have. It is now your active note.")
+            CRT:Print(CRT.ShortName(short) .. " shared " .. (CRT.db.notes.list[id].name or "a note") .. ", which you already have. It is now your active note.")
         end
         -- a note you already have still shows the "note updated" stamp: the leader pushed it
         if CRT.NoteWindow then
@@ -427,7 +427,7 @@ events:SetScript("OnEvent", function(_, _, prefix, message, _, sender)
         return
     end
     if not canCompress then
-        CRT:Print("Received a note from " .. short .. ", but this game client cannot unpack it.")
+        CRT:Print("Received a note from " .. CRT.ShortName(short) .. ", but this game client cannot unpack it.")
         return
     end
     local packed = {}
@@ -436,11 +436,11 @@ events:SetScript("OnEvent", function(_, _, prefix, message, _, sender)
     end
     local ok, text = pcall(Encoding.DecompressString, table.concat(packed), DEFLATE)
     if not ok or type(text) ~= "string" then
-        CRT:Print("Received a note from " .. short .. " that could not be unpacked.")
+        CRT:Print("Received a note from " .. CRT.ShortName(short) .. " that could not be unpacked.")
         return
     end
     if fingerprint(text) ~= hash then
-        CRT:Print("Received a note from " .. short .. " that arrived damaged. Ask them to share it again.")
+        CRT:Print("Received a note from " .. CRT.ShortName(short) .. " that arrived damaged. Ask them to share it again.")
         return
     end
     received(text, short)

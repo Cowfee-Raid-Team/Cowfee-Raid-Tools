@@ -16,6 +16,7 @@ g "profiles" && { node run_profiles.js "$W/CRT_Core/Profiles.lua" 2>&1 | tail -3
 g "profiles share" && { node run_profiles_share.js "$W" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
 g "share" && { node run_share.js "$W" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
 g "settings" && { node run_settings.js "$W" 2>&1 | tail -15; echo "exit ${PIPESTATUS[0]}"; }
+g "names" && { node run_names.js "$W" 2>&1 | tail -20; echo "exit ${PIPESTATUS[0]}"; }
 WA="$W"
 # The grep lints below leave out the test fixtures: files under CRT_Dev/Tests, not any folder named Tests
 NOT_TESTS='[/\\]CRT_Dev[/\\]Tests[/\\]'

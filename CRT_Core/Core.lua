@@ -42,7 +42,8 @@ local defaults = {
     -- theme is the look picked from the title bar (UI:SetTheme in UI/Panel.lua, CRT.THEME_LIST in Themes.lua);
     -- modern is kept in step with it: off for "blizzard" (Classic), on for the others. Data from before themes
     -- has no theme: CRT:ResolveTheme gives it one from modern before these defaults are filled in.
-    -- hideRealms leaves realm names out of the Late Tracker and Tattlebot, on screen, in chat and in exports.
+    -- hideRealms leaves realm names out of the Late Tracker, on screen, in chat and in exports (every other name is
+    -- drawn without its realm anyway, CRT.ShortName in Names.lua).
     -- tooltipMode is where the addon's tooltips open: "spot" next to what you hover, on tooltipSpot ("auto",
     -- each tooltip on its own side, or a key of UI.TOOLTIP_SPOTS), "game" the game's tooltip spot, "cursor"
     -- following the cursor (UI.TooltipOwner in UI/Tooltip.lua). They replaced tooltipAnchor, which is read

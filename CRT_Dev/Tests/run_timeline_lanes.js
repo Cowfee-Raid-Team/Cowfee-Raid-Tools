@@ -1,9 +1,10 @@
 // CRT_Modules/Timeline/Lanes.lua: the lanes of a recorded pull, a reference timeline and an overlaid pull.
 // Usage: node run_timeline_lanes.js CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua
 const fs = require('fs');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = themeLua(process.argv.slice(2)) + `
 local dataSrc, dbSrc, refSrc, lanesSrc = ...
 function CreateFrame() return { RegisterEvent = function() end, SetScript = function() end } end
 function InCombatLockdown() return false end
@@ -27,6 +28,7 @@ CRT.TimelineJournal = {
     return nil
   end,
 }
+CRT_NAMES(CRT) -- CRT_Core/Names.lua: CRT.ShortName, which the death lanes' labels use
 assert(load(dataSrc, "CRT_Modules/Timeline/Data.lua"))("CowfeeRaidTools", CRT)
 assert(load(dbSrc, "CRT_Modules/Timeline/Database.lua"))("CowfeeRaidTools", CRT)
 assert(load(refSrc, "CRT_Modules/Timeline/Reference.lua"))("CowfeeRaidTools", CRT)
@@ -51,6 +53,24 @@ do
   assert(rows[1].marks == nil, "pull lanes unchanged: cached rows untouched")
 end
 print("ok pull lanes unchanged")
+
+do
+  -- per-player death lanes (#1297): the label is the name without its realm; the lane keeps the full name, so two
+  -- players of one name on different realms still get two lanes
+  local realms = { id = 2, encounterID = 3001, length = 200, casts = {}, deaths = {
+    { t = 50, name = "Thisisfartaa-Kil'jaeden", class = "PALADIN", role = "DAMAGER", spellID = 0 },
+    { t = 60, name = "Thisisfartaa-Area 52", class = "MAGE", role = "DAMAGER", spellID = 0 },
+    { t = 70, name = "Abu", class = "MAGE", role = "DAMAGER", spellID = 0 } } }
+  S.deathRows = "player"
+  local lanes = Lanes.Build(realms, rows, S, 3001)
+  S.deathRows = "combined"
+  assert(lanes[1].kind == "deaths" and lanes[1].label == "Thisisfartaa", "per-player deaths: the label has no realm: " .. tostring(lanes[1].label))
+  assert(lanes[2].kind == "deaths" and lanes[2].label == "Thisisfartaa", "per-player deaths: the second realm's lane has no realm either: " .. tostring(lanes[2].label))
+  assert(lanes[1].key ~= lanes[2].key and lanes[1].name == "Thisisfartaa-Kil'jaeden" and lanes[2].name == "Thisisfartaa-Area 52",
+    "per-player deaths: same name, two realms: two lanes, each keeping its full name: " .. tostring(lanes[1].key) .. ", " .. tostring(lanes[2].key))
+  assert(lanes[3].label == "Abu" and lanes[3].name == "Abu", "per-player deaths: a name without a realm as it is")
+end
+print("ok per-player death lanes draw names without realms")
 
 local ref = { boss = "Nek", difficulty = "Mythic", length = 600, encounterID = 3001,
   phases = { { t = 0, label = "P1" }, { t = 300, label = "P2" } }, rows = {} }

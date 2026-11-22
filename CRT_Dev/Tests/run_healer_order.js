@@ -177,6 +177,7 @@ CRT.db.alerts = { bars = {}, reminders = {}, phases = {}, overrides = {}, nextId
 run("CRT_Core/UI/Panel.lua", CRT)
 CRT_TOOLTIP(CRT)
 CRT_MARKERS(CRT) -- CRT.MarkerText, the real CRT_Core/MarkerText.lua
+CRT_NAMES(CRT) -- CRT.ShortName, the real CRT_Core/Names.lua
 run("CRT_Core/UI/Controls.lua", CRT)
 run("CRT_Modules/Groups/Data.lua", CRT)
 run("CRT_Modules/Alerts/Roster.lua", CRT)
@@ -692,6 +693,18 @@ do
   check(flush() >= 1, "an open Healer CDs is told to draw again")
   deliver(lead, "Lead-Home")
   check(#printed == said + 1, "the same order again: no second line")
+  -- #1297: from another realm's leader, where the game's Ambiguate keeps the realm: the line names them without it
+  do
+    local realAmbiguate = Ambiguate
+    Ambiguate = function(k) return k end
+    others["Lead-Far"] = "lead"
+    local before = #printed
+    deliver(Share.Pack("3002\\nhalo-home\\tme-home"), "Lead-Far")
+    check(#printed == before + 1 and printed[#printed]:find("Healer CDs: Lead's", 1, true) and not printed[#printed]:find("Far", 1, true),
+      "another realm's order: the chat line has no realm: " .. tostring(printed[#printed]))
+    others["Lead-Far"] = nil
+    Ambiguate = realAmbiguate
+  end
   -- the leader keeps their own, even from an assistant
   group.leader = true
   others.Lead = "assist"
