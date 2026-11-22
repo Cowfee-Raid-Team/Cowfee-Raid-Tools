@@ -78,7 +78,11 @@ function CRT:Print(m) printed[#printed + 1] = m end
 CRT_THEME(CRT, CRT.UI)
 assert(load(parseSrc, "Parse.lua"))("CowfeeRaidTools", CRT)
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
+-- the frame Comm.lua listens on for addon messages, kept so a check can deliver one
+local realCreateFrame, commEvents = CreateFrame, nil
+CreateFrame = function(kind) local f = realCreateFrame(kind) commEvents = commEvents or f return f end
 assert(load(commSrc, "Comm.lua"))("CowfeeRaidTools", CRT)
+CreateFrame = realCreateFrame
 assert(load(settingsSrc, "Settings.lua"))("CowfeeRaidTools", CRT)
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
 assert(load(renderSrc, "Render.lua"))("CowfeeRaidTools", CRT)
@@ -498,6 +502,29 @@ do
   CRT.Groups = savedGroups
 end
 print("ok a shared note's invite list makes no layout and its roster is the sender's layout; a pasted one's makes its own")
+
+do
+  -- #1297: a note from another realm's player: the line printed for you names them without the realm; the note
+  -- keeps who sent it in full
+  local saved = { Ambiguate, UnitName, UnitIsGroupLeader, GetGuildInfo, IsInGuild }
+  Ambiguate = function(n) return n end -- "none" keeps another realm
+  UnitName = function(u) if u == "player" then return "Solex" end end
+  UnitIsGroupLeader = function(u) return u == "Pugger-Kil'jaeden" end
+  GetGuildInfo = function() return nil end
+  IsInGuild = function() return false end
+  local onEvent = commEvents and rawget(commEvents, "OnEvent")
+  assert(onEvent, "the addon message listener")
+  local p0 = #printed
+  onEvent(commEvents, "CHAT_MSG_ADDON", "CRTNote", "abc|1|1|EncounterID:3445;Difficulty:Heroic;Name:Far\\ntime:9;ph:1;text:Far;", "RAID", "Pugger-Kil'jaeden")
+  assert(#printed > p0 and lastPrint():find("^Received a note from Pugger%. ") and not lastPrint():find("Kil'jaeden", 1, true),
+    "received: the printed line names the sender without the realm: " .. lastPrint())
+  local found
+  for id, r in pairs(CRT.db.notes.list) do if r.name == "Far" then found = r end end
+  assert(found and found.from == "Pugger-Kil'jaeden", "the note keeps its sender's full name: " .. tostring(found and found.from))
+  assert(Notes.SourceLabel(found) == "Pugger", "its label is drawn without the realm")
+  Ambiguate, UnitName, UnitIsGroupLeader, GetGuildInfo, IsInGuild = (table.unpack or unpack)(saved, 1, 5)
+end
+print("ok a received note's printed line names its sender without the realm")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 for (const f of process.argv.slice(2, 8)) {
