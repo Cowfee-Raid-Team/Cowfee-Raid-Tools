@@ -105,7 +105,7 @@ function Rows.Menu(owner, info, changed)
         return false
     end
     View.OpenMenu(owner, function(root)
-        root:CreateTitle(info.name)
+        root:CreateTitle(CRT.ShortName(info.name)) -- the player's name, drawn without the realm
         Rows.Fill(root, info, changed)
     end)
     return true

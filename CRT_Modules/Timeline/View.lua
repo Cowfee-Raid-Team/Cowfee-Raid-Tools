@@ -2502,7 +2502,7 @@ function Methods:AssignMenu(root, e, t, roster)
         end
     end
     local function forPlayer(menu, p)
-        menu:CreateButton(classColored(p.name, p.class), function()
+        menu:CreateButton(classColored(CRT.ShortName(p.name), p.class), function() -- drawn short; placed by the roster's name
             self:PlaceCooldownAt(t, e, p.name)
         end)
     end

@@ -2,9 +2,10 @@
 // real CRT_Modules/Timeline/Rehearsal.lua and a stub Lanes.AsShown that records its call.
 // Usage: node run_timeline_rehearsalwin.js CRT_Modules/Timeline/Rehearsal.lua CRT_Modules/Timeline/RehearsalWindow.lua
 const fs = require('fs');
+const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = String.raw`
+const harness = themeLua(process.argv.slice(2)) + String.raw`
 local rehSrc, winSrc = ...
 local now = 1000
 function GetTime() return now end
@@ -66,6 +67,7 @@ local lanes = {
 local extra = { length = 100, phases = { { t = 0, label = "P1" }, { t = 50, label = "P2" } } }
 -- Lanes.AsShown: the lanes as the Timeline shows them (Build with your labels, hidden and ignored left out)
 CRT.TimelineLanes = { AsShown = function(...) lanesCall = { n = select("#", ...), ... } return lanes, {}, extra, {} end }
+CRT_NAMES(CRT) -- CRT.ShortName, the real CRT_Core/Names.lua: Preview as draws names without realms
 assert(load(rehSrc, "CRT_Modules/Timeline/Rehearsal.lua"))("CowfeeRaidTools", CRT)
 assert(load(winSrc, "CRT_Modules/Timeline/RehearsalWindow.lua"))("CowfeeRaidTools", CRT)
 local RW = CRT.TimelineRehearsalWindow
@@ -560,6 +562,9 @@ do
   assert(RW:As() == "Bob", "saved")
   roster = { { key = "Aly-Realm", name = "Aly" } }
   assert(keys() == "me=Me,*=Everyone,Aly=Aly,Bob=Bob", "a saved name not on the roster still shows: " .. keys())
+  -- #1297: another realm's player (the roster's name keeps the realm) is listed without it; the choice keeps it
+  roster = { { key = "Aly-Realm", name = "Aly" }, { key = "Cee-Far", name = "Cee-Far" } }
+  assert(keys() == "me=Me,*=Everyone,Aly=Aly,Cee-Far=Cee,Bob=Bob", "another realm's player is drawn without the realm: " .. keys())
   roster = { { key = "Aly-Realm", name = "Aly" }, { key = "Bob", name = "Bob" } }
   as.opts.set("me")
   assert(acalls[#acalls][1] == "start" and acalls[#acalls][5].as == nil, "back to you")
