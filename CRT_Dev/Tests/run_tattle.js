@@ -312,6 +312,19 @@ if seasonBox then
 end
 check(helps.Season ~= nil and helps.Season:find("current season", 1, true) ~= nil, "the Season (?) says new nights take the current season's name")
 
+-- #1297: the chat report names players without their realm, whatever Leave realm names out says (it is for the
+-- Late Tracker); Groups.ReportName is stubbed here to keep the realm
+do
+  local realBlocks = CRT.Tattle.MechanicBlocks
+  CRT.Tattle.MechanicBlocks = function() return { { key = "m", name = "Venom Rupture", total = 3000,
+    rows = { { key = "Thisisfartaa-Kil'jaeden", damage = 2000, hits = 2 }, { key = "Abu-Area 52", damage = 1000, hits = 1 } } } } end
+  local lines = CRT.Tattle.PullChat({ name = "Boss", players = {} }, 1)
+  local text = table.concat(lines, "|")
+  check(text:find("Thisisfartaa 2", 1, true) ~= nil and text:find("Abu 1", 1, true) ~= nil and not text:find("Kil'jaeden", 1, true) and not text:find("Area 52", 1, true),
+    "chat report: names without realms: " .. text)
+  CRT.Tattle.MechanicBlocks = realBlocks
+end
+
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;

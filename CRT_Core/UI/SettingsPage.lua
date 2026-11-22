@@ -562,7 +562,7 @@ local function buildLeft(pf)
         end,
     }), x, -62)
 
-    heading(pf, x, -106, "Reports", "Ticked, player names in the Late Tracker and Tattlebot show without their realm, in chat and exports too. Unticked, a realm shows only for players from another realm. The Raid Groups grid always keeps realms.")
+    heading(pf, x, -106, "Reports", "Ticked, player names in the Late Tracker show without their realm, in chat and exports too. Unticked, a realm shows only for players from another realm. Everywhere else names show without realms. The Raid Groups grid always keeps realms.")
     checkbox(pf, x, -124, "Leave realm names out of reports and Discord exports", function()
         return ui().hideRealms
     end, function(on)

@@ -248,7 +248,7 @@ refresh = function()
     else
         local source = Pace:Source(id)
         local shared = Pace:Shared(id)
-        statusText:SetText((source == "raid" and string.format(TEXT.raid, shared.from or "?")) or (source == "own" and TEXT.yours) or (source == "shipped" and TEXT.shipped) or "")
+        statusText:SetText((source == "raid" and string.format(TEXT.raid, CRT.ShortName(shared.from) or "?")) or (source == "own" and TEXT.yours) or (source == "shipped" and TEXT.shipped) or "")
     end
     emptyText:SetShown(id ~= nil and #list == 0)
     startRow:SetShown(id ~= nil)
@@ -369,7 +369,7 @@ local function build(pf)
             local shared = boss() and Pace:Shared(boss())
             local out = {}
             if shared then
-                out[#out + 1] = { key = "raid", label = string.format(TEXT.useRaid, shared.from or "?") }
+                out[#out + 1] = { key = "raid", label = string.format(TEXT.useRaid, CRT.ShortName(shared.from) or "?") }
             end
             out[#out + 1] = { key = "own", label = TEXT.useOwn }
             return out

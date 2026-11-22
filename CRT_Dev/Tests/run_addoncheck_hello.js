@@ -12,7 +12,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local teamSrc, checkSrc = ...
+local teamSrc, checkSrc, namesSrc = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
 local function eq(a, b, what) check(a == b, what .. " (got " .. tostring(a) .. ", want " .. tostring(b) .. ")") end
@@ -97,6 +97,7 @@ local function boot(name, version, withCheck)
   local CRT = { version = version, db = { addonCheck = { announceTo = "raid" } } }
   function CRT:Print() end
   local prev = ME ME = name
+  assert(load(namesSrc, "CRT_Core/Names.lua"))("CowfeeRaidTools", CRT) -- CRT.ShortName, loaded first as in the .toc
   assert(load(teamSrc, "CRT_Core/Team.lua"))("CowfeeRaidTools", CRT)
   if withCheck then
     assert(load(checkSrc, "CRT_Core/AddonCheck.lua"))("CowfeeRaidTools", CRT)
@@ -208,4 +209,5 @@ const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Core/Team.lua'), 'utf8')));
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Core/AddonCheck.lua'), 'utf8')));
-if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Core/Names.lua'), 'utf8')));
+if (lua.lua_pcall(L, 3, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

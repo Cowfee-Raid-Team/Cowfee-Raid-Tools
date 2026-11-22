@@ -910,7 +910,7 @@ local function mechanicChat(lines, nights, withPulls)
         local line = format("%s %s:", block.name, Tattle.Short(block.total))
         local first = true
         for _, row in ipairs(block.rows) do
-            local part = CRT.Groups.ReportName(row.key) .. " " .. Tattle.Short(row.damage)
+            local part = CRT.ShortName(row.key) .. " " .. Tattle.Short(row.damage) -- the name without its realm
             if withPulls then
                 part = part .. " (" .. row.hits .. ")"
             end

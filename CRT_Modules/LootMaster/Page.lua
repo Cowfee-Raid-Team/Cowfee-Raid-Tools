@@ -484,7 +484,7 @@ local function buildSync(f)
                     class = nil
                 end
                 local c = class and (C_ClassColor and C_ClassColor.GetClassColor(class) or RAID_CLASS_COLORS[class])
-                local label = Ambiguate(name, "none")
+                local label = CRT.ShortName(name) -- drawn without the realm; the key keeps the full name to sync to
                 out[#out + 1] = { key = name, label = c and c:WrapTextInColorCode(label) or label }
             end
             if #targets == 0 then
