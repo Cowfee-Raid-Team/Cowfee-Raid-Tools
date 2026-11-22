@@ -10,9 +10,9 @@
 ## Category: Dungeons & Raids
 
 CRT_Core\Core.lua
-CRT_Core\Names.lua
 CRT_Core\Themes.lua
 CRT_Core\MarkerText.lua
+CRT_Core\Names.lua
 CRT_Core\Gear.lua
 CRT_Core\Share.lua
 CRT_Core\Comm.lua

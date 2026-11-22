@@ -180,6 +180,7 @@ CRT.db.alerts = { bars = {}, reminders = {}, phases = {}, overrides = {}, nextId
 -- CRT_Core/UI/Panel.lua loads first, as in the .toc (the popup helpers), then CRT_Core/UI/Controls.lua (UI.Dropdown)
 assert(load(panelSrc, "CRT_Core/UI/Panel.lua"))("CowfeeRaidTools", CRT)
 CRT_TOOLTIP(CRT) -- UI.TooltipOwner, the real CRT_Core/UI/Tooltip.lua
+CRT_NAMES(CRT) -- CRT.ShortName, the real CRT_Core/Names.lua (the assign menu draws names with it)
 assert(load(controlsSrc, "CRT_Core/UI/Controls.lua"))("CowfeeRaidTools", CRT)
 -- CRT_Modules/Groups/Data.lua loads early, as in the .toc (the Raid Groups layouts and the live roster)
 assert(load(groupsSrc, "CRT_Modules/Groups/Data.lua"))("CowfeeRaidTools", CRT)
@@ -1367,7 +1368,8 @@ local function assignTeardown()
   CRT.db.classCache = {}
   group.leader, group.assist = true, false
 end
-local FULL = "title:Shaman|button:Rain|button:Tide-Other|divider:nil|button:Anyone else|divider:nil|button:Just me"
+-- Tide-Other is drawn without the realm (#1297); picking them still writes their note tag
+local FULL = "title:Shaman|button:Rain|button:Tide|divider:nil|button:Anyone else|divider:nil|button:Just me"
 local function dropCooldown(v, id, laneLabel)
   dragChip(v, cdChipFor(v, id), screenX(v, 70), laneY(laneIndex(v, laneLabel or "Plain")))
 end
@@ -1408,7 +1410,7 @@ do
   -- a second one goes to the same note (the one FindForEncounter gives), under the first
   reset()
   dropCooldown(v, 108280)
-  click(pitem(menus[1].root, "Tide-Other"))
+  click(pitem(menus[1].root, "Tide"))
   local t2, id2 = noteLine(3)
   assert(id2 == id and noteCount() == 1 and t2 and t2.tags[1] == "Tide", "another realm's player written without the realm (#1280), same note")
   -- the boss's note for the difficulty you are in is the one written to (S18)
@@ -1661,8 +1663,8 @@ do
   local v = newView()
   dropCooldown(v, 108280)
   assert(ptexts(menus[1].root) == "title:Shaman|button:Rain|divider:nil|button:Anyone else|divider:nil|button:Just me", ptexts(menus[1].root))
-  local tide = pitem(pitem(menus[1].root, "Anyone else"), "Tide-Other")
-  assert(tide and tide.text == "Tide-Other", "not coloured by a secret class: " .. tostring(tide and tide.text))
+  local tide = pitem(pitem(menus[1].root, "Anyone else"), "Tide")
+  assert(tide and tide.text == "Tide", "not coloured by a secret class: " .. tostring(tide and tide.text))
   secretStrings["SHAMAN_SECRET"] = nil
   RAID_CLASS_COLORS.SHAMAN_SECRET = nil
   assignTeardown()

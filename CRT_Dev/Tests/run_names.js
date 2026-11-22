@@ -1,6 +1,6 @@
 // CRT_Core/Names.lua: CRT.ShortName, the name every window draws. A plain name stays, Name-Realm loses its realm
 // (an apostrophe, a space or digits in the realm too), nil and non-strings come back as given, and a secret value is
-// handed back untouched, never indexed or matched. Also: the .toc loads Names.lua right after Core.lua.
+// handed back untouched, never indexed or matched. Also: the .toc loads Names.lua right after MarkerText.lua (Themes.lua stays right after Core.lua).
 // Usage: node run_names.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -42,8 +42,8 @@ eq(S("Abu-Sargeras"), "Abu", "an issecretvalue that errors counts as not secret"
 issecretvalue = nil
 eq(S("Rixxy-TwistingNether"), "Rixxy", "works without issecretvalue")
 
--- the .toc: Names.lua right after Core.lua, so every module can draw a name
-check(toc:find("\\nCRT_Core\\\\Core%.lua\\r?\\nCRT_Core\\\\Names%.lua\\r?\\n") ~= nil, "the .toc loads Names.lua right after Core.lua")
+-- the .toc: Names.lua right after MarkerText.lua, before any module, so every module can draw a name
+check(toc:find("\\nCRT_Core\\\\MarkerText%.lua\\r?\\nCRT_Core\\\\Names%.lua\\r?\\n") ~= nil, "the .toc loads Names.lua right after MarkerText.lua")
 
 print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end

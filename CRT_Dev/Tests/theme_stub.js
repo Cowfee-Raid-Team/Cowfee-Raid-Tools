@@ -8,7 +8,7 @@
 // the harness already has it; CRT_TOOLTIP(CRT, UI) loads only that, for a harness with no other CRT.UI. CRT_THEME also loads
 // CRT_Core/MarkerText.lua (CRT.MarkerText and CRT.MarkerCodes), which the .toc loads right after Themes.lua; CRT_MARKERS(CRT)
 // loads only that. CRT_THEME also loads CRT_Core/Names.lua (CRT.ShortName, the name every window draws), which the .toc
-// loads right after Core.lua; CRT_NAMES(CRT) loads only that.
+// loads right after MarkerText.lua; CRT_NAMES(CRT) loads only that.
 // It also defines CRT_HELP_PLAIN(text), the real UI.TooltipPlain (Panel.lua, between its [tooltip plain] markers): a
 // list-form help text (UI.AddTooltipText) as one string, for checks that search a (?)'s text. CRT_THEME puts it on UI
 // as UI.TooltipPlain when the harness has none.
