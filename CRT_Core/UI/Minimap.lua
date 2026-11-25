@@ -33,14 +33,22 @@ local function onClick(mouseButton)
     end
 end
 
-local function showTooltip(owner)
-    UI.TooltipOwner(GameTooltip, owner, "ANCHOR_LEFT")
+-- The one tooltip for the minimap button and the addon menu's entry, saying what onClick does. how is
+-- UI.TooltipOwner's (the addon menu keeps its spot beside the menu); drag adds the minimap button's drag line.
+local function clickTooltip(owner, how, drag)
+    UI.TooltipOwner(GameTooltip, owner, "ANCHOR_LEFT", nil, nil, how)
     GameTooltip:SetText("Cowfee Raid Tools", 1, 0.82, 0)
     GameTooltip:AddLine("v" .. tostring(CRT.version), 0.6, 0.6, 0.6)
-    GameTooltip:AddLine("Left-click: open or close", 1, 1, 1)
-    GameTooltip:AddLine("Right-click: General Settings", 1, 1, 1)
-    GameTooltip:AddLine("Drag: move around the minimap", 1, 1, 1)
+    GameTooltip:AddLine("Left-click: open or close.", 1, 1, 1) -- UI:Toggle
+    GameTooltip:AddLine("Right-click: General Settings.", 1, 1, 1)
+    if drag then
+        GameTooltip:AddLine("Drag: move around the minimap.", 1, 1, 1)
+    end
     GameTooltip:Show()
+end
+
+local function showTooltip(owner)
+    clickTooltip(owner, nil, true)
 end
 
 local function create()
@@ -107,9 +115,23 @@ function Minimap_:SetHidden(hide)
     self:Refresh()
 end
 
--- The game's addon menu beside the minimap calls this global, named in the .toc.
+-- The game's addon menu beside the minimap calls these globals, named in the .toc (AddonCompartmentFunc,
+-- AddonCompartmentFuncOnEnter, AddonCompartmentFuncOnLeave). The click gets (addon name, mouse button), since
+-- 11.0.0 with no third argument; enter and leave get (addon name, the menu's button), as Gethe/wow-ui-source live,
+-- Blizzard_Minimap/Mainline/AddonCompartment.lua calls them. The tooltip says what each click does (onClick).
 function CowfeeRaidTools_OnAddonCompartmentClick(_, mouseButton)
     onClick(mouseButton)
+end
+
+function CowfeeRaidTools_OnAddonCompartmentEnter(_, menuButton)
+    if not menuButton then
+        return
+    end
+    clickTooltip(menuButton, UI.TOOLTIP_KEEP, false)
+end
+
+function CowfeeRaidTools_OnAddonCompartmentLeave()
+    GameTooltip:Hide()
 end
 
 local events = CreateFrame("Frame")
