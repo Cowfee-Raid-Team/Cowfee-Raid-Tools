@@ -312,6 +312,6 @@ function DevPage.Select(key)
     end
 end
 
-UI:RegisterPage("dev", "Development", build)
+UI:RegisterPage("dev", "Development", build, "Developer tools: the layout editor, windows, boss data and probes.")
 -- Only /crt dev shows it, until the main window closes.
 UI:SetPageHidden("dev", true, true)
