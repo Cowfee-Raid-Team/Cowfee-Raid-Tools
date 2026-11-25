@@ -6,11 +6,11 @@ local ADDON, CRT = ...
 --   My Loot (left, everyone's): one large card. Its status line counts the items of the session you were
 --     sent that still wait for your answer, with their icons (quality borders, tooltips); with nothing
 --     waiting it shows the session's or the last one's items dimmed (LM.MyLoot, LootMaster/RaiderWindow.lua).
---     A click anywhere on it opens your loot popup and All Loot Rolls (LM:OpenMyLoot), as /crt loot does. Under it,
+--     A click anywhere on it opens your loot popup and All loot rolls (LM:OpenMyLoot), as /crt loot does. Under it,
 --     My wishlist opens your wishlist (LM:ShowWishlist, LootMaster/WishlistWindow.lua), as /crt wishlist does.
 --   Master loot (right, the looter's): its heading's (?) says only the master looter uses it. CRT Looting's
 --     state with the leader's Turn on / Turn off for everyone (LootMaster/Looting.lua); the session line; a
---     2x2 grid of Test boss kill, Start session (N), Master Loot Window and End session; Held boss loot as a
+--     2x2 grid of Test boss kill, Start session (N), Master loot window and End session; Held boss loot as a
 --     compact scrolling list (LootMaster/BossLoot.lua's rows); Add from bags (LootMaster/AddItem.lua); the
 --     running session's Items. Without loot authority (LM:CanLoot) the buttons are off, with the reason on
 --     hover, the rest is greyed, and Add from bags refuses with the reason.
@@ -50,14 +50,14 @@ local TEXT = {
         "Only the master looter uses this side: the raid leader, or a looter they name in Loot Master > Settings > Loot authority. For everyone else it is greyed out; My Loot on the left is yours.",
         { "Test boss kill", "acts as one boss kill: it adds 2 to 4 sample items marked TEST to Held boss loot." },
         { "Start session", "gives out the ticked items, as after a real kill. A session of TEST items is a test: everyone with CRT gets the popup, nothing is passed or saved to Loot History, and only you see the award message." },
-        { "Master Loot Window", "where you give the items out." },
+        { "Master loot window", "where you give the items out." },
         { "End session", "asks first, then ends the session, puts real items waiting to start back in Held boss loot unticked, and clears the TEST items." },
         "/crt loot test starts a test session at once.",
     },
     none = "No loot session is running.",
     running = "%s%d items, %d of %d raiders with CRT, %d answers in",
     testTag = "TEST · ",
-    testKill = "Test boss kill", start = "Start session (%d)", window = "Master Loot Window", endSession = "End session",
+    testKill = "Test boss kill", start = "Start session (%d)", window = "Master loot window", endSession = "End session",
     noAuthority = "Only the raid leader, or a looter they name in Loot authority, can run loot.",
     held = "Held boss loot",
     heldHelp = "The boss items waiting for your next loot session, real and TEST, as in the Boss loot window (/crt loot boss). Tick the ones to give out and press Start session. TEST items never go into a real session: with both kinds ticked, only the real ones start. TEST items go at End session, after a /reload, or 10 minutes after their test kill. Add from bags puts an item from your bags on the list, marked from your bags, if you can still trade it. One that isn't bound has no trade time and leaves 2 hours after you added it.",
@@ -369,7 +369,7 @@ local function gatedButton(f, label, action)
     return b
 end
 
--- The 2x2 grid: Test boss kill and Master Loot Window in the first column, Start session (N) and End
+-- The 2x2 grid: Test boss kill and Master loot window in the first column, Start session (N) and End
 -- session in the second, which starts after the wider of the first (Start session's count changes its
 -- width only).
 local function buildGrid(f, refreshers)

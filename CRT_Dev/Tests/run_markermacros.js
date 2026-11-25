@@ -36,6 +36,8 @@ local function mock(kind)
     if k == "SetDesaturated" then return function(self, on) rawset(self, "desaturated", on and true or false) end end
     if k == "SetScale" then return function(self, s) rawset(self, "scale", s) end end
     if k == "SetSize" then return function(self, w, h) rawset(self, "w", w) rawset(self, "h", h) end end
+    if k == "SetWidth" then return function(self, w) rawset(self, "w", w) end end
+    if k == "SetHeight" then return function(self, h) rawset(self, "h", h) end end
     if k == "SetPoint" then return function(self, ...) rawset(self, "point", { ... }) end end
     if k == "GetPoint" then return function() return "CENTER", nil, "CENTER", 0, 0 end end
     return function() end end })

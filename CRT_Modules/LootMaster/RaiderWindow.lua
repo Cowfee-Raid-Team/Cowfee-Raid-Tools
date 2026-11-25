@@ -403,9 +403,9 @@ function LM.MyLoot()
     return 0, items, true
 end
 
--- Your loot popup (Popup.lua) and All Loot Rolls together: the My Loot card and /crt loot. With no session
+-- Your loot popup (Popup.lua) and All loot rolls together: the My Loot card and /crt loot. With no session
 -- running, the last one this login, read only: its items and results in the popup (rows, no buttons) and in
--- All Loot Rolls; with none this login, All Loot Rolls empty, saying so. Returns whether one was running.
+-- All loot rolls; with none this login, All loot rolls empty, saying so. Returns whether one was running.
 function LM:OpenMyLoot()
     if self.incoming and self.incoming.view then
         self:ShowPopup()
@@ -431,8 +431,8 @@ if CRT.Slash then
             return LM.Command ~= nil and LM:Command(msg)
         end,
         help = {
-            "[/crt loot] - open your loot popup and All Loot Rolls",
-            "[/crt loot test] - try Loot Master with sample items: the Master Loot Window for you, the popup for everyone with CRT ([window], [popup], [end])",
+            "[/crt loot] - open your loot popup and All loot rolls",
+            "[/crt loot test] - try Loot Master with sample items: the Master loot window for you, the popup for everyone with CRT ([window], [popup], [end])",
             "[/crt loot settings] - open the Loot Master page ([boss] opens Boss loot)",
         },
     })

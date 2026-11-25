@@ -2090,7 +2090,7 @@ check("mech shield: Last pull with its Use buttons", function()
   CRT.db.alerts.shieldPulls = { [ENC] = { at = 1, units = { boss3 = 30 }, times = { boss3 = { 30, 90.5 } } } }
   CRT.NoteReminders.Refresh()
   assert(s.lastText.shown and s.lastText.text == "Last pull: Boss 3 shield at 0:30.0, 1:30.5", "the line: " .. tostring(s.lastText.text))
-  assert(s.use[1].shown and s.use[1].text == "Use Boss 3" and not s.use[1].enabled, "Use Boss 3, greyed until Shield bar is ticked")
+  assert(s.use[1].shown and s.use[1].text == "Use boss 3" and not s.use[1].enabled, "Use boss 3, greyed until Shield bar is ticked")
   setCheck(s.check, true)
   assert(s.use[1].enabled, "enabled with it")
   click(s.use[1])

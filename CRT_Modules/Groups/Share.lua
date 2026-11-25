@@ -50,7 +50,7 @@ local TEXT = {
     stored = "%s (from %s)",
     unnamed = "Roster",
     received = "Roster '%s' from %s is now your active group.",
-    receivedKept = "Roster '%s' from %s is now your active group. Your unsaved changes on '%s' are kept; pick it in Quick Load to see it.",
+    receivedKept = "Roster '%s' from %s is now your active group. Your unsaved changes on '%s' are kept; pick it in Quick load to see it.",
     receivedOwn = "Roster '%s' from %s is now your active group. Your unsaved changes on it are kept.",
     queued = "Roster '%s' is already on its way.",
 }
@@ -216,7 +216,7 @@ local function store(sender, short, text)
     -- not opened: a saved layout is open with unsaved edits (Groups:HasUnsavedEdits)
     local open = Groups:Find(Groups:Selected())
     if open and open.id == id then
-        -- the edits are on this copy: picking it in Quick Load would throw them away, so it isn't suggested
+        -- the edits are on this copy: picking it in Quick load would throw them away, so it isn't suggested
         CRT:Print(string.format(TEXT.receivedOwn, base, short))
     else
         CRT:Print(string.format(TEXT.receivedKept, base, short, open and open.name or ""))

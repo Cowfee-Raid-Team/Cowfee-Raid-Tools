@@ -1084,7 +1084,7 @@ local function selectTab(key)
 end
 
 -- Opens the Timeline on its Advanced tab with text in the reference box, ready to fill in and Save (the
--- Encounter Journal's Export Abilities, Timeline/JournalExport.lua). The tab is only there with /crt dev
+-- Encounter Journal's Export abilities, Timeline/JournalExport.lua). The tab is only there with /crt dev
 -- open; without it this says so in chat.
 function Timeline:OpenReferenceText(text)
     if not Timeline.DevMode() then

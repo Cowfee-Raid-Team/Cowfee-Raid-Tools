@@ -269,7 +269,7 @@ do
 end
 print("ok pug notes kept apart, your guild's by its name")
 do
-  -- the Notes list's three styles (Notes Settings): grouped headings, a dropdown, chips
+  -- the Notes list's three styles (Notes settings): grouped headings, a dropdown, chips
   local function rowsShown()
     local out = {}
     for _, b in ipairs(buttons) do

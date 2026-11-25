@@ -73,7 +73,7 @@ local defaults = {
         working = {},
         -- roles set by hand on a slot's Set role (Groups.HandRole): [key in lower case] = "TANK", "HEALER" or "DAMAGER"
         roles = {},
-        -- Sort by's method (Groups/Sort.lua: "roles", "melee", "spread" or "sides"), and whether Arrange Groups posts
+        -- Sort by's method (Groups/Sort.lua: "roles", "melee", "spread" or "sides"), and whether Arrange groups posts
         -- who is new in each group to raid chat when it is done (Groups/Apply.lua)
         sortMethod = "roles",
         postChanges = false,
@@ -490,7 +490,7 @@ local defaults = {
         plates = { on = true, all = true, size = 50, font = 24, offset = 20,
             mineBox = { 0, 1, 0, 1 }, mineText = { 1, 0, 0, 1 }, box = { 1, 0, 0, 1 }, text = { 1, 1, 1, 1 } }, -- saved, the player's to change: not a theme colour
         reminder = { on = true, sound = "none", size = 48 } },
-    -- Assignment highlights (Highlights/; settings on Raid Notes > Notes Settings and Start here > What's on): enabled
+    -- Assignment highlights (Highlights/; settings on Raid Notes > Notes settings and Start here > What's on): enabled
     -- is the one switch, on from a fresh install. name and group mark the raid note lines that name you or your raid
     -- group; glow makes a line glow when a new version of the note changes your part (Added, Removed, Moved). windows
     -- says which note windows show them: the assignments window by default; the timers and personal note windows only

@@ -52,7 +52,7 @@ local FORMAT_HELP = "One line per thing:\n\n"
     .. "Encounter: 3001  (the boss's encounter ID, optional)\n"
     .. "Phase: P2 7:20  (a phase line, the label is optional)\n"
     .. "Soulcoil Rite (type raid, lead 7) [spell 123456]: 0:02+45, 1:17, 95\n\n"
-    .. "A time is m:ss or seconds; +N after it draws a bar N seconds long. type says what the ability is (the words below): the first colours the row, the others add dots. tags lists the Journal's icons for it, which Export Abilities writes for you. lead N draws the cast line N seconds early, color rrggbb overrides the colour, and [spell N] sets the icon and tooltip; without it the row is matched by name. Blank lines and lines starting with # are skipped. Nothing is saved until every line reads.\n\n"
+    .. "A time is m:ss or seconds; +N after it draws a bar N seconds long. type says what the ability is (the words below): the first colours the row, the others add dots. tags lists the Journal's icons for it, which Export abilities writes for you. lead N draws the cast line N seconds early, color rrggbb overrides the colour, and [spell N] sets the icon and tooltip; without it the row is matched by name. Blank lines and lines starting with # are skipped. Nothing is saved until every line reads.\n\n"
     .. CRT.TimelineReference.Legend()
     .. "\n\nIcons come from the Encounter Journal, which isn't read in combat, so they can be blank until you are out of combat."
 
@@ -650,9 +650,9 @@ function ReferencePage.Build(f, ctx)
     local lines = {}
 
     -- Left: the text box, Save and Clear, and the status line.
-    local title = label(f, "Abilities Text")
+    local title = label(f, "Abilities text")
     title:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -8)
-    UI.HelpRight(title, "Abilities Text", FORMAT_HELP)
+    UI.HelpRight(title, "Abilities text", FORMAT_HELP)
     local mode = label(f, "", "CRTFontSmall")
     mode:SetPoint("TOPLEFT", f, "TOPLEFT", 160, -10)
     mode:SetWidth(BOX_W - 152)

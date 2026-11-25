@@ -2392,12 +2392,12 @@ do
   assert(s.lastText.text == "Last pull: 2 boss shields", "two: a short line: " .. tostring(s.lastText.text))
   assert(s.lastTip == "Boss 1 shield at 0:12.4\\nBoss 2 shield at 3:03.8", "the tooltip, soonest first: " .. tostring(s.lastTip))
   assert(s.lastHit and s.lastHit.OnEnter and s.lastHit.shown, "a hover frame over the line")
-  assert(s.use[1].shown and s.use[1].text == "Use Boss 1" and s.use[2].shown and s.use[2].text == "Use Boss 2" and not s.use[3].shown, "a Use button each")
+  assert(s.use[1].shown and s.use[1].text == "Use boss 1" and s.use[2].shown and s.use[2].text == "Use boss 2" and not s.use[3].shown, "a Use button each")
   assert(s.use[1].enabled and s.use[1].w >= 40 and s.use[1].h == 24, "sized from its label, 24 high, enabled with Shield bar on")
   click(s.use[2])
-  assert(value("Shield on") == "boss2", "Use Boss 2 sets Shield on")
+  assert(value("Shield on") == "boss2", "Use boss 2 sets Shield on")
   click(s.use[1])
-  assert(value("Shield on") == "boss1", "Use Boss 1 sets Shield on")
+  assert(value("Shield on") == "boss1", "Use boss 1 sets Shield on")
   setCheck(s.check, false)
   assert(not s.use[1].enabled, "greyed with Shield bar unticked")
   click(s.use[2])
@@ -2437,7 +2437,7 @@ do
   -- up to three, soonest first
   CRT.db.alerts.shieldPulls[ENC] = { at = 1, units = { boss5 = 50, boss4 = 40, boss3 = 30, boss1 = 10 } }
   E:Open(ENC, 1)
-  assert(s.lastText.text == "Last pull: 3 boss shields" and s.use[3].shown and s.use[3].text == "Use Boss 4", "three: " .. s.lastText.text)
+  assert(s.lastText.text == "Last pull: 3 boss shields" and s.use[3].shown and s.use[3].text == "Use boss 4", "three: " .. s.lastText.text)
   assert(s.lastTip == "Boss 1 shield at 0:10.0\\nBoss 3 shield at 0:30.0\\nBoss 4 shield at 0:40.0", "all three in the tooltip")
   -- one: the line says it all
   CRT.db.alerts.shieldPulls[ENC] = { at = 1, units = { boss2 = 183.8 } }

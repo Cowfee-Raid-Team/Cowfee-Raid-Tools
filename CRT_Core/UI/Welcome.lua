@@ -34,7 +34,7 @@ local STEPS = {
             UI:Show()
             UI:SetPreviews(true)
         end },
-        { text = "Pick the voice that reads your alerts out.", button = "Alert Settings", go = function()
+        { text = "Pick the voice that reads your alerts out.", button = "Alert settings", go = function()
             CRT.NotesPage.Open("alerts")
         end },
         { text = "See what's on, and switch off what you don't need.", button = "What's on", go = function()

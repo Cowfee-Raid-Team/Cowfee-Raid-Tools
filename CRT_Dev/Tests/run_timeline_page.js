@@ -716,7 +716,7 @@ do
   bossDD.opts.set(3470)
   assert(edit.enabled == true and add.enabled == true, "add spell: on for a boss's Journal list, ability timeline or not")
   assert(helps["Journal abilities"]:find("combat", 1, true), "Journal abilities help: not read in combat")
-  assert(helps["Abilities Text"]:find("combat", 1, true), "References help: icons need the Journal, not read in combat")
+  assert(helps["Abilities text"]:find("combat", 1, true), "References help: icons need the Journal, not read in combat")
   local key = R:Add("Boss: Nek'zali the Soulcoiler\\nDifficulty: Mythic\\nA: 0:10")
   local edit2
   for _, b in ipairs(buttons) do if b.text == "Edit" and b.shown and rawget(b, "key") == key then edit2 = b end end

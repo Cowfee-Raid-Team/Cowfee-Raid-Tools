@@ -84,7 +84,7 @@ do
     assert(rawget(h, "helpTarget") ~= nil, "the (?) " .. tostring(h.helpTitle) .. " is placed by UI.HelpRight")
     byTitle[h.helpTitle] = rawget(h, "helpTarget")
   end
-  assert(byTitle["Use This Group"] and byTitle["Use This Group"].text == "Use This Group", "Use This Group's (?) is right of its button")
+  assert(byTitle["Use this group"] and byTitle["Use this group"].text == "Use this group", "Use this group's (?) is right of its button")
   assert(byTitle["Editing the groups"] and byTitle["Editing the groups"].text == "Clear grid", "the editing (?) is right of Clear grid, the last grid button")
   print("ok every (?) on Raid Groups is right of what it explains")
 end
@@ -332,7 +332,7 @@ do
   sortButton.OnClick(sortButton)
   check(sortButton.enabled == false, "an empty grid: greyed")
 end
--- Post group changes to raid chat: a check box right of Arrange Groups, saved; off by default
+-- Post group changes to raid chat: a check box right of Arrange groups, saved; off by default
 do
   local post
   for _, f in ipairs(frames) do local l = rawget(f, "label") if type(l) == "table" and rawget(l, "text") == "Post group changes to raid chat" then post = f end end

@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- Assignment highlights: on by default, switched on Raid Notes > Notes Settings > Highlights (Highlights/Settings.lua) or
+-- Assignment highlights: on by default, switched on Raid Notes > Notes settings > Highlights (Highlights/Settings.lua) or
 -- Start here > What's on. In the note windows ticked there (the assignments window by default; the timers and
 -- personal note windows once ticked: Notes/Window.lua) a line that names you or your raid group gets a band behind it
 -- in the theme's accent, and the name or group word in the accent colour. When a new version of the same note changes
@@ -35,7 +35,7 @@ function H:Enabled()
     return CRT.db ~= nil and CRT.db.highlights ~= nil and CRT.db.highlights.enabled == true
 end
 
--- The one switch, for Raid Notes > Notes Settings > Highlights and Start here > What's on alike: both read
+-- The one switch, for Raid Notes > Notes settings > Highlights and Start here > What's on alike: both read
 -- highlights.enabled when they show, so they stay in step.
 function H:SetEnabled(on)
     CRT.db.highlights.enabled = on and true or false

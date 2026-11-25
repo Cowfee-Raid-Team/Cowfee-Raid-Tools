@@ -89,7 +89,7 @@ local TEXT = {
     autoOne = "%d item you can't use was answered %s for you.",
     autoMany = "%d items you can't use were answered %s for you.",
     showAuto = "Show",
-    answers = "All Loot Rolls",
+    answers = "All loot rolls",
     autoAnswered = "%s: answered %s for you",
     autoState = "%s (auto)", -- an answered-for-you row's answer
     given = "Given to %s",
@@ -708,7 +708,7 @@ local function build()
     header:SetScript("OnDragStop", function()
         anchor:StopDrag()
     end)
-    -- the title bar, right to left: the X (closes every item) and All Loot Rolls, on the bar's centre
+    -- the title bar, right to left: the X (closes every item) and All loot rolls, on the bar's centre
     -- line; the (i) follows the title
     header.close = CreateFrame("Button", nil, header, "UIPanelCloseButton")
     header.close:SetSize(L.headerClose, L.headerClose)

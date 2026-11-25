@@ -84,7 +84,7 @@ function LM.GearIcon(row, x)
     return t
 end
 
--- Moves a gear icon and the button over it to x (a window whose columns move: All Loot Rolls' Wishlist column).
+-- Moves a gear icon and the button over it to x (a window whose columns move: All loot rolls' Wishlist column).
 function LM.PlaceGearIcon(t, x)
     t:ClearAllPoints()
     t:SetPoint("LEFT", x, 0)

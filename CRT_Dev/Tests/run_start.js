@@ -255,7 +255,7 @@ check(table.concat(p.opened, " ", before + 1) == "groups readycheck notes:notes"
 for _, half in ipairs(wv.choice.buttons) do if half.key == "raider" then click(half) end end
 before = #p.opened
 for i = 1, 3 do click(wv.steps[i].button) end
-check(table.concat(p.opened, " ", before + 1) == "? notes:alerts start", "the raider's steps go to Previews, Alert Settings and Start here: " .. table.concat(p.opened, " ", before + 1))
+check(table.concat(p.opened, " ", before + 1) == "? notes:alerts start", "the raider's steps go to Previews, Alert settings and Start here: " .. table.concat(p.opened, " ", before + 1))
 check(p.UI.previewing == true or next(p.UI.previews) == nil, "Previews turns the previews on")
 p.UI:SetPreviews(false)
 check(p.shown(), "a step's button leaves the Welcome open; Got it closes it")

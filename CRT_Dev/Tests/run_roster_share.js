@@ -260,7 +260,7 @@ eq(Groups:Active(), got.id, "shared again: still active")
 eq(count(), 2, "shared again: no second copy")
 eq(#printed, pAgain + 1, "shared again: one chat line")
 eq(printed[#printed], "Roster 'Main; Mythic' from Solex is now your active group.", "shared again: the chat line")
--- their own layout opened and made active (Use This Group): shared again, the roster is active and open again
+-- their own layout opened and made active (Use this group): shared again, the roster is active and open again
 Groups:Select(ownId)
 Groups:SetActive(ownId)
 deliver(firstSent, "Solex-Sargeras")
@@ -282,7 +282,7 @@ eq(gdb().selected, ownId, "unsaved: your layout stays open")
 eq(Groups:Working()[2], "Draft-Sargeras", "unsaved: your edit kept")
 eq(Groups:Find(ownId).slots[2], "", "unsaved: your edit not saved for you")
 check(Groups.dirty, "unsaved: still unsaved")
-eq(printed[#printed], "Roster 'Main; Mythic' from Solex is now your active group. Your unsaved changes on 'My alts' are kept; pick it in Quick Load to see it.", "unsaved: the chat line")
+eq(printed[#printed], "Roster 'Main; Mythic' from Solex is now your active group. Your unsaved changes on 'My alts' are kept; pick it in Quick load to see it.", "unsaved: the chat line")
 -- the same roster again, the edit still unsaved: nothing happens
 pAgain = #printed
 deliver(firstSent, "Solex-Sargeras")
@@ -305,7 +305,7 @@ gdb().selected = nil
 Groups:SetSlot(5, "Draft2-Sargeras")
 deliver(firstSent, "Solex-Sargeras")
 check(Groups:Active() == got.id and gdb().selected == got.id and Groups:Working()[5] == slots[5], "unsaved layout, roster active already: opened again")
--- unsaved edits on the received copy itself: kept, and the chat line doesn't send them to Quick Load
+-- unsaved edits on the received copy itself: kept, and the chat line doesn't send them to Quick load
 Groups:Select(got.id)
 Groups:SetSlot(3, "Mine2-Sargeras")
 Groups:SetActive(ownId)

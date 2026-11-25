@@ -1,4 +1,4 @@
-// CRT_Modules/LootMaster/Window.lua (the looter window) and RaiderWindow.lua (All Loot Rolls), built on stand-in frames:
+// CRT_Modules/LootMaster/Window.lua (the looter window) and RaiderWindow.lua (All loot rolls), built on stand-in frames:
 // each window's column headings and rows sit in one frame that clips its children (LM.ListArea in Tabs.lua), so a
 // narrow window cuts them off at the same edge; the columns keep their x; the scroll bar is outside the clipped frame.
 // Usage: node run_lootmaster_windows.js <addon folder>
@@ -114,7 +114,7 @@ check(area and hasPoint(area, { "BOTTOMRIGHT", -LM.LIST_SCROLL_GAP, 0 }), "loote
 check(box and hasPoint(box, { "TOPLEFT", 0 }) and hasPoint(box, { "BOTTOMRIGHT", 0, 0 }), "looter: the rows fill the clipped frame under the headings")
 check(#helped == 1 and helped[1].helpTarget.kind == "FontString", "looter: its one (?) is right of the item's name in the header")
 
--- All Loot Rolls
+-- All loot rolls
 LM.incoming = { test = true, items = { { itemString = "item:1" } }, view = {
   AnswerCount = function() return 0, 0 end, Rows = function() return {} end, players = {}, Response = function() end } }
 local before = #made
@@ -138,7 +138,7 @@ check(fixed, "raider: each heading keeps its own x at the clipping frame's top")
 check(rbar and rbar.parent ~= rarea and not rbar.parent.clips, "raider: the scroll bar is outside the clipped frame")
 check(#helped == 2 and helped[2].helpTarget.kind == "FontString", "raider: its one (?) is right of the item's name in the header")
 
--- All Loot Rolls with no session (My Loot and /crt loot, LM:OpenMyLoot): with none this login it opens empty and
+-- All loot rolls with no session (My Loot and /crt loot, LM:OpenMyLoot): with none this login it opens empty and
 -- says so; once a session ended it shows that one, read only
 local answers = windows.CowfeeRaidToolsLootAnswers
 local headerName = helped[2].helpTarget
@@ -147,7 +147,7 @@ function CRT:Print(m) printed[#printed + 1] = m end
 answers:Hide()
 LM.incoming = nil
 LM:ShowAnswers()
-check(answers.shown, "no session this login: All Loot Rolls opens")
+check(answers.shown, "no session this login: All loot rolls opens")
 check(headerName.text == "No loot session yet tonight.", "no session this login: it says No loot session yet tonight. (got " .. tostring(headerName.text) .. ")")
 check(#printed == 0, "no session this login: no chat line")
 -- a session, then its end
@@ -158,9 +158,9 @@ LM.incoming = ended
 for _, fn in ipairs(handlers) do fn("incoming") end
 LM.incoming = nil
 for _, fn in ipairs(handlers) do fn("incoming", "ended") end
-check(not answers.shown, "the session's end closes All Loot Rolls")
+check(not answers.shown, "the session's end closes All loot rolls")
 LM:ShowAnswers()
-check(answers.shown, "after the end: All Loot Rolls opens again")
+check(answers.shown, "after the end: All loot rolls opens again")
 check(headerName.text == "[Item]", "after the end: it shows the last session's item (got " .. tostring(headerName.text) .. ")")
 check(answers.strip.note == "last session, read only", "after the end: the title bar says last session, read only (got " .. tostring(answers.strip.note) .. ")")
 -- #1297: Halo-Realm won the item: every drawn text names Halo without the realm

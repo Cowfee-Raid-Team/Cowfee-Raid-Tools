@@ -175,7 +175,7 @@ function LM:SyncStatus() return nil end
 function LM:SyncPing() end
 function LM:SyncTargets() return {} end
 LM.ScoreChanged = function() end
-LM.TAB_COLUMN = LM.TAB_COLUMN or 180 -- Tabs.lua is not loaded: All Loot Rolls' left column
+LM.TAB_COLUMN = LM.TAB_COLUMN or 180 -- Tabs.lua is not loaded: All loot rolls' left column
 assert(load(raiderSrc, "RaiderWindow.lua"))("CowfeeRaidTools", CRT) -- My Loot (LM.MyLoot, LM:OpenMyLoot)
 assert(load(tonightSrc, "Tonight.lua"))("CowfeeRaidTools", CRT) -- Tonight's two columns
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
@@ -193,7 +193,7 @@ check(buttons["Test boss kill"] ~= nil, "Tonight: a Test boss kill button")
 eq(buttons["Test"], nil, "Tonight: no plain Test button")
 local start = buttons["Start session (0)"]
 check(start ~= nil, "Tonight: a Start session (N) button")
-check(buttons["End session"] ~= nil and buttons["Master Loot Window"] ~= nil, "Tonight: the other session buttons stay")
+check(buttons["End session"] ~= nil and buttons["Master loot window"] ~= nil, "Tonight: the other session buttons stay")
 eq(buttons["My popup"], nil, "Tonight: no My popup button (the My Loot card replaces it)")
 check(type(helps["Held boss loot"]) == "string", "Tonight: Held boss loot has (?) help")
 check((helps["Master loot"] or ""):find("Test boss kill", 1, true) ~= nil, "Tonight: the Master loot help says what Test boss kill does")
@@ -406,7 +406,7 @@ GameTooltip = { SetText = function(_, t) tip.title = t end, AddLine = function(_
 CRT_UI.TooltipOwner = function() tip.lines = {} tip.title = nil end
 BL:Clear()
 LM:TestBossKill(rand)
-local gatedNames = { "Test boss kill", "Master Loot Window", "End session" }
+local gatedNames = { "Test boss kill", "Master loot window", "End session" }
 local function gate(want, who)
   LM:Fire("bossloot", "changed")
   for _, n in ipairs(gatedNames) do eq(buttons[n].enabled, want, who .. ": " .. n) end
@@ -427,7 +427,7 @@ check(tip.lines[1] and tip.lines[1]:find("Only the raid leader, or a looter they
 local rowsBefore = #BL:Rows()
 b.onClick()
 eq(#BL:Rows(), rowsBefore, "no authority: Test boss kill does nothing")
-buttons["Master Loot Window"].onClick()
+buttons["Master loot window"].onClick()
 buttons["End session"].onClick()
 eq(#BL:Rows(), rowsBefore, "no authority: End session does nothing")
 -- Start session needs both rules: authority, and something to start

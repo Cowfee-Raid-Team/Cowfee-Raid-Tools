@@ -1,9 +1,9 @@
 // Loot Master > Tonight's layout (CRT_Modules/LootMaster/Tonight.lua, built by Page.lua), on stand-in frames: My Loot on the
-// left, a card that opens your loot popup and All Loot Rolls (LM:OpenMyLoot, RaiderWindow.lua), with a status line counting the
+// left, a card that opens your loot popup and All loot rolls (LM:OpenMyLoot, RaiderWindow.lua), with a status line counting the
 // items waiting for your answer and their icons (the last session's dimmed when nothing waits); Master loot on the right, with
-// its (?), CRT Looting, the session line, a 2x2 grid (Test boss kill, Start session (N), Master Loot Window, End session), the
+// its (?), CRT Looting, the session line, a 2x2 grid (Test boss kill, Start session (N), Master loot window, End session), the
 // compact Held boss loot list, Add from bags and the session's Items. Without loot authority the right side is greyed and Add
-// from bags refuses with the reason; the card always works. "Master Loot Window" is the looter window's name wherever it shows.
+// from bags refuses with the reason; the card always works. "Master loot window" is the looter window's name wherever it shows.
 // Usage: node run_lootmaster_tonight.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -146,7 +146,7 @@ CRT.Groups = { Normalize = function(n) return n end }
 CRT.Loot = setmetatable({ R = { ITEM = 8 }, ItemID = function(s) return idOf(s) end, Each = function() end }, { __index = function() return function() end end })
 assert(load(dataSrc, "Data.lua"))("CowfeeRaidTools", CRT)
 local LM = CRT.LootMaster
-LM.TAB_COLUMN = 180 -- Tabs.lua isn't loaded: All Loot Rolls' left column
+LM.TAB_COLUMN = 180 -- Tabs.lua isn't loaded: All loot rolls' left column
 assert(load(commSrc, "Comm.lua"))("CowfeeRaidTools", CRT)
 assert(load(gateSrc, "AutoPass.lua"))("CowfeeRaidTools", CRT)
 assert(load(lootingSrc, "Looting.lua"))("CowfeeRaidTools", CRT)
@@ -175,7 +175,7 @@ LM.BuildAddItem = function(...) slot = realBuild(...) return slot end
 assert(load(tonightSrc, "Tonight.lua"))("CowfeeRaidTools", CRT)
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
 local BL = LM.BossLoot
--- the popup and All Loot Rolls (Popup.lua's and RaiderWindow.lua's open functions), counted
+-- the popup and All loot rolls (Popup.lua's and RaiderWindow.lua's open functions), counted
 local opened = { popup = 0, answers = 0 }
 function LM:ShowPopup() opened.popup = opened.popup + 1 end
 function LM:ShowAnswers() opened.answers = opened.answers + 1 end
@@ -205,20 +205,20 @@ check(helps["Master loot"] and helps["Master loot"]:find("Test boss kill", 1, tr
 local masterX = T.masterHeading and T.masterHeading.points[1] and T.masterHeading.points[1][2]
 check(type(masterX) == "number" and masterX >= 410, "Master loot is the right column (x " .. tostring(masterX) .. ")")
 -- the 2x2 grid
-local tk, mw, en = buttons["Test boss kill"], buttons["Master Loot Window"], buttons["End session"]
+local tk, mw, en = buttons["Test boss kill"], buttons["Master loot window"], buttons["End session"]
 local st = buttons["Start session (0)"]
-check(tk and st and mw and en, "the four buttons: Test boss kill, Start session (N), Master Loot Window, End session")
+check(tk and st and mw and en, "the four buttons: Test boss kill, Start session (N), Master loot window, End session")
 eq(buttons["My popup"], nil, "no My popup button (the card replaces it)")
 eq(buttons["Looter window"], nil, "no Looter window button (renamed)")
 local function at(b) local p = b and b.points[1] return p and p[2], p and p[3] end
 if tk and st and mw and en then
   local x1, y1 = at(tk) local x2, y2 = at(st) local x3, y3 = at(mw) local x4, y4 = at(en)
   check(x1 == x3 and x2 == x4 and x2 > x1, "two columns of buttons")
-  check(y1 == y2 and y3 == y4 and y3 < y1, "two rows: Test boss kill and Start session above, Master Loot Window and End session under")
+  check(y1 == y2 and y3 == y4 and y3 < y1, "two rows: Test boss kill and Start session above, Master loot window and End session under")
   check(x1 >= masterX, "the grid is on the right side")
   check(x2 >= x1 + math.max(tk.width or 0, mw.width or 0), "the second column starts after the wider first-column button")
 end
-check(mw and mw.width and mw.width >= #"Master Loot Window" * 6, "Master Loot Window is as wide as its label")
+check(mw and mw.width and mw.width >= #"Master loot window" * 6, "Master loot window is as wide as its label")
 -- the other parts of the right side
 check(type(helps["Held boss loot"]) == "string", "Held boss loot keeps its (?)")
 check(T.heldList ~= nil and T.heldList.view ~= nil, "Held boss loot is a scrolling list")
@@ -279,24 +279,24 @@ check(T.cardIcons[1].alpha < 1, "dimmed")
 -- the card refreshes itself while shown, so a timer running out shows without a message
 check(type(card.scripts.OnUpdate) == "function", "the card redraws while shown")
 
--- 3. Clicking the card opens your loot popup and All Loot Rolls
+-- 3. Clicking the card opens your loot popup and All loot rolls
 LM.incoming = inc
 opened.popup, opened.answers = 0, 0
 card.scripts.OnClick(card)
 eq(opened.popup, 1, "the card: your loot popup")
-eq(opened.answers, 1, "the card: All Loot Rolls")
+eq(opened.answers, 1, "the card: All loot rolls")
 LM:Fire("incoming")
 T.cardIcons[1].scripts.OnClick(T.cardIcons[1])
 eq(opened.popup, 2, "an icon click opens them too")
-eq(opened.answers, 2, "an icon click opens All Loot Rolls too")
--- no session: the last one, read only, in the popup (Popup.lua's LM:ShowLastPopup) and in All Loot Rolls
+eq(opened.answers, 2, "an icon click opens All loot rolls too")
+-- no session: the last one, read only, in the popup (Popup.lua's LM:ShowLastPopup) and in All loot rolls
 LM.incoming = nil
 LM:Fire("incoming", "ended")
 printed = {}
 card.scripts.OnClick(card)
 eq(opened.popup, 2, "no session: no answer popup")
 eq(opened.last, inc, "no session: the popup shows the last session, read only")
-eq(opened.answers, 3, "no session: All Loot Rolls opens (it shows the last session, or says there was none)")
+eq(opened.answers, 3, "no session: All loot rolls opens (it shows the last session, or says there was none)")
 eq(#printed, 0, "no session: no chat line")
 
 -- 4. Without loot authority the right side is greyed, the card is not
@@ -345,7 +345,7 @@ print(string.format("%d passed, %d failed", passes, fails))
 if fails > 0 then error("failures") end
 `;
 const dir = process.argv[2];
-// "Master Loot Window" is the looter window's name wherever it shows: no on-screen string (in quotes, outside comments) in
+// "Master loot window" is the looter window's name wherever it shows: no on-screen string (in quotes, outside comments) in
 // Loot Master's files names it the looter window or the Loot Master window
 let srcFails = 0;
 const lmDir = path.join(dir, 'CRT_Modules/LootMaster');
@@ -355,12 +355,12 @@ for (const f of fs.readdirSync(lmDir).filter((n) => n.endsWith('.lua'))) {
     const code = line.replace(/\s--\s.*$/, '');
     for (const m of code.match(/"(?:[^"\\]|\\.)*"/g) || []) {
       const hit = m.match(/looter window|loot master window|looter's window/i);
-      if (hit) { console.log('FAIL ' + f + ':' + (i + 1) + ' says "' + hit[0] + '": it is the Master Loot Window'); srcFails++; }
+      if (hit) { console.log('FAIL ' + f + ':' + (i + 1) + ' says "' + hit[0] + '": it is the Master loot window'); srcFails++; }
     }
   });
 }
 const winSrc = fs.readFileSync(path.join(lmDir, 'Window.lua'), 'utf8');
-if (!/title = "Master Loot Window"/.test(winSrc)) { console.log('FAIL Window.lua: the window\'s title is not Master Loot Window'); srcFails++; }
+if (!/title = "Master loot window"/.test(winSrc)) { console.log('FAIL Window.lua: the window\'s title is not Master loot window'); srcFails++; }
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = ['CRT_Modules/LootMaster/Data.lua', 'CRT_Modules/LootMaster/Comm.lua', 'CRT_Modules/LootMaster/AutoPass.lua',
   'CRT_Modules/LootMaster/Looting.lua', 'CRT_Modules/LootMaster/BossLoot.lua', 'CRT_Modules/LootMaster/EndAll.lua', 'CRT_Modules/LootMaster/BossLootWindow.lua',

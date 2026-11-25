@@ -25,7 +25,7 @@ local ROSTER_DELAY = 0.5 -- seconds after a roster change before reading who joi
 -- timeout is about two minutes; confirm in game.
 local INVITE_TIMEOUT = 120
 local MOVE_CHECK = 3 -- seconds after asking for a move before a roster that doesn't show it means it failed
--- Seconds that a move which can't be made yet (not lead, Arrange Groups running, they're in combat) is
+-- Seconds that a move which can't be made yet (not lead, Arrange groups running, they're in combat) is
 -- tried again, from the join or from the end of combat; also how long an invite waits while you
 -- aren't the leader or an assist before it fails.
 local MOVE_RETRY = 30

@@ -80,7 +80,7 @@ function Notes:SetPersonal(text)
     self:Fire()
 end
 
--- How the Raid Notes list shows its notes (Notes Settings): "grouped" under difficulty headings that fold,
+-- How the Raid Notes list shows its notes (Notes settings): "grouped" under difficulty headings that fold,
 -- "dropdown" one difficulty picked in a dropdown, or "chips" one picked with buttons. listDifficulty is the
 -- difficulty the dropdown and the chips show ("All" for every note), listFolded the folded headings.
 Notes.LIST_STYLES = { "grouped", "dropdown", "chips" }
@@ -145,7 +145,7 @@ function Notes:Alert()
     return ndb().alert
 end
 
--- Whether the note windows show outside a raid instance (Notes Settings). Off unless ticked.
+-- Whether the note windows show outside a raid instance (Notes settings). Off unless ticked.
 function Notes:ShowOutsideRaid()
     return ndb().showOutsideRaid == true
 end

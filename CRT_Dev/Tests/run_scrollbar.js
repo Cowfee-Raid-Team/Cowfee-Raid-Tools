@@ -378,11 +378,11 @@ const KNOWN = [
   ['CRT_Core/UI/Panel.lua', 'CowfeeRaidToolsMenuScroll'], // the main window's menu, when its groups don't fit
   ['CRT_Modules/Groups/Page.lua', 'CowfeeRaidToolsDialogScroll'], // Raid Groups import box
   ['CRT_Modules/Groups/Page.lua', 'CowfeeRaidToolsGroupExtraScroll'],
-  ['CRT_Modules/Groups/Page.lua', 'CowfeeRaidToolsPresetScroll'], // Raid Groups Quick Load
+  ['CRT_Modules/Groups/Page.lua', 'CowfeeRaidToolsPresetScroll'], // Raid Groups Quick load
   ['CRT_Modules/LootMaster/Page.lua', 'MinimalScrollBar'],
   ['CRT_Modules/LootMaster/Tonight.lua', 'MinimalScrollBar'], // Tonight's Held boss loot
   ['CRT_Modules/LootMaster/Window.lua', 'MinimalScrollBar'], // the Loot Master list
-  ['CRT_Modules/LootMaster/RaiderWindow.lua', 'MinimalScrollBar'], // All Loot Rolls
+  ['CRT_Modules/LootMaster/RaiderWindow.lua', 'MinimalScrollBar'], // All loot rolls
   ['CRT_Modules/LootMaster/BossLootWindow.lua', 'MinimalScrollBar'],
   ['CRT_Modules/Loot/Page.lua', 'MinimalScrollBar'],
   ['CRT_Modules/GearChecker/Page.lua', 'MinimalScrollBar'], // the Gear Checker list

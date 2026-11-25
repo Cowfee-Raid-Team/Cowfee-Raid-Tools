@@ -180,7 +180,7 @@ check("tabs: five tabs, settings last", function()
   assert(table.concat(kinds, ",") == "Shared,Personal", "the list's tabs: " .. table.concat(kinds, ","))
   local names = {}
   for i, b in ipairs(tabs) do names[i] = b.text.text end
-  assert(table.concat(names, ",") == "Notes,Mech Alerts,Marker macros,Alert Settings,Notes Settings", table.concat(names, ","))
+  assert(table.concat(names, ",") == "Notes,Mech Alerts,Marker macros,Alert settings,Notes settings", table.concat(names, ","))
   -- each as wide as its label (UI.TabStrip, UI:FitTab), side by side from x 8
   local x = 8
   for i, b in ipairs(tabs) do

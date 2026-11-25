@@ -160,7 +160,7 @@ local TEXT = {
     savedAlerts = "Templates",
     savedHelp = "Your templates: an alert's setup without its time. Drag one onto the timeline to make an "
         .. "alert there (dropped on a boss spell's icon it takes that spell). Right-click one to edit, rename or "
-        .. "delete it; + makes a new one. \"Save As Template\" in the alert editor makes one too.\n\n"
+        .. "delete it; + makes a new one. \"Save as template\" in the alert editor makes one too.\n\n"
         .. "Right-click the timeline (without dragging) for New alert here, or Place a template at that time.",
     newSaved = "New template",
     savedHint = "Drag onto the timeline to place it. Right-click to edit, rename or delete.",

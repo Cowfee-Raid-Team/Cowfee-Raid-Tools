@@ -1,9 +1,9 @@
 local ADDON, CRT = ...
 
--- The Notes Settings tab of the Raid Notes page (Notes/Page.lua builds it into its tab): one column for each
+-- The Notes settings tab of the Raid Notes page (Notes/Page.lua builds it into its tab): one column for each
 -- of the three note windows (timers, assignments, personal note), who to accept shared notes from, how the
 -- Notes tab lists them, and assignment highlights (Highlights/Settings.lua builds its section). The note callout (its timing, look and voice) and where your note lines show are on
--- the Alert Settings tab (Notes/AlertsTab.lua, Notes/Alert.lua). Unlocked windows can be dragged and resized by
+-- the Alert settings tab (Notes/AlertsTab.lua, Notes/Alert.lua). Unlocked windows can be dragged and resized by
 -- hand, and their position and size are saved per player.
 
 local Notes = CRT.Notes
@@ -272,7 +272,7 @@ local function build(pf)
     end
 
     -- Sharing, then how the Notes tab lists the notes, in the fourth column. The note callout's timing and
-    -- voice moved to its own entry on Alert Settings > Configuration (Notes/Alert.lua).
+    -- voice moved to its own entry on Alert settings > Configuration (Notes/Alert.lua).
     local x = FOURTH_X
     heading(pf, x, top, TEXT.sharing)
     makeCheck(pf, x - 4, top - 20, TEXT.trustedOnly, nil, function()
@@ -315,5 +315,5 @@ local function build(pf)
     Notes:OnChange(refresh)
 end
 
--- Built into the Notes Settings tab by Notes/Page.lua.
+-- Built into the Notes settings tab by Notes/Page.lua.
 CRT.NoteSettings = { Build = build }

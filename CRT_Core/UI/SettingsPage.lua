@@ -491,7 +491,7 @@ local function buildLeft(pf)
         "The font, outline and size of the addon's text, note windows included.",
         { "Font", "Default is the game's font in Default: Blizzard and Arial Narrow in the other themes; fonts shared by other addons are listed too." },
         { "Text size", "the body size (8 to 22 pt); headings and small text follow it." },
-        "Note windows keep their own size and can get their own font on Raid Notes > Notes Settings.",
+        "Note windows keep their own size and can get their own font on Raid Notes > Notes settings.",
     })
     add(UI.Dropdown(pf, "Font", {
         options = fontChoices,
@@ -537,7 +537,7 @@ local function buildLeft(pf)
     }), x, -258)
 
     x = MIDDLE_X
-    heading(pf, x, -44, "Sound", "Every sound the addon plays uses this game sound channel and follows its volume and mute. Text to speech has its own volume, on Raid Notes > Alert Settings > Configuration (Note callout/assignments), and the game's low-health pulse its own in the game's Options > Accessibility > Combat Audio Alerts.")
+    heading(pf, x, -44, "Sound", "Every sound the addon plays uses this game sound channel and follows its volume and mute. Text to speech has its own volume, on Raid Notes > Alert settings > Configuration (Note callout/assignments), and the game's low-health pulse its own in the game's Options > Accessibility > Combat Audio Alerts.")
     add(UI.Dropdown(pf, "Sound channel", {
         options = CRT.SOUND_CHANNELS,
         labelWidth = LABEL_W,

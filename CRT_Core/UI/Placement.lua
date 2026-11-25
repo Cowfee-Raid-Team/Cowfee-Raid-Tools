@@ -3,7 +3,7 @@ local ADDON, CRT = ...
 -- Placement: the one helper every movable CRT element is placed, dragged, nudged, reset and anchored by (the
 -- alert areas, the note callout, the break timer, low health, the marker display, consumables, debuffs, pace and
 -- the ready check window). The Placement panel, the selection outline and the drag guides are drawn by
--- UI/PlacementPanel.lua; Select Anchor's overlay, hit test, outline and name tag are UI/PlacementSelect.lua's.
+-- UI/PlacementPanel.lua; Select anchor's overlay, hit test, outline and name tag are UI/PlacementSelect.lua's.
 --
 -- Saved data: each element keeps its place as store().position = { point, relativePoint, x, y, anchor }, the same
 -- table as before this helper, with one optional field: anchor, the key of the CRT element it is anchored to (none
@@ -60,7 +60,7 @@ local ADDON, CRT = ...
 --   P.ResolveFocus(region) -> frame, name, own: the nearest frame with a global name up from a region (the one under
 --                the cursor), or own when it is part of CRT
 --   el:AnchorProblem(key) -> nil, or why it can't anchor to that element or frame (CanAnchorTo is its nil)
---   Select Anchor: el:StartPick() (P.picking), then P.PickTarget(P.UnderCursor()) names what is under the cursor
+--   Select anchor: el:StartPick() (P.picking), then P.PickTarget(P.UnderCursor()) names what is under the cursor
 --                and a left click, Enter or Space (P.OnKey -> P.PickChoose) anchors to it. The overlay that takes
 --                the click, so it never reaches the frame under it, and the hit test are UI/PlacementSelect.lua's.
 --                P.message holds what the last choice or typed name was refused with, for the panel
@@ -1161,7 +1161,7 @@ function P.Deselect()
     changed(was)
 end
 
--- Select Anchor: until a frame is chosen or it is cancelled, a left click (on UI/PlacementSelect.lua's overlay),
+-- Select anchor: until a frame is chosen or it is cancelled, a left click (on UI/PlacementSelect.lua's overlay),
 -- Enter or Space anchors the selecting one to the frame under the cursor (P.PickChoose). Refused in combat.
 function El:StartPick()
     if inCombat() then

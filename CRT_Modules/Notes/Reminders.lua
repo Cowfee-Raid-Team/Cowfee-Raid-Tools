@@ -82,7 +82,7 @@ local TEXT = {
     badTimes = "The times don't read: %s",
     showOnTimeline = "Show on the Timeline",
     notOnTimeline = "That mechanic isn't on the Timeline for this boss yet.",
-    showAsHelp = "Where the alert shows: the note callout, the alert areas (Critical alerts text, Icon, Bar, Circle, Alert timeline), and whether it is read out. Alert Settings sets how each one looks.",
+    showAsHelp = "Where the alert shows: the note callout, the alert areas (Critical alerts text, Icon, Bar, Circle, Alert timeline), and whether it is read out. Alert settings sets how each one looks.",
     -- under Show as, for the bar: greyed while Bar is off
     ticksUnit = "s into the bar",
     ticksHelp = "Seconds after the bar appears when each hit lands. The bar runs from Duration to the cast; a tick past its end isn't shown.\n\nEach number is a thin line on the bar, such as 2, 4, and the fill reaches it as its hit lands. The seconds count to the cast, or to each hit (Count down to). Leave it empty for no ticks.\n\nThese are for Only me alerts. A raid note line can't carry them.",

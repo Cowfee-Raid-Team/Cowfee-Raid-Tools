@@ -24,7 +24,7 @@ local TEXT = {
 
 local MIN_ICON, MAX_ICON, DEFAULT_ICON = 24, 96, 44
 local MIN_FONT, MAX_FONT, DEFAULT_FONT = 10, 40, 20
-local MIN_SECONDS_FONT = 8
+local MIN_SECONDS_FONT = 10 -- never under the 10 pt floor (UX rule 9)
 local TRIM = { 0.07, 0.93, 0.07, 0.93 }
 local TEXT_GAP = 6        -- between the icon and its text
 local PAD = 4             -- after the text

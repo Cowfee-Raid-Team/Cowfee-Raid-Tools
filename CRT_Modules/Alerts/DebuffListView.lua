@@ -3,7 +3,7 @@ local ADDON, CRT = ...
 -- The debuff list display (Alerts/DebuffList.lua finds who has the debuff): one frame per debuffList entry of a loaded
 -- boss, made at PLAYER_LOGIN. Each is a placement element (UI.Placement.Define, key View.Key) and a preview
 -- (UI:RegisterPreview, the same key, "debufflist-<encounterID>-<key>"): the Looks tab's Preview <label> and Raid Notes
--- > Alert Settings' Preview alerts show it with sample names and its drag box; Test shows the samples for a few seconds.
+-- > Alert settings' Preview alerts show it with sample names and its drag box; Test shows the samples for a few seconds.
 --
 -- On screen: a column per side, side by side, each with its heading ("Left: groups 1, 3") and one bar per player in
 -- the side's colours (data from the boss file, or yours): a bright bar has the debuff, a dim one doesn't. Your own bar
@@ -60,7 +60,7 @@ function View.Key(enc, key)
     return "debufflist-" .. tostring(enc) .. "-" .. tostring(key)
 end
 
--- Every display's preview key, in the order they were made (Raid Notes > Alert Settings' Preview alerts takes them).
+-- Every display's preview key, in the order they were made (Raid Notes > Alert settings' Preview alerts takes them).
 function View.PreviewKeys()
     local out = {}
     for i, k in ipairs(View.order) do

@@ -224,7 +224,7 @@ LM.ScoreChanged = function() end
 local slot
 local realBuild = LM.BuildAddItem
 LM.BuildAddItem = function(...) slot = realBuild(...) return slot end
-LM.TAB_COLUMN = LM.TAB_COLUMN or 180 -- Tabs.lua is not loaded: All Loot Rolls' left column
+LM.TAB_COLUMN = LM.TAB_COLUMN or 180 -- Tabs.lua is not loaded: All loot rolls' left column
 assert(load(raiderSrc, "RaiderWindow.lua"))("CowfeeRaidTools", CRT) -- My Loot (LM.MyLoot, LM:OpenMyLoot)
 assert(load(tonightSrc, "Tonight.lua"))("CowfeeRaidTools", CRT) -- Tonight's two columns
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)

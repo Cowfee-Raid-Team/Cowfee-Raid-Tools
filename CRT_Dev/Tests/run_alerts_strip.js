@@ -772,7 +772,7 @@ do
   assert(S:Get(blank).name == "Template", "default name: " .. tostring(S:Get(blank).name))
   S:Delete(blank)
 end
-print("ok templates: strip and editor say Templates and Save As Template")
+print("ok templates: strip and editor say Templates and Save as template")
 
 do
   local green = S:Save(nil, { name = "B green", text = "Green", color = { 0, 1, 0, 1 }, outputs = { alert = true } })

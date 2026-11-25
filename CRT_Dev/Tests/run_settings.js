@@ -273,7 +273,7 @@ do
   if cb then print("FAIL General Settings no longer has an Enable Interrupts checkbox (it is on Start here > What's on)") end
   if heading then print("FAIL General Settings > Appearance no longer has a Modules heading") end
 end
--- Modules no longer holds Use assignment highlights: its switch is on Raid Notes > Notes Settings > Highlights
+-- Modules no longer holds Use assignment highlights: its switch is on Raid Notes > Notes settings > Highlights
 do
   local on
   CRT.NoteHighlights = { Enabled = function() return on == true end, SetEnabled = function(_, v) on = v end }
@@ -283,7 +283,7 @@ do
     if fr.kind == "CheckButton" and type(l) == "table" and rawget(l, "text") == "Use assignment highlights" then cb = fr end
   end
   if cb then
-    print("FAIL General Settings no longer has a Use assignment highlights checkbox (it is on Notes Settings)")
+    print("FAIL General Settings no longer has a Use assignment highlights checkbox (it is on Notes settings)")
   end
   CRT.NoteHighlights = nil
 end

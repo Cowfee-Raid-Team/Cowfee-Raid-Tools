@@ -259,7 +259,7 @@ check("tab: gear opens the tab on its area", function()
   local gear = C.handle.gear
   gearSettings(gear)
   assert(shownPages[#shownPages] == "notes", "opens Raid Notes")
-  local alertsTab = tabFrame("Alert Settings")
+  local alertsTab = tabFrame("Alert settings")
   assert(alertsTab and alertsTab.selected == true, "on the Alerts tab")
   local d = configDropdown()
   assert(d and d.value == "circles", "circles selected: " .. tostring(d and d.value))
@@ -341,7 +341,7 @@ check("tab: five tabs fit", function()
     assert(b.pts[1][4] == x, "tab x " .. tostring(b.pts[1][4]))
     x = x + b.w + CRT.UI.TAB_GAP
   end
-  assert(table.concat(names, ",") == "Notes,Mech Alerts,Marker macros,Alert Settings,Notes Settings", table.concat(names, ","))
+  assert(table.concat(names, ",") == "Notes,Mech Alerts,Marker macros,Alert settings,Notes settings", table.concat(names, ","))
   local last = tabs[#tabs]
   assert(last.pts[1][4] + last.w <= CRT.UI.PAGE_W, "right edge " .. (last.pts[1][4] + last.w))
   CRT.NotesPage.Open("settings")
@@ -698,8 +698,8 @@ check("callout: Voice is sound.voice, the Quality of Life setting, Xavier by def
   assert(#errors == 0, tostring(errors[1]))
 end)
 
-check("callout: its settings live only on Alert Settings, renamed everywhere", function()
-  -- Notes Settings no longer has them
+check("callout: its settings live only on Alert settings, renamed everywhere", function()
+  -- Notes settings no longer has them
   CRT.NotesPage.Open("settings")
   local sharing
   for _, f in ipairs(fontStrings) do if f.text == "Sharing" then sharing = f end end

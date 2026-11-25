@@ -360,7 +360,7 @@ do
   resetSaved()
   E:Open(ENC, nil, { spellID = 777, boss = "Test Boss" })
   local w = win()
-  assert(w.saveSavedBtn.shown and w.saveSavedBtn.text == "Save As Template", "the button: " .. tostring(w.saveSavedBtn.text))
+  assert(w.saveSavedBtn.shown and w.saveSavedBtn.text == "Save as template", "the button: " .. tostring(w.saveSavedBtn.text))
   local def = StaticPopupDialogs.COWFEE_RAID_TOOLS_SAVED_ALERT_NAME
   assert(def == nil, "the popup is made when first asked")
   typeInto(w.textEdit, "Soak now")
@@ -446,7 +446,7 @@ do
   resetSaved()
   E:Open(ENC, nil, { spellID = 777, boss = "Test Boss" })
   local w = win()
-  assert(w.saveSavedBtn.text == "Save As Template", "Save As Template: " .. tostring(w.saveSavedBtn.text))
+  assert(w.saveSavedBtn.text == "Save as template", "Save as template: " .. tostring(w.saveSavedBtn.text))
   typeInto(w.textEdit, "Soak now")
   click(w.saveSavedBtn)
   assert(StaticPopupDialogs.COWFEE_RAID_TOOLS_SAVED_ALERT_NAME.text == "Name this template:", "the name prompt")
@@ -458,7 +458,7 @@ do
   E:EditSaved(S:List()[1].id)
   assert(win().title == "Template: Soak now", "title: " .. tostring(win().title))
   E:Close()
-  print("ok templates: strip and editor say Templates and Save As Template")
+  print("ok templates: strip and editor say Templates and Save as template")
 end
 
 -- the editor's new-alert defaults, as one source: what a fresh draft saves as a template
@@ -743,7 +743,7 @@ do
   E:Open(ENC, nil, S:Prefill(id, ENC, 1, 10, nil, "Test Boss"))
   assert(value("Speak at") == "zero", "a template placed opens At 0")
   E:Close()
-  -- Save As Template from the editor keeps it
+  -- Save as template from the editor keeps it
   E:Open(ENC, nil, { spellID = 777, boss = "Test Boss" })
   local w = win()
   pick("Speak at", "zero")
@@ -752,7 +752,7 @@ do
   StaticPopup1.accept()
   local made
   for _, e in ipairs(S:List()) do if e.s.name == "Zero tpl" then made = e.s end end
-  assert(made and made.speakAt == "zero", "Save As Template keeps At 0")
+  assert(made and made.speakAt == "zero", "Save as template keeps At 0")
   E:Close()
   -- editing a template itself
   assert(E:EditSaved(id))

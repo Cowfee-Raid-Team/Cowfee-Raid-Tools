@@ -66,7 +66,7 @@ function Export.Text(setups)
                 parts[#parts + 1] = "spellID = " .. s.spell.spellID
             end
             line(3, "spell = { " .. table.concat(parts, ", ") .. " },"
-                .. (s.spell.spellID and "" or " -- TODO id: Journal Export Abilities or /crt dev kicks"))
+                .. (s.spell.spellID and "" or " -- TODO id: Journal Export abilities or /crt dev kicks"))
         end
         line(3, "groups = {")
         for _, g in ipairs(s.groups) do

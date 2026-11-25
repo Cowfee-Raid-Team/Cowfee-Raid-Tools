@@ -8,8 +8,8 @@ local ADDON, CRT = ...
 --   Alerts     where your note lines show and how each kind of alert looks (Notes/AlertsTab.lua)
 --   Settings   the three note windows, your alert's timing and voice, and sharing (Notes/Settings.lua)
 -- (The Phases tab, Notes/Phases.lua, is off the page; see TABS below.)
--- The note windows and your alert are moved with their preview buttons (UI.PreviewButton) on Notes Settings and
--- Alert Settings, or with the main window's Previews.
+-- The note windows and your alert are moved with their preview buttons (UI.PreviewButton) on Notes settings and
+-- Alert settings, or with the main window's Previews.
 
 local Notes = CRT.Notes
 local Engine = CRT.NoteEngine
@@ -487,7 +487,7 @@ refresh = function()
     local id, record = selectedNote()
     local activeId = Notes:Active()
 
-    -- the list as Notes Settings says: grouped under folding difficulty headings, or one difficulty (or
+    -- the list as Notes settings says: grouped under folding difficulty headings, or one difficulty (or
     -- All) picked with a dropdown or with chips over it
     local all = Notes:List(listKind)
     local style = Notes:ListStyle()
@@ -657,8 +657,8 @@ local function buildNotes(pf)
     local listHelp = UI.HelpRight(listLabel, "Raid notes", {
         "Import a note and share it with the raid before the pull; its timers count down from the start of the fight, and its other text goes to the Assignments window.",
         { "Mech Alerts", "boss mechanic alerts." },
-        { "Alert Settings", "where your lines show." },
-        { "Notes Settings", "the windows and sharing." },
+        { "Alert settings", "where your lines show." },
+        { "Notes settings", "the windows and sharing." },
     })
     -- Shared and Personal: which notes the list shows, after the heading's (?) on its line, or on a line of their own
     -- under it when the text is too large for both in the column (refresh moves the list down with them)
@@ -689,7 +689,7 @@ local function buildNotes(pf)
         end })
     UI.HelpRight(kindTabs.personal, TEXT.personal, TEXT.kindHelp)
 
-    -- the difficulty filter over the list, for the Dropdown and Chips styles (Notes Settings)
+    -- the difficulty filter over the list, for the Dropdown and Chips styles (Notes settings)
     local DIFF_OPTIONS = { { key = "All", label = TEXT.allDifficulties } }
     for _, d in ipairs(Notes.DIFFICULTIES) do
         DIFF_OPTIONS[#DIFF_OPTIONS + 1] = { key = d, label = d }
@@ -1119,8 +1119,8 @@ local TABS = {
     { key = "notes", label = "Notes" },
     { key = "reminders", label = "Mech Alerts" },
     { key = "markers", label = "Marker macros" },
-    { key = "alerts", label = "Alert Settings" },
-    { key = "settings", label = "Notes Settings" },
+    { key = "alerts", label = "Alert settings" },
+    { key = "settings", label = "Notes settings" },
 }
 local tabButtons, tabFrames, built = {}, {}, {}
 local currentTab = "notes"
@@ -1179,7 +1179,7 @@ end
 UI:RegisterPage("notes", "Raid Notes", build)
 
 -- Opens the Raid Notes page on a tab: "notes", "reminders" (Mech Alerts), "markers" (Marker macros), "alerts"
--- (Alert Settings) or "settings". TAB_H is a tab's height under the tabs, for the tabs that size themselves from it.
+-- (Alert settings) or "settings". TAB_H is a tab's height under the tabs, for the tabs that size themselves from it.
 CRT.NotesPage = {
     TAB_H = TAB_H,
     -- the Notes tab's note text box and the detail lines under it, for the layout checks
