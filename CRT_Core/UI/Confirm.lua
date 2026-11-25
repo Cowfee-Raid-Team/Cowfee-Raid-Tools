@@ -27,7 +27,10 @@ local ADDON, CRT = ...
 --   text      what happened: "Cleared the grid (24 names)."
 --   onUndo    puts back exactly the state saved before the action; run at most once
 --   owner     a region in the window the action happened in (UI.WindowOf); else the main window
--- UI.HideUndoToast() hides it, dropping its Undo.
+--   window    instead of owner, a frame that isn't CRT's to sit under (the game's Encounter Journal)
+--   onStand   run once when the action stands: the time is up, another toast replaced it, or its page or window hid;
+--             never after Undo. For an action that tells other players only once it can't be undone any more.
+-- UI.HideUndoToast() hides it, dropping its Undo (its action stands).
 -- The bar: the theme's surface with an accent edge on its left (Modern), the game's dark tooltip look with the same
 -- accent edge (Classic); repainted when the look or theme changes.
 
@@ -125,6 +128,7 @@ local function build()
     f.text:SetWordWrap(false)
     f.undo = UI.PanelButton(f, TEXT.undo, TOAST.button, function()
         local fn = f.onUndo
+        f.onStand = nil -- undone: it never stands
         UI.HideUndoToast()
         if fn then
             fn()
@@ -147,8 +151,12 @@ end
 function UI.HideUndoToast()
     token = token + 1
     if toast then
-        toast.onUndo = nil
+        local stand = toast.onStand
+        toast.onUndo, toast.onStand = nil, nil
         toast:Hide()
+        if stand then
+            stand()
+        end
     end
 end
 
@@ -190,8 +198,8 @@ function UI.UndoToast(opts)
     opts = opts or {}
     toast = toast or build()
     UI.HideUndoToast() -- the one before goes, its action standing
-    local win = (opts.owner and UI.WindowOf(opts.owner)) or UI.frame or UIParent
-    toast.win, toast.page = win, opts.owner and pageOf(opts.owner) or nil
+    local win = opts.window or (opts.owner and UI.WindowOf(opts.owner)) or UI.frame or UIParent
+    toast.win, toast.page = win, (not opts.window and opts.owner) and pageOf(opts.owner) or nil
     dropWith(win ~= UIParent and win or nil)
     dropWith(toast.page)
     toast:SetParent(win)
@@ -209,7 +217,7 @@ function UI.UndoToast(opts)
     local w = (room > 0 and want > room) and room or want
     toast:SetWidth(w)
     toast.text:SetWidth(math.max(1, w - TOAST.edge - 2 * TOAST.pad - TOAST.gap - (toast.undo:GetWidth() or 0)))
-    toast.onUndo = opts.onUndo
+    toast.onUndo, toast.onStand = opts.onUndo, opts.onStand
     paint(toast)
     toast:Show()
     token = token + 1
