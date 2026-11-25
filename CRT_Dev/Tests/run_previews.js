@@ -166,13 +166,17 @@ check(not UI:IsPreviewing("pace"), "and turns it off again")
 
 -- 9. opts.enabledIf: greyed with its reason in the tooltip while not ok; a preview already on can still be stopped
 local can, lines = false, {}
+local reasonLines = {}
 GameTooltip.AddLine = function(_, text) lines[#lines + 1] = text end
 UI.Color = function() return 1, 0.5, 0 end
+-- as CRT_Core/UI/Controls.lua's: the one red reason line every greyed control's tooltip ends with (UX rule 5)
+UI.DisabledReason = function(tip, reason, hasTip) reasonLines[#reasonLines + 1] = { reason = reason, hasTip = hasTip } tip:AddLine(reason, 1, 0.125, 0.125, true) end
 local gated = UI.PreviewButton(UIParent, "Preview number box", { "pace" }, { tooltip = "Shows a box.",
   enabledIf = function() if can then return true end return false, "Turn it on first." end })
 check(gated.enabled == false, "enabledIf: greyed while not ok")
 gated:GetScript("OnEnter")(gated)
 check(lines[#lines] == "Turn it on first.", "enabledIf: the tooltip adds the reason")
+check(reasonLines[1] and reasonLines[1].reason == "Turn it on first." and reasonLines[1].hasTip == true, "enabledIf: through the shared red line (UI.DisabledReason), after its own tooltip")
 can = true
 gated.refresh()
 check(gated.enabled == true, "enabledIf: usable again after a refresh")

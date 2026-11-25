@@ -19,7 +19,7 @@ local ADDON, CRT = ...
 --                      without an id), kept by id so it survives the line moving to another widget.
 --     sample(now)      -> lines for Previews, each with `at` set
 --     settings(panel, s)  adds the area's own rows to its settings on Raid Notes > Alerts with
---                      panel:Dropdown(label, opts), panel:Slider(label, opts), panel:Check(label, get, set, help, enabledIf) (help: an optional (?) tooltip text; enabledIf: greys it out when false) and
+--                      panel:Dropdown(label, opts), panel:Slider(label, opts), panel:Check(label, get, set, help, enabledIf) (help: an optional (?) tooltip text; enabledIf: greys it out while it returns false, its second value the reason the row says on hover) and
 --                      panel:Color(label, get, set, enabledIf) (a swatch for the game's color picker; get() -> { r, g, b, a },
 --                      set(new table); opts as for UI.Dropdown and UI.Slider, plus opts.help for a (?) after the
 --                      control), and panel:Button(label, onClick, enabledIf) for an action. Colour rows in a row
@@ -396,6 +396,21 @@ local function makeCheck(parent, label, get, set)
     return check
 end
 
+-- A row greyed through its enabledIf says why (UX rule 5): a cover over it, made the first time it is greyed, shows
+-- its label and the reason enabledIf gives (UI.DisabledCover, UI/Controls.lua). right: a region the cover reaches (a
+-- checkbox's label). The slot's opts are read on hover, as they are replaced on every showing.
+local function whyCover(frame, label, slot, right)
+    if not rawget(frame, "why") then
+        frame.why = UI.DisabledCover(frame, function()
+            return label
+        end, right)
+        frame.why.state = function()
+            return UI.Usable(slot.opts.enabledIf)
+        end
+    end
+    return frame.why
+end
+
 local function copyColor(c)
     return { c[1], c[2], c[3], c[4] }
 end
@@ -427,10 +442,11 @@ local function makeColor(parent, label, slot, changed)
         local c = slot.opts.get()
         swatch.tex:SetColorTexture(c[1], c[2], c[3], 1)
         if slot.opts.enabledIf then
-            local on = slot.opts.enabledIf() and true or false
+            local on, reason = UI.Usable(slot.opts.enabledIf)
             swatch:SetEnabled(on)
             swatch:SetAlpha(on and 1 or 0.4)
             text:SetAlpha(on and 1 or 0.5)
+            whyCover(row, label, slot):Set(on, reason)
         end
     end
     swatch:SetScript("OnClick", function()
@@ -516,7 +532,7 @@ function Panel:Dropdown(label, opts)
             width = opts.width or PANEL_CONTROL_WIDTH,
             labelWidth = opts.labelWidth or PANEL_LABEL_WIDTH,
             enabledIf = function()
-                return not slot.opts.enabledIf or slot.opts.enabledIf()
+                return UI.Usable(slot.opts.enabledIf)
             end,
             decorate = opts.decorate and function(button, option)
                 return slot.opts.decorate and slot.opts.decorate(button, option)
@@ -546,14 +562,14 @@ function Panel:Slider(label, opts)
                 self:Changed()
             end,
             enabledIf = function()
-                return not slot.opts.enabledIf or slot.opts.enabledIf()
+                return UI.Usable(slot.opts.enabledIf)
             end,
         }), label, opts.help)
     end)
     return slot.row
 end
 
--- help, if given, is a (?) tooltip after the label. enabledIf(), if given, greys the box out while it is false.
+-- help, if given, is a (?) tooltip after the label. enabledIf(), if given, returns ok, reason: greys the box out while not ok.
 function Panel:Check(label, get, set, help, enabledIf)
     local slot = self:NextSlot({ get = get, set = set, enabledIf = enabledIf }, function(slot)
         local check = makeCheck(self.frame, label, function()
@@ -565,9 +581,12 @@ function Panel:Check(label, get, set, help, enabledIf)
         local read = check.refresh
         check.refresh = function()
             read()
-            local on = not slot.opts.enabledIf or slot.opts.enabledIf() and true or false
+            local on, reason = UI.Usable(slot.opts.enabledIf)
             check:SetEnabled(on)
             check.label:SetAlpha(on and 1 or 0.5)
+            if slot.opts.enabledIf or check.why then
+                whyCover(check, label, slot, check.label):Set(on, reason)
+            end
         end
         if help then
             -- a child of the check, so it hides with its row
@@ -596,7 +615,11 @@ function Panel:Button(label, onClick, enabledIf)
         end)
         button.isButton = true
         button.refresh = function()
-            button:SetEnabled(not slot.opts.enabledIf or slot.opts.enabledIf() and true or false)
+            local on, reason = UI.Usable(slot.opts.enabledIf)
+            button:SetEnabled(on)
+            if slot.opts.enabledIf or button.why then
+                whyCover(button, label, slot):Set(on, reason)
+            end
         end
         return button
     end)

@@ -11,7 +11,7 @@ const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + `
 local sources = { ... }
 local frames, fontStrings = {}, {}
-local NOT_METHODS = { Left = true, Middle = true, Right = true, Background = true, Arrow = true, SetupMenu = true, CloseButton = true, tex = true }
+local NOT_METHODS = { Left = true, Middle = true, Right = true, Background = true, Arrow = true, SetupMenu = true, CloseButton = true, tex = true, why = true }
 local function mock(kind, parent, template)
   local m = { kind = kind, parent = parent, template = template, shown = true, enabled = true, checked = false, text = "",
     pts = {}, w = 0, h = 0, regions = {}, children = {} }
@@ -183,6 +183,7 @@ local function loadSource(i, src)
     local tmp = { UI = {} }
     assert(load(src, "CRT_Core/UI/Controls.lua"))("CowfeeRaidTools", tmp)
     CRT.UI.PickColor = tmp.UI.PickColor
+    for _, k in ipairs({ "NOT_AVAILABLE", "Usable", "DisabledReason", "DisabledTooltip", "DisabledCover", "GreyWhy" }) do CRT.UI[k] = tmp.UI[k] end -- and the greyed controls' reasons
   else
     assert(load(src, "src" .. i))("CowfeeRaidTools", CRT)
   end

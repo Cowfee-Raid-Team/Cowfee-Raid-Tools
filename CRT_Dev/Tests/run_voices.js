@@ -570,6 +570,11 @@ CRT.db.sound.voice = "xavier"
 -- Quality of Life > Sounds: the Voice dropdown, Test and (?) ---------------------------------------------
 local dropdowns, helps, build = {}, {}, nil
 CRT.UI = {
+  -- as CRT_Core/UI/Controls.lua's greyed controls' reasons (UX rule 5): enabledIf's ok, reason; a cover keeps what it was set to
+  Usable = function(f, ...) if not f then return true end local ok, why = f(...) if ok then return true end return false, why end,
+  DisabledCover = function() return { Set = function(self, ok, why) self.ok, self.reason = ok, why end } end,
+  GreyWhy = function(el, ok, why) local c = rawget(el, "why") or {} c.ok, c.reason = ok, why rawset(el, "why", c) return c end,
+  DisabledReason = function() return true end,
   RegisterPage = function(_, key, title, fn) build = fn end,
   Dropdown = function(parent, text, opts) local r = mock() rawset(r, "label", text) rawset(r, "opts", opts) r.refresh = function() end dropdowns[text] = r return r end,
   Slider = function() local r = mock() r.refresh = function() end return r end,

@@ -118,6 +118,7 @@ do -- the real CRT_Core/UI/Controls.lua: only PickColor is taken
   local tmp = { UI = {} }
   assert(load(controlsSrc, "CRT_Core/UI/Controls.lua"))("CowfeeRaidTools", tmp)
   CRT.UI.PickColor = tmp.UI.PickColor
+  for _, k in ipairs({ "NOT_AVAILABLE", "Usable", "DisabledReason", "DisabledTooltip", "DisabledCover", "GreyWhy" }) do CRT.UI[k] = tmp.UI[k] end -- and the greyed controls' reasons
 end
 local A, Areas, T = CRT.Alerts, CRT.AlertAreas, CRT.AlertTimeline
 local Ref = CRT.TimelineReference

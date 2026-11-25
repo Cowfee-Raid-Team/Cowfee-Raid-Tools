@@ -54,6 +54,10 @@ local TEXT = {
     noDifficulty = "No difficulty",
     importHelp = "Pick the boss this note is for, so it shows under that difficulty and runs on that boss's pull. A note whose text starts with an EncounterID line uses that boss instead.",
     readFromText = "Read from the note's EncounterID line",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    readBossWhy = "The text's EncounterID line says the boss and difficulty.",
+    pickBossWhy = "Pick a boss first.",
+    pickNoteWhy = "Pick a note in the list first.",
     savedFor = "Saved as a new note for %s (%s): %s.",
     savedForEmpty = "Saved as a new note for %s (%s).",
     -- Delete asks once (UI.Confirm), naming the note and the saved versions that go with it
@@ -352,7 +356,7 @@ local function getImportDialog()
             d.refreshRow()
         end,
         enabledIf = function()
-            return not pick.read
+            return not pick.read, TEXT.readBossWhy
         end,
     })
     d.bossRow:SetPoint("TOPLEFT", IMPORT.PAD, IMPORT.ROW_Y)
@@ -370,7 +374,10 @@ local function getImportDialog()
             d.refreshRow()
         end,
         enabledIf = function()
-            return not pick.read and pick.boss ~= "none"
+            if pick.read then
+                return false, TEXT.readBossWhy
+            end
+            return pick.boss ~= "none", TEXT.pickBossWhy
         end,
     })
     d.diffRow:SetPoint("LEFT", d.bossRow, "RIGHT", IMPORT.DIFF_GAP, 0)
@@ -861,6 +868,7 @@ local function buildNotes(pf)
     end)
     popOut.refresh = function()
         popOut:SetEnabled(selected ~= nil and CRT.NoteEditor ~= nil)
+        UI.GreyWhy(popOut, selected ~= nil or CRT.NoteEditor == nil, TEXT.pickNoteWhy, TEXT.popOut)
     end
     controls[#controls + 1] = popOut
     -- History, left of Pop out editor: the note's earlier versions (Notes/HistoryWindow.lua); greyed with none
@@ -875,7 +883,10 @@ local function buildNotes(pf)
     history:SetScript("OnEnter", function(self)
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
         GameTooltip:SetText(TEXT.historyLabel, 1, 1, 1)
-        GameTooltip:AddLine(self:IsEnabled() and TEXT.historyTip or TEXT.historyNone, 0.85, 0.85, 0.85, true)
+        GameTooltip:AddLine(TEXT.historyTip, 0.85, 0.85, 0.85, true)
+        if not self:IsEnabled() then
+            UI.DisabledReason(GameTooltip, TEXT.historyNone) -- in red (UX rule 5)
+        end
         GameTooltip:Show()
     end)
     history:SetScript("OnLeave", function()

@@ -28,7 +28,21 @@ local TEXT = {
         .. "A change made in combat or in a boss encounter applies when it ends. "
         .. "An icon the game first makes during an encounter keeps the game's own hover and placement until the encounter ends.",
     tooltipPicker = "The icon",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    offWhy = "Tick Show the debuff panel to change this.",
+    dispelWhy = "Tick Show the dispel type icon on each debuff first.",
+    swipeWhy = "Tick Swipe animation as the debuff runs out first.",
+    tooltipsWhy = "Tick Show tooltips on hover first.",
+    nudgeWhy = "Set Timer to a place on or around the icon to nudge it.",
 }
+
+-- ok, reason: the panel's settings while Show the debuff panel is ticked
+local function panelUsable()
+    if Debuffs:Enabled() then
+        return true
+    end
+    return false, TEXT.offWhy
+end
 
 local function makeCheck(pf, label, yOffset, onClick, x)
     local check = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
@@ -44,9 +58,17 @@ local function makeCheck(pf, label, yOffset, onClick, x)
     return check
 end
 
--- Greys a box or a number out, with its label, while the setting it depends on is off.
-local function usable(control, on)
+-- Greys a box or a number out, with its label, while the setting it depends on is off; hovering it then says reason
+-- (UX rule 5: a cover over it and its label, UI.DisabledCover).
+local function usable(control, on, reason)
     control:SetEnabled(on)
+    if not rawget(control, "why") then
+        local title = control.label:GetText()
+        control.why = UI.DisabledCover(control, function()
+            return title
+        end, not control.labelLeft and control.label or nil)
+    end
+    control.why:Set(on, reason)
     local c = on and 1 or 0.5
     control.label:SetTextColor(c, c, c)
     if control.SetTextColor then
@@ -90,9 +112,7 @@ local function lookDropdown(pf, yOffset, text, field, choices, getter, setter)
                 Debuffs:Set(field, key)
             end
         end,
-        enabledIf = function()
-            return Debuffs:Enabled()
-        end,
+        enabledIf = panelUsable,
     })
     row:SetPoint("TOPLEFT", LOOK_X, yOffset)
     look[#look + 1] = row
@@ -123,11 +143,12 @@ local function nudgeBox(pf, anchor, label, field)
         self:SetText(tostring(Debuffs:Get(field)))
     end)
     edit.label = text
+    edit.labelLeft = true -- its label is before it: the cover is the box's own
     edit.refresh = function(on)
         if not edit:HasFocus() then
             edit:SetText(tostring(Debuffs:Get(field)))
         end
-        usable(edit, on and Debuffs:TimerAnchor() ~= nil)
+        usable(edit, on and Debuffs:TimerAnchor() ~= nil, on and TEXT.nudgeWhy or TEXT.offWhy)
     end
     look[#look + 1] = edit
     return edit
@@ -144,7 +165,7 @@ local function lookCheck(pf, label, yOffset, field, x, dependsOn, setter)
     end, x)
     check.refresh = function(on)
         check:SetChecked(Debuffs:Get(field) and true or false)
-        usable(check, on and (not dependsOn or Debuffs:Get(dependsOn) and true or false))
+        usable(check, on and (not dependsOn or Debuffs:Get(dependsOn) and true or false), on and TEXT.swipeWhy or TEXT.offWhy)
     end
     look[#look + 1] = check
     return check
@@ -177,8 +198,8 @@ refresh = function()
     countEdit.refresh()
     durationEdit.refresh()
     dispelSizeEdit.refresh()
-    usable(dispelCheck, on)
-    usable(slotsCheck, on)
+    usable(dispelCheck, on, TEXT.offWhy)
+    usable(slotsCheck, on, TEXT.offWhy)
     for _, control in ipairs(look) do
         control.refresh(on)
     end
@@ -203,9 +224,7 @@ local function build(pf)
         Debuffs:SetEnabled(checked)
     end)
 
-    local function panelOn()
-        return Debuffs:Enabled()
-    end
+    local panelOn = panelUsable
     sizeEdit = UI.Slider(pf, "Icon size", { min = Debuffs.MIN_SIZE, max = Debuffs.MAX_SIZE, step = 2, labelWidth = 130, width = 200, enabledIf = panelOn, get = function()
         return Debuffs:Size()
     end, set = function(value)
@@ -250,7 +269,10 @@ local function build(pf)
     dispelSizeEdit = UI.Slider(pf, "Dispel icon size", { min = Debuffs.MIN_DISPEL_SCALE * 100, max = Debuffs.MAX_DISPEL_SCALE * 100, step = 5,
         labelWidth = 110, width = 200,
         enabledIf = function()
-            return Debuffs:Enabled() and Debuffs:DispelIcon()
+            if not Debuffs:Enabled() then
+                return false, TEXT.offWhy
+            end
+            return Debuffs:DispelIcon(), TEXT.dispelWhy
         end,
         format = function(v)
             return format("%d%%", v)
@@ -333,7 +355,10 @@ local function build(pf)
     local position = UI.TooltipPositionSetting(pf, "debuffs", { labelWidth = TOOLTIP_LABEL_W, width = TOOLTIP_DROP_W, beside = true,
         pickerLabel = TEXT.tooltipPicker,
         enabledIf = function()
-            return Debuffs:Enabled() and Debuffs:Tooltips()
+            if not Debuffs:Enabled() then
+                return false, TEXT.offWhy
+            end
+            return Debuffs:Tooltips(), TEXT.tooltipsWhy
         end })
     placeTooltipRow(tips, position.row)
     look[#look + 1] = { refresh = function()

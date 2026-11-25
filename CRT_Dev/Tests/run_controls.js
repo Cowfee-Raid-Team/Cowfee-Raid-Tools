@@ -16,6 +16,7 @@ local function region()
   function r:SetText(t) self.text = t end function r:SetFontObject() end
   function r:Show() self.shown = true end function r:Hide() self.shown = false end
   function r:GetUnboundedStringWidth() return #(self.text or "") * 7 end
+  function r:GetStringWidth() return #(self.text or "") * 7 end function r:GetStringHeight() return 14 end function r:SetShown(on) self.shown = on and true or false end
   function r:GetFont() return "f", fontHeight, "" end
   function r:GetTextColor() return self.color[1], self.color[2], self.color[3] end
   function r:SetTextColor(a, b, c) self.color = { a, b, c } end
@@ -602,6 +603,133 @@ do
   end
 end
 print("ok controls: a value pill")
+
+-- A greyed-out control says why (UX rule 5): enabledIf returns ok, reason; hovering the greyed control shows its
+-- tooltip, then the reason on its own line in the game's error red (UI.DisabledReason).
+do
+  RED_FONT_COLOR = { GetRGB = function() return 1, 0.1, 0.1 end }
+  local tip = { lines = {} }
+  function tip:SetOwner(owner) self.owner = owner self.lines = {} end
+  function tip:SetText(t, r, g, b) self.lines = { { text = t, r = r, g = g, b = b } } end
+  function tip:AddLine(t, r, g, b, wrap) self.lines[#self.lines + 1] = { text = t, r = r, g = g, b = b, wrap = wrap } end
+  function tip:Show() self.shown = true end function tip:Hide() self.shown = false end
+  GameTooltip = tip
+  UI.TooltipOwner = function(t, owner) t:SetOwner(owner) end
+  UI.TOOLTIP_KEEP = UI.TOOLTIP_KEEP or "keep" -- as UI/Tooltip.lua's flag
+  UI.AddTooltipText = function(t, text) t:AddLine(type(text) == "table" and table.concat(text, " ") or text, 1, 0.82, 0, true) end
+  local function texts() local t = {} for _, l in ipairs(tip.lines) do t[#t + 1] = l.text end return table.concat(t, " | ") end
+  local function last() return tip.lines[#tip.lines] end
+  local function red(l) return l and l.r == 1 and l.g == 0.1 and l.b == 0.1 end
+  local function hover(cover) tip.lines = {} cover.OnEnter(cover) return texts() end
+
+  check(type(UI.DisabledReason) == "function" and type(UI.DisabledCover) == "function" and type(UI.Usable) == "function", "the shared reason helpers exist")
+  if type(UI.DisabledReason) == "function" then
+    -- the shared line: the reason in red; no reason adds the generic line only to a tooltip with nothing else
+    tip.lines = {} UI.DisabledReason(tip, "Tick it first.", true)
+    check(#tip.lines == 1 and tip.lines[1].text == "Tick it first." and red(tip.lines[1]) and tip.lines[1].wrap == true, "DisabledReason: the reason in red, wrapped")
+    tip.lines = {} UI.DisabledReason(tip, nil, true)
+    check(#tip.lines == 0, "DisabledReason: no reason and a tooltip of its own: nothing extra")
+    tip.lines = {} UI.DisabledReason(tip, nil, false)
+    check(#tip.lines == 1 and tip.lines[1].text == UI.NOT_AVAILABLE and red(tip.lines[1]), "DisabledReason: no reason and no tooltip: the generic line")
+    local ok, why = UI.Usable(function() return false, "No." end)
+    local ok2, why2 = UI.Usable(nil)
+    local ok3, why3 = UI.Usable(function() return true, "ignored" end)
+    check(ok == false and why == "No." and ok2 == true and why2 == nil and ok3 == true and why3 == nil, "Usable: ok and the reason only while not ok")
+
+    -- Dropdown: greyed with a reason, the cover shows the label then the red reason; the reason follows the condition
+    local voiceOn, reason = false, "Tick Read them out (text to speech) above to choose a voice."
+    local vd = UI.Dropdown({}, "Voice", { options = { { key = "a", label = "A" } }, get = function() return "a" end, set = function() end,
+      enabledIf = function() return voiceOn, reason end })
+    vd.Label.GetText = function(self) return self.text end
+    vd.refresh()
+    check(vd.Dropdown.enabled == false and vd.why and vd.why.shown, "dropdown: greyed with its cover shown")
+    check(hover(vd.why) == "Voice | " .. reason and red(last()) and tip.shown, "dropdown: the label, then the reason in red: " .. texts())
+    reason = "Not during a boss fight." vd.refresh()
+    check(hover(vd.why) == "Voice | Not during a boss fight.", "dropdown: the reason updates with the condition: " .. texts())
+    reason = "Only the raid leader can change this."
+    check(hover(vd.why) == "Voice | Only the raid leader can change this.", "dropdown: the reason is read again on hover: " .. texts())
+    voiceOn = true vd.refresh()
+    check(vd.Dropdown.enabled == true and not vd.why.shown, "dropdown: usable again, the cover hides")
+    -- boolean-only: a dropdown with no tooltip of its own says the generic line
+    local off = false
+    local bd = UI.Dropdown({}, "Layer", { options = { { key = "a", label = "A" } }, get = function() return "a" end, set = function() end,
+      enabledIf = function() return off end })
+    bd.Label.GetText = function(self) return self.text end
+    bd.refresh()
+    check(bd.Dropdown.enabled == false and hover(bd.why) == "Layer | " .. UI.NOT_AVAILABLE, "dropdown: boolean-only still greys, with the generic line: " .. texts())
+    check(UI.Dropdown({}, "Plain", { options = {}, get = function() end, set = function() end }).why == nil, "dropdown: no enabledIf, no cover")
+
+    -- Slider: its own tooltip (tipTitle, tipText) then the reason; boolean-only with a tooltip adds nothing
+    local son, sreason = false, "Tick Show these alerts to change this."
+    local sl = UI.Slider({}, "Width", { min = 1, max = 5, get = function() return 2 end, set = function() end, tipTitle = "Bar width", tipText = "How wide.",
+      enabledIf = function() return son, sreason end })
+    sl.refresh()
+    check(sl.why and sl.why.shown and hover(sl.why) == "Bar width | How wide. | " .. sreason and red(last()), "slider: its tooltip, then the reason: " .. texts())
+    sreason = nil sl.refresh()
+    check(hover(sl.why) == "Bar width | How wide.", "slider: boolean-only with a tooltip of its own: nothing extra: " .. texts())
+    son = true sl.refresh()
+    check(not sl.why.shown, "slider: usable, no cover")
+
+    -- Value pill: no tooltip of its own, so the reason is its one line
+    local pon, preason = false, "Pick a boss first."
+    local vp = UI.ValuePill({}, { min = 1, max = 5, get = function() return 3 end, set = function() end, enabledIf = function() return pon, preason end })
+    check(vp.alpha < 1 and vp.why and vp.why.shown and hover(vp.why) == preason and red(tip.lines[1]), "pill: greyed, the reason is its tooltip: " .. texts())
+    pon = true vp.refresh()
+    check(vp.alpha == 1 and not vp.why.shown, "pill: usable, no cover")
+
+    -- Spot picker: still clickable greyed; each spot's tooltip and the box's end with the reason
+    UI.TOOLTIP_SPOTS = { { key = "top", label = "Top" }, { key = "left", label = "Left" } }
+    UI.TooltipOwner = function(t, owner) t:SetOwner(owner) end
+    CRT.PALETTE.surface, CRT.PALETTE.heading, CRT.PALETTE.background, CRT.PALETTE.text = { 0, 0, 0 }, { 1, 1, 0 }, { 0, 0, 0 }, { 1, 1, 1 }
+    local spot, kon, kreason = "top", false, "Pick Outside the window above first."
+    local sp = UI.SpotPicker({}, { label = "The window", get = function() return spot end, set = function(k) spot = k end, enabledIf = function() return kon, kreason end })
+    tip.lines = {} sp.spots.left.OnEnter(sp.spots.left)
+    check(texts() == "Left | " .. kreason and red(last()), "spot picker: a spot's tooltip ends with the reason: " .. texts())
+    tip.lines = {} sp.box.OnEnter(sp.box)
+    check(texts() == "The window | " .. kreason, "spot picker: the box says why too: " .. texts())
+    sp.spots.left.OnClick(sp.spots.left)
+    check(spot == "left", "spot picker: greyed, a spot still takes a click")
+    kon = true sp.refresh()
+    tip.lines = {} sp.spots.left.OnEnter(sp.spots.left)
+    check(texts() == "Left", "spot picker: usable, no reason line: " .. texts())
+
+    -- Link button: its tip text stays, the reason follows in red
+    UI.ThemedText = function() end UI.HeadingText = function(t) return t end
+    local lon, lreason = false, "That night is gone."
+    local lb = UI.LinkButton({}, "Open", { tipTitle = "Open in Tattlebot", tipText = "Shows the night.", enabledIf = function() return lon, lreason end })
+    tip.lines = {} lb.OnEnter(lb)
+    check(texts() == "Open in Tattlebot | Shows the night. | " .. lreason and red(last()), "link button: its tip, then the reason in red: " .. texts())
+
+    -- A checkbox's cover reaches only as far as its label's text: a label of fixed width with a (?) after it leaves the
+    -- (?) uncovered, and a two-line label makes the cover as tall as its lines.
+    local box = CreateFrame("CheckButton")
+    function box:GetWidth() return 24 end function box:GetHeight() return 24 end function box:GetRight() return 124 end
+    local label = region()
+    label.text = "Glow on dispellable debuffs"
+    function label:GetWidth() return 300 end -- fixed: the (?) sits right of these 300 px
+    function label:GetStringWidth() return 160 end function label:GetStringHeight() return 14 end function label:GetLeft() return 126 end
+    local bc = UI.DisabledCover(box, function() return label.text end, label)
+    rawset(bc, "SetSize", function(self, w, h) self.w, self.h = w, h end)
+    bc:Set(false, "Tick Show the debuff panel to change this.")
+    check(bc.w == 24 + 2 + 160 and bc.w < 24 + 2 + 300 and bc.h == 24, "cover: the box, the gap and the text only, never the (?): " .. tostring(bc.w) .. " x " .. tostring(bc.h))
+    function label:GetStringWidth() return 600 end function label:GetStringHeight() return 30 end -- wrapped onto two lines
+    bc:Set(false, "Tick Show the debuff panel to change this.")
+    check(bc.w == 24 + 2 + 300 and bc.h == 30, "cover: a long label stops at its own width, and two lines make it taller: " .. tostring(bc.w) .. " x " .. tostring(bc.h))
+    -- no cover ever takes the mouse wheel: it goes on to the page under it
+    for name, c in pairs({ dropdown = vd.why, slider = sl.why, pill = vp.why, checkbox = bc }) do
+      check(c.wheelOn ~= true, name .. ": the cover never takes the mouse wheel")
+    end
+    -- the greyed slider's tooltip is placed as its label's own (UI.TOOLTIP_KEEP)
+    check(sl.why.tipHow ~= nil and sl.why.tipHow == UI.TOOLTIP_KEEP, "slider: the cover's tooltip keeps the label's anchor")
+    -- UI.GreyWhy: the title from each call (a button's label may change), and state asked again on hover
+    local btn = CreateFrame("Button")
+    UI.GreyWhy(btn, false, "First.", "Raw text")
+    local now = "Press Done on the assignment first."
+    UI.GreyWhy(btn, false, "First.", "Hide raw text", nil, nil, function() return false, now end)
+    check(hover(btn.why) == "Hide raw text | " .. now, "GreyWhy: the latest title, and the state's reason on hover: " .. texts())
+  end
+end
+print("ok controls: a greyed-out control says why")
 print(fails .. " failed")
 if fails > 0 then error(fails .. " slider checks failed") end
 `;

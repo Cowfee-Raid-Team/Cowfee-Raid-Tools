@@ -114,6 +114,18 @@ rawset(auto, "GetChecked", function() return true end)
 auto.OnClick(auto)
 assert(win.autoAcceptCooldowns == true, "ticking it sets notes.autoAcceptCooldowns")
 print("ok the auto-accept box")
+-- A hidden window's rows grey out and say why (UX rule 5): what to tick
+do
+  local was = win.shown
+  win.shown = false
+  local ok, why = sliderLabels["Font size"].enabledIf()
+  assert(ok == false and why == "Tick Show this window above to change this.", "a hidden window's Font size says what to tick: " .. tostring(why))
+  win.shown = true
+  ok, why = sliderLabels["Font size"].enabledIf()
+  assert(ok == true, "shown again, usable")
+  win.shown = was
+end
+print("ok a hidden window's rows say why they are greyed")
 -- The previews: one for all three windows beside Show outside of raid, and one under each window's column
 local previewBtns = {}
 for _, f in ipairs(allFrames) do if rawget(f, "previewKeys") then previewBtns[f.text] = f end end

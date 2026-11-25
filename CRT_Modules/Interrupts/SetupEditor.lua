@@ -46,6 +46,10 @@ local TEXT = {
     dropped = "Back to the shipped kick setup for %s.",
     newGroup = "Group %d",
     noBoss = "Pick a boss first.",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    timingWhy = "This boss's numbers come from timing, so its setup can't be changed here.",
+    oneGroupWhy = "A setup needs at least one group.",
+    maxGroupsWhy = "A setup has at most %d groups.",
 }
 Editor.TEXT = TEXT
 
@@ -231,7 +235,10 @@ end
 function Editor.Editable()
     local key = Editor.Key(draft)
     local ship = key and Interrupts:ShippedDef(key)
-    return not (ship and ship.timing)
+    if ship and ship.timing then
+        return false, TEXT.timingWhy -- ok, reason (UX rule 5)
+    end
+    return true
 end
 
 -- A developer's button at the bottom left (Export): { label, onClick(editor) }. Added before or after the window is made.
@@ -439,7 +446,7 @@ local function build()
         if self.crtReason then
             UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
             GameTooltip:SetText(TEXT.save, 1, 1, 1)
-            GameTooltip:AddLine(self.crtReason, 0.85, 0.85, 0.85, true)
+            UI.DisabledReason(GameTooltip, self.crtReason) -- in red (UX rule 5)
             GameTooltip:Show()
         end
     end)
@@ -467,9 +474,11 @@ function Editor:Refresh()
         self.spellID:SetText(draft.spellID and tostring(draft.spellID) or "")
     end
     local n = #draft.groups
-    local editable = Editor.Editable()
+    local editable, why = Editor.Editable()
     self.spellName:SetEnabled(editable)
     self.spellID:SetEnabled(editable)
+    UI.GreyWhy(self.spellName, editable, why, TEXT.spell)
+    UI.GreyWhy(self.spellID, editable, why, TEXT.spellID)
     for i, row in ipairs(rows) do
         local on = i <= n
         local g = draft.groups[i]
@@ -482,14 +491,17 @@ function Editor:Refresh()
                 row.label:SetText(g.label)
             end
             row.label:SetEnabled(editable)
+            UI.GreyWhy(row.label, editable, why, TEXT.groups)
             row.marker.refresh()
             row.slots.refresh()
             row.remove:SetEnabled(editable and n > 1)
+            UI.GreyWhy(row.remove, editable and n > 1, editable and TEXT.oneGroupWhy or why, TEXT.remove)
         end
     end
     self.addGroup:ClearAllPoints()
     self.addGroup:SetPoint("TOPLEFT", 4, L.rowsY - n * L.rowH)
     self.addGroup:SetEnabled(editable and n < Setup.MAX_GROUPS)
+    UI.GreyWhy(self.addGroup, editable and n < Setup.MAX_GROUPS, editable and TEXT.maxGroupsWhy:format(Setup.MAX_GROUPS) or why, TEXT.addGroup)
     local key = Editor.Key(draft)
     local blocked = Editor.Blocked(draft)
     self.save:SetEnabled(blocked == nil)

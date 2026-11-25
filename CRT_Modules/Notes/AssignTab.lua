@@ -42,6 +42,9 @@ local TEXT = {
     notYet = "Not in the raid note yet. Any change writes it there.",
     badTimes = "The times don't read: %s",
     pending = "Make a change on another tab first, so this reminder is saved.",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    noBossWhy = "Pick a boss first.",
+    notWrittenWhy = "This assignment isn't in the raid note yet, so there is nothing to remove.",
 }
 Tab.TEXT = TEXT
 
@@ -232,12 +235,20 @@ local function drawStatus(c)
 end
 
 -- Whether you may change the blocks now: you may change the raid note (writes ask MechNote.CanWrite again).
+-- true, and the reason (UX rule 5: greyed controls say it), while nothing here may change
 local function readOnly()
     local c = current()
-    if not c.enc or (c.item and c.item.pending) then
-        return true
+    if not c.enc then
+        return true, TEXT.noBossWhy
     end
-    return not CRT.AlertDraft.CanEditRaid()
+    if c.item and c.item.pending then
+        return true, TEXT.pending
+    end
+    local ok, why = CRT.AlertDraft.CanEditRaid()
+    if not ok then
+        return true, why
+    end
+    return false
 end
 
 -- The palette ---------------------------------------------------------------------------------------------------------
@@ -298,9 +309,12 @@ function Tab.Refresh()
     ui:Refresh()
     drawStatus(S.c or c)
     S.pick.refresh()
-    local ro = readOnly()
-    S.remove:SetEnabled(not ro and block() ~= nil and block().key ~= nil)
+    local ro, roWhy = readOnly()
+    local canRemove = not ro and block() ~= nil and block().key ~= nil
+    S.remove:SetEnabled(canRemove)
+    UI.GreyWhy(S.remove, canRemove, ro and roWhy or TEXT.notWrittenWhy, TEXT.removeBlock)
     S.add:SetEnabled(not ro)
+    UI.GreyWhy(S.add, not ro, roWhy, TEXT.addBlock)
     if P.from then
         P.from.refresh()
     end

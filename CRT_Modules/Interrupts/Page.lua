@@ -103,6 +103,9 @@ local TEXT = {
     plates = "Numbers above nameplates",
     platesHelp = "The box above each add's nameplate. Your kick is in your colours; the other numbers show only with Show every number.",
     platesOn = "Show numbers in the pull",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    platesOffWhy = "Tick Show numbers in the pull to change this.",
+    reminderOffWhy = "Tick Count down before my kick to change this.",
     all = "Show every number",
     allHelp = "Shows the other kicks' numbers too, in the other colours.",
     size = "Box size",
@@ -259,7 +262,8 @@ local function greyLabel(fs, on)
     fs:SetTextColor(UI.Color(on and "text" or "muted"))
 end
 
--- enabledIf, when given, greys the box and its label while it returns false (the switch it depends on is off).
+-- enabledIf, when given, returns ok, reason: it greys the box and its label while not ok (the switch it depends on is
+-- off), and hovering them then says the reason.
 local function checkbox(parent, x, y, text, get, set, enabledIf)
     local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
     cb:SetSize(L.checkSize, L.checkSize)
@@ -272,10 +276,17 @@ local function checkbox(parent, x, y, text, get, set, enabledIf)
     cb.refresh = function()
         cb:SetChecked(get() and true or false)
         if enabledIf then
-            local on = enabledIf() and true or false
+            local on, reason = UI.Usable(enabledIf)
             cb:SetEnabled(on)
             greyLabel(cb.label, on)
+            cb.why:Set(on, reason)
         end
+    end
+    if enabledIf then
+        cb.why = UI.DisabledCover(cb, function()
+            return text
+        end, cb.label)
+        cb.why.state = enabledIf
     end
     controls[#controls + 1] = cb
     return cb
@@ -423,7 +434,7 @@ local function reasonTip(b, title)
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
         GameTooltip:SetText(title, 1, 1, 1)
         if self.crtReason then
-            GameTooltip:AddLine(self.crtReason, 0.85, 0.85, 0.85, true)
+            UI.DisabledReason(GameTooltip, self.crtReason) -- in red (UX rule 5)
         end
         GameTooltip:Show()
     end)
@@ -634,6 +645,15 @@ local function reminderOn()
     return reminder().on
 end
 
+-- ok, reason: a setting under each switch, greyed while it is off (UX rule 5)
+local function platesUsable()
+    return plates().on and true or false, TEXT.platesOffWhy
+end
+
+local function reminderUsable()
+    return reminder().on and true or false, TEXT.reminderOffWhy
+end
+
 -- A colour swatch for one of the player's box colours (saved RGBA, not a theme colour).
 local function swatch(f, x, y, text, key)
     local name = label(f, text)
@@ -648,9 +668,13 @@ local function swatch(f, x, y, text, key)
         local on = platesOn() and true or false
         b:SetBackdropColor(c[1], c[2], c[3], c[4] or 1)
         b:SetEnabled(on)
+        b.why:Set(on, TEXT.platesOffWhy)
         b:SetAlpha(on and 1 or L.greyAlpha)
         greyLabel(name, on)
     end
+    b.why = UI.DisabledCover(b, function()
+        return text
+    end)
     Page.swatches[#Page.swatches + 1] = { button = b, label = name }
     b:SetScript("OnClick", function()
         UI.PickColor(plates()[key], function(c)
@@ -694,12 +718,12 @@ local function buildPlatesSettings(f)
     end, function(on)
         plates().all = on
         changed()
-    end, platesOn)
+    end, platesUsable)
     UI.HelpRight(all, TEXT.all, TEXT.allHelp)
     Page.allCheck = all
-    slider(f, x, Y.size, TEXT.size, plates, "size", 10, 100, nil, platesOn)
-    slider(f, x, Y.font, TEXT.font, plates, "font", 8, 60, nil, platesOn)
-    slider(f, x, Y.offset, TEXT.offset, plates, "offset", -100, 100, nil, platesOn)
+    slider(f, x, Y.size, TEXT.size, plates, "size", 10, 100, nil, platesUsable)
+    slider(f, x, Y.font, TEXT.font, plates, "font", 8, 60, nil, platesUsable)
+    slider(f, x, Y.offset, TEXT.offset, plates, "offset", -100, 100, nil, platesUsable)
     swatchRow(f, Y.yours, TEXT.yours, "mineBox", "mineText")
     swatchRow(f, Y.others, TEXT.others, "box", "text")
     -- greyed while the box can't show: Interrupts off, or no boss to number (Interrupts/Plates.lua's Preview)
@@ -727,7 +751,7 @@ local function buildReminderSettings(f)
         changed()
     end)
     add(UI.SoundDropdown(f, TEXT.sound, { none = TEXT.soundNone, labelWidth = L.reminderLabelW, width = L.soundW, playButton = true,
-        help = true, enabledIf = reminderOn,
+        help = true, enabledIf = reminderUsable,
         get = function()
             return reminder().sound
         end,
@@ -735,7 +759,7 @@ local function buildReminderSettings(f)
             reminder().sound = key
             changed()
         end }), x, Y.sound)
-    slider(f, x, Y.size, TEXT.reminderSize, reminder, "size", 16, 128, L.reminderLabelW, reminderOn)
+    slider(f, x, Y.size, TEXT.reminderSize, reminder, "size", 16, 128, L.reminderLabelW, reminderUsable)
     Page.previewReminder = UI.PreviewButton(f, TEXT.previewReminder, { PREVIEW_REMINDER }, { tooltip = TEXT.previewReminderTip })
     Page.previewReminder:SetPoint("TOPLEFT", x, Y.preview)
     heading(f, x, Y.sharing, TEXT.sharing, TEXT.sharingHelp)

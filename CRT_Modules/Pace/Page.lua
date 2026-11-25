@@ -18,6 +18,9 @@ local TEXT = {
     },
     boss = "Boss",
     mode = "Times",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    pickBossWhy = "Pick a boss first.",
+    byTimeWhy = "Times is By time from the pull, so a row has no phase.",
     showBoss = "Show the pace window for this boss",
     showAll = "Show the pace window",
     phase = "Phase",
@@ -297,7 +300,7 @@ local function build(pf)
     controls[#controls + 1] = bossRow
     local modeRow = UI.Dropdown(pf, TEXT.mode, { options = MODES, labelWidth = 44, width = 230,
         enabledIf = function()
-            return boss() ~= nil
+            return boss() ~= nil, TEXT.pickBossWhy
         end,
         get = function()
             local plan = boss() and Pace:Plan(boss())
@@ -335,7 +338,7 @@ local function build(pf)
         end,
         enabledIf = function()
             local plan = boss() and Pace:Plan(boss())
-            return not (plan and plan.mode == "time")
+            return not (plan and plan.mode == "time"), TEXT.byTimeWhy
         end })
     phaseRow:SetPoint("TOPLEFT", 8, -214)
     controls[#controls + 1] = phaseRow

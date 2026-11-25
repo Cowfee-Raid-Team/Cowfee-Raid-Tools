@@ -40,6 +40,11 @@ local TEXT = {
     alertMeHeld = "For is Everyone, so the note line already alerts you, as it alerts everyone. Tick other roles or players in For to turn it off.",
     saveAs = "Save as",
     asNote = "Raid note",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    barWhy = "Tick Bar under Show as first.",
+    ticksWhy = "Type the Impact ticks first.",
+    forWhy = "Used with Raid note under Save as. Pick it to choose who the line is for.",
+    customWhy = "Tick Use custom colours on Raid Notes > Alerts to colour your own alerts.",
     asMine = "Only me",
     raidNoteHelp = {
         { "Only me", "the alert is yours alone." },
@@ -664,6 +669,7 @@ local function drawBarRows(d)
     end
     panel.shield.Refresh()
     panel.ticksEdit:SetEnabled(on)
+    UI.GreyWhy(panel.ticksEdit, on, TEXT.barWhy, CRT.AlertFields.TEXT.ticks)
     local v = on and 1 or 0.5
     panel.ticksLabel:SetTextColor(v, v, v)
     panel.ticksUnit:SetTextColor(v, v, v)
@@ -826,6 +832,8 @@ local function drawPanel()
     local colourOn = CRT.Alerts:CustomColors()
     panel.colorSwatch:SetEnabled(colourOn)
     panel.colorDefault:SetEnabled(colourOn)
+    UI.GreyWhy(panel.colorSwatch, colourOn, TEXT.customWhy, CRT.AlertFields.TEXT.color)
+    UI.GreyWhy(panel.colorDefault, colourOn, TEXT.customWhy, CRT.AlertFields.TEXT.color)
     panel.colorSwatch:SetAlpha(colourOn and 1 or 0.4)
     panel.colorLabel:SetAlpha(colourOn and 1 or 0.5)
     -- the selected row's times, as the list read them; typed times over the reference stay read only
@@ -1562,7 +1570,7 @@ local function buildBarRows(p, row)
     panel.ticksUnit:SetText(TEXT.ticksUnit)
     panel.ticksHelp = UI.HelpRight(panel.ticksUnit, CRT.AlertFields.TEXT.ticks, TEXT.ticksHelp)
     local function barOn()
-        return cur.draft ~= nil and cur.draft.show.bar and true or false
+        return cur.draft ~= nil and cur.draft.show.bar and true or false, TEXT.barWhy
     end
     panel.barFill = row(UI.Dropdown(p, CRT.AlertFields.TEXT.barFill, {
         labelWidth = L.TICKS_LABEL, width = L.BAR_DROP_W,
@@ -1575,7 +1583,12 @@ local function buildBarRows(p, row)
     -- Count down to: the bar's number counts to the cast (the default) or to each impact; greyed without ticks
     panel.countTo = row(UI.Dropdown(p, CRT.AlertFields.TEXT.countTo, {
         labelWidth = L.TICKS_LABEL, width = L.BAR_DROP_W,
-        enabledIf = function() return barOn() and Draft.Ticks(cur.draft) ~= nil end,
+        enabledIf = function()
+            if not barOn() then
+                return false, TEXT.barWhy
+            end
+            return Draft.Ticks(cur.draft) ~= nil, TEXT.ticksWhy
+        end,
         options = Draft.CountOptions(TEXT.countCast, TEXT.countImpact),
         get = function() return cur.draft and cur.draft.countTo == "impact" and "impact" or "cast" end,
         set = change(function(v) cur.draft.countTo = v == "impact" and "impact" or nil end),
@@ -1695,7 +1708,7 @@ local function buildNoteRow(p, row)
         if GameTooltip and UI.TooltipOwner and alertMeHeld(cur.ctx and cur.ctx.reminder) then
             UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
             GameTooltip:SetText(TEXT.alertMe, 1, 1, 1)
-            GameTooltip:AddLine(TEXT.alertMeHeld, 0.85, 0.85, 0.85, true)
+            UI.DisabledReason(GameTooltip, TEXT.alertMeHeld) -- in red (UX rule 5)
             GameTooltip:Show()
         end
     end)
@@ -1726,7 +1739,7 @@ local function buildNoteRow(p, row)
     end
     panel.forDrop = row(UI.Dropdown(p, TEXT.forLabel, {
         labelWidth = L.SAVE_LABEL, width = L.SAVE_W, maxHeight = L.MENU_MAX_H,
-        enabledIf = function() return noteChoice() ~= nil end,
+        enabledIf = function() return noteChoice() ~= nil, TEXT.forWhy end,
         options = function()
             local out, seen = {}, {}
             for i, key in ipairs(M.ROLES) do

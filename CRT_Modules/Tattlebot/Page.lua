@@ -23,6 +23,14 @@ local ENDED = { button = "End night was pressed", gap = "no pull came for 6 hour
 local NOT_TEAM = "not a team raid" -- a pull's mark, beside its difficulty and length
 local SHOW_OPTIONS = { { key = "team", label = "Team raids" }, { key = "all", label = "All raids" } }
 -- History's Delete this night asks once (UI.Confirm); an own mechanic's Remove acts at once with Undo (UI.UndoToast)
+-- why a greyed control can't be used (UX rule 5), on its tooltip
+local WHY_TEXT = {
+    tracking = "Tick Read the damage meter after each boss pull first.",
+    noNight = "No raid night is being tracked right now.",
+    noPulls = "No pulls tonight yet.",
+    noneTicked = "Tick the mechanics to add first.",
+}
+
 local DELETE_TEXT = {
     button = "Delete this night",
     ask = "Delete the night of %s?",
@@ -799,6 +807,7 @@ local function refreshMechanics()
             n = n + 1
         end
         scanBar.add:SetEnabled(n > 0)
+        UI.GreyWhy(scanBar.add, n > 0, WHY_TEXT.noneTicked, "Add checked")
         scanBar.add:SetText(n > 0 and format("Add %d checked", n) or "Add checked")
     end
 end
@@ -818,6 +827,9 @@ refresh = function()
     endButton:SetEnabled(night ~= nil)
     postPullButton:SetEnabled(hasPulls and true or false)
     postNightButton:SetEnabled(hasPulls and true or false)
+    UI.GreyWhy(endButton, night ~= nil, WHY_TEXT.noNight, "End night")
+    UI.GreyWhy(postPullButton, hasPulls and true or false, WHY_TEXT.noPulls, "Post last pull")
+    UI.GreyWhy(postNightButton, hasPulls and true or false, WHY_TEXT.noPulls, "Post tonight")
     refreshList()
     refreshMechanics()
     if selected == TOTALS then
@@ -1013,8 +1025,8 @@ local function buildHistory(f)
     end)
 end
 
--- A check box for one field of CRTDB.tattle. enabledIf greys it out while the setting it depends on
--- is off.
+-- A check box for one field of CRTDB.tattle. enabledIf (ok, reason) greys it out while the setting it depends on
+-- is off, and hovering it then says the reason.
 local function makeCheck(f, x, y, text, field, enabledIf)
     local check = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
     check:SetSize(24, 24)
@@ -1027,11 +1039,18 @@ local function makeCheck(f, x, y, text, field, enabledIf)
     check.refresh = function()
         check:SetChecked(Tattle:Settings()[field] and true or false)
         if enabledIf then
-            local on = enabledIf() and true or false
+            local on, reason = UI.Usable(enabledIf)
             check:SetEnabled(on)
             local c = on and 1 or 0.5
             fs:SetTextColor(c, c, c)
+            check.why:Set(on, reason)
         end
+    end
+    if enabledIf then
+        check.why = UI.DisabledCover(check, function()
+            return text
+        end, fs)
+        check.why.state = enabledIf
     end
     check.label = fs
     controls[#controls + 1] = check
@@ -1053,7 +1072,7 @@ end
 
 local function buildSettings(f)
     local function trackingOn()
-        return Tattle:Settings().enabled
+        return Tattle:Settings().enabled and true or false, WHY_TEXT.tracking
     end
 
     makeCheck(f, 4, -8, "Read the damage meter after each boss pull", "enabled")

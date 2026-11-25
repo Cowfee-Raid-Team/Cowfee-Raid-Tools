@@ -49,7 +49,7 @@ local TEXT = {
         { "Left and right sides", "pick an assignment with two rows of players, made on Raid Notes > Mech Alerts > Mechanics (pick the boss and the ability, then its Assign tab). The first row goes to groups 1 and 2, the second to groups 3 and 4. Everyone else is split between the two sides to even them out." },
     },
     side = "Assignment",
-    noSidesWhy = "No assignment this season has two rows of players. Make one on Raid Notes > Mech Alerts > Mechanics (pick the boss and the ability, then its Assign tab).",
+    noSidesWhy = "No assignment has two rows of players yet. Make one on Raid Notes > Mech Alerts > Mechanics (pick the boss and the ability, then its Assign tab).",
     emptyGrid = "The grid is empty.",
     postChanges = "Post group changes to raid chat",
     extraBody = "In your group, in raid group %d, but not in this layout.", -- a player beside the grid
@@ -755,7 +755,11 @@ local function buildInvites(pf, anchor)
         local ok, why = CRT.Invite.CanInvite()
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
         GameTooltip:SetText(self:GetText(), 1, 1, 1)
-        GameTooltip:AddLine(ok and TEXT.inviteBody or why, 0.8, 0.8, 0.8, true)
+        if ok then
+            GameTooltip:AddLine(TEXT.inviteBody, 0.8, 0.8, 0.8, true)
+        else
+            UI.DisabledReason(GameTooltip, why) -- the reason in red (UX rule 5)
+        end
         GameTooltip:Show()
     end)
     inviteButton:SetScript("OnLeave", function()
@@ -895,7 +899,7 @@ local function buildSort(pf, apply)
             refreshSort()
         end,
         enabledIf = function()
-            return #sideBlocks() > 0
+            return #sideBlocks() > 0, TEXT.noSidesWhy
         end,
     })
     sideRow:SetPoint("LEFT", sortRow, "RIGHT", SORT.gap, 0)
@@ -914,7 +918,7 @@ local function buildSort(pf, apply)
         end
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
         GameTooltip:SetText(TEXT.sortGrid, 1, 1, 1)
-        GameTooltip:AddLine(why, 0.8, 0.8, 0.8, true)
+        UI.DisabledReason(GameTooltip, why) -- the reason in red (UX rule 5)
         GameTooltip:Show()
     end)
     sortButton:SetScript("OnLeave", function()

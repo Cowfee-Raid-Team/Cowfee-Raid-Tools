@@ -25,6 +25,8 @@ local L = {
 
 local TEXT = {
     title = "My wishlist",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    rankWhy = "Tick the item first to give it a rank.",
     help = "Tick the items you want from this season's raids and give each a rank: Big upgrade, Small upgrade or Off spec. The loot master and raid assists see your rank when the item drops, and it breaks ties between equal answers.\n\nYou can also right-click an item in the Adventure Guide's loot list. Your list goes to the group a few seconds after a change, when you join a group and when a loot session starts, never during a boss fight. Wanting an item counts for every difficulty.",
     boss = "Boss",
     allBosses = "All bosses",
@@ -121,7 +123,7 @@ local function makeRow(row)
         end,
         enabledIf = function()
             local it = row.data and row.data.item
-            return it ~= nil and W.Rank(it.id) ~= nil
+            return it ~= nil and W.Rank(it.id) ~= nil, TEXT.rankWhy
         end,
     })
     row.rank:SetPoint("LEFT", L.rank, 0)

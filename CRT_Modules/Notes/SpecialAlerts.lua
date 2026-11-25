@@ -90,6 +90,12 @@ local TEXT = {
     marks = "Marks for each step: %s. Named in the alert's text.",
     noMarks = "This alert has no marks.",
     markThem = "Mark the players",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    markWhy = "Addons can't put raid markers on players: the alert names its marks in its text instead.",
+    barWhy = "Tick Bar under Show as first.",
+    noImpactsWhy = "This alert has no impacts to count down to.",
+    shieldImpactsWhy = "A shield bar counts the shield, not the impacts.",
+    leadWhy = "Show from is already the shipped one.",
     test = "Test",
     noTest = "Nothing to test: this alert has no times on the ability timeline on show.",
     -- an alert on a mechanic unticked on the Timeline: its row grey, this on hover (it plays nothing until ticked again)
@@ -453,6 +459,7 @@ local function drawMarkers(entry)
         part:SetAlpha(allowed and 1 or OFF_ALPHA)
     end
     ui.markCheck:SetEnabled(allowed and entry.marks ~= nil)
+    UI.GreyWhy(ui.markCheck, allowed and entry.marks ~= nil, allowed and TEXT.noMarks or TEXT.markWhy, TEXT.markThem)
     ui.markCheck:SetChecked(false)
 end
 
@@ -510,6 +517,7 @@ local function drawPanel(enc, entry)
     ui.impactsText:SetShown(impacts ~= nil)
     ui.lead.refresh()
     ui.leadDefault:SetEnabled(c.lead ~= nil) -- greyed while the shipped lead is on
+    UI.GreyWhy(ui.leadDefault, c.lead ~= nil, TEXT.leadWhy, TEXT.default)
     local picks = drawWho(enc, entry)
     placeShowAs()
     for key, check in pairs(ui.checks) do
@@ -869,7 +877,7 @@ local function buildLooks(p)
         options = { { key = "up", label = TEXT.fillUp }, { key = "down", label = TEXT.fillDown } },
         enabledIf = function()
             local entry, enc = current()
-            return entry ~= nil and Special():Choices(enc, entry).show.bar and true or false
+            return entry ~= nil and Special():Choices(enc, entry).show.bar and true or false, TEXT.barWhy
         end,
         get = function()
             local entry, enc = current()
@@ -893,10 +901,13 @@ local function buildLooks(p)
         enabledIf = function()
             local entry, enc = current()
             if not (entry and entry.impacts) then
-                return false
+                return false, entry and TEXT.noImpactsWhy or nil
             end
             local c = Special():Choices(enc, entry)
-            return c.show.bar and Special():Absorb(enc, entry, c) == nil and true or false
+            if not c.show.bar then
+                return false, TEXT.barWhy
+            end
+            return Special():Absorb(enc, entry, c) == nil, TEXT.shieldImpactsWhy
         end,
         get = function()
             local entry, enc = current()

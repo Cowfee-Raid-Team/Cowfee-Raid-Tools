@@ -243,6 +243,7 @@ local function loadSource(i, src)
     local tmp = { UI = {} }
     assert(load(src, "CRT_Core/UI/Controls.lua"))("CowfeeRaidTools", tmp)
     CRT.UI.PickColor = tmp.UI.PickColor
+    for _, k in ipairs({ "NOT_AVAILABLE", "Usable", "DisabledReason", "DisabledTooltip", "DisabledCover", "GreyWhy" }) do CRT.UI[k] = tmp.UI[k] end -- and the greyed controls' reasons
   elseif src:find("function UI:SkinScrollBar", 1, true) then -- the real CRT_Core/UI/ScrollBar.lua: only the gutter rule is taken
     local tmp = { UI = {} }
     assert(load(src, "CRT_Core/UI/ScrollBar.lua"))("CowfeeRaidTools", tmp)

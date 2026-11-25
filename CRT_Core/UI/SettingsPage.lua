@@ -70,6 +70,12 @@ local TEXT = {
     teamLocked = "Set by %s (raid leader). You can change or remove it after you leave the group.",
     -- the game's lock icon (Blizzard_GroupFinder's LFGFrame.xml uses this file), inline before the line
     teamLockIcon = "|TInterface\\LFGFrame\\UI-LFG-ICON-LOCK:14:14|t ",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    teamPushWhy = "Only the raid leader can push the team.",
+    teamPugWhy = "%s is built in and can't be removed. Pick one of your own teams first.",
+    teamTonightOnlyWhy = "This team is only here for tonight's raid: it isn't on your list.",
+    teamMergeWhy = "You need at least two teams to merge one into another.",
+    onlyProfileWhy = "This is your only profile. Make another under New profile first.",
     teamHelp = {
         "Pick which team tonight's raid is: Pug, or one of your teams. Season Stats keeps each team's pulls apart, and Tattlebot and the Late Tracker can record team raids only: any team but Pug. A new raid group starts on the team you had last, and when you join a new raid group, CRT asks which team it is.",
         { "Add team", "at the bottom of the list, adds your own." },
@@ -582,8 +588,21 @@ end
 local function buildTeam(pf, x, top)
     local Team = CRT.Team
     heading(pf, x, top, TEXT.teamTitle, TEXT.teamHelp)
+    -- ok, reason (UX rule 5): while the raid leader's push holds the pick, the lock line says who set it
     local unlocked = function()
-        return not Team:IsLocked()
+        if Team:IsLocked() then
+            return false, TEXT.teamLocked:format(Team:LockedBy() or "?")
+        end
+        return true
+    end
+    -- a button greyed while usable() says no; hovering it then says why (UI.GreyWhy, which asks usable again on hover)
+    local function greyWhy(b, label, usable)
+        b.refresh = function()
+            local ok, reason = usable()
+            b:SetEnabled(ok and true or false)
+            UI.GreyWhy(b, ok, reason, label, nil, nil, usable)
+        end
+        controls[#controls + 1] = b
     end
     add(UI.Dropdown(pf, TEXT.teamTonight, {
         labelWidth = LABEL_W,
@@ -613,29 +632,48 @@ local function buildTeam(pf, x, top)
         Team:Push()
         refresh()
     end)
-    push.refresh = function()
-        push:SetEnabled(Team.CanPush())
-    end
-    controls[#controls + 1] = push
+    greyWhy(push, TEXT.teamPush, function()
+        if Team.CanPush() then
+            return true
+        end
+        return false, TEXT.teamPushWhy
+    end)
     local remove = button(pf, TEXT.teamRemove)
     remove:SetPoint("LEFT", push, "RIGHT", 6, 0)
     remove:SetScript("OnClick", function()
         CRT.TeamDialogs.AskRemove(Team:Tonight(), refresh)
     end)
-    remove.refresh = function()
-        remove:SetEnabled(Team:CanRemove(Team:Tonight()))
-    end
-    controls[#controls + 1] = remove
+    greyWhy(remove, TEXT.teamRemove, function()
+        local tonight = Team:Tonight()
+        if Team:CanRemove(tonight) then
+            return true
+        end
+        local ok, locked = unlocked()
+        if not ok then
+            return false, locked
+        end
+        local found = Team:Find(tonight)
+        if found ~= nil and not Team.BuiltIn(found) then
+            return false, TEXT.teamTonightOnlyWhy
+        end
+        return false, TEXT.teamPugWhy:format(found or tonight or "")
+    end)
     -- Merge team…: greyed while a push locks the pick (as Remove) and with fewer than two teams to merge from
     local merge = button(pf, TEXT.teamMerge)
     merge:SetPoint("LEFT", remove, "RIGHT", 6, 0)
     merge:SetScript("OnClick", function()
         CRT.TeamDialogs.AskMerge(Team:Tonight(), nil, refresh)
     end)
-    merge.refresh = function()
-        merge:SetEnabled(not Team:IsLocked() and #Team:MergeSources() >= 2)
-    end
-    controls[#controls + 1] = merge
+    greyWhy(merge, TEXT.teamMerge, function()
+        local ok, locked = unlocked()
+        if not ok then
+            return false, locked
+        end
+        if #Team:MergeSources() < 2 then
+            return false, TEXT.teamMergeWhy
+        end
+        return true
+    end)
     local status = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     status:SetPoint("TOPLEFT", x, top - 82)
     status:SetWidth(COL_W - 20)
@@ -767,7 +805,10 @@ local function buildProfiles(pf)
     newName:SetScript("OnEscapePressed", newName.ClearFocus)
 
     local hasOthers = function()
-        return #Profiles:Others() > 0
+        if #Profiles:Others() > 0 then
+            return true
+        end
+        return false, TEXT.onlyProfileWhy
     end
     add(UI.Dropdown(pf, "Copy from", {
         options = function()
@@ -1130,7 +1171,7 @@ local function buildAddonCheck(pf)
         if self.why then
             UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
             GameTooltip:SetText(CHECK.check)
-            GameTooltip:AddLine(UI.BadText(self.why == "lockdown" and CHECK.lockdown or CHECK.notGrouped), 1, 1, 1, true)
+            UI.DisabledReason(GameTooltip, self.why == "lockdown" and CHECK.lockdown or CHECK.notGrouped)
             GameTooltip:Show()
         end
     end)
@@ -1151,7 +1192,7 @@ local function buildAddonCheck(pf)
             UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
             GameTooltip:SetText(CHECK.announce)
             local reason = (self.why == "group" and CHECK.notGrouped) or (self.why == "lead" and CHECK.announceLead) or (self.why == "officer" and CHECK.announceOfficer) or CHECK.announceWait
-            GameTooltip:AddLine(UI.BadText(reason), 1, 1, 1, true)
+            UI.DisabledReason(GameTooltip, reason)
             GameTooltip:Show()
         end
     end)

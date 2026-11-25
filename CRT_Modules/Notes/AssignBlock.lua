@@ -30,6 +30,8 @@ local TEXT = {
     typedHelp = "Type the times: the phase, then minutes:seconds from the start of that phase, as in P1 0:30, 1:15; P2 0:20. No phase means phase 1. Leave it empty for no timers: then only the heading and the rows go in the note.",
     noTimes = "No timers: only the heading and the rows go in the note.",
     on = "On",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    noCastsWhy = "This assignment has no timers, so there are no casts to pick.",
     allCasts = "All casts",
     rotate = "Rotate across the rows",
     casts = "Casts",
@@ -168,8 +170,12 @@ function Editor:CastsDropdown(f)
     return UI.Dropdown(f, TEXT.on, {
         labelWidth = L.onLabelW, width = L.onW, maxHeight = 300,
         enabledIf = function()
+            local ro, why = ui.opts.readOnly()
+            if ro then
+                return false, why
+            end
             local times = ui.opts.times()
-            return #(times or {}) > 0 and not ui.opts.readOnly()
+            return #(times or {}) > 0, TEXT.noCastsWhy
         end,
         options = function()
             local out = { { key = Assign.ALL, label = TEXT.allCasts }, { key = Assign.ROTATE, label = TEXT.rotate } }

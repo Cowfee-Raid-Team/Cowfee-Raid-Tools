@@ -101,6 +101,11 @@ local fontListCalls = 0
 function CRT:FontList() fontListCalls = fontListCalls + 1 return fontList end
 function CRT:FontPath(name) for _, f in ipairs(fontList) do if f.name == name then return f.path end end return nil end
 CRT.UI = {
+  -- as CRT_Core/UI/Controls.lua's: enabledIf's ok, reason; a greyed row's cover keeps what it was set to
+  Usable = function(f, ...) if not f then return true end local ok, why = f(...) if ok then return true end return false, why end,
+  DisabledCover = function() return { Set = function(self, ok, why) self.ok, self.reason = ok, why end } end,
+  GreyWhy = function(el, ok, why) local c = rawget(el, "why") or {} c.ok, c.reason = ok, why rawset(el, "why", c) return c end,
+  DisabledReason = function() return true end,
   RegisterLayer = function(_, key, f) layers[key] = f end,
   RegisterPreview = function(_, key, fn) previews[key] = fn end,
   ResetButtonWidth = function() return 44 end, ResetButton = function(parent, fn) resets = resets + 1 local b = mock("Button", parent) rawset(b, "onReset", fn) return b end,

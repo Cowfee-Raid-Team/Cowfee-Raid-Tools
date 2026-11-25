@@ -32,6 +32,8 @@ local TEXT = {
     overlay = "Deaths from the last", -- then the pill, then overlayPulls
     overlayPulls = "pulls",
     overlayTitle = "Deaths from recent pulls",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    overlayWhy = "Tick Deaths from the last pulls first.",
     overlayHelp = "With no pull picked on the right, draws the deaths of this boss's recent pulls on the ability timeline, faded by how old they are, so deaths that repeat stand out. Pick a pull on the right to see only that pull's deaths; click it again to go back to all of them. How many pulls it covers: the number, or Overlay pulls on the Settings tab.",
     export = "Export labels",
     exportHelp = "Developer only. Shows this boss's ability labels (the right-click Type, Also, icons, name and row) in the boss file's format. Copy it and paste it to Claude to ship them.",
@@ -244,8 +246,9 @@ function ReviewTab.Build(f, ctx)
             Timeline:Set("overlay", n)
         end,
         enabledIf = function()
-            return settings().overlayOn
+            return settings().overlayOn and true or false, TEXT.overlayWhy
         end,
+        tipTitle = TEXT.overlayTitle,
     })
     pill:SetPoint("LEFT", overlay.Label, "RIGHT", PILL_GAP, 0)
     controls[#controls + 1] = pill

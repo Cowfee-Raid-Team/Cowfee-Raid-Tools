@@ -49,6 +49,8 @@ local TEXT = {
     done = "Done",
     remove = "Remove assignment",
     removeTip = "Takes this assignment out of the note, with its timer lines and the blank line before it.",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    readOnlyWhy = "Only the raid leader or assistants can change the raid note.",
     removeConfirm = "Take the assignment '%s' out of the note?",
     removeButton = "Remove",
     removed = "Removed %s.",
@@ -98,8 +100,19 @@ local L = { rowH = 30, topH = 64, labelW = 80, dropW = 220 }
 local A = { timers = "none", mechs = {} }
 EA.state = A
 
+-- true, and the reason (UX rule 5: greyed controls say it), while the note on show can't be changed
 local function readOnly()
-    return W.session == nil or W.session.readOnly
+    if W.session == nil or W.session.readOnly then
+        local _, why = Notes:CanEditRaid()
+        return true, why or TEXT.readOnlyWhy
+    end
+    return false
+end
+
+-- enabledIf: ok, reason
+local function editable()
+    local ro, why = readOnly()
+    return not ro, why
 end
 
 -- Text with a name in it, its raid marker codes drawn as their icons (CRT_Core/MarkerText.lua).
@@ -484,9 +497,7 @@ function EA.Build(left)
             return "new"
         end,
         set = pick,
-        enabledIf = function()
-            return not readOnly()
-        end,
+        enabledIf = editable,
     })
     A.pick:SetPoint("TOPLEFT", 0, 0)
     A.timersDrop = UI.Dropdown(f, TEXT.timers, {
@@ -520,9 +531,7 @@ function EA.Build(left)
             end
             changed("rows")
         end,
-        enabledIf = function()
-            return not readOnly()
-        end,
+        enabledIf = editable,
     })
     A.timersDrop:SetPoint("TOPLEFT", 0, -L.rowH)
     UI.HelpRight(A.timersDrop, TEXT.timers, TEXT.timersHelp)
@@ -558,6 +567,10 @@ function EA.Build(left)
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
         GameTooltip:SetText(TEXT.remove, 1, 1, 1)
         GameTooltip:AddLine(TEXT.removeTip, 0.85, 0.85, 0.85, true)
+        local ro, why = readOnly()
+        if ro then
+            UI.DisabledReason(GameTooltip, why) -- in red (UX rule 5)
+        end
         GameTooltip:Show()
     end)
     A.remove:SetScript("OnLeave", function()

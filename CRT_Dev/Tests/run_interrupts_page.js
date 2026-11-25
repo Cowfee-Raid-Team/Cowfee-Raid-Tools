@@ -758,6 +758,11 @@ check(picked[1].opts and picked[1].opts.hasOpacity, "settings: with its opacity"
 CRT.db.interrupts.plates.on = false; P.Refresh()
 check(rowNamed(T.size).enabled == false and rowNamed(T.font).enabled == false and rowNamed(T.offset).enabled == false, "settings: the box sliders grey with numbers off")
 check(P.allCheck.enabled == false, "settings: Show every number greys with numbers off")
+-- a greyed control says why (UX rule 5): its cover is shown with the reason, which says what to tick
+check(rawget(P.allCheck, "why") and P.allCheck.why.ok == false and P.allCheck.why.reason == "Tick Show numbers in the pull to change this.",
+  "settings: greyed, Show every number says why")
+check(P.swatches[1] and P.swatches[1].button.why.ok == false and P.swatches[1].button.why.reason == "Tick Show numbers in the pull to change this.",
+  "settings: a greyed swatch says why")
 local function isColor(c, key) local p = CRT.PALETTE[key] return c and math.abs(c[1] - p[1]) < 1e-6 and math.abs(c[2] - p[2]) < 1e-6 and math.abs(c[3] - p[3]) < 1e-6 end
 check(isColor(P.allCheck.label.color, "muted"), "settings: a greyed checkbox's label in the theme's muted colour")
 for _, sw in ipairs(P.swatches) do

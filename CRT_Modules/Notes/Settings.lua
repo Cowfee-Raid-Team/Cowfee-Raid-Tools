@@ -23,6 +23,8 @@ local TEXT = {
     assignments = "Assignments",
     personal = "Personal note",
     show = "Show this window",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    hiddenWhy = "Tick Show this window above to change this.",
     locked = "Locked (clicks pass through)",
     keepEmpty = "Keep up when empty",
     hidePassed = "Hide lines once passed",
@@ -110,8 +112,8 @@ local function greyOut(label, on)
     label:SetTextColor(c[1], c[2], c[3])
 end
 
--- enabledIf, when given, returns whether a control can be used. When it returns false the control is
--- greyed out and can't be changed, such as a hidden window's rows.
+-- enabledIf, when given, returns whether a control can be used, and why not (ok, reason). While it is not ok the
+-- control is greyed out and can't be changed, such as a hidden window's rows, and hovering it says the reason.
 -- enabledIf comes before getter and setter, which must be last (see makeNumber). Pass nil when the
 -- box never greys out.
 local function makeCheck(parent, x, y, label, enabledIf, getter, setter)
@@ -131,10 +133,17 @@ local function makeCheck(parent, x, y, label, enabledIf, getter, setter)
     check.refresh = function()
         check:SetChecked(getter() and true or false)
         if enabledIf then
-            local on = enabledIf()
+            local on, reason = UI.Usable(enabledIf)
             check:SetEnabled(on)
             greyOut(text, on)
+            check.why:Set(on, reason)
         end
+    end
+    if enabledIf then
+        check.why = UI.DisabledCover(check, function()
+            return label
+        end, text)
+        check.why.state = enabledIf
     end
     controls[#controls + 1] = check
     return check, text
@@ -190,7 +199,10 @@ local function buildColumn(pf, index, def, top)
 
     -- Everything below Show this window greys out while the window is hidden.
     local function shown()
-        return Notes:WindowSettings(def.key).shown and true or false
+        if Notes:WindowSettings(def.key).shown then
+            return true
+        end
+        return false, TEXT.hiddenWhy
     end
     makeCheck(pf, x - 4, top - 20, TEXT.show, nil, setting(def.key, "shown"))
     -- Use highlights (Highlights/Settings.lua), right under Show this window

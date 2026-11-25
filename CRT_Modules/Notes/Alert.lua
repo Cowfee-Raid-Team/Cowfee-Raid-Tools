@@ -33,6 +33,7 @@ local TEXT = {
         .. "The rows under it set when, how loud and how fast.",
     readAt = "Read it at",
     readAtValue = "%ds left",
+    readAtWhy = "Tick Read them out (text to speech) above to change this.",
     voice = "Voice",
     voiceHelp = "Which voice says your alert callouts. A word the voice has no clip for is read by the game's text to speech.\n\nThe same setting as Voice under Quality of Life > Sounds.",
     volume = "Speech volume",
@@ -370,8 +371,12 @@ local function set(field)
     end
 end
 
+-- ok, reason (UX rule 5): Read it at greys with Read them out
 local function speechOn()
-    return settings().tts and true or false
+    if settings().tts then
+        return true
+    end
+    return false, TEXT.readAtWhy
 end
 
 -- The callout's rows, added with the panel's row helpers (Alerts/Areas.lua): when it shows, its look, then
