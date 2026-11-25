@@ -737,9 +737,12 @@ local function getMechRow(i)
         if type(name) ~= "string" or name == "" then
             name = Tattle.SpellName(id)
         end
-        -- Undo writes the same entry back: a table only when it had a boss (Tattle:AddCustom)
+        -- Undo writes the same entry back (a table only when it had a boss, Tattle:AddCustom), only while the spell
+        -- hasn't been added again since
         UI.UndoToast({ text = format(DELETE_TEXT.removed, name), owner = self, onUndo = function()
-            if type(was) == "table" then
+            if Tattle:Settings().custom[id] ~= nil then
+                return
+            elseif type(was) == "table" then
                 Tattle:AddCustom(id, was.name, was.boss, was.encounterID)
             else
                 Tattle:AddCustom(id, was)

@@ -370,6 +370,13 @@ do
   if r778 then r778.scripts.OnClick(r778) end
   if TOASTS[1] then TOASTS[1].onUndo() end
   eq(s.custom[778], "Typed One", "a typed spell comes back as typed")
+  -- added again by hand before Undo: the new entry stays
+  TOASTS = {}
+  r778 = removeFor(778)
+  if r778 then r778.scripts.OnClick(r778) end
+  Tattle:AddCustom(778, "Retyped")
+  if TOASTS[1] then TOASTS[1].onUndo() end
+  eq(s.custom[778], "Retyped", "added again since: Undo keeps the new entry")
   Tattle:RemoveCustom(777) Tattle:RemoveCustom(778)
 end
 
