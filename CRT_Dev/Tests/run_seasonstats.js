@@ -102,6 +102,12 @@ local CRT = { UI = UI, db = {
 function CRT:Print() end
 CRT.Groups = { OnChange = function() end, ClassColor = function() return 1, 1, 1 end, ReportName = function(k) return k end }
 CRT_THEME(CRT, UI)
+-- the real UI.LinkButton (theme_stub.js), each one it makes kept
+LINKS = {}
+do
+  local real = UI.LinkButton
+  UI.LinkButton = function(...) local b = real(...) LINKS[b] = true return b end
+end
 -- the saved default from Core.lua, as the game fills it in
 local coreDefault = coreSrc:match("\\n    seasonStats = (%b{}),")
 check(coreDefault ~= nil, "Core.lua has a seasonStats default")
@@ -572,6 +578,8 @@ local av1, av2 = V.refl.avoid[1], V.refl.avoid[2]
 check(av1.shown and av1.label.text:find("2026-09-17", 1, true) and av1.label.text:find("1K", 1, true), "Tattlebot's trend, newest night first (" .. tostring(av1.label.text) .. ")")
 check(av2.shown and av2.label.text:find("2K", 1, true), "then the night before")
 -- each night opens in Tattlebot
+check(LINKS[av1] and LINKS[av2], "the avoidable damage lines are the shared link line (UI.LinkButton)")
+check(av2.w and av2.w <= 328 and av2.w == av2.label:GetStringWidth() + 2 * UI.LINK_BUTTON.pad + UI.LINK_BUTTON.gap + av2.arrow:GetStringWidth(), "a line is as wide as its text and its >: " .. tostring(av2.w))
 check(av2.arrow.shown and plain(av2.arrow.text) == ">", "a night in Tattlebot: a > at its right")
 check(av2.arrow.text ~= ">", "the > in the heading colour")
 av2.scripts.OnEnter(av2)

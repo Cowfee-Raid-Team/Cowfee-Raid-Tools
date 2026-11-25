@@ -385,40 +385,41 @@ local function buildCause(body, y)
     return line
 end
 
--- An avoidable damage night's line: a button that opens the night in Tattlebot, with a ">" at its right. A night no
--- longer in Tattlebot (deleted there since the line was drawn) loses the ">" and opens nothing.
+-- An avoidable damage night's line: the shared link line (UI.LinkButton), which opens the night in Tattlebot, with a
+-- ">" after its text. A night no longer in Tattlebot (deleted there since the line was drawn) loses the ">", opens
+-- nothing and its tooltip says why.
 local function nightThere(line)
     local Tattle, Page = CRT.Tattle, CRT.TattlePage
-    local there = line.nightID ~= nil and Tattle and Tattle.Night and Tattle:Night(line.nightID) ~= nil
+    -- line is nil while it is being made
+    local there = line ~= nil and line.nightID ~= nil and Tattle and Tattle.Night and Tattle:Night(line.nightID) ~= nil
         and Page and Page.ShowNight ~= nil and Page.CanShow and Page.CanShow()
-    line.arrow:SetShown(there and true or false)
-    return there
-end
-
-local function avoidTip(line)
-    showTip(line, { nightThere(line) and TEXT.avoidOpen or TEXT.avoidGone })
+    return there and true or false
 end
 
 local function buildAvoid(body, y)
-    local line = CreateFrame("Button", nil, body)
+    local line
+    line = UI.LinkButton(body, "", {
+        tipTitle = TEXT.avoidOpen,
+        enabledIf = function()
+            return nightThere(line), TEXT.avoidGone
+        end,
+        onClick = function()
+            CRT.TattlePage.ShowNight(line.nightID)
+        end,
+    })
     line:SetPoint("TOPLEFT", 0, y)
-    line:SetSize(L.reflW, L.line)
-    local hl = line:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetAllPoints()
-    hl:SetColorTexture(1, 1, 1, 0.06)
-    line.label = text(line, "CRTFontSmall", 0, 0, L.reflW - L.arrowW)
-    line.arrow = text(line, "CRTFontSmall", L.reflW - L.arrowW, 0, L.arrowW)
-    line.arrow:SetJustifyH("RIGHT")
-    line.arrow:SetText(UI.HeadingText(TEXT.more))
-    line:SetScript("OnEnter", avoidTip)
-    line:SetScript("OnLeave", hideTip)
-    line:SetScript("OnClick", function(self)
-        if nightThere(self) then
-            hideTip()
-            CRT.TattlePage.ShowNight(self.nightID)
-        end
-    end)
+    -- the ">" follows the night as the mouse comes over it (it may have gone since the line was drawn)
+    line:HookScript("OnEnter", line.refresh)
     return line
+end
+
+-- Sizes a line from its text, never wider than the column: a longer text is cut off before its ">".
+local function fitAvoid(line)
+    if line:Fit() > L.reflW then
+        local link = UI.LINK_BUTTON
+        line.label:SetWidth(L.reflW - 2 * link.pad - link.gap - math.ceil(line.arrow:GetStringWidth() or 0))
+        line:SetWidth(L.reflW)
+    end
 end
 
 local function buildReflection(f)
@@ -495,7 +496,8 @@ local function paintAvoid(trend)
         line.nightID = night and night.nightID
         if night then
             line.label:SetText(TEXT.avoidLine:format(night.key, short(night.perPull), night.pulls, night.pulls == 1 and TEXT.pull or TEXT.pullsWord))
-            nightThere(line)
+            fitAvoid(line)
+            line.refresh()
         end
     end
 end

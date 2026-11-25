@@ -1543,6 +1543,7 @@ function UI.SortHeaders(parent, cols, opts)
     return { refresh = refresh }
 end
 
+-- [link button] (CRT_Dev/Tests/theme_stub.js loads the code between these markers into harnesses' stubbed UI)
 -- A link button (the catalog's Link line): a short text that opens another page, such as Start here's page names
 -- beside each What's on switch. Its text in CRTFontSmall, a ">" after it in the theme's heading colour, a faint
 -- white highlight under the mouse, and a tooltip naming where it goes. Sized from its text (b:Fit() measures again,
@@ -1608,3 +1609,4 @@ function UI.LinkButton(parent, text, opts)
     b.refresh()
     return b
 end
+-- [/link button]
