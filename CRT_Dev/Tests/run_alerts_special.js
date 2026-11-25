@@ -527,10 +527,23 @@ check("special: no double alerts by row: a special alert on a row with no spell 
   S:SetChoice(9001, orbs, "on", false)
   A:Start(9001, "Mythic", "encounter", { difficultyID = 16 })
   assert(ids():find("mine:1:4", 1, true) and ids():find("mine:2:4", 1, true), "special off: yours alert: " .. ids())
+  -- the same row in another phase, or outside the window, is another cast: not covered
+  S:SetChoice(9001, orbs, "on", true)
+  local mineDef = A.blocks.mine
+  local savedEntries = mineDef.Entries
+  local function it(id, ph, t) return { id = id, ph = ph, time = t, mech = "Orb Burst", text = id, outputs = { alert = true } } end
+  -- Orb Burst's casts: P1 0:30, 1:10, 1:50 and P2 0:30
+  mineDef.Entries = function() return { it("mine:near:1", 1, 30.5), it("mine:phase:1", 2, 70), it("mine:late:1", 1, 71.5), it("mine:early:1", 1, 108.5) } end
+  A:Start(9001, "Mythic", "encounter", { difficultyID = 16 })
+  local got = ids()
+  mineDef.Entries = savedEntries
+  assert(not got:find("mine:near:1", 1, true), "0.5 s from a cast on the row: covered: " .. got)
+  assert(got:find("mine:phase:1", 1, true), "the row's 1:10 but in phase 2 (no P2 cast then): not covered: " .. got)
+  assert(got:find("mine:late:1", 1, true) and got:find("mine:early:1", 1, true), "1.5 s from a cast: not covered: " .. got)
   -- a special alert on another row covers nothing of this one
   S.dev[9001] = { { key = "swapRow", label = "Swap row", default = true, when = { row = "Swap" } } }
   A:Start(9001, "Mythic", "encounter", { difficultyID = 16 })
-  local got = ids()
+  got = ids()
   assert(got:find("mine:1:1", 1, true) and not got:find("mine:3:", 1, true), "only the special alert's own row: " .. got)
   A:Stop(true)
   CRT.db.alerts.reminders = {}

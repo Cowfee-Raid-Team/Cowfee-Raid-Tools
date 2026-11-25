@@ -351,10 +351,11 @@ local function hasOutput(it)
 end
 
 local function uncovered(out, coverable)
-    local covering = {}
+    local covering, rows = {}, {}
     for _, it in ipairs(out) do
         if type(it.covers) == "table" and hasOutput(it) then
             covering[#covering + 1] = it
+            rows[#covering] = rowKey(it.mech) or false
         end
     end
     if #covering == 0 then
@@ -363,14 +364,16 @@ local function uncovered(out, coverable)
     local kept = {}
     for _, it in ipairs(out) do
         local drop = false
-        local spell = type(it.spellID) == "number" and it.spellID or nil
-        local row = rowKey(it.mech)
-        if coverable[it] and (spell or row) then
-            for _, c in ipairs(covering) do
-                local same = (spell and c.covers[spell]) or (row and rowKey(c.mech) == row)
-                if same and c.ph == it.ph and math.abs(c.time - it.time) <= Alerts.COVER_WINDOW then
-                    drop = true
-                    break
+        if coverable[it] then
+            local spell = type(it.spellID) == "number" and it.spellID or nil
+            local row = rowKey(it.mech)
+            if spell or row then
+                for i, c in ipairs(covering) do
+                    local same = (spell and c.covers[spell]) or (row and rows[i] == row)
+                    if same and c.ph == it.ph and math.abs(c.time - it.time) <= Alerts.COVER_WINDOW then
+                        drop = true
+                        break
+                    end
                 end
             end
         end
