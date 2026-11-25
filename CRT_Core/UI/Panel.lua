@@ -11,9 +11,10 @@ local MENU_W = 150
 UI.PAGE_W = FRAME_W - 8 - MENU_W - 8 - 8 -- 1026: the menu's left margin, the menu, the gap, the right margin
 UI.PAGE_H = FRAME_H - 32 - 8 -- 560: under the title bar, above the bottom margin
 
--- Pages register themselves; the panel builds each one lazily the first time it is shown.
-function UI:RegisterPage(key, title, builder)
-    self.pages[key] = { key = key, title = title, builder = builder }
+-- Pages register themselves; the panel builds each one lazily the first time it is shown. tip (optional) is the
+-- menu entry's one-line tooltip; a page left without one takes its line from UI.PAGE_TIPS (UI.PageTip).
+function UI:RegisterPage(key, title, builder, tip)
+    self.pages[key] = { key = key, title = title, builder = builder, tip = tip }
     self.order[#self.order + 1] = key
 end
 
@@ -540,6 +541,35 @@ UI.MENU_GROUPS = {
     { label = TEXT.extras, "interrupts", "lootmaster", "loot", "requests", "seasonstats", "tattle" },
 }
 UI.HOME_PAGE = "start" -- the page opened when the one asked for is gone or hidden
+
+-- Each menu entry's tooltip: one plain sentence on what the page is for, under the page's name (UX rule 10). They
+-- live here, beside the menu's groups, so the menu's wording reads in one place and a page file needn't change for
+-- it; a page may pass its own as UI:RegisterPage's tip instead (the Development page does). A new page adds its line
+-- here: the menu harness (run_findable.js) fails on a registered page with no tip.
+UI.PAGE_TIPS = {
+    start = "Where to begin, and a switch for everything CRT shows, plays or says.",
+    settings = "The window, text size, theme, sound, layers and profiles.",
+    qol = "Small helps: the low-health alert, the debuff panel, the break timer and more.",
+    timeline = "Each boss's ability timeline, with the pulls you recorded.",
+    notes = "Raid notes for each boss, and the Mech Alerts they play.",
+    pace = "Where each boss's health should be at each phase.",
+    readycheck = "What the ready check checks, and your own consumables bar.",
+    groups = "Save raid group layouts and apply them to the raid.",
+    gearcheck = "Everyone's gear, gems and enchants at a glance.",
+    late = "Who is late or missing on raid nights, with a history.",
+    interrupts = "Kick numbers over the adds, and who kicks when.",
+    lootmaster = "Hand out the raid's loot: rolls, wishlists and boss loot.",
+    loot = "Every item the raid looted, to search and export.",
+    requests = "Offer an item to the raid and trade one to each player who needs it.",
+    seasonstats = "Your season so far: kills, pulls and what killed you.",
+    tattle = "Who took avoidable damage from boss mechanics, pull by pull.",
+}
+
+-- The menu entry's tip for a page key: its own (UI:RegisterPage's tip), else UI.PAGE_TIPS's, else nil.
+function UI.PageTip(key)
+    local page = UI.pages[key]
+    return (page and page.tip) or UI.PAGE_TIPS[key]
+end
 
 function UI:IsModern()
     return CRT.db and CRT.db.ui and CRT.db.ui.modern and true or false
@@ -2182,6 +2212,20 @@ local function createMenuButton(parent, page, index)
 
     b:SetScript("OnClick", function()
         UI:SelectPage(page.key)
+    end)
+    -- the entry's tip (UI.PageTip), right of the entry beside the menu in both looks, whatever Tooltip position says
+    b:SetScript("OnEnter", function(self)
+        local tip = UI.PageTip(page.key)
+        if not tip then
+            return
+        end
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, UI.TOOLTIP_KEEP)
+        GameTooltip:SetText(page.title, 1, 1, 1)
+        UI.AddTooltipText(GameTooltip, tip)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function()
+        GameTooltip:Hide()
     end)
     return b
 end
