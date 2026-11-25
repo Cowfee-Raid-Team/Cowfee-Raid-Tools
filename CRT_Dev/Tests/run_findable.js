@@ -31,6 +31,21 @@ for (const m of fs.readFileSync(path.join(dir, 'CRT_Core/Slash.lua'), 'utf8').ma
     while ((m = sw.exec(src))) words.push(m[1]);
   }
 })(dir);
+// Every player word Slash.lua handles itself (outside the do-not-package block, aliases aside), and every module word with
+// the file that registers it: /crt help all must list each (a module's word through its help lines, found in its file).
+const slashSrc = fs.readFileSync(path.join(dir, 'CRT_Core/Slash.lua'), 'utf8');
+const coreWords = [...new Set([...slashSrc.replace(/--@do-not-package@[\s\S]*?--@end-do-not-package@/, '')
+  .matchAll(/msg == "([a-z]+)(?: [a-z]+)?"/g)].map(m => m[1]).filter(w => w !== 'whats'))]; // "whats new" is an alias of whatsnew
+const moduleWords = [];
+(function walk2(d) {
+  for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+    const p = path.join(d, e.name);
+    if (e.isDirectory()) { if (!/^(\.|node_modules|Tests$)/.test(e.name)) walk2(p); continue; }
+    if (!e.name.endsWith('.lua')) continue;
+    const src = fs.readFileSync(p, 'utf8');
+    for (const m of src.matchAll(/Slash:Register\("([^"]+)"/g)) moduleWords.push({ word: m[1], listed: src.includes('[/crt ' + m[1]) });
+  }
+})(dir);
 const toc = fs.readFileSync(path.join(dir, 'CowfeeRaidTools.toc'), 'utf8');
 const harness = `
 local sources = { ... }
@@ -38,6 +53,8 @@ local NAMES = { ${FILES.map(f => JSON.stringify(f)).join(', ')} }
 local REGISTERED = { ${registered.map(r => `{ key = ${JSON.stringify(r.key)}, tip = ${JSON.stringify(r.tip)}, file = ${JSON.stringify(r.file)} }`).join(', ')} }
 local TOC = ${JSON.stringify(toc)}
 local WORDS = {} for _, w in ipairs({ ${words.map(w => JSON.stringify(w)).join(', ')} }) do WORDS[w] = true end
+local CORE_WORDS = { ${coreWords.map(w => JSON.stringify(w)).join(', ')} }
+local MODULE_WORDS = { ${moduleWords.map(m => `{ word = ${JSON.stringify(m.word)}, listed = ${m.listed} }`).join(', ')} }
 local say = print
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 say("FAIL " .. what) end end
@@ -366,6 +383,16 @@ local all = slash("help all")
 for _, w in ipairs({ "/crt readycheck", "/crt check food", "/crt rc", "/crt debuffs", "/crt notes", "/crt reminders", "/crt note test", "/crt break 10", "/crt qol",
     "/crt settings", "/crt team", "/crt minimap", "/crt lowhp off", "/crt perf", "/crt previews", "/crt consumables scan", "/crt consumables check", "/crt whatsnew", "/crt help", "/crt demo" }) do
   check(all:find("|cffffd100" .. w .. "|r", 1, true) ~= nil, "/crt help all lists " .. w)
+end
+for _, w in ipairs({ "/crt ready", "/crt check buff", "/crt loot answers", "/crt loot settings" }) do
+  -- ("loot settings" is the loot word's own help line, in the Loot Master module)
+  if w ~= "/crt loot settings" then check(all:find("|cffffd100" .. w .. "|r", 1, true) ~= nil or all:find("|cffffd100" .. w:match("%S+$") .. "|r", 1, true) ~= nil, "/crt help all lists " .. w) end
+end
+for _, word in ipairs(CORE_WORDS) do
+  check(all:find("/crt " .. word, 1, true) ~= nil, "/crt help all lists the core word " .. word)
+end
+for _, mw in ipairs(MODULE_WORDS) do
+  check(mw.listed, "the module word " .. mw.word .. " has a help line, so /crt help all lists it")
 end
 check(select(2, slash("help all")) > 20, "/crt help all is the whole list")
 check(select(2, slash("?")) == n, "/crt ? is /crt help")
