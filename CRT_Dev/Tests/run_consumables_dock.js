@@ -336,6 +336,7 @@ do
     rawset(r, "SetTextColor", function(self, ...) rawset(self, "rgb", { ... }) end)
     rawset(r, "SetSize", function(self, w, h) rawset(self, "w", w) rawset(self, "h", h) end)
     rawset(r, "SetFont", function(self, path, size) rawset(self, "fontSize", size) end)
+    rawset(r, "SetFontObject", function(self) rawset(self, "fontSize", nil) end) -- as in the game, a font object replaces a SetFont
     rawset(r, "ClearAllPoints", function(self) self.pts = {} rawset(self, "clears", (rawget(self, "clears") or 0) + 1) end)
     return r
   end
@@ -428,9 +429,12 @@ do
   end
   -- the corner labels at text size 8 and 22: held at 10 to 12 points; a two-digit count, under the mark, never
   -- reaches the MH/OH tag at the top left (a label taken as 0.75 of its size wide per letter, as tall as its size)
-  local realSmall = CRTFontSmall
+  local realSmall, realHighlight = CRTFontSmall, CRTFontHighlight
+  -- CRTFontHighlight (the timer) at the same text sizes: 8, 9, 22 and 24 points (Core.lua)
+  local HIGHLIGHT = { [7] = 8, [8] = 9, [19] = 22, [21] = 24 }
   for _, size in ipairs({ 7, 8, 19, 21 }) do
     CRTFontSmall = { GetFont = function() return "Fonts\FRIZQT__.TTF", size, "" end }
+    CRTFontHighlight = { GetFont = function() return "Fonts\FRIZQT__.TTF", HIGHLIGHT[size], "" end }
     for _, state in ipairs({ "low", "active" }) do
       Bar.Apply(slot, { state = state, left = state == "low" and 60 or 3000, count = 12, tag = "MH" })
       local cs, ts = rawget(slot.count, "fontSize"), rawget(slot.tag, "fontSize")
@@ -443,9 +447,16 @@ do
       if state == "low" then
         check(size .. " pt: the count's top under the mark's bottom", countTop < -(Bar.MARK_SIZE - 3), countTop)
       end
+      -- the timer grows up from the bottom: it never reaches the count, with or without a mark
+      local th = rawget(slot.time, "fontSize")
+      local timeTop = -(Bar.ICON_SIZE - 3 - (th or 99))
+      check(size .. " pt, " .. state .. ": the timer at 10 to 14 points", th and th >= 10 and th <= 14, tostring(th))
+      check(size .. " pt, " .. state .. ": the count (with charges) clear of the timer", countTop - cs > timeTop, (countTop - cs) .. " > " .. timeTop)
+      Bar.Apply(slot, { state = state, left = state == "low" and 60 or 3000, count = 12, tag = "MH" })
+      check(size .. " pt, " .. state .. ": a second refresh keeps the timer capped", rawget(slot.time, "fontSize") == th)
     end
   end
-  CRTFontSmall = realSmall
+  CRTFontSmall, CRTFontHighlight = realSmall, realHighlight
 end
 
 print(passed .. " passed, " .. failed .. " failed")

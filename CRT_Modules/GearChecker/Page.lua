@@ -89,7 +89,8 @@ local L = {
     icon = 30, edge = 2, gem = 7, gemInner = 5, gemGap = 1, dot = 8, dotHole = 4, badgeW = 26, badgeH = 16,
     -- the status mark, centred on the icon's left edge, under the track tag (held at trackFont points at most, so it
     -- never grows into the mark) and above the enchant dot
-    mark = 10, markX = 1, markY = -3.5, trackFontMin = 10, trackFontMax = 12,
+    mark = 10, markX = 1, markY = -3, -- whole pixels: the disc spans 13 to 23 px under the icon's top
+    trackFontMin = 10, trackFontMax = 12,
     barGap = UI.SCROLL_GAP, barW = 8, -- the gap before the bar: the shared scroll bar gap
     popW = 1040, popH = 560, popMinW = 1024, popMinH = 300,
     helpW = 24, -- room kept right of the Extra filters button for the page's (?)

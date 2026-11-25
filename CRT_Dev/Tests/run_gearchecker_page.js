@@ -325,6 +325,8 @@ do
     local dotTop = -Lt.icon + dp[5] + c.dot.h / 2
     check(backBottom > rimTop, size .. " pt: the track tag's backing ends above the mark's rim (" .. backBottom .. " > " .. rimTop .. ")")
     check(rimBottom > dotTop, size .. " pt: the mark's rim ends above the enchant dot (" .. rimBottom .. " > " .. dotTop .. ")")
+    local discTop, discLeft = centre + c.mark.disc.h / 2, mp[4] - c.mark.disc.w / 2
+    check(discTop == math.floor(discTop) and discLeft == math.floor(discLeft), size .. " pt: the mark's disc on whole pixels (" .. discTop .. ", " .. discLeft .. ")")
     check(c.mark.glyph == "down" and c.mark.rim.shown, size .. " pt: the mark still shows")
   end
   CRTFontSmall = realSmall

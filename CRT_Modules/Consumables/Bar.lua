@@ -26,6 +26,9 @@ local MARKS = { missing = "alert", low = "clock" }
 Bar.MARK_SIZE = math.floor(Bar.ICON_SIZE / 3 + 0.5) -- the mark is a third of the icon, at any icon size
 local MARK_OUT = 3 -- how far the mark reaches past the icon's top right corner
 Bar.LABEL_MIN, Bar.LABEL_MAX = 10, 12 -- the corner labels' (bag count, MH/OH tag) size in points, at any text size
+-- the timer's size in points, at any text size: at 14 at most it ends under the bag count, even when the count sits
+-- under a mark
+Bar.TIME_MIN, Bar.TIME_MAX = 10, 14
 local UI = CRT.UI
 
 local BACKDROP = {
@@ -164,7 +167,15 @@ function Bar.Apply(slot, status)
     end
 
     -- "no data" is too wide for one line under a 44 pixel icon, so it is two small lines.
-    slot.time:SetFontObject(status.state == "unset" and CRTFontSmall or CRTFontHighlight)
+    -- Set only when the font object changes (a font object replaces a capped size), then held at TIME_MIN to
+    -- TIME_MAX points so it never grows into the bag count.
+    local timeFont = status.state == "unset" and CRTFontSmall or CRTFontHighlight
+    if slot.timeFont ~= timeFont then
+        slot.timeFont = timeFont
+        slot.time:SetFontObject(timeFont)
+        slot.time.crtCapPath = nil -- the cap is set again for the new font
+    end
+    UI.CapFontSize(slot.time, timeFont, Bar.TIME_MIN, Bar.TIME_MAX)
     if status.state == "unknown" then
         slot.time:SetText("?")
     elseif status.state == "unset" then
