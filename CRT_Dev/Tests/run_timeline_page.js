@@ -1743,7 +1743,7 @@ do
   local oldPrint = print
   CRT.version = "test"
   print = function(s) lines[#lines + 1] = s end
-  SlashCmdList["COWFEERAIDTOOLS"]("help")
+  SlashCmdList["COWFEERAIDTOOLS"]("help all")
   print = oldPrint
   local listed
   for i, l in ipairs(lines) do if l:find("/crt timeline rehearse", 1, true) and lines[i - 1] and lines[i - 1]:find("/crt timeline", 1, true) then listed = true end end

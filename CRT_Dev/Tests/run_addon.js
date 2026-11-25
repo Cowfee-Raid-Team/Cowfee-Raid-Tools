@@ -358,7 +358,7 @@ check(row, "the Timeline window's layer row is there")
 
 -- every module word: registered, runs for everyone, opens its page, and is in /crt help
 local WORDS = { groups = "groups", gear = "gearcheck", late = "late", pace = "pace", tattle = "tattle", timeline = "timeline" }
-local help = slash("help")
+local help = slash("help all") -- the full list (/crt help is the everyday few, run_findable.js)
 for word, page in pairs(WORDS) do
   check(CRT.Slash.words[word] ~= nil, "/crt " .. word .. " is registered")
   local before = #shownPages
@@ -578,7 +578,7 @@ check(prefixes.CRTGearCheck and prefixes.CRTRepair and prefixes.CRTPace1 and pre
 -- /crt help: Raid Groups right under /crt, the other module words after Core's notes lines
 do
   local lines = {}
-  for line in (slash("help") .. "\\n"):gmatch("(.-)\\n") do lines[#lines + 1] = line end
+  for line in (slash("help all") .. "\\n"):gmatch("(.-)\\n") do lines[#lines + 1] = line end
   local at = {}
   for i, l in ipairs(lines) do
     for _, w in ipairs({ "groups", "readycheck", "note test", "late", "timeline" }) do

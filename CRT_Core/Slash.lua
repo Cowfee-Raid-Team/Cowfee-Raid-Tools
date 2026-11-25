@@ -8,9 +8,10 @@ CRT.Slash = Slash
 -- word: the first word typed, in lower case. def:
 --   run      run(rest, msg, raw): rest is what follows the word (lower case), msg the whole command (lower
 --            case), raw as typed. Returns false when it doesn't know rest, for "Unknown command".
---   help     the lines /crt help lists for it; each part typed as a command is in square brackets
---            ("[/crt late start], [end] - ..."), shown in the help's command colour
---   top      true: listed at the top of /crt help, right under /crt itself (a page most players open first);
+--   help     the lines /crt help all lists for it; each part typed as a command is in square brackets
+--            ("[/crt late start], [end] - ..."), shown in the help's command colour. The short /crt help is
+--            Slash.EVERYDAY, below
+--   top      true: listed at the top of /crt help all, right under /crt itself (a page most players open first);
 --            the others come after Core's notes lines, in the order they registered
 function Slash:Register(word, def)
     if not self.words[word] then
@@ -45,8 +46,31 @@ local function printWords(top)
     end
 end
 
-local function printHelp()
+-- /crt help: the everyday commands only, in the menu's order (UI.MENU_GROUPS), each part typed in square brackets
+-- as in a word's help. Every other command is in /crt help all. A new command goes in /crt help all (its word's
+-- help, or printAll below); add it here too only when most players would use it every raid night.
+Slash.EVERYDAY = {
+    "[/crt] - open or close the main window",
+    "[/crt welcome] - where to start as a raider or as a leader",
+    "[/crt settings] - General Settings: window, text, sound, profiles",
+    "[/crt timeline] - each boss's ability timeline and your pulls",
+    "[/crt notes] - the raid notes and Mech Alerts",
+    "[/crt check] - the ready check window for your group",
+    "[/crt groups] - save and apply raid group layouts",
+    "[/crt loot] - your loot popup and All Loot Rolls",
+    "[/crt previews] - show every movable window, to drag it into place",
+    "[/crt help all] - every command",
+}
+
+Slash.UNKNOWN = "Unknown command. /crt help lists them."
+
+local function printShort()
     CRT:Print("v" .. CRT.version .. " commands:")
+    printLines(Slash.EVERYDAY)
+end
+
+local function printAll()
+    CRT:Print("v" .. CRT.version .. " commands, all of them:")
     print("  |cffffd100/crt|r - open or close the main panel")
     printWords(true)
     print("  |cffffd100/crt readycheck|r - open the Ready Check page (|cffffd100/crt consumables|r opens its Your bar tab)")
@@ -69,7 +93,8 @@ local function printHelp()
     print("  |cffffd100/crt consumables scan|r - list your buffs and bag consumables, for updating the list")
     print("  |cffffd100/crt consumables check|r - test every ID in the built-in consumables list")
     print("  |cffffd100/crt whatsnew|r - what's new in this version")
-    print("  |cffffd100/crt help|r - show this list")
+    print("  |cffffd100/crt help|r - the everyday commands only")
+    print("  |cffffd100/crt help all|r - this list")
 end
 
 SLASH_COWFEERAIDTOOLS1 = "/crt"
@@ -291,8 +316,10 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
     elseif msg == "whatsnew" or msg == "whats new" or msg == "what's new" then
         CRT.WhatsNew:ShowNow()
     elseif msg == "help" or msg == "?" then
-        printHelp()
+        printShort()
+    elseif msg == "help all" then
+        printAll()
     else
-        CRT:Print("Unknown command '" .. msg .. "'. Type /crt help for the list.")
+        CRT:Print(Slash.UNKNOWN)
     end
 end
