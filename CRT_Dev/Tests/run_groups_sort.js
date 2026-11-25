@@ -2,7 +2,7 @@
 // healer spread, class and spec spread, sides placement, the same grid on a second sort); the Left and right sides
 // list (only blocks with exactly two rows of players, from the current season's notes); the group changes post (who is
 // new per group, groups skipped, nothing when nothing changed, the line format, long lines split under the chat
-// limit) and Arrange Groups posting it once, when it is done (CRT_Modules/Groups/Apply.lua).
+// limit) and Arrange groups posting it once, when it is done (CRT_Modules/Groups/Apply.lua).
 // Usage: node run_groups_sort.js <addon folder>
 const fs = require('fs');
 const path = require('path');
@@ -42,7 +42,7 @@ function GetNumClasses() return #CLASSES end
 function GetClassInfo(i) local c = CLASSES[i] return c[1], c[2], i end
 C_Spell = { GetSpellInfo = function(id) return { name = "Spell" .. id, iconID = 100000 + id } end }
 
--- the raid, for Sort.Read and Arrange Groups: { name, subgroup, class, role }
+-- the raid, for Sort.Read and Arrange groups: { name, subgroup, class, role }
 local raid = {}
 local lead = true
 function IsInRaid() return #raid > 0 end
@@ -378,7 +378,7 @@ check("changes: a long line splits under the 255-character chat limit, every nam
   for _, n in ipairs(all) do assert(joined:find(n .. ",", 1, true) or joined:find(n .. "$"), "kept: " .. n) end
 end)
 
--- Arrange Groups posts once, when it is done --------------------------------------------------------------------------
+-- Arrange groups posts once, when it is done --------------------------------------------------------------------------
 local applyFrame
 for _, f in ipairs(frames) do if f.events.GROUP_ROSTER_UPDATE and f.events.PLAYER_REGEN_DISABLED then applyFrame = f end end
 local function arrange(slots)

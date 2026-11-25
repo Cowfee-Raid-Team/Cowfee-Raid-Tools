@@ -16,7 +16,7 @@ local ADDON, CRT = ...
 --           answer (sent after its R: "G|<id>:<item index>|<piece>;<piece>", each piece CRT.Gear.Encode's
 --           "<slot>~<item string>~<item level>", split so each message is 255 bytes or less). R still carries
 --           "id:ilvl" for each piece, so a looter older than 0.30.0 drops G and shows the items by ID.
---   leader: U who may run loot (the raid leader's list; raiders trust only that), M Sync Master Loot
+--   leader: U who may run loot (the raid leader's list; raiders trust only that), M Sync master loot
 --           (LootMaster/Sync.lua, its own handler through LM.Handle); O on, F off and H heartbeat for
 --           CRT Looting (LootMaster/Looting.lua)
 --   requests: N ask, W answer, Z close (Requests/Data.lua, its own handlers through LM.Handle)

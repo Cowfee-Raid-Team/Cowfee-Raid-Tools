@@ -78,13 +78,15 @@ local function tooltip(frame, title, body)
     end)
 end
 
-local function makeButton(parent, label, width, height)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+local function makeButton(parent, label, height)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontNormal)
     b:SetHighlightFontObject(CRTFontHighlight)
     b:SetDisabledFontObject(CRTFontDisable)
-    b:SetSize(width, height or 24)
     b:SetText(label)
+    b:SetHeight(height or 24)
+    UI.FitButton(b)
     return b
 end
 
@@ -374,20 +376,20 @@ local function buildWindow(f)
     box.refresh = drawCopy
     controls[#controls + 1] = box
 
-    local resetOrder = makeButton(f, "Default order", 150)
+    local resetOrder = makeButton(f, "Default order")
     resetOrder:SetPoint("TOPLEFT", 8, WINDOW_BUTTONS_Y)
     resetOrder:SetScript("OnClick", function()
         windowSettings().order = {}
         Window:Apply()
         refresh()
     end)
-    local test = makeButton(f, "Show it now", 150)
+    local test = makeButton(f, "Show it now")
     test:SetPoint("LEFT", resetOrder, "RIGHT", 8, 0)
     test:SetScript("OnClick", function()
         Window:Show(nil, true)
     end)
     tooltip(test, "Show it now", "Opens the window with these sample players, exactly as arranged here. Right-click it to close it.")
-    local live = makeButton(f, "Show with my group", 180)
+    local live = makeButton(f, "Show with my group")
     live:SetPoint("LEFT", test, "RIGHT", 8, 0)
     live:SetScript("OnClick", function()
         Window:Show()
@@ -436,25 +438,8 @@ local function build(pf)
     local title = label(pf, "Ready Check", "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
 
-    for i, tab in ipairs(TABS) do
-        local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        b:SetSize(160, 26)
-        b:SetPoint("TOPLEFT", 8 + (i - 1) * 164, -36)
-        b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-        b:SetBackdropColor(0, 0, 0, 0.4)
-        b:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
-        b.sel = b:CreateTexture(nil, "ARTWORK")
-        b.sel:SetAllPoints()
-        b.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
-        b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-        b.text:SetPoint("CENTER")
-        b.text:SetText(tab.label)
-        b:SetScript("OnClick", function()
-            selectTab(tab.key)
-        end)
-        tabButtons[tab.key] = b
-        UI:RegisterTab(b)
-
+    tabButtons = UI.TabStrip(pf, TABS, 8, -36, selectTab)
+    for _, tab in ipairs(TABS) do
         local f = CreateFrame("Frame", nil, pf)
         f:SetPoint("TOPLEFT", 0, -66)
         f:SetPoint("BOTTOMRIGHT", 0, 0)

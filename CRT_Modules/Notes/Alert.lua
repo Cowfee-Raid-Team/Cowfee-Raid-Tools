@@ -3,7 +3,7 @@ local ADDON, CRT = ...
 -- The note callout ("Note callout/assignments" on screen): a movable alert that appears only when a timer
 -- with your name (or your role) is coming up, shows the spell or text with a countdown, and can read it out
 -- with text to speech. Its settings are CRT.db.notes.alert; how it looks and speaks is set on Raid Notes >
--- Alert Settings > Configuration, whose panel (Alerts/Areas.lua) shows Alert.PanelEntry's rows (below).
+-- Alert settings > Configuration, whose panel (Alerts/Areas.lua) shows Alert.PanelEntry's rows (below).
 
 local Notes = CRT.Notes
 local Engine = CRT.NoteEngine
@@ -254,7 +254,7 @@ end
 local build
 
 -- Its place, drag, nudge, reset and anchor are the shared helper's (UI/Placement.lua); its gear's Settings open
--- Raid Notes > Alert Settings on the callout.
+-- Raid Notes > Alert settings on the callout.
 local placement = CRT.UI.Placement.Define("notecallout", {
     title = TEXT.title,
     store = settings,
@@ -356,7 +356,7 @@ CRT.UI:OnTheme(function()
     lookAlign = nil
 end)
 
--- Its settings on Raid Notes > Alert Settings > Configuration ----------------------------------
+-- Its settings on Raid Notes > Alert settings > Configuration ----------------------------------
 
 local ICON_OPTIONS = {
     { key = "left", label = TEXT.left },

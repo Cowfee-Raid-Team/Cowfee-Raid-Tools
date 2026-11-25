@@ -644,11 +644,6 @@ local function belowLabel()
     return string.format(GC.TEXT.below, t and t.label or "")
 end
 
-local function sizeButton(b)
-    local fs = b:GetFontString()
-    b:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
-end
-
 local function paintHeaders()
     for _, h in ipairs(P.headers) do
         h:SetTextColor(textColor("heading"))
@@ -696,8 +691,7 @@ function P.Refresh()
     P.box:SetDataProvider(CreateDataProvider(rows), ScrollBoxConstants and ScrollBoxConstants.RetainScrollPosition)
     P.countText:SetText(#rows > 0 and string.format(TEXT.count, #rows) or TEXT.empty)
     local n, m = GC.Comm:Count(GC:Roster())
-    P.refreshButton:SetText(string.format(TEXT.refresh, n, m))
-    sizeButton(P.refreshButton)
+    P.refreshButton:SetText(string.format(TEXT.refresh, n, m)) -- a panel button: it fits its new label (UI.FitButton)
     paintHeaders()
 end
 
@@ -740,19 +734,30 @@ function P.OpenBelowMenu(owner)
     end)
 end
 
+-- A chip's width from its label at the text size now: the Below chip is wide enough for its longest label, with
+-- room for its arrow. The chips size themselves (b.crtFixedWidth keeps UI:FitTab off them) and again on a text
+-- size change (UI:OnFonts, in build).
+local function sizeChip(b)
+    if b.below then
+        local widest = 0
+        for _, t in ipairs(GC:BelowChoices()) do
+            b.text:SetText(string.format(GC.TEXT.below, t.label))
+            widest = math.max(widest, math.ceil(b.text:GetStringWidth() or 0))
+        end
+        b.text:SetText(belowLabel())
+        b:SetSize(widest + 2 * L.chipPad + L.chipArrow, L.chipH)
+    else
+        b:SetSize(math.ceil(b.text:GetStringWidth() or 0) + 2 * L.chipPad, L.chipH)
+    end
+end
+
 -- The Below chip: wide enough for its longest label, with an arrow at its right that opens its menu (so
 -- does a right-click on the chip); a left-click turns the filter on.
 local function makeBelowParts(b)
-    local widest = 0
-    for _, t in ipairs(GC:BelowChoices()) do
-        b.text:SetText(string.format(GC.TEXT.below, t.label))
-        widest = math.max(widest, math.ceil(b.text:GetStringWidth() or 0))
-    end
-    b.text:SetText(belowLabel())
+    b.below = true
+    sizeChip(b)
     b.text:ClearAllPoints()
     b.text:SetPoint("CENTER", -L.chipArrow / 2, 0)
-    b:SetSize(widest + 2 * L.chipPad + L.chipArrow, L.chipH)
-    b.below = true
     b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     local arrow = CreateFrame("Button", nil, b)
     arrow:SetSize(L.chipArrow + L.chipPad / 2, L.chipH)
@@ -779,7 +784,8 @@ local function makeChip(parent, filter)
     b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     b.text:SetPoint("CENTER")
     b.text:SetText(filter.label)
-    b:SetSize(math.ceil(b.text:GetStringWidth() or 0) + 2 * L.chipPad, L.chipH)
+    b.crtFixedWidth = true
+    sizeChip(b)
     b.key, b.label, b.help = filter.key, filter.label, filter.help
     if filter.below then
         makeBelowParts(b)
@@ -807,7 +813,7 @@ local function chipFor(body, filter)
     elseif not chip.below and chip.label ~= filter.label then
         chip.label = filter.label
         chip.text:SetText(filter.label)
-        chip:SetSize(math.ceil(chip.text:GetStringWidth() or 0) + 2 * L.chipPad, L.chipH)
+        sizeChip(chip)
     end
     return chip
 end
@@ -1041,7 +1047,6 @@ function P.Dock()
     P.body:Show()
     P.dockedNote:Hide()
     P.popButton:SetText(TEXT.popOut)
-    sizeButton(P.popButton)
     if P.window and P.window:IsShown() then
         P.window:Hide()
     end
@@ -1059,7 +1064,6 @@ function P.PopOut()
     P.body:Show()
     P.dockedNote:Show()
     P.popButton:SetText(TEXT.dock)
-    sizeButton(P.popButton)
     P.window:Show()
     UI:SkinTree(P.window)
     P.Open()
@@ -1126,6 +1130,15 @@ local function build(page)
     end)
     GC:OnChange(P.Refresh)
     UI:OnTheme(P.Refresh)
+    -- a text size change: every chip measures again and the chips' rows are laid out again
+    UI:OnFonts(function()
+        for _, chip in pairs(P.chipOf) do
+            sizeChip(chip)
+        end
+        sizeChip(P.extraButton)
+        P.chipsSig = nil
+        P.LayChips()
+    end)
     P.Refresh()
 end
 

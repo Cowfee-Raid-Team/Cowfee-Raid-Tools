@@ -165,8 +165,7 @@ function ReviewTab.Build(f, ctx)
         export:SetNormalFontObject(CRTFontButtonSmall)
         export:SetHighlightFontObject(CRTFontButtonSmallHighlight)
         export:SetDisabledFontObject(CRTFontButtonSmallDisable)
-        local exportText = export:GetFontString()
-        export:SetWidth(UI.PanelButtonWidth(exportText and exportText:GetStringWidth() or 0))
+        UI.FitButton(export) -- measured again in the small font
         exportHelp = UI.HelpRight(export, TEXT.export, TEXT.exportHelp)
         tab.exportButton = export
     end
@@ -189,12 +188,23 @@ function ReviewTab.Build(f, ctx)
         end
         shown:SetWidth(labelMax)
     end
+    -- How far the second row's checkboxes reach, Deaths from the last (N) pulls and its (?) included, at the text
+    -- size now: the buttons at the row's right (ctx.rowTwoWidth) must end clear of it.
+    local overlay, pill, pulls
+    local function rowTwoEnd()
+        if not (overlay and pill and pulls) then
+            return 0
+        end
+        return OVERLAY_X - 4 + 24 + 2 + (overlay.Label:GetStringWidth() or 0) + PILL_GAP + pill:GetWidth() + PILL_GAP
+            + (pulls:GetStringWidth() or 0) + HELP_W + 8
+    end
     -- Order beside the label and Share note on the second row, or both on a third row; the timeline and Recent
     -- pulls start under the last row shown. Export labels never changes which.
     local function placeOrder()
         labelMax = LABEL_MAX
         local width = f:GetWidth() or 0
         local wide = width >= WIDE_W and width >= labelEnd() + ORDER_W + HELP_W + 8
+            and width - 8 - (ctx.rowTwoWidth and ctx.rowTwoWidth(true) or 0) >= rowTwoEnd()
         local on = ctx.hasOrder()
         placeExport(width, wide, on)
         order:ClearAllPoints()
@@ -230,13 +240,13 @@ function ReviewTab.Build(f, ctx)
         Timeline:Set("record", on)
     end)
     -- Deaths from the last (N) pulls: N is the Settings tab's Overlay pulls, typed or wheeled here too
-    local overlay = checkbox(OVERLAY_X, ROW2_Y, TEXT.overlay, function()
+    overlay = checkbox(OVERLAY_X, ROW2_Y, TEXT.overlay, function()
         return settings().overlayOn
     end, function(on)
         Timeline:Set("overlayOn", on)
     end)
     local range = Timeline.OVERLAY_PULLS
-    local pill = UI.ValuePill(f, {
+    pill = UI.ValuePill(f, {
         min = range.min,
         max = range.max,
         get = function()
@@ -253,7 +263,7 @@ function ReviewTab.Build(f, ctx)
     pill:SetPoint("LEFT", overlay.Label, "RIGHT", PILL_GAP, 0)
     controls[#controls + 1] = pill
     tab.overlayPill = pill
-    local pulls = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    pulls = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     pulls:SetPoint("LEFT", pill, "RIGHT", PILL_GAP, 0)
     pulls:SetText(TEXT.overlayPulls)
     UI.HelpRight(pulls, TEXT.overlayTitle, TEXT.overlayHelp)
@@ -268,5 +278,6 @@ function ReviewTab.Build(f, ctx)
     tab.emptyLabel:SetPoint("CENTER", tab.holder, "CENTER")
     tab.emptyLabel:SetText(EMPTY_ALL)
     placeOrder()
+    UI:OnFonts(placeOrder) -- a text size change can move Order and Share note to the third row, or back
     return tab
 end

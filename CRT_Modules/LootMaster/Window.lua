@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- The looter's window, the Master Loot Window: the session's items as tabs down the left, and for the chosen item every raider's
+-- The looter's window, the Master loot window: the session's items as tabs down the left, and for the chosen item every raider's
 -- row, sorted by the response's weight, then the raider's wishlist rank, then Raider Score, then roll
 -- (Session:Rows); the Wishlist column shows each raider's rank for the item (LootMaster/Wishlist.lua). Right-click a row to
 -- award the item for a response, show the raider's popup again, ask them to roll again, or clear their
@@ -33,7 +33,7 @@ local COLS = {
 local GEAR_X = 494 -- the gear column's x, for its icons
 
 local TEXT = {
-    title = "Master Loot Window",
+    title = "Master loot window",
     test = "TEST",
     help = "Every raider's answer for the item picked on the left, best first: the answer's weight, then their wishlist rank, then Raider Score, then the roll. Wishlist shows the rank the raider gave the item in their wishlist, or Not listed (no list, or no CRT). Right-click a raider to give them the item, show their popup again, roll again for them, or clear their answer. Ctrl- or Shift-click picks several raiders first. Right-click an item on the left to do that for everyone who still needs it.",
     answered = "%d of %d answered",

@@ -131,18 +131,15 @@ local function add(row, x, y)
     return row
 end
 
--- Without a width, the button is as wide as its label (UI.PanelButtonWidth).
-local function button(pf, text, width)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+local function button(pf, text)
     local b = CreateFrame("Button", nil, pf, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontButtonSmall)
     b:SetHighlightFontObject(CRTFontButtonSmallHighlight)
     b:SetDisabledFontObject(CRTFontButtonSmallDisable)
     b:SetText(text)
-    if not width then
-        local fs = b:GetFontString()
-        width = UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0)
-    end
-    b:SetSize(width, 20)
+    b:SetHeight(20)
+    UI.FitButton(b)
     return b
 end
 
@@ -341,20 +338,20 @@ local function buildTextControls(d)
         updatePreview(d)
     end)
 
-    d.ok = button(d, TEXT.import, 110)
+    d.ok = button(d, TEXT.import)
     d.ok:SetHeight(24)
     d.ok:SetPoint("BOTTOM", -60, 12)
     d.ok:SetScript("OnClick", function()
         importClicked(d)
     end)
-    d.selectAll = button(d, TEXT.selectAll, 110)
+    d.selectAll = button(d, TEXT.selectAll)
     d.selectAll:SetHeight(24)
     d.selectAll:SetPoint("BOTTOM", -60, 12)
     d.selectAll:SetScript("OnClick", function()
         d.edit:SetFocus()
         d.edit:HighlightText()
     end)
-    d.close = button(d, CLOSE, 110)
+    d.close = button(d, CLOSE)
     d.close:SetHeight(24)
     d.close:SetPoint("BOTTOM", 60, 12)
     d.close:SetScript("OnClick", function()
@@ -468,7 +465,7 @@ local function buildLeft(pf)
             UI:SetScale(v)
         end,
     }), x, -62)
-    local resetScale = button(pf, "Reset scale to 100%", 140)
+    local resetScale = button(pf, "Reset scale to 100%")
     resetScale:SetPoint("TOPLEFT", x + LABEL_W + 5, -96)
     resetScale:SetScript("OnClick", function()
         UI:SetScale(100)
@@ -494,7 +491,7 @@ local function buildLeft(pf)
         "The font, outline and size of the addon's text, note windows included.",
         { "Font", "Default is the game's font in Default: Blizzard and Arial Narrow in the other themes; fonts shared by other addons are listed too." },
         { "Text size", "the body size (8 to 22 pt); headings and small text follow it." },
-        "Note windows keep their own size and can get their own font on Raid Notes > Notes Settings.",
+        "Note windows keep their own size and can get their own font on Raid Notes > Notes settings.",
     })
     add(UI.Dropdown(pf, "Font", {
         options = fontChoices,
@@ -540,7 +537,7 @@ local function buildLeft(pf)
     }), x, -258)
 
     x = MIDDLE_X
-    heading(pf, x, -44, "Sound", "Every sound the addon plays uses this game sound channel and follows its volume and mute. Text to speech has its own volume, on Raid Notes > Alert Settings > Configuration (Note callout/assignments), and the game's low-health pulse its own in the game's Options > Accessibility > Combat Audio Alerts.")
+    heading(pf, x, -44, "Sound", "Every sound the addon plays uses this game sound channel and follows its volume and mute. Text to speech has its own volume, on Raid Notes > Alert settings > Configuration (Note callout/assignments), and the game's low-health pulse its own in the game's Options > Accessibility > Combat Audio Alerts.")
     add(UI.Dropdown(pf, "Sound channel", {
         options = CRT.SOUND_CHANNELS,
         labelWidth = LABEL_W,
@@ -627,7 +624,6 @@ local function buildTeam(pf, x, top)
         end,
     }), x, top - 18)
     local push = button(pf, TEXT.teamPush)
-    push:SetPoint("TOPLEFT", x, top - 54)
     push:SetScript("OnClick", function()
         Team:Push()
         refresh()
@@ -639,7 +635,6 @@ local function buildTeam(pf, x, top)
         return false, TEXT.teamPushWhy
     end)
     local remove = button(pf, TEXT.teamRemove)
-    remove:SetPoint("LEFT", push, "RIGHT", 6, 0)
     remove:SetScript("OnClick", function()
         CRT.TeamDialogs.AskRemove(Team:Tonight(), refresh)
     end)
@@ -660,7 +655,6 @@ local function buildTeam(pf, x, top)
     end)
     -- Merge team…: greyed while a push locks the pick (as Remove) and with fewer than two teams to merge from
     local merge = button(pf, TEXT.teamMerge)
-    merge:SetPoint("LEFT", remove, "RIGHT", 6, 0)
     merge:SetScript("OnClick", function()
         CRT.TeamDialogs.AskMerge(Team:Tonight(), nil, refresh)
     end)
@@ -674,8 +668,16 @@ local function buildTeam(pf, x, top)
         end
         return true
     end)
+    -- the three buttons in a row that goes onto a second line when the text is too large for one; the status and
+    -- lock lines under it
+    local row = CreateFrame("Frame", nil, pf)
+    row:SetPoint("TOPLEFT", x, top - 54)
+    row:SetSize(COL_W - 20, 20)
+    UI.Flow(row, { push, remove, merge }, { width = COL_W - 20, gap = 6, onLayout = function(flow)
+        row:SetHeight(flow.height)
+    end })
     local status = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    status:SetPoint("TOPLEFT", x, top - 82)
+    status:SetPoint("TOPLEFT", row, "BOTTOMLEFT", 0, -8)
     status:SetWidth(COL_W - 20)
     status:SetJustifyH("LEFT")
     status.refresh = function()
@@ -684,7 +686,7 @@ local function buildTeam(pf, x, top)
     controls[#controls + 1] = status
     -- while the raid leader's push holds it: who set it, with a lock
     local lock = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
-    lock:SetPoint("TOPLEFT", x, top - 100)
+    lock:SetPoint("TOPLEFT", status, "BOTTOMLEFT", 0, -4)
     lock:SetWidth(COL_W - 20)
     lock:SetJustifyH("LEFT")
     lock.refresh = function()
@@ -730,7 +732,7 @@ local function buildRight(pf)
         }), x, -62 - (i - 1) * 30)
     end
     local lastLayer = -62 - #UI.LAYER_GROUPS * 30
-    local resetLayers = button(pf, "Default layers", 130)
+    local resetLayers = button(pf, "Default layers")
     resetLayers:SetPoint("TOPLEFT", x, lastLayer - 4)
     resetLayers:SetScript("OnClick", function()
         for _, layer in ipairs(UI.LAYERS) do
@@ -783,7 +785,7 @@ local function buildProfiles(pf)
     newName:SetAutoFocus(false)
     newName:SetFontObject(CRTFontEdit)
     newName:SetMaxLetters(32)
-    local create = button(pf, "Create", 60)
+    local create = button(pf, "Create")
     create:SetPoint("LEFT", newName, "RIGHT", 4, 0)
     local function createProfile()
         local name = strtrim(newName:GetText() or "")
@@ -858,20 +860,20 @@ local function buildProfiles(pf)
         end,
     }), x, top - 164)
 
-    local reset = button(pf, TEXT.reset, 100)
+    local reset = button(pf, TEXT.reset)
     reset:SetPoint("TOPLEFT", x, top - 204)
     reset:SetScript("OnClick", function()
         confirm("Put everything in the profile %s back to the defaults, its layouts, notes and history included? This can't be undone.\n\nYour interface reloads.", Profiles:Current(), "Reset and reload", function()
             Profiles:Reset()
         end)
     end)
-    local export = button(pf, TEXT.export, 100)
+    local export = button(pf, TEXT.export)
     export:SetPoint("LEFT", reset, "RIGHT", 6, 0)
     export:SetScript("OnClick", showExport)
     local exportSettings = button(pf, TEXT.exportSettings)
     exportSettings:SetPoint("LEFT", export, "RIGHT", 6, 0)
     exportSettings:SetScript("OnClick", showExportSettings)
-    local import = button(pf, TEXT.import, 100)
+    local import = button(pf, TEXT.import)
     import:SetPoint("LEFT", exportSettings, "RIGHT", 6, 0)
     import:SetScript("OnClick", showImport)
 
@@ -1160,7 +1162,7 @@ local function buildAddonCheck(pf)
     heading(pf, x, top, CHECK.heading, CHECK.help)
 
     -- the first row's right side: Module, Show, Check
-    local checkButton = button(pf, CHECK.check, 80)
+    local checkButton = button(pf, CHECK.check)
     checkButton:SetPoint("TOPRIGHT", -10, top + 2)
     checkButton:SetScript("OnClick", function()
         Check:Check()
@@ -1181,7 +1183,7 @@ local function buildAddonCheck(pf)
     check.button = checkButton
 
     -- Announce, left of Check: greyed with the reason until a check has run and its window has closed
-    local announce = button(pf, CHECK.announce, 90)
+    local announce = button(pf, CHECK.announce)
     announce:SetPoint("RIGHT", checkButton, "LEFT", -6, 0)
     announce:SetScript("OnClick", function()
         Check:Announce()
@@ -1346,22 +1348,8 @@ local function build(pf)
     title:SetText("General Settings")
     UI.HelpRight(title, "General Settings", "Settings for the whole addon: the look, text, sound, reports, the minimap button, where tooltips open, window layers and profiles. Changes apply at once, except profile changes, which reload your interface.")
 
-    for i, tab in ipairs(TABS) do
-        local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        b:SetSize(160, 26)
-        b:SetPoint("TOPLEFT", 8 + (i - 1) * 164, -36)
-        b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-        b.sel = b:CreateTexture(nil, "ARTWORK")
-        b.sel:SetAllPoints()
-        b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-        b.text:SetPoint("CENTER")
-        b.text:SetText(tab.label)
-        b:SetScript("OnClick", function()
-            selectTab(tab.key)
-        end)
-        tabButtons[tab.key] = b
-        UI:RegisterTab(b)
-
+    tabButtons = UI.TabStrip(pf, TABS, 8, -36, selectTab)
+    for _, tab in ipairs(TABS) do
         -- The tab's content starts 30 lower than the page did, so the columns keep their own offsets.
         local f = CreateFrame("Frame", nil, pf)
         f:SetPoint("TOPLEFT", 0, -30)

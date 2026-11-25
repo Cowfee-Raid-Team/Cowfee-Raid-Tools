@@ -679,7 +679,7 @@ PRESETS[4] = nil
 drops.Layout.opts.set(1)
 eq(CRT.db.lootmaster.wishlistsTab.layout, 1, "layout: the pick is saved with the tab")
 eq(teamOf(rows.people), "Faraway-Sargeras Quick-Sargeras Bench-Sargeras(none)", "layout: a layout not in use, its players")
-eq(ACTIVE, 2, "layout: Use This Group unchanged")
+eq(ACTIVE, 2, "layout: Use this group unchanged")
 CRT.db.lootmaster.wishlistsTab.layout = 99
 refreshers[1]()
 eq(drops.Layout.opts.get(), 2, "layout: a saved layout gone reads as the one in use")
@@ -735,7 +735,7 @@ cellRow.scripts.OnClick = function(_, b) clicked = b end
 cellRow.GetScript = function(self, name) return self.scripts[name] end
 tip.scripts.OnClick(tip, "RightButton")
 eq(clicked, "RightButton", "cell: its clicks go to the row")
--- the Master Loot Window's rows have their own tooltip and highlight: the age goes into that tooltip
+-- the Master loot window's rows have their own tooltip and highlight: the age goes into that tooltip
 local lines = {}
 local tipMock = { AddLine = function(_, text) lines[#lines + 1] = text end }
 eq(W.AddAgeLines(tipMock, "Quick-Sargeras", 11, "big"), true, "row tooltip: a saved rank adds its lines")
@@ -765,7 +765,7 @@ for (const f of ['CRT_Modules/LootMaster/WishlistTab.lua', 'CRT_Modules/LootMast
   if (/local function qualityColor|GetItemQualityColor|"BackdropTemplate"/.test(src)) { console.log('FAIL ' + f + ' draws its own item icon or quality colour'); process.exitCode = 1; }
   else console.log('ok ' + f + ' uses the shared item icon');
 }
-// the Master Loot Window adds the age to its row's own tooltip (keeping the row's highlight and note tooltip), never
+// the Master loot window adds the age to its row's own tooltip (keeping the row's highlight and note tooltip), never
 // covers the cell with a button of its own
 {
   const win = fs.readFileSync(path.join(dir, 'CRT_Modules/LootMaster/Window.lua'), 'utf8');

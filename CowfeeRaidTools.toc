@@ -31,6 +31,7 @@ CRT_Core\Sound\Voices.lua
 CRT_Core\Sound\Effects.lua
 CRT_Core\Sound\Auras.lua
 CRT_Core\UI\Panel.lua
+CRT_Core\UI\Fonts.lua
 CRT_Core\UI\Tooltip.lua
 CRT_Core\UI\Controls.lua
 CRT_Core\UI\MacroSet.lua

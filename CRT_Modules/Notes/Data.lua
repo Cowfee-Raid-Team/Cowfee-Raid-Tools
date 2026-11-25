@@ -80,7 +80,7 @@ function Notes:SetPersonal(text)
     self:Fire()
 end
 
--- How the Raid Notes list shows its notes (Notes Settings): "grouped" under difficulty headings that fold,
+-- How the Raid Notes list shows its notes (Notes settings): "grouped" under difficulty headings that fold,
 -- "dropdown" one difficulty picked in a dropdown, or "chips" one picked with buttons. listDifficulty is the
 -- difficulty the dropdown and the chips show ("All" for every note), listFolded the folded headings.
 Notes.LIST_STYLES = { "grouped", "dropdown", "chips" }
@@ -145,7 +145,7 @@ function Notes:Alert()
     return ndb().alert
 end
 
--- Whether the note windows show outside a raid instance (Notes Settings). Off unless ticked.
+-- Whether the note windows show outside a raid instance (Notes settings). Off unless ticked.
 function Notes:ShowOutsideRaid()
     return ndb().showOutsideRaid == true
 end
@@ -551,7 +551,7 @@ function Notes:FindForEncounter(encounterID, difficultyName)
 end
 
 -- Your personal note for a boss: the one of that difficulty, else one with no difficulty; the newest
--- (newer) when there are several, as Import/New's picked boss can make. Nil when none.
+-- (newer) when there are several, as the Import and New note dialog's picked boss can make. Nil when none.
 function Notes:PersonalFor(encounterID, difficultyName)
     local exact, loose
     for id, record in pairs(ndb().list) do
@@ -636,7 +636,7 @@ function Notes:RosterLayout(record)
 end
 
 -- A note's name from its text's first line that isn't blank: trimmed and cut to 40 characters. Nil when the
--- text has none. Import names a plain note by it; the Import/New dialog a note for its picked boss.
+-- text has none. Import names a plain note by it; the Import and New note dialog a note for its picked boss.
 function Notes.FirstLineName(text)
     local first = (text or ""):match("^%s*([^\r\n]+)")
     first = first and first:gsub("%s+$", ""):sub(1, 40):gsub("%s+$", "")
@@ -647,9 +647,9 @@ end
 -- personal: the note is your own (the Personal tab's Import), replacing yours for that boss and
 -- difficulty. Otherwise it is shared, replacing the shared note of the same source (a sender's guild, see
 -- the top), or one from before sources were kept; never a personal note.
--- anyText: the Import/New dialog only. Text that doesn't read as a raid note is then saved as a new note
+-- anyText: the Import and New note dialog only. Text that doesn't read as a raid note is then saved as a new note
 -- of its own (never replacing one) instead of refused.
--- asNew: the Import/New dialog's picked boss. The note is always a new one, even when that boss and
+-- asNew: the Import and New note dialog's picked boss. The note is always a new one, even when that boss and
 -- difficulty already have a note.
 function Notes:Import(text, from, personal, source, via, anyText, asNew)
     text = text or ""

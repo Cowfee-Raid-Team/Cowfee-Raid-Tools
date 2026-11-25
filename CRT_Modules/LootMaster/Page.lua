@@ -2,14 +2,14 @@ local ADDON, CRT = ...
 
 -- The Loot Master page (/crt loot settings), with five tabs (Wishlists, the raiders' saved wishlists, is
 -- LootMaster/WishlistTab.lua, before Settings):
---   Tonight       My Loot on the left, for everyone: a card that opens your loot popup and All Loot Rolls;
+--   Tonight       My Loot on the left, for everyone: a card that opens your loot popup and All loot rolls;
 --                 Master loot on the right, the looter's side: CRT Looting, the session, its buttons, Held
 --                 boss loot, Add from bags and the session's items (LootMaster/Tonight.lua builds both)
 --   Raider Score  every player's score from the Late Tracker's nights (LootMaster/Score.lua)
 --   Loot filter   which items open a loot session (LootMaster/FilterTab.lua, rules in Filter.lua)
 --   Settings      the response buttons raiders see (label, colour, weight, icon, order), how long they
 --                 have to answer, the award message, the Raider Score weights, loot authority, the
---                 leader's Sync Master Loot (LootMaster/Sync.lua), and where tooltips open (two
+--                 leader's Sync master loot (LootMaster/Sync.lua), and where tooltips open (two
 --                 dropdowns, each with its spot picker)
 -- Laid out for the main window's page area (1026 x 560) with nothing scrolling but the score list.
 -- Layout numbers are in L; wording in TEXT.
@@ -18,7 +18,7 @@ local LM = CRT.LootMaster
 local UI = CRT.UI
 
 local L = {
-    tabW = 150, tabH = 26, tabTop = -36, body = -66,
+    tabH = 26, tabTop = -36, body = -66,
     col1 = 8, col2 = 430, col3 = 724,
     respRow = 30, respTop = -30,
     label = 104, weight = 40, icon = 120,
@@ -29,13 +29,13 @@ local L = {
     addLabel = 30, addPick = 146, addGap = 12, addEdge = 4, -- addGap: the box's border art starts ~5 left of it
     dropdownGap = 5, -- UI.Dropdown's gap between its label and the dropdown
     previewLines = 4, -- the award preview is cut after this many lines, so it never reaches Sync
-    -- Sync Master Loot, in the second column under the award message: "Sync to", the dropdown, a box
+    -- Sync master loot, in the second column under the award message: "Sync to", the dropdown, a box
     syncTop = -306, syncLabel = 46, syncPick = 124,
     -- Tooltips, in the first column under the response buttons (which end near -322 with all eight): two
     -- dropdown rows, each with its spot picker beside it (UI.SPOT_PICKER_H, 70, high), the last ending near
     -- -488, above the tab's bottom at -494. The pickers end near x 421, before the second column.
     tooltipTop = -328, tooltipLabel = 110, tooltipPick = 160, tooltipPairGap = 2,
-    -- Items a raider can't use, under Sync Master Loot (which ends near -410), its long line wrapped in two
+    -- Items a raider can't use, under Sync master loot (which ends near -410), its long line wrapped in two
     specsTop = -416,
     -- CRT Looting starts under Loot authority's Add row; the third column's places are in SettingsLayout.lua
 }
@@ -81,7 +81,7 @@ local TEXT = {
     showScore = "Show the Score column",
     tieOrder = "Order equal answers by",
     tieOrderHelp = {
-        "How the Master Loot Window orders players who gave the same answer.",
+        "How the Master loot window orders players who gave the same answer.",
         { "Wishlist, then Raider Score", "a Big upgrade first, then the higher score, then the higher roll. This is the default." },
         { "Raider Score, then wishlist", "the higher score first, then the better wishlist rank, then the roll." },
         { "Wishlist only", "the wishlist rank, then the roll." },
@@ -101,7 +101,7 @@ local TEXT = {
     noIcon = "No icon",
     guildStream = "Guild: %s",
     specs = "Items a raider can't use",
-    specsHelp = "Each raider's own CRT answers an item for them when they can't use it: no spec of theirs is listed for it, a Classes line without their class, another class's armour type, or a weapon type the game marks red for them. It is left off their popup, and the Master Loot Window shows it with an 'auto' tag and why. The answer is always Transmog and gets a roll. Only a clear answer from the game counts; anything unclear shows the item as normal. Raiders who tick Show me items I can't use see them with their buttons off. Flasks, potions and other items you don't wear are open to everyone, unless they have a Classes line.",
+    specsHelp = "Each raider's own CRT answers an item for them when they can't use it: no spec of theirs is listed for it, a Classes line without their class, another class's armour type, or a weapon type the game marks red for them. It is left off their popup, and the Master loot window shows it with an 'auto' tag and why. The answer is always Transmog and gets a roll. Only a clear answer from the game counts; anything unclear shows the item as normal. Raiders who tick Show me items I can't use see them with their buttons off. Flasks, potions and other items you don't wear are open to everyone, unless they have a Classes line.",
     showAll = "Show me items I can't use (greyed out, just for you)",
     partyHelp = "CRT Looting is for raids. With Enable in party on, a party leader can turn it on in a raid instance too, and your CRT follows a party leader who did. Finder groups never count.",
     enableInParty = "Enable in party",
@@ -116,12 +116,12 @@ local TEXT = {
         "Tooltip position is where every Loot Master tooltip opens: on this page, in both loot windows, the popup and Boss loot.",
         { "Use the general setting", "follows General Settings." },
         { "Outside the window", "puts it just past the edge of the window you are in, on the spot you click in the box beside it. Clicking the lit spot again goes back to each tooltip on its own side." },
-        "Item tabs is where an item's tooltip opens when you hover its icon in the Master Loot Window and All Loot Rolls.",
+        "Item tabs is where an item's tooltip opens when you hover its icon in the Master loot window and All loot rolls.",
         { "Same as above", "follows Tooltip position." },
         { "Next to the window", "puts it on the side of the window you click in the box beside it; a corner puts it flush with that corner of the window." },
         "Clicking a spot also picks it in the dropdown.",
     },
-    lootWindow = "Master Loot Window",
+    lootWindow = "Master loot window",
     itemTabs = "Item tabs",
     -- why a greyed control can't be used (UX rule 5), on its tooltip
     scoreOffWhy = "Tick Show the Score column to change this.",
@@ -132,7 +132,7 @@ local TEXT = {
         { key = "GUILD", label = "Guild" }, { key = "OFFICER", label = "Officer" }, { key = "SELF", label = "Only you" },
         { key = "NONE", label = "Don't send" },
     },
-    sync = "Sync Master Loot",
+    sync = "Sync master loot",
     syncHelp = "Only the raid leader can sync. It sends your Loot Master settings to the player you pick and to everyone on your Loot authority list who is in the group, replacing theirs: buttons, Time to answer, the award message, the Raider Score weights, the loot filter and the authority list. Their window places and sort stay their own. The line under the button says who got it.",
     syncTo = "Sync to",
     syncPickOne = "Pick a player",
@@ -151,13 +151,15 @@ local function skin(frame, alpha)
     frame:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
 end
 
-local function makeButton(parent, label, width)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+local function makeButton(parent, label)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontStandard)
     b:SetHighlightFontObject(CRTFontStandardHighlight)
     b:SetDisabledFontObject(CRTFontStandardDisable)
-    b:SetSize(width, 24)
     b:SetText(label)
+    b:SetHeight(24)
+    UI.FitButton(b)
     return b
 end
 
@@ -351,7 +353,7 @@ local NO_ICON = "~none~" -- the icon dropdown's key for no icon
 -- A small square button with a character on it (move up / down).
 local function smallButton(parent, text)
     local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    b:SetSize(18, 18)
+    b:SetSize(18, 18) -- fixed width: a square with one character (move up / down)
     skin(b, 0.5)
     b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     b.text:SetPoint("CENTER", 0, 1)
@@ -467,7 +469,7 @@ local function slider(f, x, y, text, key, format)
     return row
 end
 
--- Sync Master Loot: "Sync to" a group member with CRT (or a typed name), and the button; the line under it
+-- Sync master loot: "Sync to" a group member with CRT (or a typed name), and the button; the line under it
 -- says who got it. Only the raid leader in a group can use it.
 local function buildSync(f)
     heading(f, L.col2, L.syncTop, TEXT.sync, TEXT.syncHelp)
@@ -636,8 +638,8 @@ local function buildSettings(f)
         h:SetTextColor(0.7, 0.7, 0.7)
         h:SetText(c[1])
     end
-    local add = makeButton(f, TEXT.add, 80)
-    local reset = makeButton(f, TEXT.reset, 90)
+    local add = makeButton(f, TEXT.add)
+    local reset = makeButton(f, TEXT.reset)
     add:SetScript("OnClick", function()
         LM:AddResponse()
     end)
@@ -846,7 +848,7 @@ local function buildSettings(f)
         end,
         set = function(v)
             LM:Settings().tieOrder = v
-            LM:Fire("wishlist") -- an open Master Loot Window redraws its rows
+            LM:Fire("wishlist") -- an open Master loot window redraws its rows
         end,
     })
     tie:SetPoint("TOPLEFT", L.col3 - 5, at.tieRow.y)
@@ -993,22 +995,8 @@ local function build(pf)
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText(TEXT.title)
     UI.HelpRight(title, TEXT.title, TEXT.help)
-    for i, tab in ipairs(TABS) do
-        local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        b:SetSize(L.tabW, L.tabH)
-        b:SetPoint("TOPLEFT", 8 + (i - 1) * (L.tabW + 4), L.tabTop)
-        skin(b, 0.4)
-        b.sel = b:CreateTexture(nil, "ARTWORK")
-        b.sel:SetAllPoints()
-        b.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
-        b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-        b.text:SetPoint("CENTER")
-        b.text:SetText(tab.label)
-        b:SetScript("OnClick", function()
-            selectTab(tab.key)
-        end)
-        tabButtons[tab.key] = b
-        UI:RegisterTab(b)
+    tabButtons = UI.TabStrip(pf, TABS, 8, L.tabTop, selectTab, { h = L.tabH })
+    for _, tab in ipairs(TABS) do
         local f = CreateFrame("Frame", nil, pf)
         f:SetPoint("TOPLEFT", 0, L.body)
         f:SetPoint("BOTTOMRIGHT", 0, 0)

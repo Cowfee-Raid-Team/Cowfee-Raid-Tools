@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- Sync Master Loot: the raid leader sends their Loot Master settings to a player they pick and to every
+-- Sync master loot: the raid leader sends their Loot Master settings to a player they pick and to every
 -- name on their loot authority list who is in the group (Settings tab). Synced: the response buttons, time
 -- to answer, the award message, Send to, the no-roll text, the Raider Score weights, the loot filter and the
 -- authority list.

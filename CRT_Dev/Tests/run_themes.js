@@ -537,7 +537,7 @@ for (const [file, re, what] of [
   ['CRT_Modules/ReadyCheck/BuffLock.lua', /UI\.Tint\(cover\.hint, "SetTextColor", "warn"\)/, 'the buff lock hint in warn'],
   ['CRT_Modules/LootMaster/Page.lua', /s >= 70 and UI\.WarnText\(s\)/, 'Loot Master: scores 70-89 in warn'],
   ['CRT_Modules/LootMaster/Window.lua', /return UI\.WarnText\(TEXT\.nocrt\)/, 'Loot Master: no CRT in warn'],
-  ['CRT_Modules/LootMaster/RaiderWindow.lua', /return UI\.WarnText\(TEXT\.nocrt\)/, 'All Loot Rolls: no CRT in warn'],
+  ['CRT_Modules/LootMaster/RaiderWindow.lua', /return UI\.WarnText\(TEXT\.nocrt\)/, 'All loot rolls: no CRT in warn'],
   ['CRT_Modules/Late/Page.lua', /UI\.WarnText\("Arrived late \("/, 'Late Tracker: Arrived late in warn'],
   ['CRT_Modules/Late/Page.lua', /UI\.WarnText\("Late \("/, 'Late Tracker: a past night\'s Late in warn'],
   ['CRT_Modules/Late/Page.lua', /UI\.WarnText\("\+" \.\. minutes/, 'Late Tracker: the grid\'s minutes late in warn'],
@@ -556,7 +556,7 @@ for (const [file, re, what] of [
   else { console.log('FAIL ' + file + ': ' + what); srcFails++; }
 }
 if (/BadText\(Tattle\.Short/.test(read('CRT_Modules/Tattlebot/Page.lua'))) { console.log('FAIL Tattlebot damage is not a theme colour'); srcFails++; }
-// A raider's popup and All Loot Rolls window colour the buttons from the session the looter sent (Comm.lua's B part),
+// A raider's popup and All loot rolls window colour the buttons from the session the looter sent (Comm.lua's B part),
 // never from the raider's own saved set.
 for (const file of ['CRT_Modules/LootMaster/Popup.lua', 'CRT_Modules/LootMaster/RaiderWindow.lua']) {
   if (/LM:Responses?\(/.test(read(file))) { console.log('FAIL ' + file + ' reads your own response set'); srcFails++; }

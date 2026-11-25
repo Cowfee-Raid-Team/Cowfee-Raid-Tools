@@ -205,7 +205,7 @@ local function sendLines(lines)
     end
 end
 
--- Post group changes to raid chat (CRTDB.groups.postChanges): when Arrange Groups is done, or stops part-way, one line
+-- Post group changes to raid chat (CRTDB.groups.postChanges): when Arrange groups is done, or stops part-way, one line
 -- per group with someone new in it (Groups/Sort.lua's ChangeLines: "[CRT] <Group N Changes>: Name, Name"), the groups
 -- everyone was in when it started (before) against the raid as it stands now (members). In combat, a boss encounter or
 -- the game's chat lockdown the lines are held, sent once that ends (PLAYER_REGEN_ENABLED, ENCOUNTER_END), and dropped
@@ -348,7 +348,7 @@ end
 -- with a roster update, so the roster read here doesn't show it yet.
 -- Returns "sent" (the move was asked for; the roster shows later whether it landed), "moved" (they are
 -- already there), "full", "combat" (you or they are in combat), "failed" (the game refused the call),
--- "busy" (Arrange Groups is running and places them), "absent" (not in the raid) or "denied" (not in a
+-- "busy" (Arrange groups is running and places them), "absent" (not in the raid) or "denied" (not in a
 -- raid, or not the leader or an assist).
 function Apply:MoveOne(key, group, pending)
     if run then

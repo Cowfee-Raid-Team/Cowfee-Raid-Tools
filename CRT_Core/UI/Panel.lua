@@ -1180,10 +1180,150 @@ function UI.PanelButton(parent, label, height, onClick)
     b:SetText(label)
     local fs = b:GetFontString()
     b:SetSize(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0), height)
+    UI.FitButton(b) -- and again when its label or the text size changes
     b:SetScript("OnClick", onClick)
     UI:SkinButton(b)
     return b
 end
+
+-- Text that fits (UX rule 7): a button or tab takes its width from its label, never a fixed pixel width, and
+-- measures again when its label or the text size changes (UI:RefitText in CRT_Core/UI/Fonts.lua).
+--   UI.FitButton(b, maxW, minW) sizes a button with a label (a UIPanelButtonTemplate, or any with SetFontString) to
+--                          UI.PanelButtonWidth of its label, now, on every b:SetText and on every text size change.
+--                          maxW (kept for later fits): the most room it has, as in a narrow column; a longer label
+--                          wraps onto two lines and the button grows taller, never wider. minW (kept too): the
+--                          least it is, as a button that fills a layout's column; it grows past it for its label.
+--                          Returns b.
+--   UI:FitTab(b)           a tab (b.text) as wide as its label plus UI.TAB_PAD each side; UI:RegisterTab calls it,
+--                          so does RefitText. A tab sized by its own helper (UI.Toggle2) sets b.crtFixedWidth; one
+--                          with a part beside its label (an arrow) adds it as b.crtTabExtra. A page whose tab's label
+--                          changes calls UI:FitTab(b) after.
+--   UI.Flow(parent, items, opts)
+--                          a row of controls placed left to right from opts.x, opts.y (TOPLEFT in parent, or under
+--                          opts.below: { frame, gap }), opts.gap (UI.FLOW_GAP) apart, going onto a new row,
+--                          opts.rowGap (UI.FLOW_ROW_GAP) under, where the next would pass opts.width (from opts.x).
+--                          opts.indent (a number, or a function for one that changes with the text size): where
+--                          the first row starts, as after a heading on the same line (opts.indentH high); a first
+--                          item that doesn't fit there starts a row of its own under it, at 0.
+--                          Hidden items take no room. flow:Layout() places them again and returns the height used
+--                          (also flow.height); RefitText calls it after the controls measure again, then
+--                          opts.onLayout(flow) runs, for what sits under the row.
+-- [text fit] (run in harnesses with a stubbed UI by theme_stub.js)
+UI.TAB_PAD = 12 -- each side of a tab's label
+UI.TAB_MIN_W = 40
+UI.TAB_GAP = 4 -- between two tabs side by side
+UI.FLOW_GAP = 6
+UI.FLOW_ROW_GAP = 4
+UI.FIT_WRAP_PAD = 5 -- above and below a wrapped label
+-- The lists UI:RefitText (CRT_Core/UI/Fonts.lua) walks after a text size change, made here only.
+UI.fitted = {} -- UI.FitButton's buttons, in the order fitted
+UI.flows = {} -- UI.Flow's rows
+UI.fontListeners = {} -- UI:OnFonts's functions
+
+-- fn() after a text size change, once every fitted button, tab and row has measured again (UI:RefitText): a page
+-- with a layout of its own (rows that hold text, columns sized from a label) places it again here.
+function UI:OnFonts(fn)
+    UI.fontListeners[#UI.fontListeners + 1] = fn
+end
+
+local function labelWidth(fs)
+    if not fs then
+        return 0
+    end
+    return tonumber(fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth() or fs:GetStringWidth()) or 0
+end
+
+local function refitOnText(b)
+    UI.FitButton(b)
+end
+
+-- What UI.FitButton keeps per button: max (its room), min (its least width), h (its one-line height while its label
+-- wraps). Kept here, not on the button, so a button's own fields stay its own; a fitted button lives as long as the
+-- UI (UI.fitted holds it), so this is a plain table.
+local fitState = {}
+
+function UI.FitButton(b, maxW, minW)
+    local st = fitState[b]
+    if not st then
+        st = {}
+        fitState[b] = st
+        UI.fitted[#UI.fitted + 1] = b
+        if hooksecurefunc then
+            hooksecurefunc(b, "SetText", refitOnText)
+        end
+    end
+    st.max = maxW or st.max
+    st.min = minW or st.min
+    local fs = b.GetFontString and b:GetFontString()
+    local w = math.max(st.min or 0, UI.PanelButtonWidth(labelWidth(fs)))
+    if fs and st.max and w > st.max then
+        -- wider than its room: as wide as the room, the label on two or more lines, the button as tall as they are
+        st.h = st.h or b:GetHeight()
+        fs:SetWidth(st.max - 2 * UI.PANEL_BUTTON_PAD)
+        fs:SetWordWrap(true)
+        b:SetSize(st.max, math.max(st.h, math.ceil(fs:GetStringHeight() or 0) + 2 * UI.FIT_WRAP_PAD))
+    else
+        if st.h then
+            if fs then
+                fs:SetWidth(0) -- back to one line
+            end
+            b:SetHeight(st.h)
+            st.h = nil
+        end
+        b:SetWidth(w)
+    end
+    return b
+end
+
+function UI:FitTab(b)
+    local text = rawget(b, "text")
+    if rawget(b, "crtFixedWidth") or not (type(text) == "table" and text.GetStringWidth) then
+        return
+    end
+    local extra = tonumber(rawget(b, "crtTabExtra")) or 0
+    b:SetWidth(math.max(UI.TAB_MIN_W, math.ceil(tonumber((text:GetStringWidth())) or 0) + 2 * UI.TAB_PAD + extra))
+end
+
+local Flow = {}
+Flow.__index = Flow
+
+function UI.Flow(parent, items, opts)
+    local flow = setmetatable({ parent = parent, items = items, opts = opts }, Flow)
+    UI.flows[#UI.flows + 1] = flow
+    flow:Layout()
+    return flow
+end
+
+function Flow:Layout()
+    local o = self.opts
+    local gap, rowGap = o.gap or UI.FLOW_GAP, o.rowGap or UI.FLOW_ROW_GAP
+    local indent = type(o.indent) == "function" and o.indent() or o.indent or 0
+    local x, rowTop, rowH, first = indent, 0, indent > 0 and (o.indentH or 0) or 0, nil
+    for _, item in ipairs(self.items) do
+        if item:IsShown() ~= false then -- a frame is shown until hidden
+            local w, h = tonumber((item:GetWidth())) or 0, tonumber((item:GetHeight())) or 0
+            if x + w > o.width and (first or x > 0) then
+                rowTop = rowTop - rowH - rowGap
+                x, rowH = 0, 0
+            end
+            item:ClearAllPoints()
+            if o.below then
+                item:SetPoint("TOPLEFT", o.below[1], "BOTTOMLEFT", x, rowTop - (o.below[2] or 0))
+            else
+                item:SetPoint("TOPLEFT", self.parent, "TOPLEFT", (o.x or 0) + x, (o.y or 0) + rowTop)
+            end
+            x = x + w + gap
+            rowH = math.max(rowH, h)
+            first = item
+        end
+    end
+    self.height = -rowTop + rowH
+    if o.onLayout then
+        o.onLayout(self)
+    end
+    return self.height
+end
+-- [/text fit]
 
 -- A UICheckButtonTemplate checkbox. Modern hides the template's art and draws a CHECK_SIZE box with
 -- rounded corners (UI.RoundRect) in its centre: unticked, a surface fill with a selected edge; ticked, the
@@ -1669,8 +1809,40 @@ UI.tabs = {}
 
 function UI:RegisterTab(b)
     self.tabs[#self.tabs + 1] = b
+    self:FitTab(b)
     self:StyleTab(b, false)
 end
+
+-- [tab strip] (run in harnesses with a stubbed UI by theme_stub.js)
+-- A page's tab strip: one tab per { key, label } in tabs, each as wide as its label (UI:FitTab), side by side
+-- UI.TAB_GAP apart from x, y in pf (TOPLEFT), opts.h high (26), in opts.font (CRTFontNormal). onPick(key) runs on a
+-- click. Returns the buttons by key, and the row (a UI.Flow): a page that hides a tab calls flow:Layout() after, so
+-- the others close up. The page lights one with UI:SetTabSelected.
+function UI.TabStrip(pf, tabs, x, y, onPick, opts)
+    local buttons, list = {}, {}
+    local h = opts and opts.h or 26
+    for _, tab in ipairs(tabs) do
+        local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
+        b:SetHeight(h)
+        b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        b.sel = b:CreateTexture(nil, "ARTWORK")
+        b.sel:SetAllPoints()
+        b.text = b:CreateFontString(nil, "OVERLAY", opts and opts.font or "CRTFontNormal")
+        b.text:SetPoint("CENTER")
+        b.text:SetText(tab.label)
+        b:SetScript("OnClick", function()
+            onPick(tab.key)
+        end)
+        UI:RegisterTab(b)
+        UI:FitTab(b)
+        buttons[tab.key] = b
+        list[#list + 1] = b
+    end
+    -- one row: the strips are short enough for the page at the largest text size (run_textfit.js checks)
+    local flow = UI.Flow(pf, list, { x = x, y = y, gap = UI.TAB_GAP, width = math.huge })
+    return buttons, flow
+end
+-- [/tab strip]
 
 function UI:StyleTab(b, selected)
     b.selected = selected and true or false
@@ -1872,6 +2044,7 @@ end
 -- opts.parent is the icon's parent (by default the target's own, or a check box's own for its label). The icon keeps the target as
 -- b.crtHelpTarget and the font string it follows, if any, as b.crtHelpText.
 UI.HELP_GAP = 4
+UI.helpFollowers = {} -- the icons that follow a font string's text, placed again by UI:RefitText (UI/Fonts.lua)
 
 local function objectType(o)
     return type(o) == "table" and o.GetObjectType and o:GetObjectType() or nil
@@ -1922,6 +2095,8 @@ local function placeHelp(b)
     end
 end
 
+UI.PlaceHelp = placeHelp
+
 function UI.HelpRight(target, title, text, opts)
     opts = opts or {}
     local parent = opts.parent or target:GetParent()
@@ -1945,6 +2120,8 @@ function UI.HelpRight(target, title, text, opts)
         end
         -- a font can load after the page is built, which changes the text's width
         b:SetScript("OnShow", follow)
+        -- and a text size change does too (UI:RefitText places every such icon again)
+        UI.helpFollowers[#UI.helpFollowers + 1] = b
     end
     placeHelp(b)
     return b
@@ -2316,12 +2493,13 @@ function UI:Create()
     end)
 
     -- "Previews", in the title bar beside the close button. It uses the game's small size, not the
-    -- addon's scaled one, and is 18 high and 1 pixel above centre, so it fits inside the title bar.
+    -- addon's scaled one, and is 18 high and 1 pixel above centre, so it fits inside the title bar. As wide as its
+    -- label ("Previews" or "Previews: ON"), measured again when it changes (UI.FitButton).
     local pb = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     pb:SetNormalFontObject(CRTFontButtonSmall)
     pb:SetHighlightFontObject(CRTFontButtonSmallHighlight)
     pb:SetDisabledFontObject(CRTFontButtonSmallDisable)
-    pb:SetSize(96, 18)
+    pb:SetHeight(18)
     -- Beside the close button, centred on it, so it sits inside the title bar.
     if f.CloseButton then
         pb:SetPoint("RIGHT", f.CloseButton, "LEFT", -2, 1)
@@ -2329,6 +2507,7 @@ function UI:Create()
         pb:SetPoint("TOPRIGHT", f, "TOPRIGHT", -30, -2)
     end
     pb:SetText(UI.previewing and "Previews: ON" or "Previews")
+    UI.FitButton(pb)
     pb:SetScript("OnClick", function()
         UI:TogglePreviews()
     end)

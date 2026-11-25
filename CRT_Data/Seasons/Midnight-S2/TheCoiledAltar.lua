@@ -38,7 +38,7 @@ local ADDON, CRT = ...
 --             spots, so each kick group finds its add by raid marker, four kickers to an add, rotating 1 to 4 (an
 --             untimed list: the number moves on with each cast of the marked add). Mythic has two adds (Skull and
 --             Cross), Heroic one (Skull). At 100 energy an add goes immune (Consumed by Resentment). The spell ID is
---             not known yet: it comes from the Journal (Export Abilities) or a pull's /crt dev kicks log, never a guess.
+--             not known yet: it comes from the Journal (Export abilities) or a pull's /crt dev kicks log, never a guess.
 
 CRT.Bosses:Register({
     encounterID = 3429,
@@ -294,7 +294,7 @@ Blighted Sever: 5:39, 6:11, 6:46, 7:23, 7:56, 8:29
         {
             difficulty = 16,
             label = "Kick",
-            spell = { name = "Wail of Terror" }, -- TODO id: Journal Export Abilities or /crt dev kicks
+            spell = { name = "Wail of Terror" }, -- TODO id: Journal Export abilities or /crt dev kicks
             groups = {
                 { key = "skull", label = "Skull add", marker = 8, slots = 4 },
                 { key = "cross", label = "Cross add", marker = 7, slots = 4 },
@@ -303,7 +303,7 @@ Blighted Sever: 5:39, 6:11, 6:46, 7:23, 7:56, 8:29
         {
             difficulty = 15,
             label = "Kick",
-            spell = { name = "Wail of Terror" }, -- TODO id: Journal Export Abilities or /crt dev kicks
+            spell = { name = "Wail of Terror" }, -- TODO id: Journal Export abilities or /crt dev kicks
             groups = {
                 { key = "skull", label = "Skull add", marker = 8, slots = 4 },
             },

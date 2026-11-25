@@ -80,13 +80,15 @@ local function label(parent, text, font)
     return fs
 end
 
-local function button(parent, text, width)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+local function button(parent, text)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontButtonSmall)
     b:SetHighlightFontObject(CRTFontButtonSmallHighlight)
     b:SetDisabledFontObject(CRTFontButtonSmallDisable)
-    b:SetSize(width, 20)
     b:SetText(text)
+    b:SetHeight(20)
+    UI.FitButton(b)
     return b
 end
 
@@ -240,7 +242,7 @@ function SettingsTab.Build(f, ctx)
     y = y - CHECK_STEP
     settingSlider(f, LEFT_X, y, "Shortest pull (s)", "minPull", 5, 60, 1)
     y = y - ROW_STEP - DELETE_GAP
-    deleteButton = button(f, "Delete this boss's pulls", 180)
+    deleteButton = button(f, "Delete this boss's pulls")
     deleteButton:SetPoint("TOPLEFT", f, "TOPLEFT", LEFT_X, y)
     deleteButton:SetScript("OnClick", function()
         local boss = ctx.selectedBoss()

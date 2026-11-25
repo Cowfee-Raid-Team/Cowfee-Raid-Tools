@@ -45,7 +45,7 @@ local TEXT = {
     lastPullShield = "Boss %d shield at %s",
     lastPullNone = "Last pull: no boss shield seen.",
     lastPullNever = "Last pull: no pull of this boss yet.",
-    useUnit = "Use Boss %d",
+    useUnit = "Use boss %d",
     default = "Default",
     -- why a greyed part can't be used (UX rule 5), on its tooltip
     barWhy = "Tick Bar under Show as first: the shield shows on the alert's bar.",

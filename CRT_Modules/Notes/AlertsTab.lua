@@ -141,13 +141,15 @@ local kindPreviews = {} -- kind key -> its preview button; only the chosen kind'
 local selected = DEFAULT_KIND
 local controls = {}
 
-local function makeButton(parent, label, width, height)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+local function makeButton(parent, label, height)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontNormal)
     b:SetHighlightFontObject(CRTFontHighlight)
     b:SetDisabledFontObject(CRTFontDisable)
-    b:SetSize(width, height or 24)
     b:SetText(label)
+    b:SetHeight(height or 24)
+    UI.FitButton(b)
     return b
 end
 
@@ -381,7 +383,7 @@ local function build(pf)
     end
     local previews = UI.PreviewButton(pf, TEXT.previews, ALERT_KEYS, { tooltip = TEXT.previewsTip, height = 24 })
     previews:SetPoint("TOPLEFT", 8, tryTop - 24)
-    local test = makeButton(pf, TEXT.testAll, 140)
+    local test = makeButton(pf, TEXT.testAll)
     test:SetPoint("LEFT", previews, "RIGHT", 8, 0)
     test:SetScript("OnClick", testAll)
     -- On screen now: one line under the buttons, as wide as the left column

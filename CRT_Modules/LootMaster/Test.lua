@@ -1,7 +1,7 @@
 local ADDON, CRT = ...
 
 -- Testing Loot Master with no boss: /crt loot test starts a session of sample items marked TEST. You get
--- the Master Loot Window straight away, and everyone in the group with CRT (you too) gets the raider popup.
+-- the Master loot window straight away, and everyone in the group with CRT (you too) gets the raider popup.
 -- The answers, the rolls (drawn silently by the looter's CRT), Award, show again, roll again, the raider
 -- window and double-click trading all work as in a real session; nothing is passed or written to Loot
 -- History, and the award message is shown only to you. The items are real ones from your own loot: picked at
@@ -9,9 +9,9 @@ local ADDON, CRT = ...
 -- of item) first so each test shows a mix; FALLBACK is only used when you have none. Items that pass your loot
 -- filter are picked first, and the chat says when too few do. Loot Master > Tonight's Test boss kill
 -- (LM:TestBossKill, below) holds samples in Boss loot instead, as a boss kill would.
---   /crt loot                your popup and All Loot Rolls (LM:OpenMyLoot, LootMaster/RaiderWindow.lua)
+--   /crt loot                your popup and All loot rolls (LM:OpenMyLoot, LootMaster/RaiderWindow.lua)
 --   /crt loot test [count]   start a test (count 1-8, default 4)
---   /crt loot window         show the Master Loot Window again
+--   /crt loot window         show the Master loot window again
 --   /crt loot popup          show your raider popup again
 --   /crt loot answers        everyone's answers and rolls (the raider window)
 --   /crt loot end            end the session and the items waiting to start, after asking

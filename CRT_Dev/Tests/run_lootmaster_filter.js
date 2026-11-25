@@ -505,9 +505,9 @@ local pos, tabsDrop = byLabel["Tooltip position"], byLabel["Item tabs"]
 check(pos ~= nil and tabsDrop ~= nil, "settings: the Tooltip position and Item tabs dropdowns")
 local hover, window
 for _, p in ipairs(pickers) do
-  if p.opts.label == "The window" then hover = p elseif p.opts.label == "Master Loot Window" then window = p end
+  if p.opts.label == "The window" then hover = p elseif p.opts.label == "Master loot window" then window = p end
 end
-check(hover ~= nil and window ~= nil, "settings: a The window picker and a Master Loot Window picker")
+check(hover ~= nil and window ~= nil, "settings: a The window picker and a Master loot window picker")
 if pos and tabsDrop and hover and window then
   local keys = {}
   for _, o in ipairs(pos.opts.options) do keys[#keys + 1] = o.key end
@@ -571,7 +571,7 @@ if pos and tabsDrop and hover and window then
   local function textAt(t) for _, fs in ipairs(texts) do if rawget(fs, "text") == t then return fs end end end
   local specs, looting = textAt("Items a raider can't use"), textAt("CRT Looting")
   local sp, lp = specs and specs.pts[1], looting and looting.pts[1]
-  check(sp and sp[2] == 430 and sp[3] == -416, "layout: Items a raider can't use is under Sync Master Loot in the second column")
+  check(sp and sp[2] == 430 and sp[3] == -416, "layout: Items a raider can't use is under Sync master loot in the second column")
   check(lp and lp[2] == 724 and lp[3] - 20 - 24 >= bottom, "layout: CRT Looting is in the third column, its box inside the tab")
   local showAll = textAt("Show me items I can't use (greyed out, just for you)")
   check(showAll and rawget(showAll, "w") ~= nil, "layout: its long line wraps inside the second column")

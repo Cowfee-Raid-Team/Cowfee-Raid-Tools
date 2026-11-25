@@ -397,7 +397,7 @@ function Groups:PresetNames(id)
     return out
 end
 
--- The names in the active layout (Active: the roster the raid runs with, set by "Use This Group"), as
+-- The names in the active layout (Active: the roster the raid runs with, set by "Use this group"), as
 -- PresetNames reads them. Empty when no layout is active.
 function Groups:ActiveNames()
     return self:PresetNames(self:Active())
@@ -590,7 +590,7 @@ function Groups:Delete(id)
     self:Fire()
 end
 
--- The active layout: the roster the raid is running with, marked "active" in Quick Load. The Late
+-- The active layout: the roster the raid is running with, marked "active" in Quick load. The Late
 -- Tracker expects the people in it, in their groups. Its id, or nil when none is set or it was deleted.
 -- Before 0.19.0 the Late Tracker kept its own pick (CRTDB.late.layoutId); that becomes the active
 -- layout the first time this is asked.

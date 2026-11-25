@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- Raid Groups' Sort by (Groups/Page.lua) and the group changes Arrange Groups posts (Groups/Apply.lua). No frames.
+-- Raid Groups' Sort by (Groups/Page.lua) and the group changes Arrange groups posts (Groups/Apply.lua). No frames.
 -- Sort grid rewrites only the working grid, like a hand edit; it never moves anyone in the raid. It works on whoever
 -- is in the grid and fills groups 1 upward, 5 per group, so 20 or fewer fit groups 1-4.
 --   Sort.Read(grid)                     the grid's players, in slot order: { key, role, place, class, spec, index }
@@ -497,7 +497,7 @@ end
 
 -- Group changes ------------------------------------------------------------------------------------------------------
 
--- Who is new in each group: before = { [key] = group } before Arrange Groups, after = { { key, name, subgroup } } after
+-- Who is new in each group: before = { [key] = group } before Arrange groups, after = { { key, name, subgroup } } after
 -- it, in raid order. Returns { [group] = { name, ... } }, a group with no one new left out.
 function Sort.Changes(before, after)
     local out = {}

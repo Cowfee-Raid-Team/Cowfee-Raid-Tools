@@ -4,7 +4,7 @@
 // X and Y apply and stay on the screen; Centre horizontally and vertically; the arrow keys nudge 1 and Shift 10 px
 // and only while selected and out of combat; a drag snaps within 6 px and not with Shift; an element anchored to
 // another keeps its offset and follows it (a move, a nudge, a reset, and while it is hidden); a loop can't be made;
-// Reset clears the anchor; the gear and the panel refuse in combat; Select Anchor's overlay takes the clicks (the
+// Reset clears the anchor; the gear and the panel refuse in combat; Select anchor's overlay takes the clicks (the
 // frame under it hears none), its hit test finds the topmost frame that takes the mouse, a left click selects, a
 // right click or Escape cancels, the refusals apply, and combat refuses and cancels it. Then a lint: every movable
 // element in the modules is placed by the helper, with none of its own drag or save code.
@@ -505,12 +505,12 @@ dropdowns["Anchor to"].opts.set("texts")
 check(CRT.db.b.position.anchor == "texts" and dropdowns["Anchor to"].opts.get() == "texts", "Anchor to sets the anchor")
 dropdowns["Anchor to"].opts.set("screen")
 check(CRT.db.b.position.anchor == nil, "and Screen clears it")
--- Select Anchor: a click on another element's box anchors to it; Escape cancels
-buttons["Select Anchor"].scripts.OnClick()
+-- Select anchor: a click on another element's box anchors to it; Escape cancels
+buttons["Select anchor"].scripts.OnClick()
 check(P.picking == B and panel.picking.shown, "picking, with its line on the panel")
 P.Click(C)
 check(P.picking == nil and CRT.db.b.position.anchor == "pace", "a click on another element's box anchors to it")
-buttons["Select Anchor"].scripts.OnClick()
+buttons["Select anchor"].scripts.OnClick()
 P.OnKey("ESCAPE")
 check(P.picking == nil and P.selected == B and panel.shown, "Escape cancels picking")
 P.OnKey("ESCAPE")
@@ -524,7 +524,7 @@ check(CRT.db.b.position == nil, "the panel's Reset")
 buttons["Done"].scripts.OnClick()
 check(not panel.shown and P.selected == nil and not keys.shown, "Done closes it and lets go of the keys")
 P.OpenPanel(E)
-check(dropdowns["Anchor to"].opts.enabledIf() == false and buttons["Select Anchor"].enabled == false, "no Anchor to for an element that stays on the screen")
+check(dropdowns["Anchor to"].opts.enabledIf() == false and buttons["Select anchor"].enabled == false, "no Anchor to for an element that stays on the screen")
 P.ClosePanel()
 
 -- only in Previews (or a page's own preview): a hidden drag box, or a window that is its own drag box outside
@@ -754,7 +754,7 @@ check(Q:AnchorStatus() == format(T.cantUse, "TestRefuser"), "and it can't be use
 Q:Reset()
 P.AnchorToName(Q, "TestUnitFrame")
 
--- the panel: the Anchor to list, the frame name box and Select Anchor -----------------------------------------
+-- the panel: the Anchor to list, the frame name box and Select anchor -----------------------------------------
 P.OpenPanel(Q)
 local list = dropdowns["Anchor to"].opts.options()
 local hasUnit
@@ -769,13 +769,13 @@ panel.frameBox.scripts.OnEnterPressed(panel.frameBox)
 check(Q:Saved().anchor == "frame:TestPlainFrame" and select(2, pt(fq)) == plain, "a name in the box and Enter anchors to it")
 dropdowns["Anchor to"].opts.set("screen")
 check(Q:Saved().anchor == nil and select(2, pt(fq)) == UIParent, "Screen takes it back off")
--- Select Anchor: the screen dims under a click-catching overlay, the frame under the cursor is found by a hit test
+-- Select anchor: the screen dims under a click-catching overlay, the frame under the cursor is found by a hit test
 -- (not the mouse focus, which is the overlay), outlined and named at the cursor; a left click selects it and never
 -- reaches it (no target, no cast, no press), a right click or Escape cancels, Enter and Space still select
-local SEL = buttons["Select Anchor"]
-check(SEL and buttons["Pick on screen"] == nil, "the button is called Select Anchor")
-check(SEL.height > buttons["Anchor"].height and SEL.pts[1].y > dropdowns["Anchor to"].pts[1].y, "Select Anchor is the main control: larger, and above Anchor to")
-check(panel.frameHelp.tip:find("Select Anchor", 1, true) ~= nil, "the Frame name help points to Select Anchor")
+local SEL = buttons["Select anchor"]
+check(SEL and buttons["Pick on screen"] == nil, "the button is called Select anchor")
+check(SEL.height > buttons["Anchor"].height and SEL.pts[1].y > dropdowns["Anchor to"].pts[1].y, "Select anchor is the main control: larger, and above Anchor to")
+check(panel.frameHelp.tip:find("Select anchor", 1, true) ~= nil, "the Frame name help points to Select anchor")
 local unitDowns, unitClicks = 0, 0
 unit:EnableMouse(true)
 unit.scripts.OnMouseDown = function() unitDowns = unitDowns + 1 end
@@ -959,7 +959,7 @@ P.OpenPanel(Q)
 inCombat = true
 local errs = #errorLines
 SEL.scripts.OnClick()
-check(P.picking == nil and #errorLines == errs + 1 and errorLines[#errorLines] == P.TEXT.combat and not ov.shown, "Select Anchor is refused in combat")
+check(P.picking == nil and #errorLines == errs + 1 and errorLines[#errorLines] == P.TEXT.combat and not ov.shown, "Select anchor is refused in combat")
 inCombat = false
 SEL.scripts.OnClick()
 -- the list's set called directly: in the game the overlay covers the panel, so a click there goes to P.PickChoose

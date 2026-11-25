@@ -47,7 +47,8 @@ local TEXT = {
 -- Every place and size, from the heading's top left.
 local ICON = 36
 local ICONS_Y = -24 -- the icons' top, under the heading
-local BUTTONS_Y = ICONS_Y - ICON - 62 -- the buttons, under the name, body and state lines
+local BUTTONS_GAP = 8 -- the buttons, under the first cell's state line (so they follow its height at any text size)
+local CELL_INSET = 3 -- a cell's lines are its width less 6, centred: their left edge is 3 in
 local BUTTON_H = 24
 
 -- UI.PanelButton (Panel.lua: the template, skinned), in the page's font as the tab's buttons were, and as wide as
@@ -57,8 +58,7 @@ local function makeButton(parent, label)
     b:SetNormalFontObject(CRTFontNormal)
     b:SetHighlightFontObject(CRTFontHighlight)
     b:SetDisabledFontObject(CRTFontDisable)
-    local fs = b:GetFontString()
-    b:SetSize(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0), BUTTON_H)
+    UI.FitButton(b) -- measured again in the new font
     return b
 end
 
@@ -220,7 +220,7 @@ end
 
 local function buildButtons(block, parent)
     local generate = makeButton(parent, TEXT.generate)
-    generate:SetPoint("TOPLEFT", block.x, block.y + BUTTONS_Y)
+    generate:SetPoint("TOPLEFT", block.cells[1].state, "BOTTOMLEFT", -CELL_INSET, -BUTTONS_GAP)
     generate:SetScript("OnClick", function()
         run(block, "Create")
         local st = CRT.Macros:Status(block.set)

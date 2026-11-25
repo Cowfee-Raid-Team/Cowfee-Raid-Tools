@@ -11,7 +11,7 @@ local ADDON, CRT = ...
 --             old their list is; past V.OLD_DAYS in warn). Players in your raid with no list show "no list". The X
 --             forgets one raider's list.
 --   Team      Everyone kept, In my raid now, Raid Groups layout: then a Layout dropdown beside it picks which saved
---             layout (Groups:PresetNames; the one in use by default, never changing Use This Group).
+--             layout (Groups:PresetNames; the one in use by default, never changing Use this group).
 --   Forget all asks first (W.AskForgetAll).
 -- The rows are worked out once per data change (a list heard or forgotten, your own list, the Journal's data, the
 -- roster, a Raid Groups layout, a pick); the lists draw only the rows in view. The view, team, layout, boss and sort are kept in

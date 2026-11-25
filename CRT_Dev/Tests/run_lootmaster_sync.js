@@ -1,4 +1,4 @@
-// CRT_Modules/LootMaster/Sync.lua: the raid leader's Sync Master Loot. One Lua state plays every client in turn (who
+// CRT_Modules/LootMaster/Sync.lua: the raid leader's Sync master loot. One Lua state plays every client in turn (who
 // you are and your saved settings are swapped), with the messages caught and delivered by hand: an older
 // client drops the new message kind, the round trip, who may send and who takes it, bad values cleaned,
 // the split into messages that fit, the "who has CRT" ask and the status line. The loot filter's F part:

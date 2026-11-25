@@ -111,7 +111,7 @@ local CRT = {
       rawset(m, "refresh", function() rawset(m, "refreshes", (rawget(m, "refreshes") or 0) + 1) end) dropdowns[#dropdowns + 1] = m return m end,
     Slider = function() local m = mock() rawset(m, "refresh", function() end) return m end,
     RegisterLayer = function() end, RegisterPage = function(_, key, title, fn) pages[key] = fn end, Show = function() end,
-    SetFrameTitle = function() end, StyleWindow = function() end,RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end,
+    SetFrameTitle = function(f, text) rawset(f, "crtTitle", text) end, StyleWindow = function() end,RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end,
     SkinButton = function() end, SkinCheckButton = function() end, SkinEditBox = function() end, PANEL_BUTTON_PAD = 14,
     LiftOver = function() end, ShownPopup = function(ret) return ret end,
     Confirm = function(o) CONFIRMED = o return true end, -- the shared confirm (CRT_Core/UI/Confirm.lua): what it was asked
@@ -515,7 +515,7 @@ do
   ok("the pop-out editor's History opens the same window; none on the personal note")
 end
 
--- 10. Import/New: the dialog saves any text as a new note; strict callers still refuse it
+-- 10. Import and New note: the dialog saves any text as a new note; strict callers still refuse it
 do
   local id, err = Notes:Import("Kite adds to the left")
   assert(id == nil and err and err:find("doesn't look like a raid note", 1, true), "strict callers still refuse plain text")
@@ -536,12 +536,19 @@ do
   assert(p1 == p2, "a real note replaces as before")
   ok("Import accepts any text as a new note only when asked; strict callers refuse it")
 
-  -- the page's button and dialog
-  local nb = button("Import/New")
-  assert(nb and not button("Import"), "the button reads Import/New")
+  -- the page's buttons and dialog: Import and New note, one action each (UX rule 8), both opening the one dialog
+  local imp, nb = button("Import"), button("New note")
+  assert(imp and nb and not button("Import/New"), "two buttons, Import and New note")
+  -- in the note buttons' row (UI.Flow, which goes onto more lines at a large text size): Import, New note, Delete
   local del = button("Delete")
-  assert(del.points[1][1] == "LEFT" and del.points[1][2] == nb, "Delete stays after it")
+  local ip, np, dp = imp.points[#imp.points], nb.points[#nb.points], del.points[#del.points]
+  assert(ip[1] == "TOPLEFT" and np[2] == ip[2] and dp[2] == ip[2], "the three in one row's frame")
+  assert(np[5] == ip[5] and np[4] > ip[4] and (dp[5] < np[5] or dp[4] > np[4]), "New note after Import, Delete after New note")
+  imp.scripts.OnClick(imp)
+  assert(rawget(CowfeeRaidToolsNoteImport, "crtTitle") == "Import a raid note", "Import opens it as Import a raid note")
+  CowfeeRaidToolsNoteImport:Hide()
   nb.scripts.OnClick(nb)
+  assert(rawget(CowfeeRaidToolsNoteImport, "crtTitle") == "New note", "New note opens it as New note")
   local save
   for _, b in ipairs(buttons) do if rawget(b, "text") == "Save" and rawget(b, "parent") == CowfeeRaidToolsNoteImport then save = b end end
   assert(save, "the dialog's OK reads Save")
@@ -551,13 +558,13 @@ do
   local said
   for _, m in ipairs(printed) do if m == "Saved as a new note: Pull at 3 stacks." then said = true end end
   assert(said, "dialog message, last: " .. tostring(printed[#printed]))
-  ok("the Import/New button and its Save dialog")
+  ok("the Import and New note buttons and their Save dialog")
 end
 
--- 11. Import/New's Boss and Difficulty row: pick the boss when the text doesn't name one
+-- 11. The Import and New note dialog's Boss and Difficulty row: pick the boss when the text doesn't name one
 do
   local d = CowfeeRaidToolsNoteImport
-  local nb = button("Import/New")
+  local imp, nb = button("Import"), button("New note")
   local save
   for _, b in ipairs(buttons) do if rawget(b, "text") == "Save" and rawget(b, "parent") == d then save = b end end
   local function typed(text) d.edit:SetText(text) d.edit.scripts.OnTextChanged(d.edit, true) end
@@ -580,11 +587,11 @@ do
   assert(L and L.H > 420 and L.H <= 470 and rawget(d, "height") == L.H and rawget(d, "width") == L.W, "the dialog grew, under 470 high")
   assert(L.PAD + L.BOSS_LABEL_W + 5 + L.BOSS_W + L.DIFF_GAP + L.DIFF_LABEL_W + 5 + L.DIFF_W + CRT.UI.HELP_GAP + CRT.UI.HELP_SIZE <= L.W - L.PAD, "the row fits across the dialog")
   assert(L.SCROLL_TOP <= L.ROW_Y - 32 - L.READ_H, "the text box under the row and its line")
-  ok("Import/New: Boss (No boss, then the route with raid headings), Difficulty and a (?) in one row over the text box")
+  ok("Import: Boss (No boss, then the route with raid headings), Difficulty and a (?) in one row over the text box")
 
   -- No boss each time it opens; Difficulty greyed until a boss is picked
   bo.set(3470)
-  nb.scripts.OnClick(nb)
+  imp.scripts.OnClick(imp)
   assert(bo.get() == "none" and bo.enabledIf() and not dopt.enabledIf(), "opens on No boss, Difficulty greyed")
   assert(not d.readLine:IsShown(), "no Read from line")
   bo.set(3470)
@@ -600,10 +607,23 @@ do
   assert(dopt.get() ~= nil and labelOf(dopt, dopt.get()), "no Difficulty: the dropdown still shows something")
   typed("plain again")
   assert(bo.get() == 3470 and bo.enabledIf() and dopt.enabledIf() and dopt.get() == "Mythic" and not d.readLine:IsShown(), "plain text again: your pick is back")
-  ok("Import/New: No boss on open, Difficulty greyed; an EncounterID line fills and greys both, with the Read from line")
+  ok("Import: No boss on open, Difficulty greyed; an EncounterID line fills and greys both, with the Read from line")
+
+  -- New note is for typing a note: it starts empty and never reads the text's EncounterID line, so Boss and
+  -- Difficulty stay yours to pick and there is no Read from line
+  typed("leftover")
+  nb.scripts.OnClick(nb)
+  assert(d.edit:GetText() == "" and bo.get() == "none", "New note starts empty, on No boss")
+  bo.set(3470)
+  typed("EncounterID:3480;Difficulty:Heroic;Name:Fresh\\ntime:5;text:Go;")
+  assert(bo.get() == 3470 and bo.enabledIf() and dopt.enabledIf() and not d.readLine:IsShown(), "New note: an EncounterID line is not read; the pick stays, nothing greys")
+  imp.scripts.OnClick(imp)
+  typed("EncounterID:3480;Difficulty:Heroic;Name:Fresh\\ntime:5;text:Go;")
+  assert(bo.get() == 3480 and d.readLine:IsShown(), "Import after it reads the line again")
+  ok("New note: starts empty, no Read from part; Import reads the EncounterID line")
 
   -- No boss: saved exactly as before
-  nb.scripts.OnClick(nb)
+  imp.scripts.OnClick(imp)
   typed("Just a plain line")
   local nextId = CRT.db.notes.nextId
   save.scripts.OnClick(save)
@@ -612,14 +632,14 @@ do
   assert(plain and plain.raw == "Just a plain line" and plain.encounterID == nil, "No boss: plain text, no boss")
   -- text with its own EncounterID line imports as today, replacing that boss's note, whatever was picked first
   local count = 0 for _ in pairs(CRT.db.notes.list) do count = count + 1 end
-  nb.scripts.OnClick(nb)
+  imp.scripts.OnClick(imp)
   bo.set(3480)
   typed("EncounterID:3470;Difficulty:Mythic;Name:Nek'zali\\nReplaced")
   save.scripts.OnClick(save)
   local after = 0 for _ in pairs(CRT.db.notes.list) do after = after + 1 end
   assert(after == count and Notes:Get(id).raw == "EncounterID:3470;Difficulty:Mythic;Name:Nek'zali\\nReplaced", "its EncounterID line replaces that boss's note")
   assert(said("Imported Nek'zali (Mythic)."), "the import message")
-  ok("Import/New: No boss and text with an EncounterID line save as before")
+  ok("Import: No boss and text with an EncounterID line save as before")
 
   -- a picked boss: always a new note, with the header line, even when that boss already has one
   nb.scripts.OnClick(nb)
@@ -658,7 +678,7 @@ do
   assert(said("Saved as a new note for Nek'zali (Heroic): Soak then run."), "and in the message")
   Notes:Delete(semi)
   assert(Notes.FirstLineName("\\n  Kite left  \\nb") == "Kite left" and Notes.FirstLineName("  \\n ") == nil and #Notes.FirstLineName(string.rep("y", 50)) == 40, "Notes.FirstLineName: the first line, trimmed, at most 40")
-  ok("Import/New: a picked boss saves a second note with the header line and the boss's fields, and says so")
+  ok("New note: a picked boss saves a second note with the header line and the boss's fields, and says so")
 
   -- the Personal tab: the same, as your own note
   local personalTab
@@ -702,10 +722,10 @@ do
     local p = rawget(f, "parent")
     if rawget(f, "text") == "Shared" and p and p.scripts.OnClick then p.scripts.OnClick(p) end
   end
-  ok("Import/New on the Personal tab: a picked boss saves a new personal note")
+  ok("New note on the Personal tab: a picked boss saves a new personal note")
 end
 
--- 12. Import/New: a click anywhere in the text area puts the cursor at the end of the text
+-- 12. New note: a click anywhere in the text area puts the cursor at the end of the text
 do
   local d = CowfeeRaidToolsNoteImport
   local scroll = CowfeeRaidToolsNoteImportScroll
@@ -715,7 +735,7 @@ do
   d.edit:ClearFocus()
   scroll.scripts.OnMouseDown(scroll)
   assert(d.edit:HasFocus() and rawget(d.edit, "cursor") == 7, "focused, cursor at the end")
-  ok("Import/New: a click on the text area focuses the box with the cursor at the end")
+  ok("New note: a click on the text area focuses the box with the cursor at the end")
 end
 
 -- 13. Delete asks once through the shared confirm, naming the note and its saved versions (#1299)

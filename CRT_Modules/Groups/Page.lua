@@ -14,8 +14,8 @@ local SLOT_H = 22 -- the slot height in UI.SlotGrid, for the drag ghost
 local GRID_TOP = -52
 local PICK_ROWS = 10
 local ROW_H = 22
-local LIST_ROW_H = 26 -- a Quick Load box (24) and the gap under it
-local INVITE_STATUS_LINES = 3 -- the invite status line, between the grid and Use This Group
+local LIST_ROW_H = 26 -- a Quick load box (24) and the gap under it
+local INVITE_STATUS_LINES = 3 -- the invite status line, between the grid and Use this group
 -- The Sort by row, between the grid and the invite status line: its bottom from the page's bottom, the dropdowns'
 -- labels and widths, and the gap between its parts
 local SORT = { y = 176, labelW = 54, width = 180, sideLabelW = 76, sideW = 230, gap = 10 }
@@ -42,7 +42,7 @@ local TEXT = {
     sortBy = "Sort by",
     sortGrid = "Sort grid",
     sortHelp = {
-        "Sort grid rearranges the grid only, like an edit by hand. Nobody moves in the raid until you click Arrange Groups.",
+        "Sort grid rearranges the grid only, like an edit by hand. Nobody moves in the raid until you click Arrange groups.",
         { "Role blocks", "tanks first, then melee, then ranged, with one healer in each group." },
         { "Melee and ranged groups", "tanks and melee fill the first groups, ranged the next ones. Healers are spread one per group." },
         { "Spread duplicates", "players of the same class, then of the same spec, go in different groups. Tanks and healers are spread too." },
@@ -71,7 +71,7 @@ local TEXT = {
     deleteActive = "It is the active group, so the Late Tracker stops expecting it.",
     deleteFinal = "This can't be undone.",
     delete = "Delete layout",
-    postHelp = "When Arrange Groups is done, posts one line to raid chat for each group with someone new in it, such as \"[CRT] <Group 1 Changes>: Name, Name\". If it stops part-way, it posts the groups that did change. Nothing is posted when nobody moved. In combat or during a boss encounter, the post waits until it ends.",
+    postHelp = "When Arrange groups is done, posts one line to raid chat for each group with someone new in it, such as \"[CRT] <Group 1 Changes>: Name, Name\". If it stops part-way, it posts the groups that did change. Nothing is posted when nobody moved. In combat or during a boss encounter, the post waits until it ends.",
 }
 
 local ROLE_TEXTURE = "Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES"
@@ -111,10 +111,13 @@ local function styleButton(b)
     return b
 end
 
-local function makeButton(parent, label, width, height)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+-- minW, when given: the least it is (a button filling grid slots), wider only for a longer label.
+local function makeButton(parent, label, height, minW)
     local b = styleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
-    b:SetSize(width, height or 26)
     b:SetText(label)
+    b:SetHeight(height or 26)
+    UI.FitButton(b, nil, minW)
     return b
 end
 
@@ -198,8 +201,10 @@ local function getDialog()
     end)
     d.scroll:SetScrollChild(d.multi)
 
+    -- OK and Cancel each as wide as its label (UI.FitButton), either side of the middle (openDialog places them)
     d.ok = styleButton(CreateFrame("Button", nil, d, "UIPanelButtonTemplate"))
-    d.ok:SetSize(110, 26)
+    d.ok:SetHeight(26)
+    UI.FitButton(d.ok)
     d.ok:SetScript("OnClick", function()
         local value
         if d.mode == "name" then
@@ -214,9 +219,10 @@ local function getDialog()
     end)
 
     d.cancel = styleButton(CreateFrame("Button", nil, d, "UIPanelButtonTemplate"))
-    d.cancel:SetSize(110, 26)
+    d.cancel:SetHeight(26)
     d.cancel:SetText(CANCEL)
-    d.cancel:SetPoint("BOTTOM", d, "BOTTOM", 60, 12)
+    UI.FitButton(d.cancel)
+    d.cancel:SetPoint("BOTTOMLEFT", d, "BOTTOM", 4, 12)
     d.cancel:SetScript("OnClick", function()
         d:Hide()
     end)
@@ -235,7 +241,11 @@ local function openDialog(mode, title, text, okLabel, onAccept)
     d.ok:SetText(okLabel)
     d.cancel:SetShown(onAccept ~= nil)
     d.ok:ClearAllPoints()
-    d.ok:SetPoint("BOTTOM", d, "BOTTOM", onAccept and -60 or 0, 12)
+    if onAccept then
+        d.ok:SetPoint("BOTTOMRIGHT", d, "BOTTOM", -4, 12)
+    else
+        d.ok:SetPoint("BOTTOM", d, "BOTTOM", 0, 12)
+    end
 
     if mode == "name" then
         d:SetSize(360, 130)
@@ -741,9 +751,9 @@ local function closeOnSwap()
     end
 end
 
--- The Invite missing button beside anchor (Use This Group's (?)), and the status line above that row.
+-- The Invite missing button beside anchor (Use this group's (?)), and the status line above that row.
 local function buildInvites(pf, anchor)
-    inviteButton = makeButton(pf, format(TEXT.inviteMissing, 0), 120, 32)
+    inviteButton = makeButton(pf, format(TEXT.inviteMissing, 0), 32)
     inviteButton:SetPoint("LEFT", anchor, "RIGHT", 10, 0)
     inviteButton:SetScript("OnClick", function()
         inviteKeys(CRT.Invite.Missing(Groups:Working()))
@@ -778,7 +788,7 @@ end
 
 -- Sort by ------------------------------------------------------------------------
 -- A method (Groups/Sort.lua) and Sort grid, which rewrites the grid (a hand edit: the layout shows unsaved changes);
--- Arrange Groups still moves the raid. Left and right sides adds a dropdown of this season's two-row assignments,
+-- Arrange groups still moves the raid. Left and right sides adds a dropdown of this season's two-row assignments,
 -- read again when the page opens or a note changes; the one picked is kept for the session.
 
 local sortRow, sideRow, sortButton, postCheck
@@ -861,7 +871,7 @@ local function refreshSort()
     postCheck.refresh()
 end
 
--- The Sort by row above the invite status line, and Post group changes right of Arrange Groups (apply).
+-- The Sort by row above the invite status line, and Post group changes right of Arrange groups (apply).
 local function buildSort(pf, apply)
     local Sort = CRT.GroupSort
     if not Sort then
@@ -904,9 +914,7 @@ local function buildSort(pf, apply)
     })
     sideRow:SetPoint("LEFT", sortRow, "RIGHT", SORT.gap, 0)
 
-    sortButton = makeButton(pf, TEXT.sortGrid, 80)
-    local fs = sortButton:GetFontString()
-    sortButton:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
+    sortButton = makeButton(pf, TEXT.sortGrid)
     sortButton:SetScript("OnClick", sortGrid)
     if sortButton.SetMotionScriptsWhileDisabled then
         sortButton:SetMotionScriptsWhileDisabled(true) -- the tooltip says why while it is greyed
@@ -1197,7 +1205,7 @@ local function buildPage(pf)
 
 
     -- Bottom left buttons
-    local setRoster = makeButton(pf, "Set current roster", SLOT_W)
+    local setRoster = makeButton(pf, "Set current roster", nil, SLOT_W)
     setRoster:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 48)
     setRoster:SetScript("OnClick", function()
         local roster = Groups:ReadRoster()
@@ -1242,7 +1250,7 @@ local function buildPage(pf)
     end)
 
     -- Clear grid: at once, with Undo; an empty grid has nothing to clear
-    local clear = makeButton(pf, "Clear grid", SLOT_W)
+    local clear = makeButton(pf, "Clear grid", nil, SLOT_W)
     clear:SetPoint("LEFT", setRoster, "RIGHT", COL_GAP, 0)
     clear:SetScript("OnClick", function(self)
         local saved, n = {}, 0
@@ -1278,9 +1286,9 @@ local function buildPage(pf)
 
     UI.HelpRight(clear, "Editing the groups", TEXT.editHelp)
 
-    -- Use This Group: the open layout becomes the raid's active roster (tagged active in Quick Load),
+    -- Use this group: the open layout becomes the raid's active roster (tagged active in Quick load),
     -- which the Late Tracker expects.
-    local useGroup = makeButton(pf, "Use This Group", 2 * SLOT_W + COL_GAP, 32)
+    local useGroup = makeButton(pf, "Use this group", 32, 2 * SLOT_W + COL_GAP)
     useGroup:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 84)
     useGroup:SetScript("OnClick", function()
         local preset = gdb().selected and Groups:Find(gdb().selected)
@@ -1288,23 +1296,23 @@ local function buildPage(pf)
             Groups:SetActive(preset.id)
             CRT:Print(preset.name .. " is now the active group. The Late Tracker expects it.")
         else
-            CRT:Print("Pick a saved layout in Quick Load first.")
+            CRT:Print("Pick a saved layout in Quick load first.")
         end
     end)
-    local useHelp = UI.HelpRight(useGroup, "Use This Group", "Makes the open layout the raid's active roster, marked active in Quick Load; the Late Tracker expects the people in it. During a raid night, tonight's list updates at once and everyone's clock keeps running.")
+    local useHelp = UI.HelpRight(useGroup, "Use this group", "Makes the open layout the raid's active roster, marked active in Quick load; the Late Tracker expects the people in it. During a raid night, tonight's list updates at once and everyone's clock keeps running.")
     buildInvites(pf, useHelp)
 
-    local apply = makeButton(pf, "Arrange Groups", 2 * SLOT_W + COL_GAP, 32)
+    local apply = makeButton(pf, "Arrange groups", 32, 2 * SLOT_W + COL_GAP)
     apply:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 8)
     apply:SetScript("OnClick", function()
         CRT.Apply:Start(Groups:Working())
     end)
     buildSort(pf, apply)
 
-    -- Right column: Quick Load
+    -- Right column: Quick load
     local quick = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     quick:SetPoint("TOPLEFT", pf, "TOPRIGHT", -8 - RIGHT_W, -12)
-    quick:SetText("Quick Load:")
+    quick:SetText("Quick load:")
 
     local listBox = CreateFrame("Frame", nil, pf, "BackdropTemplate")
     listBox:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -32)
@@ -1345,7 +1353,7 @@ local function buildPage(pf)
     emptyText:SetPoint("TOP", listBox, "TOP", 0, -12)
     emptyText:SetText("No saved layouts yet.")
 
-    local import = makeButton(pf, "Import", RIGHT_W)
+    local import = makeButton(pf, "Import")
     import:SetPoint("BOTTOMRIGHT", pf, "BOTTOMRIGHT", -8, 8)
     import:SetScript("OnClick", function()
         openDialog("text", "Import: paste names (one per line) or an export", "", "Import", function(text)
@@ -1359,8 +1367,8 @@ local function buildPage(pf)
         end)
     end)
 
-    local export = makeButton(pf, "Export current groups", RIGHT_W)
-    export:SetPoint("BOTTOM", import, "TOP", 0, 6)
+    local export = makeButton(pf, "Export current groups")
+    export:SetPoint("BOTTOMRIGHT", import, "TOPRIGHT", 0, 6)
     export:SetScript("OnClick", function()
         local g = gdb()
         local preset = g.selected and Groups:Find(g.selected)
@@ -1368,8 +1376,8 @@ local function buildPage(pf)
     end)
 
     -- Delete layout asks once, naming the layout and how many names go with it
-    local delete = makeButton(pf, TEXT.delete, RIGHT_W)
-    delete:SetPoint("BOTTOM", export, "TOP", 0, 6)
+    local delete = makeButton(pf, TEXT.delete)
+    delete:SetPoint("BOTTOMRIGHT", export, "TOPRIGHT", 0, 6)
     delete:SetScript("OnClick", function()
         local id = gdb().selected
         local preset = id and Groups:Find(id)
@@ -1392,8 +1400,8 @@ local function buildPage(pf)
             end })
     end)
 
-    local saveNew = makeButton(pf, "Save current roster as new", RIGHT_W)
-    saveNew:SetPoint("BOTTOM", delete, "TOP", 0, 6)
+    local saveNew = makeButton(pf, "Save current roster as new")
+    saveNew:SetPoint("BOTTOMRIGHT", delete, "TOPRIGHT", 0, 6)
     saveNew:SetScript("OnClick", function()
         openDialog("name", "Save layout", "", "Save", function(text)
             text = strtrim(text)

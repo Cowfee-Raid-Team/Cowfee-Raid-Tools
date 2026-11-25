@@ -70,13 +70,15 @@ local function skin(frame, alpha)
     frame:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
 end
 
-local function makeButton(parent, label, width)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+local function makeButton(parent, label)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontStandard)
     b:SetHighlightFontObject(CRTFontStandardHighlight)
     b:SetDisabledFontObject(CRTFontStandardDisable)
-    b:SetSize(width, 24)
     b:SetText(label)
+    b:SetHeight(24)
+    UI.FitButton(b)
     return b
 end
 
@@ -535,7 +537,7 @@ local function buildHistory(f)
     search:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
     end)
-    local export = makeButton(f, TEXT.export, 110)
+    local export = makeButton(f, TEXT.export)
     export:SetPoint("LEFT", search, "RIGHT", 12, 0)
     export:SetScript("OnClick", exportCSV)
     UI.HelpRight(export, "Filters and export", TEXT.filtersHelp)
@@ -709,7 +711,7 @@ local function buildSettings(f)
         s().rcEnrich = on
         CRT.LootRCLC:Scan()
     end)
-    local rescan = makeButton(f, "Re-scan", 90)
+    local rescan = makeButton(f, "Re-scan")
     rescan:SetPoint("TOPLEFT", 12, -194)
     local rcStatus = f:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     rcStatus:SetPoint("LEFT", rescan, "RIGHT", 10, 0)
@@ -744,7 +746,7 @@ local function buildSettings(f)
     })
     monthDrop:SetPoint("TOPLEFT", 8, -260)
     controls[#controls + 1] = monthDrop
-    local delBefore = makeButton(f, "Delete older", 110)
+    local delBefore = makeButton(f, "Delete older")
     delBefore:SetPoint("LEFT", monthDrop, "RIGHT", 8, 0)
     delBefore:SetScript("OnClick", function()
         if before ~= ALL then
@@ -754,7 +756,7 @@ local function buildSettings(f)
             end)
         end
     end)
-    local delAll = makeButton(f, "Delete all", 110)
+    local delAll = makeButton(f, "Delete all")
     delAll:SetPoint("TOPLEFT", 12, -300)
     delAll:SetScript("OnClick", function()
         confirm(TEXT.deleteAll, function()
@@ -807,22 +809,8 @@ local function build(pf)
     title:SetText(TEXT.title)
     UI.HelpRight(title, TEXT.title, TEXT.help)
 
-    for i, tab in ipairs(TABS) do
-        local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        b:SetSize(150, 26)
-        b:SetPoint("TOPLEFT", 8 + (i - 1) * 154, -36)
-        skin(b, 0.4)
-        b.sel = b:CreateTexture(nil, "ARTWORK")
-        b.sel:SetAllPoints()
-        b.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
-        b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-        b.text:SetPoint("CENTER")
-        b.text:SetText(tab.label)
-        b:SetScript("OnClick", function()
-            selectTab(tab.key)
-        end)
-        tabButtons[tab.key] = b
-        UI:RegisterTab(b)
+    tabButtons = UI.TabStrip(pf, TABS, 8, -36, selectTab)
+    for _, tab in ipairs(TABS) do
         local f = CreateFrame("Frame", nil, pf)
         f:SetPoint("TOPLEFT", 0, -66)
         f:SetPoint("BOTTOMRIGHT", 0, 0)

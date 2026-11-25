@@ -69,14 +69,14 @@ CRT.NotesPage.Open("phases") -- no Phases tab any more: falls back to Notes, bui
 CRT.NotesPage.Open("alerts")
 CRT.NotesPage.Open("markers")
 assert(table.concat(builtTabs, ",") == "reminders,alerts,markers", "five tabs built by name, no Phases (got " .. table.concat(builtTabs, ",") .. ")")
-assert(allTexts["Notes Settings"] and not allTexts["Settings"], "the settings tab is named Notes Settings")
--- the tab labels, in order: Marker macros before Alert Settings, Notes Settings last
+assert(allTexts["Notes settings"] and not allTexts["Settings"], "the settings tab is named Notes settings")
+-- the tab labels, in order: Marker macros before Alert settings, Notes settings last
 do
   local labels = {}
-  local want = { Notes = true, ["Mech Alerts"] = true, ["Marker macros"] = true, ["Alert Settings"] = true, ["Notes Settings"] = true }
+  local want = { Notes = true, ["Mech Alerts"] = true, ["Marker macros"] = true, ["Alert settings"] = true, ["Notes settings"] = true }
   for _, t in ipairs(textOrder) do if want[t] then labels[#labels + 1] = t want[t] = nil end end
   local got = table.concat(labels, ",")
-  assert(got == "Notes,Mech Alerts,Marker macros,Alert Settings,Notes Settings", "tabs in order, Marker macros before Alert Settings (got " .. got .. ")")
+  assert(got == "Notes,Mech Alerts,Marker macros,Alert settings,Notes settings", "tabs in order, Marker macros before Alert settings (got " .. got .. ")")
   print("tab order: " .. got)
 end
 CRT.NotesPage.Open("notes")

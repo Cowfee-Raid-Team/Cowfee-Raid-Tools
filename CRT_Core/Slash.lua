@@ -57,7 +57,7 @@ Slash.EVERYDAY = {
     "[/crt notes] - the raid notes and Mech Alerts",
     "[/crt check] - the ready check window for your group",
     "[/crt groups] - save and apply raid group layouts",
-    "[/crt loot] - your loot popup and All Loot Rolls",
+    "[/crt loot] - your loot popup and All loot rolls",
     "[/crt previews] - show every movable window, to drag it into place",
     "[/crt help all] - every command",
 }
@@ -82,7 +82,7 @@ local function printAll()
     print("  |cffffd100/crt check food|r, |cffffd100flask|r, |cffffd100rune|r, |cffffd100vantus|r, |cffffd100buffs|r (or |cffffd100buff|r) or |cffffd100all|r - check the group, add |cffffd100chat|r to post it")
     print("  |cffffd100/crt rc|r - preview your ready check bar")
     print("  |cffffd100/crt debuffs|r - open the Debuffs tab on Quality of Life")
-    print("  |cffffd100/crt notes|r - open the Raid Notes page (|cffffd100/crt notes settings|r opens its Notes Settings tab)")
+    print("  |cffffd100/crt notes|r - open the Raid Notes page (|cffffd100/crt notes settings|r opens its Notes settings tab)")
     print("  |cffffd100/crt reminders|r - open the Mech Alerts tab of Raid Notes")
     print("  |cffffd100/crt note test|r, |cffffd100next|r, |cffffd100stop|r - start the active note now, start the next phase, stop")
     printWords(false)

@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = String.raw`
+const harness = require('./theme_stub').textFitLua(process.argv.slice(2)) + String.raw`
 local coreText, releaseSrc, pageSrc, nShipped = ...
 local args = { select(5, ...) }
 local passed, failed = 0, 0
@@ -273,6 +273,7 @@ CRT.UI = {
   RegisterTab = function(_, b) tabs[#tabs + 1] = b end, SetTabSelected = function() end,
   GoodText = function(s) return s end, BadText = function(s) return s end,
 }
+CRT_TEXT_FIT(CRT.UI) -- the real UI.FitButton and UI.TabStrip (CRT_Core/UI/Panel.lua)
 CRT.LowHealth = {}
 CRT.LowHealthSound = { StopPreview = function() end }
 CRT.DebuffsPage = { Build = function() end }

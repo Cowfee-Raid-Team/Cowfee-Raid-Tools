@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- Assignment highlights' settings (Highlights/Data.lua), a section of Raid Notes > Notes Settings: Notes/Settings.lua
+-- Assignment highlights' settings (Highlights/Data.lua), a section of Raid Notes > Notes settings: Notes/Settings.lua
 -- calls Build for its place, with its own check box, heading and refresh, so the section looks and greys like the rest
 -- of the tab. Use assignment highlights (the one switch), then Highlight my name, Highlight my group and Glow when my
 -- assignment changes, greyed while the switch is off, and Preview highlights. Which note windows show them is a
@@ -16,8 +16,8 @@ local TEXT = {
     enableHelp = "In the note windows whose Use highlights box is ticked (one in each window's column above), the lines that name you or your raid group get a band behind them, with your name or group in the theme's accent colour.\n\nWhen a new version of the same note changes your part, the line glows for a few seconds and says Added, Removed or Moved. A line you were taken off that is gone shows faded for those seconds. The personal note shows the bands only: you write it yourself.\n\nLines about others stay as they are.",
     -- the box in each note window's column (windowCheck below)
     windowLabel = "Use highlights",
-    windowHelp = "Marks the lines that name you or your raid group in this window, with a band behind them.\n\nThe glow and the Added, Removed or Moved words show too when your part changes.\n\nGreyed out while the main switch is off: Raid Notes > Notes Settings > Highlights > Use assignment highlights.",
-    windowHelpPersonal = "Marks the lines that name you or your raid group in this window, with a band behind them. The personal note shows the bands only, with no glow, because you write it yourself.\n\nGreyed out while the main switch is off: Raid Notes > Notes Settings > Highlights > Use assignment highlights.",
+    windowHelp = "Marks the lines that name you or your raid group in this window, with a band behind them.\n\nThe glow and the Added, Removed or Moved words show too when your part changes.\n\nGreyed out while the main switch is off: Raid Notes > Notes settings > Highlights > Use assignment highlights.",
+    windowHelpPersonal = "Marks the lines that name you or your raid group in this window, with a band behind them. The personal note shows the bands only, with no glow, because you write it yourself.\n\nGreyed out while the main switch is off: Raid Notes > Notes settings > Highlights > Use assignment highlights.",
     name = "Highlight my name",
     group = "Highlight my group (G3, group 3)",
     glow = "Glow when my assignment changes",

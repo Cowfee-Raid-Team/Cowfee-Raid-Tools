@@ -25,7 +25,8 @@ local function mock(kind)
     if k == "SetShown" then return function(self, on) if on then self:Show() else self:Hide() end end end
     if k == "IsShown" then return function(self) return self.shown end end
     if k == "HasFocus" then return function() return false end end
-    if k == "GetWidth" then return function() return 378 end end
+    if k == "GetWidth" then return function(self) return rawget(self, "w") or 378 end end -- a frame given a width (a button sized from its label) has it
+    if k == "SetWidth" then return function(self, w) rawset(self, "w", w) end end
     if k == "GetStringHeight" then return function() return 14 end end
     if k == "GetVerticalScroll" then return function() return 0 end end
     if k == "SetScript" then return function(self, name, fn) rawset(self, name, fn) end end
@@ -715,7 +716,7 @@ do
   bossDD.opts.set(3470)
   assert(edit.enabled == true and add.enabled == true, "add spell: on for a boss's Journal list, ability timeline or not")
   assert(helps["Journal abilities"]:find("combat", 1, true), "Journal abilities help: not read in combat")
-  assert(helps["Abilities Text"]:find("combat", 1, true), "References help: icons need the Journal, not read in combat")
+  assert(helps["Abilities text"]:find("combat", 1, true), "References help: icons need the Journal, not read in combat")
   local key = R:Add("Boss: Nek'zali the Soulcoiler\\nDifficulty: Mythic\\nA: 0:10")
   local edit2
   for _, b in ipairs(buttons) do if b.text == "Edit" and b.shown and rawget(b, "key") == key then edit2 = b end end

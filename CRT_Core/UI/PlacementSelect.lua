@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- Select Anchor (the Placement panel's main anchor control): while el:StartPick runs, the screen dims under a
+-- Select anchor (the Placement panel's main anchor control): while el:StartPick runs, the screen dims under a
 -- click-catching overlay, the frame under the cursor gets an accent outline and its name in a tag at the cursor, a
 -- left click selects it (P.PickChoose), a right click or Escape cancels (P.Escape), and Enter or Space select too.
 --

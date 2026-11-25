@@ -160,7 +160,7 @@ local TEXT = {
     savedAlerts = "Templates",
     savedHelp = "Your templates: an alert's setup without its time. Drag one onto the timeline to make an "
         .. "alert there (dropped on a boss spell's icon it takes that spell). Right-click one to edit, rename or "
-        .. "delete it; + makes a new one. \"Save As Template\" in the alert editor makes one too.\n\n"
+        .. "delete it; + makes a new one. \"Save as template\" in the alert editor makes one too.\n\n"
         .. "Right-click the timeline (without dragging) for New alert here, or Place a template at that time.",
     newSaved = "New template",
     savedHint = "Drag onto the timeline to place it. Right-click to edit, rename or delete.",
@@ -2968,7 +2968,7 @@ function Methods:BuildStrip()
     self.cdEmpty:Hide()
 
     local plus = CreateFrame("Button", nil, row)
-    plus:SetSize(PLUS_W, CHIP_H)
+    plus:SetSize(PLUS_W, CHIP_H) -- fixed width: the + chip, one character
     chipBackground(plus)
     plus.text = plus:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     plus.text:SetPoint("CENTER", plus, "CENTER", 0, 0)

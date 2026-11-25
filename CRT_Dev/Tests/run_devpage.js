@@ -6,7 +6,7 @@
 const fs = require('fs');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
-const harness = `
+const harness = require('./theme_stub').textFitLua(process.argv.slice(2)) + `
 local subTabsSrc, panelSrc, pageSrc, layerCount = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 print("ok " .. what) else fails = fails + 1 print("FAIL " .. what) end end
@@ -80,6 +80,7 @@ local UI = {
 }
 for i = 1, layerCount do UI.LAYERS[i] = { key = "layer" .. i, label = "Layer " .. i } end
 CRT.UI = UI
+CRT_TEXT_FIT(UI) -- the real UI:OnFonts and UI.FitButton (CRT_Core/UI/Panel.lua)
 CRT.Dev = { Toggle = stub("Dev:Toggle"), IsOn = function() return false end, SetMoving = function() end, IsMoving = function() return false end, ClearAll = stub("Dev:ClearAll"), ResetAllPositions = stub("Dev:ResetAllPositions") }
 CRT.DebuffPanel = { ShowInfo = stub("DebuffPanel:ShowInfo") }
 CRT.ReferenceTypes = { Toggle = stub("ReferenceTypes:Toggle") }

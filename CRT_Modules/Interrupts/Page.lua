@@ -146,8 +146,8 @@ Page.TEXT = TEXT
 
 -- Every place and size on the page, from the page's top left (UI.PAGE_W x UI.PAGE_H); the tab frames start at contentY.
 local LAYOUT = {
-    tabY = -36, contentY = -66, tabW = 160, tabH = 26, tabGap = 4,
-    leftX = 8, rightX = 630,
+    tabY = -36, contentY = -66, tabH = 26,
+    leftX = 8, rightX = 630, colGap = 12, -- colGap: what the left column's rows keep clear of the right column
     bossY = -8, bossLabelW = 40, bossW = 300, editGap = 34,
     statusY = -46, statusH = 28,
     -- the Kick list heading, then its rows (Interrupts/PageGrid.lua): a row per group, scrolling past gridMaxH
@@ -250,8 +250,8 @@ local function button(parent, text, onClick)
     b:SetHighlightFontObject(CRTFontButtonSmallHighlight)
     b:SetDisabledFontObject(CRTFontButtonSmallDisable)
     b:SetText(text)
-    local fs = b:GetFontString()
-    b:SetSize(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0), L.buttonH)
+    b:SetHeight(L.buttonH)
+    UI.FitButton(b)
     b:SetScript("OnClick", onClick)
     return b
 end
@@ -420,8 +420,8 @@ function Page.PlaceBelow(height)
     if Page.test then
         Page.test:ClearAllPoints()
         Page.test:SetPoint("TOPLEFT", L.leftX - L.checkInset, y - L.testGap)
-        Page.preview:ClearAllPoints()
-        Page.preview:SetPoint("TOPLEFT", L.leftX + L.previewX, y - L.testGap)
+        Page.testRow:ClearAllPoints()
+        Page.testRow:SetPoint("TOPLEFT", L.leftX + L.previewX, y - L.testGap)
     end
 end
 
@@ -611,8 +611,12 @@ local function buildAssignments(f)
     Page.preview = button(f, TEXT.testReminder, function()
         CRT.InterruptReminder:Preview()
     end)
-    -- Write to the raid note after Test reminder: the row above is full with Who has it
-    Page.write:SetPoint("LEFT", Page.preview, "RIGHT", L.buttonSpace, 0)
+    -- Write to the raid note after Test reminder (the row above is full with Who has it), or under it when the text
+    -- size leaves no room before the players' column; its (?) after it
+    Page.testRow = CreateFrame("Frame", nil, f)
+    Page.testRow:SetSize(L.rightX - L.colGap - L.leftX - L.previewX, L.buttonH)
+    UI.Flow(Page.testRow, { Page.preview, Page.write }, { gap = L.buttonSpace,
+        width = L.rightX - L.colGap - L.leftX - L.previewX - UI.HELP_GAP - UI.HELP_SIZE })
     buildListHeading(f)
     -- the grid last among the left column's refreshes, so it places the rows under it once they exist
     Page.BuildGrid(f)
@@ -659,7 +663,7 @@ local function swatch(f, x, y, text, key)
     local name = label(f, text)
     name:SetPoint("TOPLEFT", x, y - 2)
     local b = CreateFrame("Button", nil, f, "BackdropTemplate")
-    b:SetSize(L.swatchW, L.swatchH)
+    b:SetSize(L.swatchW, L.swatchH) -- fixed width: a colour swatch, no label (its name is left of it)
     b:SetPoint("LEFT", name, "RIGHT", 6, 0)
     b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     b:SetBackdropBorderColor(0, 0, 0, 1) -- the swatch's edge: not a theme colour
@@ -698,12 +702,29 @@ local function slider(f, x, y, text, holder, key, low, high, labelW, enabledIf)
         end }), x, y)
 end
 
+-- The rows' names in one column as wide as the widest (never under swatchLabelW), the two swatches after it, the second
+-- clear of the first's label: placed again on a text size change, so a name never wraps into the row under it.
+local swatchRows = {}
+local function placeSwatchRows()
+    local w = L.swatchLabelW
+    for _, r in ipairs(swatchRows) do
+        w = math.max(w, math.ceil(r.name:GetStringWidth() or 0) + 4)
+    end
+    for _, r in ipairs(swatchRows) do
+        local step = math.max(L.swatchStep, math.ceil(r.box:GetStringWidth() or 0) + 6 + L.swatchW + 16)
+        r.box:SetPoint("TOPLEFT", L.leftX + w + 4, r.y - 2)
+        r.number:SetPoint("TOPLEFT", L.leftX + w + 4 + step, r.y - 2)
+    end
+end
+
 local function swatchRow(f, y, text, boxKey, textKey)
     local name = label(f, text, "CRTFontNormal")
     name:SetPoint("TOPLEFT", L.leftX, y)
-    name:SetWidth(L.swatchLabelW)
     swatch(f, L.leftX + L.swatchLabelW + 4, y, TEXT.box, boxKey)
+    local box = Page.swatches[#Page.swatches].label
     swatch(f, L.leftX + L.swatchLabelW + 4 + L.swatchStep, y, TEXT.number, textKey)
+    swatchRows[#swatchRows + 1] = { name = name, y = y, box = box, number = Page.swatches[#Page.swatches].label }
+    placeSwatchRows()
 end
 
 local function buildPlatesSettings(f)
@@ -726,6 +747,7 @@ local function buildPlatesSettings(f)
     slider(f, x, Y.offset, TEXT.offset, plates, "offset", -100, 100, nil, platesUsable)
     swatchRow(f, Y.yours, TEXT.yours, "mineBox", "mineText")
     swatchRow(f, Y.others, TEXT.others, "box", "text")
+    UI:OnFonts(placeSwatchRows)
     -- greyed while the box can't show: Interrupts off, or no boss to number (Interrupts/Plates.lua's Preview)
     Page.previewBox = UI.PreviewButton(f, TEXT.previewBox, { PREVIEW_BOX }, { tooltip = TEXT.previewBoxTip,
         enabledIf = function()
@@ -863,21 +885,8 @@ Page.Refresh = function()
     refresh()
 end
 
-local function makeTab(pf, i, tab)
-    local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-    b:SetSize(L.tabW, L.tabH)
-    b:SetPoint("TOPLEFT", L.leftX + (i - 1) * (L.tabW + L.tabGap), TAB_Y)
-    b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-    b.sel = b:CreateTexture(nil, "ARTWORK")
-    b.sel:SetAllPoints()
-    b.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
-    b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    b.text:SetPoint("CENTER")
-    b.text:SetText(tab.label)
-    b:SetScript("OnClick", function()
-        selectTab(tab.key)
-    end)
-    UI:RegisterTab(b)
+-- A tab's frame, under the tab strip; its button is made by UI.TabStrip (in build).
+local function makeTab(pf, b, tab)
     local f = CreateFrame("Frame", nil, pf)
     f:SetPoint("TOPLEFT", 0, CONTENT_Y)
     f:SetPoint("BOTTOMRIGHT", 0, 0)
@@ -891,9 +900,10 @@ local function build(pf)
     local title = label(pf, TEXT.title, "CRTFontLarge")
     title:SetPoint("TOPLEFT", 8, -8)
     UI.HelpRight(title, TEXT.title, TEXT.help)
-    buildAssignments(makeTab(pf, 1, TABS[1]))
-    buildMacros(makeTab(pf, 2, TABS[2]))
-    buildSettings(makeTab(pf, 3, TABS[3]))
+    local tabButtons = UI.TabStrip(pf, TABS, L.leftX, TAB_Y, selectTab, { h = L.tabH })
+    buildAssignments(makeTab(pf, tabButtons.assignments, TABS[1]))
+    buildMacros(makeTab(pf, tabButtons.macros, TABS[2]))
+    buildSettings(makeTab(pf, tabButtons.settings, TABS[3]))
     local line = pf:CreateTexture(nil, "ARTWORK")
     UI.Tint(line, "SetColorTexture", "border")
     line:SetHeight(1)

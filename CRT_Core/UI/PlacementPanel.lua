@@ -4,13 +4,13 @@ local ADDON, CRT = ...
 -- element with its x, y at its top left, and the dashed guides a drag snaps to.
 --
 -- The panel (UI.Window, a dialog next to the element): X and Y (its centre's distance from its anchor's centre;
--- Enter applies, the up and down arrows step 1, Shift 10), Centre horizontally and Centre vertically, Select Anchor
+-- Enter applies, the up and down arrows step 1, Shift 10), Centre horizontally and Centre vertically, Select anchor
 -- (the main anchor control: larger, first), Anchor to (Screen, another CRT element, or the frame on screen it is
 -- anchored to; a choice that would loop is greyed out), Frame name (a frame's name typed in, Enter or Anchor: the
 -- fallback for a frame behind another), a line while selecting and one for what was refused or an anchor that isn't
 -- loaded, then Reset and Done.
 --
--- Selecting (Select Anchor) is UI/PlacementSelect.lua's: the dimming overlay that takes the clicks, the outline and
+-- Selecting (Select anchor) is UI/PlacementSelect.lua's: the dimming overlay that takes the clicks, the outline and
 -- the name at the cursor. P.OnChanged here tells it of every change (P.SelectSync).
 
 local UI = CRT.UI
@@ -24,16 +24,16 @@ local TEXT = {
     centreV = "Centre vertically",
     anchor = "Anchor to",
     screen = "Screen",
-    pick = "Select Anchor",
+    pick = "Select anchor",
     picking = "Click a frame to anchor to it. Right-click or Esc cancels.",
-    pickHelp = "Click Select Anchor, then click any frame on screen, such as your unit frame, to anchor to it.\n\n"
+    pickHelp = "Click Select anchor, then click any frame on screen, such as your unit frame, to anchor to it.\n\n"
         .. "The screen dims and the frame under the cursor is outlined, with its name at the cursor. "
         .. "Your click only selects it: you don't target, cast or press anything. Enter or Space select too.\n\n"
         .. "Right-click or Esc cancels. It can't be used in combat.",
     frameName = "Frame name",
     useFrame = "Anchor",
     frameHelp = "Type the name of a frame, such as PlayerFrame, then press Enter.\n\n"
-        .. "Use this for a frame Select Anchor can't reach, such as one behind another window.",
+        .. "Use this for a frame Select anchor can't reach, such as one behind another window.",
     reset = "Reset",
     done = "Done",
     help = "X and Y are how far its centre is from the centre of what it is anchored to, in pixels.\n\n"
@@ -51,9 +51,9 @@ P.PANEL_TEXT = TEXT
 local L = {
     width = 380, height = 296,
     box = 56, boxH = 20, labelW = 14, gap = 6, -- X and Y
-    -- the boxes, the centre buttons, Select Anchor, Anchor to, Frame name, the selecting line, status
+    -- the boxes, the centre buttons, Select anchor, Anchor to, Frame name, the selecting line, status
     rowY = { -6, -38, -70, -106, -138, -170, -190 },
-    button = 22, mainButton = 26, -- Select Anchor is the larger
+    button = 22, mainButton = 26, -- Select anchor is the larger
     dropLabel = 64, drop = 150,
     side = 12, -- the panel's gap from the element
     outline = 2, outlineOut = 3, -- the selection outline's thickness, and how far outside the element
@@ -363,7 +363,7 @@ local function build()
     end)
     f.centreV:SetPoint("LEFT", f.centreH, "RIGHT", L.gap, 0)
 
-    -- Select Anchor: the main way to anchor, above the list and the typed name
+    -- Select anchor: the main way to anchor, above the list and the typed name
     f.pick = UI.PanelButton(c, TEXT.pick, L.mainButton, function()
         if shown then
             shown:StartPick()
@@ -497,7 +497,7 @@ function P.Panel()
     return panel
 end
 
--- Every change to an element: the outline and the panel follow, and Select Anchor's overlay shows only while
+-- Every change to an element: the outline and the panel follow, and Select anchor's overlay shows only while
 -- selecting.
 function P.OnChanged()
     drawOutline()

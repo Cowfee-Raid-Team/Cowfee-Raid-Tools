@@ -904,5 +904,7 @@ if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.
 const files = ['CRT_Core/Themes.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/Window.lua', 'CRT_Core/UI/ScrollBar.lua',
   'CRT_Core/Gear.lua', 'CRT_Modules/GearChecker/Data.lua', 'CRT_Modules/GearChecker/Inspect.lua', 'CRT_Modules/GearChecker/Comm.lua',
   'CRT_Modules/GearChecker/Page.lua', 'CRT_Core/UI/Tooltip.lua', 'CRT_Core/Names.lua', 'CRT_Core/UI/StatusMark.lua'];
-for (const f of files) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
+// StatusMark.lua with CRT_Core/UI/Fonts.lua after it, which the .toc loads before it: UI.CapFontSize, for the track tag
+const readFile = f => fs.readFileSync(path.join(dir, f), 'utf8');
+for (const f of files) lua.lua_pushstring(L, to_luastring(readFile(f) + (f.endsWith('StatusMark.lua') ? '\n' + readFile('CRT_Core/UI/Fonts.lua') : '')));
 if (lua.lua_pcall(L, files.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

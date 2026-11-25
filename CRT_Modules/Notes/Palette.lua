@@ -84,7 +84,7 @@ function Palette.MakeChip(parent, drag)
     b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     b.text:SetWordWrap(false)
     b.remove = CreateFrame("Button", nil, b)
-    b.remove:SetSize(L.removeW, L.chipH)
+    b.remove:SetSize(L.removeW, L.chipH) -- fixed width: the x on a chip, one character
     b.remove:SetPoint("RIGHT", 0, 0)
     b.remove.text = b.remove:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     b.remove.text:SetPoint("CENTER", 0, 1)

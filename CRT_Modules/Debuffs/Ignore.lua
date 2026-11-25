@@ -40,6 +40,7 @@ Ignore.TEXT = TEXT
 
 local view = {}
 Ignore.view = view
+local EDIT_W, ICON, NAME_W = 90, 20, 220 -- the Spell ID row: the box, the icon and the name's widths
 local status = { text = "", key = nil } -- the line under the box, and its palette colour
 
 local function setStatus(text, key)
@@ -187,6 +188,16 @@ function Ignore.Refresh()
     view.moreText:SetText(format(TEXT.more, #view.more.rest))
 end
 
+-- Where the Spell ID row ends, from the page's left (its label, box, icon, name and Add, at the text size now), so
+-- the Tooltip position row under the Look column can sit clear of it (Debuffs/Page.lua).
+function Ignore.RowRight()
+    if not (view.idLabel and view.add) then
+        return 0
+    end
+    return 10 + math.ceil(tonumber((view.idLabel:GetStringWidth())) or 0) + 10 + EDIT_W + 8 + ICON + 6 + NAME_W + 8
+        + (tonumber((view.add:GetWidth())) or 0)
+end
+
 -- Builds the section from y = top down to the bottom of the tab.
 function Ignore.Build(pf, top)
     local title = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
@@ -205,7 +216,7 @@ function Ignore.Build(pf, top)
     edit:SetFontObject(CRTFontHighlight)
     edit:SetNumeric(true)
     edit:SetMaxLetters(10)
-    edit:SetSize(90, 20)
+    edit:SetSize(EDIT_W, 20)
     edit:SetPoint("LEFT", idLabel, "RIGHT", 10, 0)
     UI:SkinEditBox(edit)
     edit:SetScript("OnTextChanged", preview)
@@ -215,20 +226,21 @@ function Ignore.Build(pf, top)
     end)
     view.edit = edit
     local icon = pf:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(20, 20)
+    icon:SetSize(ICON, ICON)
     icon:SetPoint("LEFT", edit, "RIGHT", 8, 0)
     icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     icon:Hide()
     view.icon = icon
     local name = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     name:SetPoint("LEFT", icon, "RIGHT", 6, 0)
-    name:SetWidth(220)
+    name:SetWidth(NAME_W)
     name:SetJustifyH("LEFT")
     name:SetWordWrap(false)
     view.name = name
     local addButton = UI.PanelButton(pf, TEXT.add, 22, add)
     addButton:SetPoint("LEFT", name, "RIGHT", 8, 0)
     view.add = addButton
+    view.idLabel = idLabel
 
     local statusLine = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     statusLine:SetPoint("TOPLEFT", 10, y - 26)

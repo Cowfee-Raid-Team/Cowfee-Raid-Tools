@@ -16,13 +16,7 @@ local ADDON, CRT = ...
 -- the disc is the theme's outline colour, so the mark reads on any icon. Every texture is made once, here: Set
 -- only lays out and paints them, and makes no tables.
 --
--- UI.CapFontSize(fs, font, low, high): draws a font string in a font object's face and outline at its size held
--- between low and high points. For small labels on a fixed-size icon (the bar's corner labels, the Gear
--- Checker's track tag), which must not grow into a mark at a large text size. Cheap to call on every refresh:
--- it sets the font only when the font object changed. A capped string keeps the size it was given and stops
--- following the font object (a text size change in General Settings) until it is capped again: a caller on a
--- surface that never refreshes must call it again when the fonts change. After SetFontObject on the string, clear
--- fs.crtCapPath so the next call sets the size again.
+-- UI.CapFontSize, which holds small labels on these icons at 10 to 12 pt, is in CRT_Core/UI/Fonts.lua.
 
 local UI = CRT.UI
 
@@ -158,17 +152,3 @@ function Mark:Set(glyph, color)
     self.glyph = glyph
 end
 
-function UI.CapFontSize(fs, font, low, high)
-    if not (font and font.GetFont and fs.SetFont) then
-        return
-    end
-    local path, size, flags = font:GetFont()
-    if not (path and size) then
-        return
-    end
-    if fs.crtCapPath == path and fs.crtCapFrom == size and fs.crtCapFlags == flags then
-        return
-    end
-    fs.crtCapPath, fs.crtCapFrom, fs.crtCapFlags = path, size, flags
-    fs:SetFont(path, math.max(low, math.min(high, size)), flags or "")
-end

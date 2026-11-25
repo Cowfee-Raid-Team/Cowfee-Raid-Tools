@@ -5,7 +5,7 @@ local ADDON, CRT = ...
 -- who keeps what, plus the small drawing helpers the wishlist windows share (W.ItemIcon, W.QualityColor, W.CellTip,
 -- W.AddAgeLines). The Encounter Journal's right-click menu and the item tooltip line are in
 -- LootMaster/WishlistJournal.lua, the My wishlist window in LootMaster/WishlistWindow.lua, the Wishlist column in
--- LootMaster/Window.lua (the Master Loot Window) and RaiderWindow.lua (All Loot Rolls, for assists).
+-- LootMaster/Window.lua (the Master loot window) and RaiderWindow.lua (All loot rolls, for assists).
 --
 -- Your list is saved per character, CRTDBChar.lootmaster.wishlist = { [itemID] = { rank, at = time() } }. Only the
 -- item ID is the key: a Journal link carries the difficulty's bonus IDs, and wanting an item means any difficulty.
@@ -285,7 +285,7 @@ function W.HasAge(name, item, rank)
     return rank ~= nil and W.RankAge(name, item) ~= nil
 end
 
--- Adds a saved rank's lines to a tooltip a row already shows (the Master Loot Window's): "Wishlist: Big upgrade" in
+-- Adds a saved rank's lines to a tooltip a row already shows (the Master loot window's): "Wishlist: Big upgrade" in
 -- the rank's colour, then "From a list made N days ago.". Returns whether it added anything.
 function W.AddAgeLines(tip, name, item, rank)
     local days = rank and W.RankAge(name, item)
@@ -297,7 +297,7 @@ function W.AddAgeLines(tip, name, item, rank)
     return true
 end
 
--- All Loot Rolls' Wishlist cell tooltip (its rows have no tooltip, highlight or click of their own; the Master Loot
+-- All loot rolls' Wishlist cell tooltip (its rows have no tooltip, highlight or click of their own; the Master Loot
 -- Window's do, so it adds W.AddAgeLines to the row's tooltip instead): a button over the cell that shows how old a
 -- saved list's rank is, and hands its clicks to the row. Hidden when there is no age to show, so the mouse reaches
 -- the row itself then.
@@ -326,7 +326,7 @@ function W.CellTip(row, cell)
     return b
 end
 
--- shown: whether the cell shows (All Loot Rolls hides its Wishlist column for players who don't keep lists).
+-- shown: whether the cell shows (All loot rolls hides its Wishlist column for players who don't keep lists).
 function W.SetCellTip(b, name, item, rank, shown)
     b.rank = rank
     b.days = (shown ~= false and rank) and W.RankAge(name, item) or nil

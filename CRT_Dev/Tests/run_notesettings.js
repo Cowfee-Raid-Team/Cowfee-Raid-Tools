@@ -70,7 +70,7 @@ pf:Show()
 print("notes tab built, frames and strings so far: " .. created)
 CRT.NotesPage.Open("settings")
 print("settings tab built, total: " .. created)
--- The note callout's timing and voice moved to Alert Settings > Configuration (CRT_Modules/Notes/Alert.lua), and the
+-- The note callout's timing and voice moved to Alert settings > Configuration (CRT_Modules/Notes/Alert.lua), and the
 -- switches and the alert areas to the Alerts tab: none of them is here.
 for _, label in ipairs({ "Show it early by", "Count down seconds", "Speech volume", "Bars at once", "Show bars from", "Bar width", "Bar height" }) do
   assert(not sliderLabels[label], label .. " is not here")

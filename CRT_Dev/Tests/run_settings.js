@@ -273,7 +273,7 @@ do
   if cb then print("FAIL General Settings no longer has an Enable Interrupts checkbox (it is on Start here > What's on)") end
   if heading then print("FAIL General Settings > Appearance no longer has a Modules heading") end
 end
--- Modules no longer holds Use assignment highlights: its switch is on Raid Notes > Notes Settings > Highlights
+-- Modules no longer holds Use assignment highlights: its switch is on Raid Notes > Notes settings > Highlights
 do
   local on
   CRT.NoteHighlights = { Enabled = function() return on == true end, SetEnabled = function(_, v) on = v end }
@@ -283,7 +283,7 @@ do
     if fr.kind == "CheckButton" and type(l) == "table" and rawget(l, "text") == "Use assignment highlights" then cb = fr end
   end
   if cb then
-    print("FAIL General Settings no longer has a Use assignment highlights checkbox (it is on Notes Settings)")
+    print("FAIL General Settings no longer has a Use assignment highlights checkbox (it is on Notes settings)")
   end
   CRT.NoteHighlights = nil
 end
@@ -386,12 +386,14 @@ do
       d.set("Pug") UI.pages.settings.frame.OnShow()
       if rawget(remove, "enabled") ~= false then print("FAIL Remove team is greyed for Pug") end
       local p = remove.pts[1] or {}
-      if not (p[2] == push and p[3] == "RIGHT") then print("FAIL Remove team sits right of Push to raid") end
+      -- the three in one row (UI.Flow, which goes onto a second line at a large text size): Remove after Push
+      local pp = push.pts[1] or {}
+      if not (p[1] == "TOPLEFT" and p[2] == pp[2] and p[5] == pp[5] and (p[4] or 0) > (pp[4] or 0)) then print("FAIL Remove team sits right of Push to raid") end
       -- Merge team…: right of Remove team; greyed with fewer than two of your teams or while a push locks the pick
       local merge = findButton("Merge team\\226\\128\\166")
       if not merge then print("FAIL Team raids has Merge team…") else
         local mp = merge.pts[1] or {}
-        if not (mp[2] == remove and mp[3] == "RIGHT") then print("FAIL Merge team… sits right of Remove team") end
+        if not (mp[1] == "TOPLEFT" and mp[2] == p[2] and mp[5] == p[5] and (mp[4] or 0) > (p[4] or 0)) then print("FAIL Merge team… sits right of Remove team") end
         if rawget(merge, "enabled") ~= true then print("FAIL Merge team… works with two of your teams") end
         merge.OnClick(merge)
         if not (type(asked) == "table" and asked[1] == "merge" and asked[2] == "Pug") then print("FAIL Merge team… opens the merge dialog") end
@@ -425,7 +427,11 @@ do
   UI.pages.settings.frame.OnShow()
   if not (status and status.text == "Now: Not in a raid group.") then print("FAIL the Team raids status line: " .. tostring(status and status.text)) end
   if not helped then print("FAIL the Team raids heading has a (?)") end
-  local p = status and status.pts[1] or {}
+  -- the status line sits under the buttons' row (a frame placed in the right column), so it moves down when they wrap
+  local sp = status and status.pts[1] or {}
+  local row = type(sp[2]) == "table" and sp[2] or nil
+  local p = row and row.pts and row.pts[1] or {}
+  if status and not (sp[1] == "TOPLEFT" and row and sp[3] == "BOTTOMLEFT") then print("FAIL the status line sits under the buttons' row") end
   if status and ((p[2] or 0) + (status.w or 0) > UI.PAGE_W or (p[3] or 0) - 40 < -(UI.PAGE_H - 30)) then print("FAIL the status line stays inside the page") end
   if status and p[2] ~= 10 + 2 * math.floor(UI.PAGE_W / 3) then print("FAIL Team raids sits in the right column") end
   print("team raids: " .. tostring(d and d.get()) .. ", " .. tostring(status and status.text))

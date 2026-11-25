@@ -64,7 +64,7 @@ local BACKDROP = {
 
 local GROUPS = Timeline.GROUP_NAMES
 
-local TAB_X, TAB_Y, TAB_W, TAB_GAP = 8, -36, 160, 4 -- the tab buttons, packed from the left
+local TAB_X, TAB_Y = 8, -36 -- the tab buttons, each as wide as its label, packed from the left (UI.TabStrip)
 local ADVANCED_BLURB_H = 54 -- the blurb over the reference editor on the Advanced tab
 
 local TABS = {
@@ -80,6 +80,7 @@ local shareButton, shareHelp
 local rehearseButton, popButton, importButton
 local placeRows -- the Review tab's rows (ReviewTab's placeOrder), placed again as Share note shows or hides
 local tabButtons, tabFrames = {}, {}
+local tabRow -- the tab buttons' row (UI.TabStrip's UI.Flow), placed again as the Advanced tab shows or hides
 local controls = {} -- the Review tab's controls, which refresh() redraws
 local currentTab = "review"
 local selectedBoss
@@ -106,13 +107,15 @@ local function label(parent, text, font)
     return fs
 end
 
-local function button(parent, text, width)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+local function button(parent, text)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontButtonSmall)
     b:SetHighlightFontObject(CRTFontButtonSmallHighlight)
     b:SetDisabledFontObject(CRTFontButtonSmallDisable)
-    b:SetSize(width, 20)
     b:SetText(text)
+    b:SetHeight(20)
+    UI.FitButton(b)
     return b
 end
 
@@ -383,6 +386,23 @@ local function placeShare(wide)
     return shown
 end
 
+-- How wide the second row's buttons at the right are, each with its (?): wide, Import reminders, Rehearse, Pop out
+-- and Share note when it shows; else Rehearse and Pop out. ReviewTab's placeOrder picks wide only when they fit
+-- beside the checkboxes at the text size now.
+local function rowTwoWidth(wide)
+    if not (popButton and rehearseButton) then
+        return 0
+    end
+    local w = rehearseButton:GetWidth() + popButton:GetWidth() + 2 * HELP_ROOM
+    if wide then
+        w = w + (importButton and importButton:GetWidth() + HELP_ROOM or 0)
+        if shareButton and shareButton:IsShown() then
+            w = w + shareButton:GetWidth() + HELP_ROOM
+        end
+    end
+    return w
+end
+
 local function buildReview(f)
     reviewFrame = f
     local tab = ReviewTab.Build(f, {
@@ -445,6 +465,7 @@ local function buildReview(f)
         pullLabel = pullLabel,
         showingReference = showingReference,
         placeShare = placeShare,
+        rowTwoWidth = rowTwoWidth,
     })
     placeRows = tab.placeOrder
     view, holder, recent, emptyLabel, unnamedHelp, controls = tab.view, tab.holder, tab.recent, tab.emptyLabel, tab.unnamedHelp, tab.controls
@@ -894,12 +915,12 @@ end
 -- Left to right: Rehearse, Pop out and Share note (placeShare), each with its (?) just after it
 -- (UI.HelpRight), so each button stands HELP_ROOM left of the next one.
 local function buildPopControls()
-    popButton = button(reviewFrame, "Pop out", 90)
+    popButton = button(reviewFrame, "Pop out")
     popButton:SetScript("OnClick", togglePopout)
     UI.HelpRight(popButton, "Pop out", "Moves the timeline into a window of its own that you can drag and resize. Dock, the window's X or Escape puts it back.")
 
     -- Rehearse: see Timeline:Rehearse above.
-    rehearseButton = button(reviewFrame, TEXT.rehearse, 90)
+    rehearseButton = button(reviewFrame, TEXT.rehearse)
     rehearseButton:SetPoint("RIGHT", popButton, "LEFT", -HELP_ROOM, 0)
     rehearseButton:SetScript("OnClick", function()
         Timeline:Rehearse()
@@ -907,9 +928,7 @@ local function buildPopControls()
     UI.HelpRight(rehearseButton, TEXT.rehearse, TEXT.rehearseHelp)
 
     -- Import reminders: the paste window (Timeline/ImportWindow.lua), as wide as its label
-    importButton = button(reviewFrame, TEXT.importReminders, 90)
-    local importText = importButton:GetFontString()
-    importButton:SetWidth(UI.PanelButtonWidth(importText and importText:GetStringWidth() or 0))
+    importButton = button(reviewFrame, TEXT.importReminders)
     importButton:SetScript("OnClick", function()
         if CRT.TimelineImportWindow then
             CRT.TimelineImportWindow.Open()
@@ -920,7 +939,7 @@ local function buildPopControls()
     reviewFrame:SetScript("OnUpdate", followRehearsal)
 
     -- Share note: see shareNote above.
-    shareButton = button(reviewFrame, TEXT.shareNote, 90)
+    shareButton = button(reviewFrame, TEXT.shareNote)
     shareButton:SetScript("OnClick", shareNote)
     shareHelp = UI.HelpRight(shareButton, TEXT.shareNote, TEXT.shareHelp)
     shareButton:Hide()
@@ -931,7 +950,7 @@ local function buildPopControls()
     dockedNote:SetAllPoints(tabFrames.review)
     local text = label(dockedNote, "The timeline is in its own window.", "CRTFontNormal")
     text:SetPoint("CENTER", 0, 20)
-    local back = button(dockedNote, "Bring it back", 130)
+    local back = button(dockedNote, "Bring it back")
     back:SetPoint("TOP", text, "BOTTOM", 0, -12)
     back:SetScript("OnClick", dock)
     dockedNote:Hide()
@@ -1017,16 +1036,10 @@ end
 -- Shows the tab buttons that are allowed now, packed from the left; a hidden tab that was selected
 -- goes back to Review. Run each time the page shows or refreshes, so /crt dev needs no /reload.
 local function updateTabs()
-    local x = TAB_X
     for _, tab in ipairs(TABS) do
-        local b = tabButtons[tab.key]
-        local on = tabAllowed(tab.key)
-        b:SetShown(on)
-        if on then
-            b:SetPoint("TOPLEFT", x, TAB_Y)
-            x = x + TAB_W + TAB_GAP
-        end
+        tabButtons[tab.key]:SetShown(tabAllowed(tab.key))
     end
+    tabRow:Layout()
     if not tabAllowed(currentTab) then
         currentTab = "review"
         for _, tab in ipairs(TABS) do
@@ -1071,7 +1084,7 @@ local function selectTab(key)
 end
 
 -- Opens the Timeline on its Advanced tab with text in the reference box, ready to fill in and Save (the
--- Encounter Journal's Export Abilities, Timeline/JournalExport.lua). The tab is only there with /crt dev
+-- Encounter Journal's Export abilities, Timeline/JournalExport.lua). The tab is only there with /crt dev
 -- open; without it this says so in chat.
 function Timeline:OpenReferenceText(text)
     if not Timeline.DevMode() then
@@ -1123,23 +1136,8 @@ local function build(pf)
     title:SetPoint("TOPLEFT", 8, -8)
     UI.HelpRight(title, "The Timeline", "Every raid boss pull is saved on its own: the boss's casts and players' deaths. Pick a boss on the Review tab to see its ability timeline, and click a pull under Recent pulls to see that pull's deaths on it; scroll the wheel to move through the rows (or along the time when they all fit), Shift + wheel or right-drag to move along the time, and Ctrl + wheel to zoom. Drag along the time axis or across the track to zoom to that stretch; right-click the axis to show the whole fight again. How much time shows at first is Seconds visible on the Settings tab.\n\nAn ability timeline is the boss's planned timeline, with this boss's pulls laid over it.\n\nThe red lines are phase changes: Shift-drag one to move it, right-click a moved line to put it back.\n\nA row's colour says what the ability is (a dot for each extra type):\n" .. CRT.TimelineReference.Legend())
 
-    for i, tab in ipairs(TABS) do
-        local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        b:SetSize(TAB_W, 26)
-        b:SetPoint("TOPLEFT", TAB_X + (i - 1) * (TAB_W + TAB_GAP), TAB_Y)
-        skin(b, 0.4)
-        b.sel = b:CreateTexture(nil, "ARTWORK")
-        b.sel:SetAllPoints()
-        b.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
-        b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-        b.text:SetPoint("CENTER")
-        b.text:SetText(tab.label)
-        b:SetScript("OnClick", function()
-            selectTab(tab.key)
-        end)
-        tabButtons[tab.key] = b
-        UI:RegisterTab(b)
-
+    tabButtons, tabRow = UI.TabStrip(pf, TABS, TAB_X, TAB_Y, selectTab)
+    for _, tab in ipairs(TABS) do
         local f = CreateFrame("Frame", nil, pf)
         f:SetPoint("TOPLEFT", 0, -66)
         f:SetPoint("BOTTOMRIGHT", 0, 0)

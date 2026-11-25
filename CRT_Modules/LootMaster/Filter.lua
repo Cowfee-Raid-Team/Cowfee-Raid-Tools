@@ -12,7 +12,7 @@ local ADDON, CRT = ...
 -- item is let through (Alex, 2026-10-19: "Let it through"), and LM:FilterLoot says so in chat. The parts that
 -- can be read still count. /crt loot test samples items that pass (LootMaster/Test.lua); the session start
 -- from real loot is to call LM:FilterLoot.
--- Sync Master Loot sends it as its F part (LootMaster/Sync.lua), cleaned on receipt by LM.CleanFilter.
+-- Sync master loot sends it as its F part (LootMaster/Sync.lua), cleaned on receipt by LM.CleanFilter.
 -- CRT Looting sends the leader's filter with its O and H messages (LM.FilterFields, LM.ParseFilterFields;
 -- LootMaster/Looting.lua): the leader's CRT rolls only on items in it, and a raider's passes only those
 -- (LootMaster/Rolls.lua). Alex, 2026-10-21: an item outside the filter gets the game's normal roll.

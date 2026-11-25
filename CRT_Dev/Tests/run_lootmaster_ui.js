@@ -112,7 +112,7 @@ local function sized(btn, what, w, h)
 end
 local CAPS, PAD = UI.PANEL_BUTTON_PAD, UI.HEADER_BUTTON_PAD
 look("classic")
-local hb = UI.HeaderButton(mock(), "All Loot Rolls", function() clicked = false end)
+local hb = UI.HeaderButton(mock(), "All loot rolls", function() clicked = false end)
 local lw = 14 * 6
 sized(hb, "header classic", lw + 2 * CAPS, 20)
 eq(hb.Left.alpha, 1, "header classic: template art shown")
@@ -125,7 +125,7 @@ sized(hb, "header relabelled", math.max(44, 5 * 6 + 2 * PAD), 20)
 eq(hb.label.text, "Rolls", "header relabelled: its text")
 look("classic")
 sized(hb, "header relabelled classic", 5 * 6 + 2 * CAPS, 20)
-hb:SetLabel("All Loot Rolls")
+hb:SetLabel("All loot rolls")
 look("modern")
 sized(UI.HeaderButton(mock(), "Go", function() end), "short header", 44, 20)
 -- a button made while Modern is on is already Modern

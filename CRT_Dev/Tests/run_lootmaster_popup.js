@@ -251,11 +251,11 @@ do
   CRT.db.ui.bgAlpha = nil
   UI:ApplyOpacity()
 end
--- the title bar, right to left: its X and All Loot Rolls, on the bar's centre line; the (i) after the title
+-- the title bar, right to left: its X and All loot rolls, on the bar's centre line; the (i) after the title
 local x = strip and rawget(strip, "close")
 check(x and x.template == "UIPanelCloseButton" and x.parent == strip, "title bar: an X in every theme")
 check(x and x.points[1][1] == "RIGHT" and x.points[1][3] == nil or (x and x.points[1][2] == -2), "title bar: the X at the right")
-check(strip.answers.points[1][2] == x and strip.answers.points[1][1] == "RIGHT" and strip.answers.points[1][5] == 0, "title bar: All Loot Rolls left of the X, centred")
+check(strip.answers.points[1][2] == x and strip.answers.points[1][1] == "RIGHT" and strip.answers.points[1][5] == 0, "title bar: All loot rolls left of the X, centred")
 local hp = strip.help.points[#strip.help.points]
 check(strip.help.crtHelpText == strip.title and hp[1] == "LEFT" and hp[2] == strip.title and hp[5] == 0, "title bar: the (i) just right of the title's text (UI.HelpRight), centred")
 check(strip.help.crtHelpTarget == strip.title and strip.help.parent == strip, "title bar: the (i) is the strip's own (strip:SetHelp)")

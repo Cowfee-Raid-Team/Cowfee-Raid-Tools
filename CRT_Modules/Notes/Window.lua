@@ -16,7 +16,7 @@ local NoteWindow = { windows = {} }
 CRT.NoteWindow = NoteWindow
 
 -- Whether the note windows may show where you are: in a raid instance, or anywhere when "Show outside of
--- raid" is ticked (Notes Settings, off by default), or during a rehearsal you started. Dungeons, delves, battlegrounds and the open
+-- raid" is ticked (Notes settings, off by default), or during a rehearsal you started. Dungeons, delves, battlegrounds and the open
 -- world all count as outside.
 function NoteWindow.AllowedHere()
     local Alerts = CRT.Alerts
@@ -1490,7 +1490,7 @@ CRT.UI:OnTheme(function()
     end
 end)
 
--- One preview per window, so Notes Settings can preview one window or all three (its group button).
+-- One preview per window, so Notes settings can preview one window or all three (its group button).
 NoteWindow.PREVIEW_KEYS = { window = "note-timers", assignments = "note-assignments", personal = "note-personal" }
 for windowKey, previewKey in pairs(NoteWindow.PREVIEW_KEYS) do
     CRT.UI:RegisterPreview(previewKey, function(on)

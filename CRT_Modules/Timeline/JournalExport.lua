@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- Export Abilities: a button on the game's Encounter Journal, on the row of its tabs at the bottom right
+-- Export abilities: a button on the game's Encounter Journal, on the row of its tabs at the bottom right
 -- (clear of the boss's name and the difficulty dropdown), while a boss is open. It reads that boss (EncounterJournal.encounterID, set by EncounterJournal_DisplayEncounter) and the
 -- difficulty picked in the Journal (EJ_GetDifficulty), and writes a starting reference timeline for it:
 -- the Boss, Difficulty and Encounter lines, then one line per Journal ability with its spell ID, each a
@@ -14,7 +14,7 @@ local Export = {}
 CRT.TimelineJournalExport = Export
 
 local TEXT = {
-    button = "Export Abilities",
+    button = "Export abilities",
     tip = "Cowfee Raid Tools: writes this boss's abilities as an ability timeline, with every spell and its ID, for you to copy.",
     title = "Abilities for %s (Ctrl+C to copy)",
     send = "Send to Timeline",
@@ -200,9 +200,10 @@ local function build()
     end
     -- the boss panel holds it, so it hides with the panel; it sits under the Journal's bottom right corner
     button = CreateFrame("Button", nil, info, "UIPanelButtonTemplate")
-    button:SetSize(140, 24)
+    button:SetHeight(24)
     button:SetPoint("TOPRIGHT", EncounterJournal, "BOTTOMRIGHT", -6, -2)
     button:SetText(TEXT.button)
+    CRT.UI.FitButton(button) -- as wide as its label
     button:SetScript("OnClick", function()
         Export:Run()
     end)

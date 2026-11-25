@@ -125,6 +125,9 @@ function SubTabs.Build(parent, o)
     end
     s:Layout()
     s:Select(picked[o.owner])
+    UI:OnFonts(function()
+        s:Layout() -- a text size change: each tab measures its label again
+    end)
     return s
 end
 
@@ -152,6 +155,7 @@ function SubTabs.AddTab(s, parent, entry)
         b.dot:SetMask("Interface\\CharacterFrame\\TempPortraitAlphaMask") -- round, as the Mech Alerts list's dots
     end
     b.dot:Hide()
+    b.crtFixedWidth = true -- the strip sizes its tabs (widths, below), not UI:FitTab
     b:SetScript("OnClick", function()
         local changed = s.current ~= key
         s:Select(key)

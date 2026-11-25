@@ -50,7 +50,7 @@ local NUMBER_LATE = 0.25
 local WAKE_LATE = 0.001 -- a wake timer comes this much after its moment, so the moment has surely passed
 
 local NOTICE = {
-    speech = "Raid Notes: your note lines are now read out even with the note callout off. Untick 'Read them out' on Raid Notes > Alert Settings to stop it.",
+    speech = "Raid Notes: your note lines are now read out even with the note callout off. Untick 'Read them out' on Raid Notes > Alert settings to stop it.",
 }
 
 local Speech = {

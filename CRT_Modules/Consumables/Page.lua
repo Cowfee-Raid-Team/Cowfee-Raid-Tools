@@ -44,13 +44,15 @@ local function skin(frame, alpha)
     frame:SetBackdropBorderColor(GRAY[1], GRAY[2], GRAY[3], 1)
 end
 
-local function makeButton(parent, label, width, height)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+local function makeButton(parent, label, height)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontNormal)
     b:SetHighlightFontObject(CRTFontHighlight)
     b:SetDisabledFontObject(CRTFontDisable)
-    b:SetSize(width, height or 26)
     b:SetText(label)
+    b:SetHeight(height or 26)
+    UI.FitButton(b)
     return b
 end
 
@@ -213,7 +215,7 @@ local function buildCategoryRows(pf)
     local top = -156
     for i = 1, #Consumables.CATEGORIES do
         local row = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        row:SetSize(LEFT_W, CAT_ROW_H - 4)
+        row:SetSize(LEFT_W, CAT_ROW_H - 4) -- fixed width: a list row as wide as its column, its name inside it
         row:SetPoint("TOPLEFT", pf, "TOPLEFT", 8, top - (i - 1) * CAT_ROW_H)
         skin(row, 0.5)
 
@@ -275,7 +277,7 @@ local function itemRow(index)
     row:SetScript("OnReceiveDrag", function()
         drop(selected)
     end)
-    row.remove = makeButton(row, "Remove", 58, 22)
+    row.remove = makeButton(row, "Remove", 22)
     row.remove:SetPoint("RIGHT", -4, 0)
     row.remove:SetScript("OnClick", function()
         Consumables:RemoveExtra(selected, row.itemId)
@@ -377,7 +379,7 @@ local function build(pf)
     UI.Tint(line, "SetColorTexture", "heading")
     marker:Hide()
 
-    local preview = makeButton(pf, TEXT.test, 160)
+    local preview = makeButton(pf, TEXT.test)
     preview:SetPoint("TOPRIGHT", pf, "TOPRIGHT", -8, -10)
     preview:SetScript("OnClick", function()
         CRT.ConsumablesDisplay:Preview()

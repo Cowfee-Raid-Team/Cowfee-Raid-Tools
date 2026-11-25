@@ -412,7 +412,7 @@ deliver("Solex-Sargeras")
 LM.incoming = nil
 
 -- 8. Response colours are the raid's, not yours: Halo runs loot and you, a raider, have your own saved set with
--- other colours. Your popup and All Loot Rolls window (inc.responses, inc.view) take the looter's colours only.
+-- other colours. Your popup and All loot rolls window (inc.responses, inc.view) take the looter's colours only.
 GROUP = { names = { "Solex-Sargeras", "Halo-Sargeras" }, leader = "Halo-Sargeras" }
 LM.authority = nil
 CRT.db.lootmaster.responses = { { key = "bis", label = "Mine", color = { 1, 1, 1 }, weight = 100 }, { key = "pass", label = "Pass", color = { 0, 0, 0 }, weight = 0 } }
@@ -424,7 +424,7 @@ local function hexOf(c) return c and string.format("%02x%02x%02x", math.floor(c[
 inc = LM.incoming
 eq(inc and hexOf(inc.responses[1].color), "3ddb59", "response colours: your popup's BiS is the looter's colour, not your own")
 eq(inc and inc.responses[1].label, "BiS", "response colours: and the looter's label")
-eq(inc and hexOf(inc.view:Response("pass").color), "8a8a8a", "response colours: All Loot Rolls shows the looter's Pass colour")
+eq(inc and hexOf(inc.view:Response("pass").color), "8a8a8a", "response colours: All loot rolls shows the looter's Pass colour")
 eq(hexOf(LM:Responses()[1].color), "ffffff", "response colours: your own set is only for sessions you run")
 CRT.db.lootmaster.responses = nil
 LM.incoming = nil

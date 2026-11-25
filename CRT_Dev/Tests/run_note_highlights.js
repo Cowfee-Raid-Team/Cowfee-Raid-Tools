@@ -643,10 +643,10 @@ H:ResetGroup()
 NW:Changed()
 step()
 
--- settings: Raid Notes > Notes Settings > Highlights (Highlights/Settings.lua) -----------------------------
+-- settings: Raid Notes > Notes settings > Highlights (Highlights/Settings.lua) -----------------------------
 check(pages.highlights == nil, "settings: no page of its own in the menu")
 local pf = newObj("Frame", UIParent)
--- the Notes Settings tab's helpers, stood in for: its check box (greyed under enabledIf), heading and refresh
+-- the Notes settings tab's helpers, stood in for: its check box (greyed under enabledIf), heading and refresh
 local pageControls = {}
 local pageHelpers = {
   check = function(parent, x, y, label, enabledIf, getter, setter)

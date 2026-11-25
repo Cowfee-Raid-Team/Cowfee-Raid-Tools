@@ -502,7 +502,7 @@ else
   slash("dev labels")
 end
 
--- /crt loot alone: your loot popup and All Loot Rolls. Loot History has no word (it opens from the menu); the
+-- /crt loot alone: your loot popup and All loot rolls. Loot History has no word (it opens from the menu); the
 -- leader's words come after /crt loot.
 do
   local LM = CRT.LootMaster
@@ -513,19 +513,19 @@ do
   LM.incoming = { id = "t1", items = {}, mine = {}, view = {} }
   local before = #shownPages
   local out = slash("loot")
-  check(calls.popup == 1 and calls.answers == 1, "/crt loot opens your loot popup and All Loot Rolls")
+  check(calls.popup == 1 and calls.answers == 1, "/crt loot opens your loot popup and All loot rolls")
   check(not out:find("Unknown command", 1, true), "/crt loot runs: " .. out)
   check(#shownPages == before, "/crt loot opens no page (Loot History has no word)")
   LM.incoming = nil
   out = slash("loot")
-  check(calls.answers == 2 and calls.popup == 1, "/crt loot with no session opens All Loot Rolls (the last session, or none yet), no answer popup")
+  check(calls.answers == 2 and calls.popup == 1, "/crt loot with no session opens All loot rolls (the last session, or none yet), no answer popup")
   LM.ShowPopup, LM.ShowAnswers, LM.incoming = realPopup, realAnswers, was
   before = #shownPages
   out = slash("loot settings")
   check(shownPages[before + 1] == "lootmaster" and not out:find("turned off", 1, true), "/crt loot settings opens Loot Master: " .. out)
   out = slash("loot test")
   check(not out:find("turned off", 1, true) and not out:find("Unknown command", 1, true), "/crt loot test runs: " .. out)
-  check(help:find("/crt loot|r - open your loot popup and All Loot Rolls", 1, true) ~= nil, "/crt help lists /crt loot")
+  check(help:find("/crt loot|r - open your loot popup and All loot rolls", 1, true) ~= nil, "/crt help lists /crt loot")
   check(help:find("/crt loot test|r", 1, true) ~= nil, "/crt help lists /crt loot test")
   check(not help:find("Loot History", 1, true), "/crt help names no Loot History word")
   if LM.current then LM:End() end
