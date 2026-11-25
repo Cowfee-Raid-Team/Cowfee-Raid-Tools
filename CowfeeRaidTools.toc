@@ -295,6 +295,7 @@ CRT_Dev\Dev\Loot.lua
 CRT_Dev\Dev\BossDebugPanel.lua
 CRT_Dev\Dev\KickProbe.lua
 CRT_Dev\Dev\KickPerf.lua
+CRT_Dev\Dev\MemProbe.lua
 CRT_Dev\Dev\KickSetupExport.lua
 CRT_Dev\Dev\DevPage.lua
 #@end-do-not-package@

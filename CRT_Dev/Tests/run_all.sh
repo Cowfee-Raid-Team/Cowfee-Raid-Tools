@@ -226,6 +226,7 @@ g "timeline healers" && { node run_timeline_healers.js "$W" 2>&1 | tail -300; ec
 g "timeline slots" && { node run_timeline_slots.js "$W" 2>&1 | tail -300; echo "exit ${PIPESTATUS[0]}"; }
 g "healer order" && { node run_healer_order.js "$W" 2>&1 | tail -200; echo "exit ${PIPESTATUS[0]}"; }
 g "winlog" && { node run_winlog.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
+g "memprobe" && { node run_memprobe.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "timeline undo" && { node run_timeline_undo.js "$W" 2>&1 | tail -3; echo "exit ${PIPESTATUS[0]}"; }
 g "timeline import" && { node run_timeline_import.js "$W" 2>&1 | tail -30; echo "exit ${PIPESTATUS[0]}"; }
 g "notes order" && { node run_notesorder.js "$W" 2>&1 | tail -1; }

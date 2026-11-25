@@ -1,0 +1,313 @@
+local ADDON, CRT = ...
+
+-- DEVELOPER ONLY. /crt dev mem [seconds] (default 15, 1 to 120): what in CRT makes Lua garbage, measured in game
+-- (#1315). For the given seconds it wraps CRT's own frames' OnUpdate and OnEvent scripts and the C_Timer callbacks
+-- CRT schedules, reads collectgarbage("count") before and after each call, then prints the 10 that made the most KB,
+-- with their call counts, and the total. Everything it wrapped is put back when it ends; a wrapper still in place
+-- (a script CRT hooked on top of it meanwhile) only passes the call on. No effect when it isn't running.
+--   CRT's frames: those named CowfeeRaidTools..., and every frame the game says CRT's files made
+--   (ScriptRegion:GetSourceLocation, which needs the enableSourceLocationLookup CVar on, read at creation: the
+--   probe says so when it is off; /console enableSourceLocationLookup 1, then /reload). Protected frames are left
+--   alone (setting a script on one would taint it).
+--   CRT's timers: C_Timer.After, NewTimer and NewTicker are wrapped while it runs, and a call from a CRT file (by
+--   debugstack) has its callback measured under the line that scheduled it. Timers and tickers made before the
+--   probe started aren't measured. While it runs, the game's own C_Timer calls go through the wrapper too, so it
+--   never starts in combat.
+-- A call's KB is what the Lua heap grew by during it: a garbage collector step in the middle reads as 0.
+-- Game calls (warcraft.wiki.gg, read 2026-11-25): EnumerateFrames([frame]) (every non-forbidden frame),
+-- ScriptRegion:GetSourceLocation() ("path\to\file.lua:10", "UnknownFile" with the CVar off), Frame:GetScript,
+-- Frame:SetScript, ScriptRegion:IsProtected, Frame:GetName, collectgarbage("count") (KB of Lua memory in use),
+-- debugstack(start, count1, count2), C_Timer.After/NewTimer/NewTicker, InCombatLockdown(),
+-- UpdateAddOnMemoryUsage(), GetAddOnMemoryUsage(name) (KB, cached by UpdateAddOnMemoryUsage),
+-- C_CVar.GetCVar(name).
+
+local Probe = { DEFAULT = 15, MAX = 120, TOP = 10, KINDS = { "OnUpdate", "OnEvent" } }
+CRT.MemProbe = Probe
+
+local P = { running = false, stats = {}, wrapped = {}, keys = {} }
+Probe.state = P
+
+local function heapKB()
+    return collectgarbage("count")
+end
+
+-- One call's garbage on its stat: the heap's growth since before (0 when a collector step shrank it).
+local function record(key, before)
+    local grew = heapKB() - before
+    local st = P.stats[key]
+    if not st then
+        st = { calls = 0, kb = 0 }
+        P.stats[key] = st
+    end
+    st.calls = st.calls + 1
+    if grew > 0 then
+        st.kb = st.kb + grew
+    end
+end
+
+-- "CRT_Modules/Notes/Window.lua:1437" from a path or a stack line naming a CRT file, else nil.
+function Probe.CrtPlace(text)
+    if type(text) ~= "string" then
+        return nil
+    end
+    local file, line = text:match("AddOns[/\\]" .. ADDON .. "[/\\]([^\"%]:]-%.lua)\"?%]?:(%d+)")
+    if not file then
+        return nil
+    end
+    return (file:gsub("\\", "/")) .. ":" .. line
+end
+
+local function sourceOf(frame)
+    if not frame.GetSourceLocation then
+        return nil
+    end
+    local ok, place = pcall(frame.GetSourceLocation, frame)
+    return ok and place or nil
+end
+
+-- The frame's label when it is CRT's, else nil.
+local function crtLabel(frame)
+    local okName, name = pcall(frame.GetName, frame)
+    name = okName and type(name) == "string" and name or nil
+    local place = Probe.CrtPlace(sourceOf(frame))
+    if place then
+        return name and (name .. " (" .. place .. ")") or place
+    end
+    if name and name:find("^" .. ADDON) then
+        return name
+    end
+    return nil
+end
+
+local function isProtected(frame)
+    local ok, protected = pcall(frame.IsProtected, frame)
+    return ok and protected and true or false
+end
+
+-- The stat key for an event on a frame, made once per frame and event.
+local function eventKey(label, event)
+    local byEvent = P.keys[label]
+    if not byEvent then
+        byEvent = {}
+        P.keys[label] = byEvent
+    end
+    local key = byEvent[event]
+    if not key then
+        key = "OnEvent " .. tostring(event) .. "  " .. label
+        byEvent[event] = key
+    end
+    return key
+end
+
+local function wrapScript(frame, kind, label)
+    local okGet, original = pcall(frame.GetScript, frame, kind)
+    if not (okGet and type(original) == "function") then
+        return false
+    end
+    local wrapper
+    if kind == "OnEvent" then
+        wrapper = function(self, event, ...)
+            if not P.running then
+                return original(self, event, ...)
+            end
+            local before = heapKB()
+            original(self, event, ...)
+            record(eventKey(label, event), before)
+        end
+    else
+        local key = kind .. "  " .. label
+        wrapper = function(...)
+            if not P.running then
+                return original(...)
+            end
+            local before = heapKB()
+            original(...)
+            record(key, before)
+        end
+    end
+    if not pcall(frame.SetScript, frame, kind, wrapper) then
+        return false
+    end
+    P.wrapped[#P.wrapped + 1] = { frame = frame, kind = kind, original = original, wrapper = wrapper }
+    return true
+end
+
+-- A timer callback measured under the CRT line that scheduled it; a call from anywhere else passes through as it is.
+local function measured(fn)
+    if not P.running or type(fn) ~= "function" then
+        return fn
+    end
+    local place = Probe.CrtPlace(debugstack and debugstack(3, 1, 0))
+    if not place then
+        return fn
+    end
+    local key = "timer  " .. place
+    return function(...)
+        if not P.running then
+            return fn(...)
+        end
+        local before = heapKB()
+        fn(...)
+        record(key, before)
+    end
+end
+
+local function wrapTimers()
+    local T = C_Timer
+    if type(T) ~= "table" then
+        return
+    end
+    local after, newTimer, newTicker = T.After, T.NewTimer, T.NewTicker
+    P.timers = { After = after, NewTimer = newTimer, NewTicker = newTicker }
+    if after then
+        T.After = function(seconds, fn)
+            return after(seconds, measured(fn))
+        end
+    end
+    if newTimer then
+        T.NewTimer = function(seconds, fn)
+            return newTimer(seconds, measured(fn))
+        end
+    end
+    if newTicker then
+        T.NewTicker = function(seconds, fn, iterations)
+            return newTicker(seconds, measured(fn), iterations)
+        end
+    end
+end
+
+local function restoreTimers()
+    local saved = P.timers
+    if saved and type(C_Timer) == "table" then
+        for k, fn in pairs(saved) do
+            C_Timer[k] = fn
+        end
+    end
+    P.timers = nil
+end
+
+-- Puts back every script still the probe's own; one CRT set or hooked meanwhile stays (its wrapper passes through).
+local function restoreScripts()
+    for _, w in ipairs(P.wrapped) do
+        local ok, now = pcall(w.frame.GetScript, w.frame, w.kind)
+        if ok and now == w.wrapper then
+            pcall(w.frame.SetScript, w.frame, w.kind, w.original)
+        end
+    end
+    P.wrapped = {}
+end
+
+local function addonKB()
+    if not (UpdateAddOnMemoryUsage and GetAddOnMemoryUsage) then
+        return nil
+    end
+    local ok = pcall(UpdateAddOnMemoryUsage)
+    local okKB, kb = pcall(GetAddOnMemoryUsage, ADDON)
+    return ok and okKB and tonumber(kb) or nil
+end
+
+-- The stats as a list, the most KB first: { key, calls, kb }; and the total KB and calls.
+function Probe.Top()
+    local list, kb, calls = {}, 0, 0
+    for key, st in pairs(P.stats) do
+        list[#list + 1] = { key = key, calls = st.calls, kb = st.kb }
+        kb, calls = kb + st.kb, calls + st.calls
+    end
+    table.sort(list, function(a, b)
+        if a.kb ~= b.kb then
+            return a.kb > b.kb
+        end
+        return a.key < b.key
+    end)
+    return list, kb, calls
+end
+
+function Probe:Report()
+    local list, kb, calls = Probe.Top()
+    local seconds = P.seconds or 0
+    CRT:Print(string.format("Memory probe, %d s: CRT's scripts and timers made %.1f KB in %d calls (%.1f KB a second).",
+        seconds, kb, calls, seconds > 0 and kb / seconds or 0))
+    for i = 1, math.min(Probe.TOP, #list) do
+        local e = list[i]
+        print(string.format("  %2d. %8.1f KB  %6d calls  %s", i, e.kb, e.calls, e.key))
+    end
+    if #list == 0 then
+        print("  Nothing of CRT's ran.")
+    end
+    if P.startAddonKB and P.endAddonKB then
+        print(string.format("  CRT's memory: %.0f KB -> %.0f KB. The whole Lua heap: %.0f KB -> %.0f KB.", P.startAddonKB,
+            P.endAddonKB, P.startHeap or 0, P.endHeap or 0))
+    end
+end
+
+function Probe:Stop()
+    if not P.running then
+        return
+    end
+    P.running = false
+    P.endHeap, P.endAddonKB = heapKB(), addonKB()
+    restoreTimers()
+    restoreScripts()
+    self:Report()
+end
+
+function Probe:Start(seconds)
+    if P.running then
+        CRT:Print("The memory probe is already running.")
+        return false
+    end
+    if InCombatLockdown and InCombatLockdown() then
+        CRT:Print("The memory probe doesn't run in combat. Try again after it.")
+        return false
+    end
+    seconds = math.max(1, math.min(Probe.MAX, math.floor(tonumber(seconds) or Probe.DEFAULT)))
+    P.stats, P.keys, P.wrapped, P.seconds = {}, {}, {}, seconds
+    local frames, named = 0, 0
+    local f = EnumerateFrames and EnumerateFrames()
+    local located = false
+    while f do
+        if not located and sourceOf(f) and sourceOf(f) ~= "UnknownFile" then
+            located = true
+        end
+        local label = crtLabel(f)
+        if label and not isProtected(f) then
+            local any = false
+            for _, kind in ipairs(Probe.KINDS) do
+                any = wrapScript(f, kind, label) or any
+            end
+            if any then
+                frames = frames + 1
+                if not label:find(":%d+") then
+                    named = named + 1
+                end
+            end
+        end
+        f = EnumerateFrames(f)
+    end
+    -- the end is scheduled before the timers are wrapped, so it is never one of the probe's own measurements
+    C_Timer.After(seconds, function()
+        Probe:Stop()
+    end)
+    P.startHeap, P.startAddonKB = heapKB(), addonKB()
+    wrapTimers()
+    P.running = true
+    CRT:Print(string.format("Memory probe on for %d s: %d of CRT's frames with scripts, and the timers CRT starts.", seconds, frames))
+    if not located then
+        CRT:Print("Only CRT's named frames were found (" .. named .. "). For all of them: /console enableSourceLocationLookup 1, then /reload.")
+    end
+    return true
+end
+
+-- Handles "dev mem" and "dev mem <seconds>". Returns false for any other command.
+function Probe:Command(msg)
+    local rest = msg:match("^dev%s+mem%s*$") and "" or msg:match("^dev%s+mem%s+(%S+)%s*$")
+    if not rest then
+        return false
+    end
+    if rest ~= "" and not tonumber(rest) then
+        CRT:Print("Usage: /crt dev mem [seconds], 1 to " .. Probe.MAX .. " (default " .. Probe.DEFAULT .. ").")
+        return true
+    end
+    self:Start(rest ~= "" and tonumber(rest) or Probe.DEFAULT)
+    return true
+end
