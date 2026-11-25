@@ -16,8 +16,9 @@ local ADDON, CRT = ...
 -- (Assign.AdoptInto), never a copy. When a note opens with such lists, a banner over the rows offers it; with two or
 -- more, its Make all makes every one a block at once (Assign.AdoptAll, #1294), after one confirmation that lists them.
 -- A block the note has is updated by the first list named like it only; a later one becomes its own block ("Name 2").
--- Make all changes the session's text only, in one step: nothing reaches the note until Save (the editor has no undo:
--- closing without Save drops it).
+-- Make all changes the session's text only, in one step: nothing reaches the note until Save, and Undo takes it back.
+-- Every change here is a step for Undo (Notes/EditorUndo.lua), typing one per burst; Undo puts back the block shown then
+-- (EA.Restored).
 -- Called by the editor:
 --   EA.Build(left)   makes the view, hidden, and the banner
 --   EA.Toggle()      Add assignment: opens the view (on the row selected for Quick fill's block, if it is one), or
@@ -27,6 +28,7 @@ local ADDON, CRT = ...
 --                    of room; again: drawn once more in the same Refresh, the group lists as found
 --   EA.Close()       back to the rows
 --   EA.AskMakeAll()  Make all: asked first, every group list made a block in the session
+--   EA.Restored(key) Undo or Redo put a text back: the block shown then
 
 local UI = CRT.UI
 local Notes = CRT.Notes
@@ -202,10 +204,17 @@ local function write()
     return true
 end
 
-local function changed(kind)
+-- kind: "name", "times" or "rows"; typing: { first, last } (the GetTime() of the first and last key) when typed.
+local function changed(kind, typing)
     local b = A.block
     if not b then
         return
+    end
+    local name = marked(Assign.CleanName(b.name or ""))
+    if type(typing) == "table" then
+        Editor.StepTyping({ key = kind, first = typing.first, last = typing.last }, "typing", name)
+    else
+        Editor.Step("assign", name)
     end
     if kind == "times" then
         local text = CRT.AlertDraft and CRT.AlertDraft.trim(A.ui.timesEdit:GetText()) or ""
@@ -381,8 +390,11 @@ function EA.AskAdopt(heading)
             return
         end
         if key then
+            local blk = Assign.Read(W.session:Text(), key)
+            Editor.Step("updateBlock", marked(Assign.CleanName(blk and blk.name or key)))
             update(heading, key)
         else
+            Editor.Step("makeBlock", marked(name))
             adopt(heading)
         end
     end
@@ -445,6 +457,7 @@ function EA.AskRemove()
             return
         end
         A.ui:Flush()
+        Editor.Step("removeAssign", marked(name))
         apply(Assign.Replace(W.session:Text(), key, {}))
         newBlock()
         Editor.Refresh()
@@ -549,6 +562,17 @@ function EA.Build(left)
         end,
         changed = changed,
         readOnly = readOnly,
+        -- Undo (Notes/EditorUndo.lua): Ctrl+Z and Ctrl+Y in a box, and a box letting go ends its typing step
+        keyDown = function(box, key)
+            if CRT.NoteEditorUndo then
+                CRT.NoteEditorUndo.BoxKey(box, key)
+            end
+        end,
+        typingEnded = function()
+            if CRT.NoteEditorUndo then
+                CRT.NoteEditorUndo.EndBurst()
+            end
+        end,
     })
     -- Done, bottom right of the block, back to the rows
     A.done = UI.PanelButton(A.ui.content, TEXT.done, 22, function()
@@ -635,6 +659,17 @@ function EA.Toggle()
     Editor.Refresh()
 end
 
+-- Undo or Redo put back a text (Notes/EditorUndo.lua) while the view is open: the block it showed then (key), read from
+-- that text, or a new block when it showed one not written yet (or the text no longer has it).
+function EA.Restored(key)
+    if not (W.assignOn and A.ui and W.session) then
+        return
+    end
+    if not (key and openBlock(key)) then
+        newBlock()
+    end
+end
+
 function EA.Close()
     if A.ui then
         A.ui:Flush()
@@ -701,6 +736,7 @@ function EA.AskMakeAll()
             local _, casts = blockTimers(key)
             return casts
         end })
+        Editor.Step("makeAll", #made) -- one step for Undo
         apply(text)
         W.notice = UI.GoodText(string.format(TEXT.allDone, #made))
         Editor.Refresh()

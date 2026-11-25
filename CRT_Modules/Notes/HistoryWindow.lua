@@ -227,7 +227,20 @@ function H.AskRestore(index)
     local id, version = H.id, when(entry.at)
     local function restore()
         -- the same version still there, and still yours to change
-        if Notes:History(id)[index] ~= entry or not canRestore(Notes:Get(id)) or not Notes:Restore(id, index) then
+        if Notes:History(id)[index] ~= entry or not canRestore(Notes:Get(id)) then
+            CRT:Print(TEXT.failed)
+            return
+        end
+        -- the note editor open on this note, with nothing unsaved, keeps the text before for Undo (#1309)
+        local Editor = CRT.NoteEditor
+        if Editor and Editor.Restoring then
+            Editor.Restoring(id)
+        end
+        local ok = Notes:Restore(id, index)
+        if Editor and Editor.Restoring then
+            Editor.Restoring(nil)
+        end
+        if not ok then
             CRT:Print(TEXT.failed)
             return
         end

@@ -114,6 +114,7 @@ CRT_Modules\Notes\EditorLinks.lua
 CRT_Modules\Notes\EditorAssign.lua
 CRT_Modules\Notes\EditorCheck.lua
 CRT_Modules\Notes\EditorLines.lua
+CRT_Modules\Notes\EditorUndo.lua
 CRT_Modules\Notes\Page.lua
 CRT_Modules\Highlights\Data.lua
 CRT_Modules\Highlights\Changes.lua

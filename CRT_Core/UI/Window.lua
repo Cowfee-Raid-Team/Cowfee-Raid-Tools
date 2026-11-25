@@ -181,6 +181,7 @@ end
 -- UI.TitleStrip(parent, height, opts): opts.framed when parent is a BasicFrameTemplate window (UI.Window);
 -- opts.opaque keeps a framed strip solid whatever the Opacity slider says.
 -- strip:SetTitle(text), strip:SetHelp(title, text) (a (?) right of the title: strip.help),
+-- strip:SetTitleEnd(fn) (header buttons on the right the title keeps clear of, cut short: fitTitle), strip:Layout(),
 -- strip:SetBadge(text or nil, note, colors): colors is { bg, edge, text }; without
 -- it the badge is the orange TEST one. STRIP.neutral is the window's gold text on a dark badge. A note
 -- shows with or without a badge. Its colours and Classic places are in STRIP. A colour written as a
@@ -198,6 +199,7 @@ local STRIP = {
     classicBadgeX = 9, -- the main window's version is 10 from the window's edge; the strip starts 1 in
     framedBadgeY = 2, -- the template's title tile is above the strip's middle
     gap = 8,
+    buttonGap = 4, -- between header buttons on the right (strip:SetTitleEnd)
 }
 STRIP.warning = { bg = STRIP.badgeBg, edge = STRIP.badgeEdge, text = STRIP.badgeText }
 UI.TITLE_STRIP = STRIP
@@ -247,11 +249,61 @@ local function shownWidth(r, pad)
     return (r.GetWidth and r:GetWidth() or 0) + pad
 end
 
+-- A strip with header buttons on its right (strip:SetTitleEnd): how far from its right edge the title must stop, the
+-- frames' widths (each shown one and the gap before it) and a gap; nil when the strip has none.
+local function titleRoom(s)
+    if not s.titleEnd then
+        return nil
+    end
+    local room = STRIP.gap
+    for _, f in ipairs(s.titleEnd() or {}) do
+        room = room + shownWidth(f, STRIP.buttonGap)
+    end
+    return room
+end
+
+-- The title kept clear of the header buttons: one line, cut short (the game's "...") when it would reach them. A centred
+-- Classic title that would reach them moves left first, after the badge and note. Only for a strip with SetTitleEnd.
+local function fitTitle(s, room, leftEnd)
+    local title = s.title
+    local width = s:GetWidth() or 0
+    if width <= 0 then
+        return -- laid out again once sized (OnSizeChanged)
+    end
+    local titleW = title:GetStringWidth() or 0
+    local helpW = s.help and shownWidth(s.help, UI.HELP_GAP or 4) or 0
+    local limit = width - room
+    local x
+    if UI:IsModern() then
+        x = 10
+    elseif s.titleFollows then
+        x = leftEnd + STRIP.gap
+    else
+        local centre = width / 2 + (s.framed and STRIP.classicTitleX or 0)
+        if centre + titleW / 2 + helpW <= limit then
+            return -- centred, and clear of them
+        end
+        x = math.max(leftEnd, STRIP.classicBadgeX) + (leftEnd > STRIP.classicBadgeX and STRIP.gap or 0)
+        title:ClearAllPoints()
+        title:SetPoint("LEFT", s, "LEFT", x, s.framed and STRIP.framedBadgeY or 0)
+    end
+    local room2 = limit - x - helpW
+    if titleW > room2 then
+        title:SetWidth(math.max(1, room2))
+    end
+end
+
 -- Places the title, badge and note for the look. In Classic the title is centred unless the badge and
 -- note reach it; then it follows them. The (?) (strip:SetHelp) always follows the title's text
 -- (UI.HelpRight); in Modern the badge and note come after it: title, (?), badge, note.
 local function layoutStrip(s)
     local title, badge, note = s.title, s.badge, s.note
+    local room = titleRoom(s)
+    if room then
+        title:SetWordWrap(false)
+        title:SetWidth(0) -- its own width again, cut short below when it needs to be
+    end
+    s.titleFollows = false
     title:ClearAllPoints()
     badge:ClearAllPoints()
     note:ClearAllPoints()
@@ -260,6 +312,9 @@ local function layoutStrip(s)
         local afterTitle = s.help or title
         badge:SetPoint("LEFT", afterTitle, "RIGHT", STRIP.gap, 0)
         note:SetPoint("LEFT", badge:IsShown() and badge or afterTitle, "RIGHT", STRIP.gap, 0)
+        if room then
+            fitTitle(s, room, 0)
+        end
         return
     end
     local y = s.framed and STRIP.framedBadgeY or 0
@@ -276,10 +331,14 @@ local function layoutStrip(s)
     -- a strip not sized yet is laid out again when it is (OnSizeChanged)
     if width > 0 and (width - titleW) / 2 + (s.framed and STRIP.classicTitleX or 0) < leftEnd then
         title:SetPoint("LEFT", noteW > 0 and note or badge, "RIGHT", STRIP.gap, 0)
+        s.titleFollows = true
     elseif s.framed then
         title:SetPoint("TOP", s.window, "TOP", STRIP.classicTitleX, STRIP.classicTitleY)
     else
         title:SetPoint("CENTER", s, "CENTER", 0, 0)
+    end
+    if room then
+        fitTitle(s, room, leftEnd)
     end
 end
 
@@ -362,6 +421,15 @@ function UI.TitleStrip(parent, height, opts)
         end
         self.note:SetText(note or "")
         self.note:SetShown(note ~= nil and note ~= "")
+        layoutStrip(self)
+    end
+    -- Header buttons on the right: fn() returns them right to left (the close button first); the title stays one line
+    -- clear of them, cut short when it must. strip:Layout() places it again (a button's label changed).
+    function s:SetTitleEnd(fn)
+        self.titleEnd = fn
+        layoutStrip(self)
+    end
+    function s:Layout()
         layoutStrip(self)
     end
     -- the centred Classic title moves aside when the window narrows

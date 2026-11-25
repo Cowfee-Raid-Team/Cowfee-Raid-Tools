@@ -271,6 +271,7 @@ local function removeKind(kind)
         if not (W.session and not readOnly() and W.session:Text() == text) then
             return
         end
+        Editor.Step(kind == "old" and "removeOld" or "removeStale", n) -- one step for Undo (Notes/EditorUndo.lua)
         Editor.ApplyText(Check.RemoveLines(text, list))
         W.notice = UI.GoodText(n == 1 and TEXT[k.doneOne] or string.format(TEXT[k.done], n))
         Editor.Refresh()

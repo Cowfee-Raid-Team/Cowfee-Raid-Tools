@@ -10,7 +10,9 @@ local ADDON, CRT = ...
 --   Block.Build(parent, opts)   opts: x, y, width, height (the column), nameWidth (optional), state (the host's palette state: its drag
 --                               makes the chips), names = { rows } (a global name), block() (the block, or nil),
 --                               times() (the casts as { { ph, t } }, and whether they are typed), timesText() (the
---                               typed times as text), changed(kind) ("name", "times" or "rows"), readOnly()
+--                               typed times as text), changed(kind, typing) ("name", "times" or "rows"; typing, when
+--                               typed: { first, last }, its first and last key's GetTime()), readOnly(); optional:
+--                               keyDown(box, key) (a key in one of its boxes) and typingEnded() (a box let go)
 --   ui:Refresh()                everything from the block
 --   Block.DragOpts(ui)          the palette drag's handlers for this editor's rows (Palette.Drag)
 -- Typing saves after a short pause, on Enter, or when the box lets go.
@@ -78,7 +80,8 @@ local function setBox(edit, text)
     end
 end
 
-local function makeEdit(parent, width, onType)
+-- ui: the block editor, whose host may take the box's keys (opts.keyDown(box, key): the note editor's Ctrl+Z).
+local function makeEdit(parent, width, onType, ui)
     local e = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
     e:SetAutoFocus(false)
     e.filling = false -- set while the editor fills it, so its own text is never taken as typing
@@ -96,6 +99,11 @@ local function makeEdit(parent, width, onType)
     e:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
     end)
+    if ui and ui.opts.keyDown then
+        e:SetScript("OnKeyDown", function(self, key)
+            ui.opts.keyDown(self, key)
+        end)
+    end
     return e
 end
 
@@ -110,9 +118,13 @@ Editor.__index = Editor
 
 -- Typing ------------------------------------------------------------------------------------------------------------
 
--- A box was typed in: kind is changed once the typing pauses, on Enter, or when the box lets go.
+-- A box was typed in: kind is changed once the typing pauses, on Enter, or when the box lets go. The first and last
+-- key's time go with it (changed's second value), so a host can tell typing from other changes.
 function Editor:Typed(kind)
     self.pending = kind
+    local t = GetTime and GetTime() or 0
+    self.typedFirst = self.typedFirst or t
+    self.typedLast = t
     self.gen = (self.gen or 0) + 1
     local gen = self.gen
     C_Timer.After(L.typingPause, function()
@@ -122,12 +134,16 @@ function Editor:Typed(kind)
     end)
 end
 
--- Saves typing that waits, if any.
-function Editor:Flush()
+-- Saves typing that waits, if any. ending: the box let go (focus lost, Enter): the host's typingEnded follows.
+function Editor:Flush(ending)
     local kind = self.pending
-    self.pending = nil
+    local typing = { first = self.typedFirst, last = self.typedLast }
+    self.pending, self.typedFirst, self.typedLast = nil, nil, nil
     if kind then
-        self.opts.changed(kind)
+        self.opts.changed(kind, typing)
+    end
+    if ending and self.opts.typingEnded then
+        self.opts.typingEnded()
     end
 end
 
@@ -249,7 +265,7 @@ function Editor:RowFrame(r)
             row.label = text
             ui:Typed("rows")
         end
-    end)
+    end, ui)
     f.labelEdit:SetPoint("TOPLEFT", 6, -1)
     f.textEdit = makeEdit(f, L.rowTextW, function(text)
         local row = ui:Row(f.index)
@@ -257,11 +273,11 @@ function Editor:RowFrame(r)
             row.text = text
             ui:Typed("rows")
         end
-    end)
+    end, ui)
     f.textEdit:SetPoint("TOPLEFT", 6 + L.rowLabelW + L.gap + 4, -1)
     for _, e in ipairs({ f.labelEdit, f.textEdit }) do
         e:SetScript("OnEditFocusLost", function()
-            ui:Flush()
+            ui:Flush(true)
         end)
     end
     f.tag = CreateFrame("Button", nil, f)
@@ -452,7 +468,7 @@ function Block.Build(parent, opts)
             block.name = text
             ui:Typed("name")
         end
-    end)
+    end, ui)
     ui.nameEdit:SetPoint("TOPLEFT", L.labelW + 4, 0)
     -- Times: the casts, read only, or typed
     local timesY = -(L.rowH + 4)
@@ -467,12 +483,12 @@ function Block.Build(parent, opts)
     ui.timesHelp = UI.HelpRight(ui.timesText, TEXT.times, TEXT.timesHelp)
     ui.timesEdit = makeEdit(c, opts.width - L.labelW - 8 - UI.HELP_GAP - UI.HELP_SIZE - 6, function()
         ui:Typed("times")
-    end)
+    end, ui)
     ui.timesEdit:SetPoint("TOPLEFT", L.labelW + 4, timesY)
     ui.typedHelp = UI.HelpRight(ui.timesEdit, TEXT.times, TEXT.typedHelp)
     for _, e in ipairs({ ui.nameEdit, ui.timesEdit }) do
         e:SetScript("OnEditFocusLost", function()
-            ui:Flush()
+            ui:Flush(true)
         end)
     end
     -- the rows, scrolled
