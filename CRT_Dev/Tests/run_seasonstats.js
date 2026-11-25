@@ -580,6 +580,11 @@ check(av2.shown and av2.label.text:find("2K", 1, true), "then the night before")
 -- each night opens in Tattlebot
 check(LINKS[av1] and LINKS[av2], "the avoidable damage lines are the shared link line (UI.LinkButton)")
 check(av2.w and av2.w <= 328 and av2.w == av2.label:GetStringWidth() + 2 * UI.LINK_BUTTON.pad + UI.LINK_BUTTON.gap + av2.arrow:GetStringWidth(), "a line is as wide as its text and its >: " .. tostring(av2.w))
+check(av1.point and av2.point and av1.point[3] - av2.point[3] >= UI.LINK_BUTTON.h, "the lines sit a link line's height apart, never overlapping: " .. tostring(av1.point and av1.point[3]) .. " / " .. tostring(av2.point and av2.point[3]))
+av2.label.w = 100 -- as if a longer night's text had capped it
+V.refresh()
+check(av2.label.w == 0, "a reused line's label width is reset before it is measured again: " .. tostring(av2.label.w))
+check(not pageSrc:find("arrowW", 1, true) and not pageSrc:find('more = ">"', 1, true), "no leftover arrow width or > text of its own")
 check(av2.arrow.shown and plain(av2.arrow.text) == ">", "a night in Tattlebot: a > at its right")
 check(av2.arrow.text ~= ">", "the > in the heading colour")
 av2.scripts.OnEnter(av2)

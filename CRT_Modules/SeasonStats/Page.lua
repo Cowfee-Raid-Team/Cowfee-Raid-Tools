@@ -21,7 +21,7 @@ local L = {
     cards = 6, cardsTop = -44, cardH = 54, cardGap = 10, cardPad = 10,
     tableTop = -114, tableW = 670, headH = 22, row = 20, rows = 20,
     reflX = 690, reflW = 328, bodyTop = -26, line = 16, bars = 8, barsTop = -18, dateW = 70, barX = 74, barW = 150, barH = 10,
-    causes = 3, avoid = 4, arrowW = 12, causeIcon = 16, causeGap = 4,
+    causes = 3, avoid = 4, causeIcon = 16, causeGap = 4,
 }
 
 -- The table's columns: key, x, w; each title is TEXT.columns[key].
@@ -92,7 +92,7 @@ local TEXT = CRT.Locale("SeasonStats.Page", {
     avoid = "Avoidable damage a pull (Tattlebot)",
     avoidLine = "%s: %s a pull (%d %s)",
     noAvoid = "Tattlebot has no pulls on this boss on this difficulty.",
-    avoidOpen = "Open this night in Tattlebot", avoidGone = "This night is no longer in Tattlebot.", more = ">",
+    avoidOpen = "Open this night in Tattlebot", avoidGone = "This night is no longer in Tattlebot.",
     pull = "pull", pullsWord = "pulls",
 })
 
@@ -413,8 +413,10 @@ local function buildAvoid(body, y)
     return line
 end
 
--- Sizes a line from its text, never wider than the column: a longer text is cut off before its ">".
+-- Sizes a line from its text, never wider than the column: a longer text is cut off before its ">". A reused line's
+-- label is let go of the width a longer text gave it first.
 local function fitAvoid(line)
+    line.label:SetWidth(0)
     if line:Fit() > L.reflW then
         local link = UI.LINK_BUTTON
         line.label:SetWidth(L.reflW - 2 * link.pad - link.gap - math.ceil(line.arrow:GetStringWidth() or 0))
@@ -452,7 +454,7 @@ local function buildReflection(f)
     text(body, "CRTFontSmall", 0, y, L.reflW):SetText(UI.HeadingText(TEXT.avoid))
     refl.avoid = {}
     for i = 1, L.avoid do
-        refl.avoid[i] = buildAvoid(body, y - i * L.line - 2)
+        refl.avoid[i] = buildAvoid(body, y - L.line - 2 - (i - 1) * UI.LINK_BUTTON.h) -- a link line's height apart
     end
     refl.avoidHint = text(body, "CRTFontSmall", 0, y - L.line - 2, L.reflW)
     refl.avoidHint:SetText(TEXT.noAvoid)
