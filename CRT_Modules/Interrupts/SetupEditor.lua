@@ -163,14 +163,22 @@ function Editor:Save()
     return true
 end
 
+-- Drops your own setup at once and offers Undo (UI.UndoToast), which saves it back as it was.
 function Editor:BackToShipped()
     local key = Editor.Key(draft)
     if key and Interrupts:IsCustom(key) then
         local shipped = Interrupts:ShippedDef(key) ~= nil
-        Interrupts:DropCustom(key)
-        CRT:Print(string.format(shipped and TEXT.dropped or TEXT.deleted, Interrupts:BossName(key)))
+        local was = Interrupts:DropCustom(key)
+        local text = string.format(shipped and TEXT.dropped or TEXT.deleted, Interrupts:BossName(key))
+        CRT:Print(text)
         draft = Editor.DraftFor(key)
         self:Refresh()
+        UI.UndoToast({ text = text, owner = self.shipped, onUndo = function()
+            if Interrupts:RestoreCustom(key, was) and Editor.Key(draft) == key then
+                draft = Editor.DraftFor(key)
+                Editor:Refresh()
+            end
+        end })
     end
 end
 

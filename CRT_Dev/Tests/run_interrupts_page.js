@@ -117,6 +117,8 @@ CRTFontButtonSmall, CRTFontButtonSmallHighlight, CRTFontButtonSmallDisable, CRTF
 -- the UI stand-ins
 local pages, shown, tabs, rows, picked, helps = {}, {}, {}, {}, {}, {}
 local UI = { PAGE_W = 1026, PAGE_H = 560 }
+KICK_TOASTS = {} -- what UI.UndoToast was given
+function UI.UndoToast(o) KICK_TOASTS[#KICK_TOASTS + 1] = o return o end
 function UI:RegisterPage(key, title, builder) pages[key] = { key = key, title = title, builder = builder } end
 function UI:SetPageHidden(key, hidden) if pages[key] then pages[key].hidden = hidden and true or false end end
 function UI:Show(key) shown[#shown + 1] = key end
@@ -1116,6 +1118,15 @@ do
   E.shipped.scripts.OnClick(E.shipped)
   check(not I:IsCustom("3421:15") and I:Def("3421:15") == nil, "editor: Delete my setup drops it")
   check(printed[#printed]:find("Deleted your kick setup", 1, true), "editor: and says so")
+  -- #1299: it offers Undo, which saves your setup back as it was
+  local t = KICK_TOASTS[#KICK_TOASTS]
+  check(t and t.text:find("Deleted your kick setup", 1, true) and t.owner == E.shipped, "editor: Delete my setup offers Undo: " .. tostring(t and t.text))
+  if t then t.onUndo() end
+  check(I:IsCustom("3421:15") and I:Def("3421:15") ~= nil, "editor: Undo puts your setup back")
+  check(E.shipped.text == E.TEXT.delete and E.shipped.enabled, "editor: and the editor shows it again")
+  check(not I:RestoreCustom("3421:15", {}), "editor: a second Undo with a setup there does nothing")
+  E.shipped.scripts.OnClick(E.shipped)
+  check(not I:IsCustom("3421:15"), "editor: deleted again")
   P.bossRow.opts.set("3470:16")
 end
 
