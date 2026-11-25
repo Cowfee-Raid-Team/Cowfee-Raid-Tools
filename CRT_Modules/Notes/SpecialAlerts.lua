@@ -217,9 +217,17 @@ local function selected(list, enc)
     return list[1]
 end
 
+-- The ability timeline on show, when it is the difficulty on show's own. With none for that difficulty the tab shows
+-- the boss's first (Notes/Reminders.lua shownReference), but a special alert never reads another difficulty's
+-- (Alerts/Special.lua): nil then, so Special finds none and the panel lists no times and Test plays nothing, as a pull.
 local function ref()
     local entry = host and host.reference and host.reference()
-    return entry and entry.ref or nil
+    local r = entry and entry.ref
+    local Reference = CRT.TimelineReference
+    if r and Reference and Reference.Group and host.group and Reference.Group(r) ~= host.group() then
+        return nil
+    end
+    return r or nil
 end
 
 -- The words of When.
