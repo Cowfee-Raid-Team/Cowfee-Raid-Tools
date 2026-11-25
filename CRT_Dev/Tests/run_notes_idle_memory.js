@@ -201,6 +201,41 @@ tick(0.2)
 CRT.Notes:Set(nil, "showOutsideRaid", true)
 tick(0.2)
 check(shown() == 3, "Show outside of raid: the windows show out of a raid: " .. shown())
+-- Shown and idle (#1315 round 2): nothing changes, so the windows build nothing at all; no rebuild on a timer.
+do
+  local function drawn() local t = {} for _, k in ipairs(KEYS) do t[k] = NW:Get(k).drawnAt end return t end
+  local function rebuilt(before) local n = 0 for _, k in ipairs(KEYS) do if NW:Get(k).drawnAt ~= before[k] then n = n + 1 end end return n end
+  local before = drawn()
+  local rebuilds = 0
+  for _ = 1, 600 do
+    tick(0.1, 0.1)
+    rebuilds = rebuilds + rebuilt(before)
+    before = drawn()
+  end
+  local tables = cost(60) -- a second minute, without the snapshots above
+  print(format("measure idle in a city with the windows shown: %d rebuilds and %d tables a minute", rebuilds, tables))
+  check(rebuilds == 0, "shown and idle, the windows rebuild nothing: " .. rebuilds .. " rebuilds in a minute")
+  check(tables <= IDLE_TABLES, format("and make at most %d tables a minute, got %d", IDLE_TABLES, tables))
+  -- a change still shows at once: the note edited
+  local raw = CRT.db.notes.list[1].raw
+  CRT.Notes:UpdateRaw(1, (raw:gsub("Left Range Kick Three;", "Left Range Kick Tres;")))
+  tick(0.2)
+  check((NW:Get("window"):DrawnText() or ""):find("Left Range Kick Tres", 1, true) ~= nil, "a note change still shows at once")
+  -- a spell the game hasn't named yet is asked again every few seconds, and named once the game has it
+  local known = C_Spell.GetSpellInfo
+  C_Spell.GetSpellInfo = function(id) if id == 99999 then return nil end return known(id) end
+  CRT.Notes:UpdateRaw(1, CRT.db.notes.list[1].raw .. "\\ntime:200;ph:1;spellid:99999;")
+  tick(0.2)
+  check((NW:Get("window"):DrawnText() or ""):find("Spell 99999", 1, true) ~= nil, "an unnamed spell shows as Spell <ID>")
+  C_Spell.GetSpellInfo = known
+  tick(6)
+  check((NW:Get("window"):DrawnText() or ""):find("Spell99999", 1, true) ~= nil, "and is named a few seconds after the game has it")
+  before = drawn()
+  tick(12)
+  check(rebuilt(before) == 0, "once named, no more rebuilds")
+  local counts = NW.rebuilds and NW.rebuilds.window or {}
+  check((counts.changed or 0) > 0 and (counts.unnamed or 0) > 0, "rebuilds are counted by what made them")
+end
 CRT.Notes:Set(nil, "showOutsideRaid", false)
 tick(0.2)
 check(shown() == 0, "unticked, they hide again: " .. shown())

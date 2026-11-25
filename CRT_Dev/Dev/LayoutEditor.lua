@@ -24,6 +24,7 @@ local moving = false -- Move pieces: only then does the overlay take clicks, so 
 local overlay, info, hoverBox, selectBox
 local hovered, selected
 local applied = setmetatable({}, { __mode = "k" }) -- objects already given their saved override
+local done = {} -- saved change paths already put on their piece (or skipped, or made on it here): Dev:ApplyAll
 local dragging, lastX, lastY
 
 local function db()
@@ -61,14 +62,8 @@ local function walk(frame, path, out)
     end
 end
 
--- Every piece of every built page, and of the panel's frame outside the pages (title, menu, Previews).
-local function allPieces()
-    local out = {}
-    for key, page in pairs(UI.pages) do
-        if page.frame then
-            walk(page.frame, key, out)
-        end
-    end
+-- The panel's own pieces outside the pages (title, menu, Previews), added to out.
+local function panelPieces(out)
     if UI.frame then
         local regions = { UI.frame:GetRegions() }
         for i, r in ipairs(regions) do
@@ -85,6 +80,17 @@ local function allPieces()
         end
     end
     return out
+end
+
+-- Every piece of every built page, and of the panel's frame outside the pages.
+local function allPieces()
+    local out = {}
+    for key, page in pairs(UI.pages) do
+        if page.frame then
+            walk(page.frame, key, out)
+        end
+    end
+    return panelPieces(out)
 end
 
 local function label(obj)
@@ -160,6 +166,7 @@ local function override(path, obj)
     if not o then
         o = { dx = 0, dy = 0, dw = 0, dh = 0, font = 0, base = obj and snapshot(obj) or nil }
         db().overrides[path] = o
+        done[path] = true -- made on a piece on screen: nothing to put on later
     end
     return o
 end
@@ -245,10 +252,40 @@ local function applyOverride(piece)
     end
 end
 
+-- The saved changes not put on their piece yet (nor skipped as out of date), by the first part of their path (a
+-- page key, or "panel"). Walking every built page's every region on each page change made megabytes of garbage a
+-- click (#1315), so a page is walked only while one of its changes still waits, and with no changes nothing is.
+local function waitingPrefixes()
+    local out
+    for path in pairs(db().overrides) do
+        if not done[path] then
+            out = out or {}
+            out[path:match("^[^.]+")] = true
+        end
+    end
+    return out
+end
+
 function Dev:ApplyAll()
+    local waiting = waitingPrefixes()
+    if not waiting then
+        return
+    end
     local before = #stale
-    for _, piece in ipairs(allPieces()) do
+    local pieces = {}
+    for key, page in pairs(UI.pages) do
+        if waiting[key] and page.frame then
+            walk(page.frame, key, pieces)
+        end
+    end
+    if waiting.panel then
+        panelPieces(pieces)
+    end
+    for _, piece in ipairs(pieces) do
         applyOverride(piece)
+        if db().overrides[piece.path] and applied[piece.obj] then
+            done[piece.path] = true
+        end
     end
     if #stale > before then
         CRT:Print(format("Skipped %d dev layout change%s because the code has moved %s since: %s. Type /crt dev clear to drop old changes.", #stale - before, #stale - before == 1 and "" or "s", #stale - before == 1 and "that piece" or "those pieces", table.concat(stale, ", ", before + 1)))
