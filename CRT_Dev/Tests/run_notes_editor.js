@@ -2467,6 +2467,9 @@ do
   trip("a move", "Move Rixxy", function() drag(W.rowFrames[curse].chips[2], ghost) end)
   -- x
   trip("x", "Remove Durayn", function() local x = W.rowFrames[curse].chips[1].remove x.scripts.OnClick(x) end)
+  -- x on the invite list: the step names the player without the realm (names shown without realms, #1297)
+  local invite = rowOf(W.session, "invite")
+  trip("x on the invite list", "Remove Cheoeqar", function() local x = W.rowFrames[invite].chips[1].remove x.scripts.OnClick(x) end, true)
   -- Quick fill
   W.quick:SetChecked(true) W.quick.scripts.OnClick(W.quick)
   press(curse)
@@ -2668,8 +2671,16 @@ do
   W.window.scripts.OnKeyDown(W.window, "Z")
   focused = nil
   assert(props[1] == true and W.session:Text() == text1, "a box focused: passed on, nothing undone")
-  -- Raw text: Ctrl+Z steps there too
+  -- Raw text: Ctrl+Z with nothing to undo leaves the box (its focus and selection) alone; with a step, it steps
+  local saveU, saveR = S.past, S.future
+  S.past, S.future = {}, {}
   W.raw:SetFocus()
+  W.raw.scripts.OnKeyDown(W.raw, "Z")
+  W.raw.scripts.OnKeyDown(W.raw, "Y")
+  assert(W.raw:HasFocus(), "nothing to step: the box keeps the keyboard")
+  S.past, S.future = saveU, saveR
+  W.raw.scripts.OnKeyDown(W.raw, "A")
+  assert(W.raw:HasFocus(), "another key: the box keeps it")
   W.raw.scripts.OnKeyDown(W.raw, "Z")
   assert(not W.raw:HasFocus() and W.session:Text() == text0, "Ctrl+Z in Raw text")
   -- combat: the keys let go as it starts, nothing kept or done, taken back after

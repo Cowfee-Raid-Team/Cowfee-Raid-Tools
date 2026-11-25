@@ -19,7 +19,9 @@ local ADDON, CRT = ...
 --   Keys: Ctrl+Z undoes, Ctrl+Y and Ctrl+Shift+Z redo, while the editor shows (the window takes the keyboard, passing
 --   every key on to the game but the ones it acts on, with Frame:SetPropagateKeyboardInput). Never in combat: the window
 --   lets go of the keyboard as combat starts (that call can't be made in combat). Inside the editor's own text boxes
---   (Raw text, Add assignment's) the same keys end the typing, then step.
+--   (Raw text, Add assignment's) the same keys, when there is a step to take, end the typing and then step; with
+--   nothing to take, the box keeps its focus and selection. The title strip keeps a long note name clear of the
+--   header buttons (strip:SetTitleEnd, CRT_Core/UI/Window.lua).
 -- Called by the editor:
 --   EU.Build(win)          Undo and Redo in the title strip, the keys
 --   EU.Track()             at the start of each Refresh: a changed text is a step
@@ -116,6 +118,8 @@ function EU.Reset()
     U.lastKey = assignKey()
 end
 
+-- Contract: every Editor.Step (this) is followed by the change and then an Editor.Refresh, whose Track takes the
+-- label (a refused change leaves the text as it was, and the label goes unused).
 function EU.Label(kind, ...)
     local f = TEXT[kind] or TEXT.change
     if select("#", ...) > 0 and (...) == 1 and TEXT[kind .. "One"] then
@@ -268,6 +272,9 @@ function EU.Refresh()
     local anchor = (W.history and W.history:IsShown()) and W.history or (win.reset or win.CloseButton)
     r:ClearAllPoints()
     r:SetPoint("RIGHT", anchor, "LEFT", -4, 0)
+    if win.strip.Layout then
+        win.strip:Layout() -- the title clear of the buttons, which may have changed (History's count)
+    end
 end
 
 -- The keys -------------------------------------------------------------------------------------------------------
@@ -335,7 +342,11 @@ end
 -- let the box go, which ends its typing, then step.
 function EU.BoxKey(box, key)
     local what = chord(key)
-    if not what then
+    -- nothing to step (or a note you can't change): the box keeps its focus and selection. Typing not written yet is
+    -- something to undo: letting go of the box writes it as a step.
+    local ui = W.assignUI
+    local typed = what == "undo" and W.assignOn and ui ~= nil and ui.pending ~= nil
+    if not (what and editable() and (typed or #(what == "undo" and U.past or U.future) > 0)) then
         return
     end
     if box and box.ClearFocus then
@@ -370,6 +381,18 @@ function EU.Build(win)
     U.redoButton:SetPoint("RIGHT", win.reset or win.CloseButton, "LEFT", -4, 0)
     U.undoButton:SetPoint("RIGHT", U.redoButton, "LEFT", -4, 0)
     W.undoButton, W.redoButton = U.undoButton, U.redoButton
+    -- a long note name never runs under the header buttons: X, Reset, History, Redo, Undo, right to left
+    if win.strip.SetTitleEnd then
+        win.strip:SetTitleEnd(function()
+            local out = {}
+            for _, f in ipairs({ win.CloseButton or false, win.reset or false, W.history or false, U.redoButton, U.undoButton }) do
+                if f then
+                    out[#out + 1] = f
+                end
+            end
+            return out
+        end)
+    end
     win:SetScript("OnKeyDown", EU.KeyDown)
     win:HookScript("OnShow", function()
         EU.CatchKeys(true)

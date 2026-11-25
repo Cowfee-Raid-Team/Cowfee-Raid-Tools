@@ -69,6 +69,11 @@ function Editor.Step(kind, ...)
     end
 end
 
+-- A name as a step names it: without its realm (names are shown without realms, #1297).
+local function shortName(name)
+    return CRT.ShortName and CRT.ShortName(name or "") or (name or "")
+end
+
 -- The same for typing: burst { key, first, last } joins typing in the same box that pauses no longer than a moment.
 function Editor.StepTyping(burst, kind, ...)
     local u = undo()
@@ -559,9 +564,9 @@ local function makeDrag()
             local row, at = rowAndChip()
             local why
             if source and source.row then
-                Editor.Step("move", W.session:Names(source.row)[source.index] or "")
+                Editor.Step("move", shortName(W.session:Names(source.row)[source.index]))
             elseif source then
-                Editor.Step("add", source.token or "")
+                Editor.Step("add", shortName(source.token))
             end
             edit(function()
                 local ok, no = W.session:Drop(target, row == target and at or nil)
@@ -574,7 +579,7 @@ local function makeDrag()
         click = function(source)
             if source.token then
                 local why
-                Editor.Step("add", source.token)
+                Editor.Step("add", shortName(source.token))
                 local ok = edit(function()
                     local added, no = W.session:PaletteClick(source.token, source.kind, source.full)
                     why = no
@@ -592,7 +597,7 @@ local function makeDrag()
         remove = function(chip)
             local src = chip.source
             if src and src.row and W.session then
-                Editor.Step("remove", W.session:Names(src.row)[src.index] or "")
+                Editor.Step("remove", shortName(W.session:Names(src.row)[src.index]))
             end
             if src and src.row and W.session and edit(function()
                 return W.session:Remove(src.row, src.index)

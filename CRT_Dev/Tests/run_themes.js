@@ -510,6 +510,53 @@ do
 end
 print("ok themes: the game's own colours")
 
+-- #1309 review: a title strip with header buttons on its right (strip:SetTitleEnd, the note editor's Undo, Redo,
+-- History, Reset and X) keeps its title on one line clear of them at the editor's smallest width (680), in both looks;
+-- a short title stays where it was; a strip without header buttons is left as it was.
+do
+  local wasModern = UI:IsModern()
+  local w = UI.Window("TestTitleEnd", { kind = "popout", title = "x" })
+  local s, t = w.strip, w.strip.title
+  s.GetWidth = function() return 678 end -- 680, less the strip's 1 px insets
+  t.SetWidth = function(self, v) self.width = v end
+  t.SetWordWrap = function(self, v) self.wrap = v end
+  local function button(width) local b = frame("Button", nil) b.GetWidth = function() return width end return b end
+  local list = { button(24), button(50), button(80), button(50), button(50) } -- X, Reset, History, Redo, Undo
+  local room = 8 + (24 + 4) + (50 + 4) + (80 + 4) + (50 + 4) + (50 + 4)
+  s:SetTitleEnd(function() return list end)
+  local LONG = "Note editor: The Exceptionally Long Boss Name of the Coiled Altar (Mythic)"
+  local function lastLeft() for k = #t.points, 1, -1 do local p = t.points[k] if p[1] == "LEFT" and p[2] == s then return p[4] end end end
+  for _, modern in ipairs({ false, true }) do
+    UI:SetModern(modern)
+    local look = modern and "Modern" or "Classic"
+    t.points = {}
+    s:SetTitle("Note editor: Short")
+    check(t.width == 0 and t.wrap == false, look .. ": a short title keeps its own width, one line")
+    if not modern then
+      check(t.points[#t.points][1] == "TOP", "Classic: a short title stays centred")
+    end
+    t.points = {}
+    s:SetTitle(LONG)
+    local x = lastLeft()
+    check(x ~= nil and t.width and t.width > 0 and x + t.width <= 678 - room,
+      look .. ": a long title is cut short clear of the header buttons: x " .. tostring(x) .. ", width " .. tostring(t.width))
+    -- a header button hidden (History on the personal note): more room
+    local wide = t.width
+    list[3].shown = false
+    s:Layout()
+    check(t.width == 0 or t.width > wide, look .. ": more room with a button hidden (here it fits whole): " .. tostring(t.width))
+    list[3].shown = true
+  end
+  -- a strip with no header buttons: its title's width is never set
+  local plain = UI.Window("TestTitlePlain", { kind = "popout", title = "x" })
+  plain.strip.GetWidth = function() return 678 end
+  plain.strip.title.SetWidth = function(self, v) self.width = v end
+  plain.strip:SetTitle(LONG)
+  check(plain.strip.title.width == nil, "a strip without header buttons is left as it was")
+  UI:SetModern(wasModern)
+end
+print("ok themes: a title strip's title stays clear of its header buttons")
+
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error(fails .. " theme checks failed") end
 `;
