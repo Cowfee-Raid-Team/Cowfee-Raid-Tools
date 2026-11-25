@@ -24,7 +24,9 @@ local function mock(kind)
       SetText = function(self, s) self.text = s end,
       GetText = function(self) return self.text end,
       Show = function(self) self.shown = true end,
-      Hide = function(self) self.shown = false end,
+      Hide = function(self) self.shown = false for _, fn in ipairs(self.hooks or {}) do fn(self) end end,
+      HookScript = function(self, n, fn) if n == "OnHide" then self.hooks = self.hooks or {} self.hooks[#self.hooks + 1] = fn end end,
+      SetClampedToScreen = function(self, on) self.clamped = on end,
       IsShown = function(self) return self.shown end,
       SetParent = function(self, p) self.parent = p end,
       GetParent = function(self) return self.parent end,
@@ -87,8 +89,10 @@ end
 local mainWin = mock("Frame") mainWin.w = 1026 mainWin.level = 10
 local editor = mock("Frame") editor.w = 400 editor.level = 40
 local inEditor = mock("Button") inEditor.parent = editor
+local pageA = mock("Frame") pageA.parent = mainWin -- a page in the main window (UI.pages[key].frame)
+local inPage = mock("Button") inPage.parent = pageA
 local modern = true
-local UI = { skinned = {}, frame = mainWin,
+local UI = { skinned = {}, frame = mainWin, pages = { a = { frame = pageA } },
   IsModern = function() return modern end,
   LiftOver = function(f) if f then lifted = lifted + 1 end end,
   ShownPopup = function(ret) return ret end,
@@ -154,7 +158,8 @@ do
   eq(t.text.text, "Cleared the grid (3 names).", "with its message")
   eq(t.undo.text, "Undo", "and an Undo button")
   eq(t.parent, mainWin, "no owner: in the main window")
-  check(t.point and t.point[1] == "BOTTOM" and t.point[2] == mainWin and t.point[3] == "BOTTOM", "near its bottom")
+  check(t.point and t.point[1] == "TOP" and t.point[2] == mainWin and t.point[3] == "BOTTOM" and t.point[5] < 0, "just under its bottom edge, so it covers no button row")
+  check(t.clamped, "kept on the screen")
   check(t.level > mainWin.level, "above the page")
   check(t.w > 0 and t.w <= mainWin.w - 2 * UI.UNDO_TOAST.margin, "as wide as it needs, inside the window: " .. tostring(t.w))
   check(t.bg and t.border and t.edge.color, "painted: surface, border and accent edge")
@@ -190,6 +195,25 @@ do
   check(t.w <= editor.w - 2 * UI.UNDO_TOAST.margin, "a long message stays inside the window: " .. tostring(t.w))
   UI.HideUndoToast()
   check(not t.shown, "HideUndoToast hides it")
+  -- the page it was made on goes (another page picked), or its window hides: the toast and its Undo go
+  local gone = 0
+  UI.UndoToast({ text = "On a page.", owner = inPage, onUndo = function() gone = gone + 1 end })
+  check(t.shown, "a toast for a button on a page")
+  pageA:Hide()
+  check(not t.shown, "another page picked: the toast goes")
+  t.undo.OnClick(t.undo)
+  eq(gone, 0, "and its Undo with it")
+  pageA:Show()
+  UI.UndoToast({ text = "In a window.", owner = inEditor, onUndo = function() gone = gone + 1 end })
+  editor:Hide()
+  check(not t.shown, "its window hides: the toast goes")
+  editor:Show()
+  -- a hide of the page after another toast took over leaves the new one alone
+  UI.UndoToast({ text = "Page.", owner = inPage })
+  UI.UndoToast({ text = "Window.", owner = inEditor })
+  pageA:Hide() pageA:Show()
+  check(t.shown and t.text.text == "Window.", "an old page's hide doesn't hide a newer toast elsewhere")
+  UI.HideUndoToast()
   -- both looks: Classic paints the dark ground, Modern the theme's surface; the accent edge in both
   modern = false
   for _, s in ipairs(UI.skinned) do s.crtSkin(false) end
@@ -232,5 +256,10 @@ function walk(d) {
 }
 walk(path.join(dir, 'CRT_Core'));
 walk(path.join(dir, 'CRT_Modules'));
+// files moved onto UI.Confirm whole: no other confirm left in them
+for (const f of ['CRT_Modules/Loot/Page.lua', 'CRT_Modules/Interrupts/Page.lua']) {
+  const src = fs.readFileSync(path.join(dir, f), 'utf8').replace(/--.*$/gm, '');
+  if (/StaticPopup_ShowCustomGenericConfirmation|KickConfirm/.test(src)) hits.push(f + ': still has a confirm of its own (use UI.Confirm)');
+}
 lua.lua_pushstring(L, to_luastring(hits.join('\n')));
 if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }

@@ -74,7 +74,7 @@ local TEXT = {
         "Pick which team tonight's raid is: Pug, or one of your teams. Season Stats keeps each team's pulls apart, and Tattlebot and the Late Tracker can record team raids only: any team but Pug. A new raid group starts on the team you had last, and when you join a new raid group, CRT asks which team it is.",
         { "Add team", "at the bottom of the list, adds your own." },
         { "Push to raid", "sets the team for everyone in the raid with CRT. Only the raid leader can push it, here or with the popup's Save and push. Raiders can't change it then until they leave the group." },
-        { "Remove team", "deletes one of your teams and its Season Stats, after two warnings. Pug can't be removed." },
+        { "Remove team", "deletes one of your teams and its Season Stats, after one confirm that names it. Pug can't be removed." },
         { "Merge team", "moves one of your teams' Season Stats, Tattlebot pulls and raid nights into another team or Pug, and takes it off your list. Before teams, the pulls from before you had teams of your own, can be merged into one of your teams the same way. Names that differ only in case, spaces or punctuation are one team; when two such teams are saved, CRT asks once whether to merge them." },
         "Parties, solo play and finder groups are never team raids.",
     },
@@ -576,7 +576,7 @@ local function buildLeft(pf)
 end
 
 -- Team raids (Team.lua, TeamList.lua): Tonight's team (Pug, your teams, Add team…), Push to raid (the raid
--- leader), Remove team (your own teams, two warnings: UI/TeamDialogs.lua), Merge team… (one of your teams into
+-- leader), Remove team (your own teams, one shared confirm: UI/TeamDialogs.lua), Merge team… (one of your teams into
 -- another or Pug, Before teams into one of yours: UI/TeamDialogs.lua's merge mode), the lock line while the raid
 -- leader's push holds the pick, and the status line.
 local function buildTeam(pf, x, top)

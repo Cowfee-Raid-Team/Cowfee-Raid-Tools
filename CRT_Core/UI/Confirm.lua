@@ -20,8 +20,10 @@ local ADDON, CRT = ...
 -- set just before it; text "" shows text_arg1 as it is (SetText, not SetFormattedText), so a "%" in a name is safe.
 -- Escape hides a hideOnEscape dialog after its OnCancel (StaticPopup_EscapePressed); this one has no OnCancel.
 --
--- UI.UndoToast(opts) shows a small bar near the bottom of the window the action happened in, with the message and an
--- Undo button, for UNDO_SECONDS; a second toast replaces the first (whose action then stands). Returns the bar.
+-- UI.UndoToast(opts) shows a small bar just under the bottom edge of the window the action happened in (so it never
+-- covers that window's buttons; clamped to the screen), with the message and an Undo button, for UNDO_SECONDS. A
+-- second toast replaces the first (whose action then stands); it also goes, Undo and all, when the main window's page
+-- it was made on hides (another page picked) or its window hides. Returns the bar.
 --   text      what happened: "Cleared the grid (24 names)."
 --   onUndo    puts back exactly the state saved before the action; run at most once
 --   owner     a region in the window the action happened in (UI.WindowOf); else the main window
@@ -33,7 +35,7 @@ local UI = CRT.UI
 
 local CONFIRM_POPUP = "CRT_CONFIRM"
 local UNDO_SECONDS = 10 -- how long Undo is offered
-local TOAST = { height = 32, pad = 10, gap = 10, edge = 3, bottom = 12, button = 22, margin = 20, level = 100 }
+local TOAST = { height = 32, pad = 10, gap = 10, edge = 3, below = 6, button = 22, margin = 20, level = 100 }
 local TEXT = { cancel = "Cancel", undo = "Undo" }
 UI.CONFIRM_POPUP = CONFIRM_POPUP
 UI.UNDO_SECONDS = UNDO_SECONDS
@@ -98,8 +100,9 @@ local function paint(f)
         f:SetBackdropColor(UI.Color("surface", 0.97))
         f:SetBackdropBorderColor(UI.Color("border"))
     else
-        f:SetBackdropColor(0, 0, 0, 0.92) -- the game's dark tooltip ground
-        f:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+        -- Classic is the game's own look, so these are the game's tooltip colours, not theme colours (not a theme colour)
+        f:SetBackdropColor(0, 0, 0, 0.92) -- the dark tooltip ground (not a theme colour)
+        f:SetBackdropBorderColor(0.6, 0.6, 0.6, 1) -- the tooltip's grey edge (not a theme colour)
     end
     f.edge:SetColorTexture(UI.Color("accent"))
     f.text:SetTextColor(UI.Color("text"))
@@ -147,14 +150,53 @@ function UI.HideUndoToast()
     end
 end
 
+-- The main window's page a region sits on (a UI.pages frame), or nil.
+local function pageOf(region)
+    local pages = {}
+    for _, p in pairs(UI.pages or {}) do
+        if p.frame then
+            pages[p.frame] = true
+        end
+    end
+    local f = region
+    for _ = 1, 100 do
+        if type(f) ~= "table" then
+            return nil
+        end
+        if pages[f] then
+            return f
+        end
+        f = type(f.GetParent) == "function" and f:GetParent() or nil
+    end
+end
+
+-- The toast and its Undo go when the page it was made on hides (another page picked) or its window hides. The hook
+-- is added once per frame and acts only on the toast it was shown for.
+local function dropWith(frame)
+    if not frame or frame.crtUndoHook or not frame.HookScript then
+        return
+    end
+    frame.crtUndoHook = true
+    frame:HookScript("OnHide", function(self)
+        if toast and toast:IsShown() and (toast.page == self or toast.win == self) then
+            UI.HideUndoToast()
+        end
+    end)
+end
+
 function UI.UndoToast(opts)
     opts = opts or {}
     toast = toast or build()
     UI.HideUndoToast() -- the one before goes, its action standing
     local win = (opts.owner and UI.WindowOf(opts.owner)) or UI.frame or UIParent
+    toast.win, toast.page = win, opts.owner and pageOf(opts.owner) or nil
+    dropWith(win ~= UIParent and win or nil)
+    dropWith(toast.page)
     toast:SetParent(win)
     toast:ClearAllPoints()
-    toast:SetPoint("BOTTOM", win, "BOTTOM", 0, TOAST.bottom)
+    -- just under the window's bottom edge, so it never covers the window's own buttons; kept on the screen
+    toast:SetPoint("TOP", win, "BOTTOM", 0, -TOAST.below)
+    toast:SetClampedToScreen(true)
     if win.GetFrameLevel then
         toast:SetFrameLevel(win:GetFrameLevel() + TOAST.level)
     end

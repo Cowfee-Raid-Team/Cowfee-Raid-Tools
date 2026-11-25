@@ -50,10 +50,11 @@ local TEXT = {
     sourceCRT = "Recorded by CRT",
     sourceRC = "RCLootCouncil only",
     rcRow = "From RCLootCouncil (not recorded by CRT)",
-    deleteOne = "Delete this item from the history?", -- its name not loaded yet
-    deleteNamed = "Delete \"%s\" from the loot history? This can't be undone.",
+    deleteOne = "Delete this item from the loot history?", -- its name not loaded yet
+    deleteNamed = "Delete \"%s\" from the loot history?",
     deleteBefore = "Delete every item from before %s?",
-    deleteAll = "Delete the whole loot history? This can't be undone.",
+    deleteAll = "Delete the whole loot history?",
+    deleteFinal = "This can't be undone.",
     delete = "Delete",
 }
 
@@ -79,10 +80,9 @@ local function makeButton(parent, label, width)
     return b
 end
 
+-- Every delete asks once through the shared confirm (UI.Confirm, CRT_Core/UI/Confirm.lua).
 local function confirm(text, onYes)
-    UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation({
-        text = text, acceptText = TEXT.delete, cancelText = CANCEL, showAlert = true, callback = onYes,
-    }), "GENERIC_CONFIRMATION"))
+    UI.Confirm({ text = text, detail = TEXT.deleteFinal, accept = TEXT.delete, danger = true, onAccept = onYes })
 end
 
 -- Reading an entry ---------------------------------------------------------------------------
@@ -405,8 +405,7 @@ local function initRow(row, entry)
             local e = self.entry
             if e and e.rec then -- an RCLootCouncil award is its data, not ours to delete
                 local it = item(e.rec[R.ITEM])
-                -- the game's generic confirm formats its text, so a "%" in the name is doubled
-                confirm(it and it.name and string.format(TEXT.deleteNamed, (it.name:gsub("%%", "%%%%"))) or TEXT.deleteOne, function()
+                confirm(it and it.name and string.format(TEXT.deleteNamed, it.name) or TEXT.deleteOne, function()
                     Loot:Delete(e.rec, e.month)
                 end)
             end
