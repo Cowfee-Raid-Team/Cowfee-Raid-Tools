@@ -104,9 +104,11 @@ end
 function UI.DisabledCover(owner, tip, right)
     local cover = CreateFrame("Frame", nil, owner)
     if right then
+        -- two corners only, so no edge is set twice: the label sits level with the box's middle (anchored LEFT to its
+        -- RIGHT), so half the box's height under the label's right end is the box's bottom
         cover:SetPoint("TOPLEFT", owner, "TOPLEFT")
-        cover:SetPoint("BOTTOM", owner, "BOTTOM")
-        cover:SetPoint("RIGHT", right, "RIGHT")
+        local h = owner.GetHeight and owner:GetHeight() or 0
+        cover:SetPoint("BOTTOMRIGHT", right, "RIGHT", 0, -(h / 2))
     else
         cover:SetAllPoints(owner)
     end
