@@ -121,6 +121,7 @@ do
   local cur, incm = LM.current, LM.incoming
   local me = "Solex-Sargeras"
   local before = cur.players[me].answers[1]
+  cur.items[1].award = nil -- an item not given out yet
   local h = LM:ClearAnswer(1, me)
   eq(cur.players[me].answers[1].response, nil, "clear their answer: cleared at once")
   check(incm.mine[1] ~= nil, "clear their answer: the raider isn't asked again before it stands")
@@ -133,9 +134,33 @@ do
   h.ask()
   eq(incm.mine[1], nil, "clear their answer: once it stands, the raider is asked again")
   eq(h.undo(), false, "clear their answer: no Undo once the raider was asked")
-  cur.players[me].answers[1] = before -- as it was, for the checks below
+  cur.players[me].answers[1] = before
+  -- the raider answers again while the toast shows: no Q when it stands
+  incm.mine[1] = { response = "up" }
+  h = LM:ClearAnswer(1, me)
+  cur:Answer(me, 1, { response = "bis", gear = {} })
+  h.ask()
+  check(incm.mine[1] ~= nil, "clear their answer: a new answer in the meantime: never asked again")
+  eq(h.undo(), false, "clear their answer: and no Undo over the new answer")
+  cur.players[me].answers[1] = before
+  -- the item is given out while the toast shows: no Q
+  h = LM:ClearAnswer(1, me)
+  cur.items[1].award = { name = "Halo-Sargeras", response = "bis" }
+  h.ask()
+  check(incm.mine[1] ~= nil, "clear their answer: the item awarded in the meantime: never asked again")
+  cur.items[1].award = nil
+  cur.players[me].answers[1] = before
+  cur.players[me].answers[1] = before -- as it was, the item still not given out
+  -- the session ends while the toast shows: no Q (every message's kind seen through LM.Wire.Encode)
+  local kinds = {}
+  local encode = LM.Wire.Encode
+  LM.Wire.Encode = function(kind, ...) kinds[#kinds + 1] = kind return encode(kind, ...) end
+  h = LM:ClearAnswer(1, me)
+  LM:End()
+  h.ask()
+  LM.Wire.Encode = encode
+  check(table.concat(kinds, ",") == "E", "clear their answer: the session ended in the meantime: only the end goes, no Q (" .. table.concat(kinds, ",") .. ")")
 end
-LM:End()
 eq(LM.current, nil, "session ended")
 eq(LM.incoming, nil, "popup session ended")
 eq(CRTDBChar.lootSession, nil, "nothing left to restore")
