@@ -396,7 +396,7 @@ do
   end end
   -- what each feature's own page shows its switch from
   local READ = {
-    consumables = function() return CRT.db.consumables.enabled end, -- ReadyCheck/Page.lua's Your bar
+    consumables = function() return CRT.Consumables:Enabled() end, -- ReadyCheck/Page.lua's Your bar reads the same field
     readyWindow = function() return CRT.db.readycheck.window.enabled end,
     debuffs = function() return CRT.Debuffs:Enabled() end,
     callout = function() return CRT.Notes:Alert().enabled end,

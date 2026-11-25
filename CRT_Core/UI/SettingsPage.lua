@@ -1353,3 +1353,14 @@ local function build(pf)
 end
 
 UI:RegisterPage("settings", "General Settings", build)
+
+-- Opens the page on a tab: "appearance", "profiles" or "addoncheck" (Start here's Minimap button link).
+CRT.SettingsPage = {
+    Open = function(tab)
+        UI:Show("settings")
+        if tabFrames[tab] then
+            selectTab(tab)
+            checkTabShown()
+        end
+    end,
+}

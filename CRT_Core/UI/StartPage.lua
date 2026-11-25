@@ -1,11 +1,10 @@
 local ADDON, CRT = ...
 
--- The Start here page (key "start"), first in the menu's General group and the page a new profile opens on
--- (Core.lua's lastPage default). No tabs: the title with a line and the Welcome button (UI/Welcome.lua) beside it,
--- then What's on, one
--- checkbox for everything CRT draws on screen, plays or says, in sections. Each checkbox reads and writes the
--- same saved field as the switch on the feature's own page, through the feature's own setter where it has one,
--- so both stay in step; the page name on its right (UI.LinkButton) opens that page on the tab that holds it.
+-- The Start here page (key "start"), first in the menu's General group and the page a new profile opens on (Core.lua's lastPage default).
+-- It has no tabs: the title with a line and the Welcome button (UI/Welcome.lua) beside it, then What's on.
+-- What's on has one checkbox, in sections, for everything CRT draws on screen, plays or says.
+-- Each checkbox reads and writes the same saved field as the switch on the feature's own page, through the feature's own setter where it has one, so both stay in step.
+-- The page name on its right (UI.LinkButton) opens that page on the tab that holds it.
 -- A feature that draws, plays or speaks adds its row to WHATS_ON below, in the same job (the UX rules).
 
 local UI = CRT.UI
@@ -68,6 +67,7 @@ local TEXT = {
         { "The page on the right", "opens the page with the same switch and the rest of its settings. Both stay in step." },
     },
     opens = "Opens %s.",
+    notLoaded = "This page isn't loaded.",
     interruptsOff = "Tick Enable Interrupts to show its page.",
     interruptsHelp = "Kick numbers above a boss's adds, a countdown before your kick and the leader's kick list. Off for everyone until they tick this. The Interrupts page lists the bosses it works on.",
 }
@@ -75,7 +75,7 @@ local TEXT = {
 local WHATS_ON = {
     { title = "On screen",
         { key = "consumables", label = "Consumables bar", path = "consumables.enabled", page = "readycheck", tab = "auto", where = "Ready Check > Settings",
-            set = function(on) db().consumables.enabled = on readyCheckApply() end },
+            set = function(on) CRT.Consumables:SetEnabled(on) readyCheckApply() end },
         { key = "readyWindow", label = "Ready check window", path = "readycheck.window.enabled", page = "readycheck", tab = "window", where = "Ready Check > Window",
             set = function(on) db().readycheck.window.enabled = on readyCheckApply() end },
         { key = "debuffs", label = "Debuff panel", path = "debuffs.enabled", page = "qol", tab = "debuffs", where = "Quality of Life > Debuffs",
@@ -106,7 +106,7 @@ local WHATS_ON = {
             set = function(on) CRT.Interrupts:SetEnabled(on) end },
         { key = "whatsNew", label = "What's new after updates", path = "whatsNew.show", linkText = "What's new", where = "the What's new window",
             open = function() CRT.WhatsNew:ShowNow() end },
-        { key = "minimap", label = "Minimap button", path = "minimap.hide", invert = true, page = "settings", where = "General Settings",
+        { key = "minimap", label = "Minimap button", path = "minimap.hide", invert = true, page = "settings", tab = "appearance", where = "General Settings > Appearance",
             set = function(on) CRT.MinimapButton:SetHidden(not on) end },
     },
     { title = "Alerts",
@@ -135,7 +135,7 @@ local WHATS_ON = {
 }
 
 -- The pages that open on a tab, by their own Open(tab).
-local OPENERS = { readycheck = "ReadyCheckPage", qol = "QoLPage", notes = "NotesPage" }
+local OPENERS = { readycheck = "ReadyCheckPage", qol = "QoLPage", notes = "NotesPage", settings = "SettingsPage" }
 
 -- Every number the page is placed with, in px: the left margin; the right column's start (half the page) and the
 -- room before it; a row's least height and the room around its text; the checkbox and the space after it; the
@@ -193,7 +193,7 @@ local function canOpen(row)
     end
     local p = UI.pages[row.page]
     if not p then
-        return false, nil
+        return false, TEXT.notLoaded
     end
     if p.hidden then
         return false, row.key == "interrupts" and TEXT.interruptsOff or nil
@@ -308,6 +308,9 @@ function Start.Layout()
     v.title:SetPoint("TOPLEFT", L.x, -(top + (lineH - height(v.title)) / 2))
     v.intro:ClearAllPoints()
     v.intro:SetPoint("TOPLEFT", L.x + width(v.title) + L.introGap, -(top + (lineH - height(v.intro)) / 2))
+    -- the button's width from its label at the current text size
+    local fs = v.welcome:GetFontString()
+    v.welcome:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
     v.welcome:ClearAllPoints()
     v.welcome:SetPoint("LEFT", v.intro, "RIGHT", L.linkGap, 0)
     local y = -(top + lineH + L.whatsOnGap)

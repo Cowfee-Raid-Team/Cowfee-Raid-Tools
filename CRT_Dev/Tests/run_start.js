@@ -64,7 +64,7 @@ local function mock(kind)
     if k == "GetText" then return function(self) return rawget(self, "text") end end
     if k == "GetFontString" then return function(self)
       local fsx = rawget(self, "fontString")
-      if not fsx then fsx = mock("FontString") rawset(fsx, "font", "GameFontNormal") rawset(fsx, "text", rawget(self, "text") or "") rawset(self, "fontString", fsx) end
+      if not fsx then fsx = mock("FontString") rawset(fsx, "font", "CRTFontButtonSmall") rawset(fsx, "text", rawget(self, "text") or "") rawset(self, "fontString", fsx) end
       return fsx
     end end
     if k == "SetWordWrap" then return function(self, on) rawset(self, "wrap", on) end end
@@ -177,6 +177,7 @@ local function boot(saved)
   CRT.NotesPage = { Open = function(tab) opened[#opened + 1] = "notes:" .. tostring(tab) end }
   CRT.ReadyCheckPage = { Open = function(tab) opened[#opened + 1] = "readycheck:" .. tostring(tab) end }
   CRT.QoLPage = { Open = function(tab) opened[#opened + 1] = "qol:" .. tostring(tab) end }
+  CRT.SettingsPage = { Open = function(tab) opened[#opened + 1] = "settings:" .. tostring(tab) end }
   local show = UI.Show
   UI.Show = function(self, key) opened[#opened + 1] = key or "?" return show(self, key) end
   return { CRT = CRT, UI = UI, opened = opened, printed = printed,
@@ -341,8 +342,8 @@ mm.check:SetChecked(true) click(mm.check)
 check(p.CRT.db.minimap.hide == false and S.Get(mm.def) == true, "ticked shows it")
 -- the links open their page on its tab
 local before = #p.opened
-click(rowOf("consumables").link) click(rowOf("debuffs").link) click(rowOf("speech").link) click(rowOf("pace").link)
-check(table.concat(p.opened, " ", before + 1) == "readycheck:auto qol:debuffs notes:alerts pace", "the links open their page and tab: " .. table.concat(p.opened, " ", before + 1))
+click(rowOf("consumables").link) click(rowOf("debuffs").link) click(rowOf("speech").link) click(rowOf("pace").link) click(rowOf("minimap").link)
+check(table.concat(p.opened, " ", before + 1) == "readycheck:auto qol:debuffs notes:alerts pace settings:appearance", "the links open their page and tab: " .. table.concat(p.opened, " ", before + 1))
 check(rowOf("consumables").link.label.text == "Ready Check" and rowOf("debuffs").link.label.text == "Quality of Life", "a link reads its page's name")
 -- Interrupts' page is hidden while it is off: its link greys, says why, and opens nothing
 local kick = rowOf("interrupts")
@@ -354,6 +355,9 @@ click(kick.link)
 check(#p.opened == before, "and a click opens nothing")
 local ok, why = S.CanOpen(kick.def)
 check(not ok and why and why:find("Enable Interrupts", 1, true), "its reason says to tick Enable Interrupts")
+local gone = { key = "gone", page = "nosuchpage", where = "Nowhere" }
+local okGone, whyGone = S.CanOpen(gone)
+check(okGone == false and type(whyGone) == "string" and whyGone ~= "", "a link to a page that isn't loaded is greyed with a reason")
 check(kick.help ~= nil, "Enable Interrupts keeps its (?)")
 kick.check:SetChecked(true) click(kick.check)
 check(p.CRT.db.interrupts.enabled == true and p.UI.pages.interrupts.hidden == false, "ticked on What's on: the Interrupts page shows")
@@ -391,8 +395,10 @@ for _, look in ipairs({ { "blizzard", "Classic" }, { "cowfee", "Modern" } }) do
       for i = 2, #s.rows do check(s.rows[i].top <= s.rows[i - 1].top - s.rows[i - 1].h, name .. ": rows don't overlap") end
     end
     -- the intro line and the Welcome button fit the page's width
-    local introW = S.LAYOUT.x + v.title:GetStringWidth() + S.LAYOUT.introGap + v.intro:GetStringWidth() + S.LAYOUT.linkGap + v.welcome.w
-    check(introW <= PW, name .. ": the intro and Welcome fit (" .. math.floor(introW) .. ")")
+    local welcomeW = v.welcome:GetWidth()
+    check(welcomeW >= v.welcome:GetFontString():GetStringWidth() + 2 * p.UI.PANEL_BUTTON_PAD, name .. ": the Welcome button is as wide as its label at this size")
+    local introW = S.LAYOUT.x + v.title:GetStringWidth() + S.LAYOUT.introGap + v.intro:GetStringWidth() + S.LAYOUT.linkGap + welcomeW
+    check(introW <= PW, name .. ": the title, the intro and Welcome fit on one line (" .. math.floor(introW) .. " of " .. PW .. ")")
   end
 end
 p.UI:SetTheme("blizzard")
