@@ -2,7 +2,8 @@ local ADDON, CRT = ...
 
 -- The Debuffs tab's "Ignore these debuffs" section, under the panel settings (Page.lua builds it): a
 -- spell ID box that shows the game's name and icon for what you type, with Add; your own list with
--- Remove (Debuffs:AddIgnored, Debuffs:RemoveIgnored); and the built-in list (Debuffs.EXCLUDED_SPELLS),
+-- Remove, which acts at once and offers Undo (UI.UndoToast; Debuffs:AddIgnored, Debuffs:RemoveIgnored); and the
+-- built-in list (Debuffs.EXCLUDED_SPELLS),
 -- greyed. Every change goes through Debuffs, which refreshes the panel at once and this section with it.
 -- A spell the game won't let addons hide on you (Debuffs.CanHide) can still be added, and is marked.
 
@@ -35,6 +36,7 @@ local TEXT = CRT.Locale("Debuffs.Ignore", {
     canHide = "Add hides it on the panel.",
     stillShows = "still shows",
     added = "Added %s.",
+    removed = "Removed %s from your ignored debuffs.",
 })
 Ignore.TEXT = TEXT
 
@@ -107,8 +109,16 @@ local function makeRow(parent, removable)
     row.name:SetWordWrap(false)
     if removable then
         -- sized from its label and skinned to the look, as rows are made after the page was skinned
-        row.remove = UI.PanelButton(row, TEXT.remove, 18, function()
-            Debuffs:RemoveIgnored(row.id)
+        row.remove = UI.PanelButton(row, TEXT.remove, 18, function(self)
+            local id, name = row.id, row.title
+            if not (id and Debuffs:IsIgnored(id)) then
+                return
+            end
+            Debuffs:RemoveIgnored(id)
+            -- Undo adds it again, only while it isn't on the list again (AddIgnored refuses one already there)
+            UI.UndoToast({ text = format(TEXT.removed, name or id), owner = self, onUndo = function()
+                Debuffs:AddIgnored(id)
+            end })
         end)
         row.remove:SetPoint("RIGHT", -2, 0)
         row.name:SetPoint("RIGHT", row.remove, "LEFT", -6, 0)
