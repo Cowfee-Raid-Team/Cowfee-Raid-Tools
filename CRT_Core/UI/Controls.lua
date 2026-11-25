@@ -1328,3 +1328,74 @@ function UI.SortHeaders(parent, cols, opts)
     refresh()
     return { refresh = refresh }
 end
+
+-- A link button (the catalog's Link line): a short text that opens another page, such as Start here's page names
+-- beside each What's on switch. Its text in CRTFontSmall, a ">" after it in the theme's heading colour, a faint
+-- white highlight under the mouse, and a tooltip naming where it goes. Sized from its text (b:Fit() measures again,
+-- for a new text size).
+--   local b = UI.LinkButton(parent, text, opts)
+--     opts: onClick, tipTitle, tipText, enabledIf (returns ok, reason: while not ok the ">" hides, the button is at
+--     half alpha, a click does nothing and the tooltip says the reason)
+--   b.refresh()  reads enabledIf again; b.label, b.arrow
+local LINK = { gap = 3, pad = 2, h = 18, offAlpha = 0.5, more = ">" }
+UI.LINK_BUTTON = LINK
+
+function UI.LinkButton(parent, text, opts)
+    opts = opts or {}
+    local b = CreateFrame("Button", nil, parent)
+    local hl = b:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.06)
+    b.label = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    b.label:SetPoint("LEFT", LINK.pad, 0)
+    b.label:SetWordWrap(false)
+    b.label:SetText(text)
+    b.arrow = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    b.arrow:SetPoint("LEFT", b.label, "RIGHT", LINK.gap, 0)
+    UI.ThemedText(b.arrow, function()
+        return UI.HeadingText(LINK.more)
+    end)
+    local function state()
+        if not opts.enabledIf then
+            return true
+        end
+        local ok, reason = opts.enabledIf()
+        return ok and true or false, reason
+    end
+    function b:Fit()
+        local w = math.ceil(self.label:GetStringWidth() or 0) + LINK.gap + math.ceil(self.arrow:GetStringWidth() or 0)
+        local h = math.ceil(math.max(self.label:GetStringHeight() or 0, LINK.h))
+        self:SetSize(w + 2 * LINK.pad, h)
+        return w + 2 * LINK.pad
+    end
+    b.refresh = function()
+        local ok = state()
+        b.arrow:SetShown(ok)
+        b:SetAlpha(ok and 1 or LINK.offAlpha)
+    end
+    b:SetScript("OnEnter", function(self)
+        local ok, reason = state()
+        UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(opts.tipTitle or text, 1, 1, 1)
+        if ok then
+            if opts.tipText then
+                UI.AddTooltipText(GameTooltip, opts.tipText)
+            end
+        elseif reason then
+            UI.AddTooltipText(GameTooltip, reason)
+        end
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    b:SetScript("OnClick", function()
+        if state() and opts.onClick then
+            GameTooltip:Hide()
+            opts.onClick()
+        end
+    end)
+    b:Fit()
+    b.refresh()
+    return b
+end
