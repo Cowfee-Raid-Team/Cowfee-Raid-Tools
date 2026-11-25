@@ -225,7 +225,7 @@ function walk(d) {
     else if (e.name.endsWith('.lua')) {
       fs.readFileSync(p, 'utf8').split(/\r?\n/).forEach((line, i) => {
         const code = line.replace(/--.*$/, '');
-        if (/Click again to delete|Type the team name|self\.armed\b/.test(code)) hits.push(path.relative(dir, p) + ':' + (i + 1) + ': ' + line.trim());
+        if (/Click again to|Type the team name|\barmToken\b/.test(code)) hits.push(path.relative(dir, p) + ':' + (i + 1) + ': ' + line.trim());
       });
     }
   }
