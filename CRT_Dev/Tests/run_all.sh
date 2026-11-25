@@ -7,7 +7,8 @@ W="${1:-$(cd "$(dirname "$0")/../.." && (pwd -W 2>/dev/null || pwd))}"
 cd "$(dirname "$0")"
 # Every group starts with g <name>: it prints the "== name" line, or skips the group when ONLY names another
 # one (test.sh "<name>" sets ONLY, to run one group while working).
-g() { [ -z "$ONLY" ] || [ "$1" = "$ONLY" ] || return 1; echo "== $1"; }
+. ./runner_lib.sh # the node wrapper: a harness that exits non-zero prints a FAIL line naming its group
+g() { [ -z "$ONLY" ] || [ "$1" = "$ONLY" ] || return 1; CRT_GROUP="$1"; echo "== $1"; }
 for t in "store CRT_Modules/Timeline/Data.lua" "record CRT_Modules/Timeline/Data.lua" "journal CRT_Modules/Timeline/Journal.lua" "reference CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua" "probe CRT_Dev/Dev/TimelineProbe.lua" "lanes CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua" "view CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Timeline/View.lua" "page CRT_Modules/Timeline/Data.lua CRT_Modules/Timeline/Database.lua CRT_Modules/Timeline/Reference.lua CRT_Modules/Timeline/Lanes.lua CRT_Modules/Timeline/ReferencePage.lua CRT_Modules/Timeline/SettingsTab.lua CRT_Modules/Timeline/Page.lua CRT_Modules/Timeline/Journal.lua"; do
   set -- $t; n=$1; shift; case $n in reference|view|page) set -- "$@" CRT_Data/Bosses/Registry.lua CRT_Dev/Tests/SamplePack/Season.lua CRT_Dev/Tests/SamplePack/NekzaliTheSoulcoiler.lua;; esac; [ "$n" = page ] && set -- "$@" CRT_Modules/Timeline/ReviewTab.lua CRT_Modules/Timeline/Rehearsal.lua CRT_Modules/Timeline/RehearsalWindow.lua CRT_Core/Slash.lua; args=""; for f in "$@"; do args="$args \"$W/$f\""; done
   g "$n" && { eval node run_timeline_$n.js $args 2>&1 | tail -${TAIL:-40}; echo "exit ${PIPESTATUS[0]}"; }
@@ -227,3 +228,4 @@ g "timeline import" && { node run_timeline_import.js "$W" 2>&1 | tail -30; echo 
 g "notes order" && { node run_notesorder.js "$W" 2>&1 | tail -1; }
 g "timeline rehearsal" && { node run_timeline_rehearsal.js "$W/CRT_Modules/Timeline/Rehearsal.lua" 2>&1 | tail -15; echo "exit ${PIPESTATUS[0]}"; }
 g "timeline rehearsal window" && { node run_timeline_rehearsalwin.js "$W/CRT_Modules/Timeline/Rehearsal.lua" "$W/CRT_Modules/Timeline/RehearsalWindow.lua" 2>&1 | tail -15; echo "exit ${PIPESTATUS[0]}"; }
+g "runner catches a failing harness" && { bash runner_selftest.sh 2>&1 | tail -10; echo "exit ${PIPESTATUS[0]}"; }

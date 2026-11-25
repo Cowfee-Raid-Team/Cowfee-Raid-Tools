@@ -3583,6 +3583,36 @@ check("mech special (" .. LOOK .. "): Test plays the alert through the editor's 
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- #1306: a special alert never reads another difficulty's ability timeline. With the boss's Heroic one gone, Normal/Heroic
+-- on show lists the Mythic one (the tab's fallback), but the panel shows no times and Test plays nothing, as a pull would.
+check("mech special (" .. LOOK .. "): Normal/Heroic with only a Mythic ability timeline: no times, nothing to test", function()
+  withSpecial(SPECIAL_LIST)
+  local list = CRT.db.timeline.references
+  local savedRefs = {}
+  for i, r in ipairs(list) do savedRefs[i] = r end
+  for i = #list, 1, -1 do if list[i].text:find("Difficulty: Heroic", 1, true) then table.remove(list, i) end end
+  CRT.Timeline:Fire()
+  local f = fresh()
+  local s = f.special
+  click(s.specialBtn)
+  assert(s.whenText.text == "Each cast of Real Name: P1 0:30; P2 +0:20. Shown 6 s before.", "Mythic: its casts: " .. s.whenText.text)
+  dropdowns["Difficulty"].opts.set("nh")
+  assert(s.title.text == "Orb soaks", "the entry for both difficulties on show")
+  assert(s.whenText.text == "Each cast of Real Name. None on the ability timeline on show.", "Normal/Heroic: no Mythic times: " .. s.whenText.text)
+  click(s.testBtn)
+  assert(not A.running and s.message.text:find("Nothing to test", 1, true), "Test plays nothing: " .. tostring(s.message.text))
+  dropdowns["Difficulty"].opts.set("mythic")
+  click(s.testBtn)
+  assert(A.running and A.run.reason == "test", "back on Mythic: Test plays")
+  A:Stop(true)
+  for i = #list, 1, -1 do list[i] = nil end
+  for i, r in ipairs(savedRefs) do list[i] = r end
+  CRT.Timeline:Fire()
+  click(s.mechBtn)
+  noSpecial()
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("mech special (" .. LOOK .. "): Test reads Stop while the test plays, and Stop ends it", function()
   withSpecial(SPECIAL_LIST)
   local f = fresh()
