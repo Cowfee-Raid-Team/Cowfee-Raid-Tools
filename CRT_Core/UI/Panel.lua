@@ -520,7 +520,7 @@ local TEXT = {
     general = "General",
     raidAdmin = "Raid Admin",
     bosses = "Bosses",
-    modules = "Modules",
+    extras = "Extras",
 }
 -- The title bar's version text: "v1.1.2", or "v1.1.2 build#004" in a developer copy with CRT.BUILD.
 function UI.VersionText()
@@ -532,12 +532,14 @@ function UI.VersionText()
 end
 
 UI.MENU_GROUPS = {
-    { label = TEXT.general, "settings", "qol" },
+    -- Start here first: the home page (UI/StartPage.lua), above the addon-wide settings
+    { label = TEXT.general, "start", "settings", "qol" },
     { label = TEXT.bosses, "timeline", "notes", "pace" },
     { label = TEXT.raidAdmin, "readycheck", "groups", "gearcheck", "late" },
-    -- the optional modules each raider switches on (General Settings > Modules) come first
-    { label = TEXT.modules, "interrupts", "lootmaster", "loot", "requests", "seasonstats", "tattle" },
+    -- the optional module each raider switches on (Enable Interrupts, on Start here > What's on) comes first
+    { label = TEXT.extras, "interrupts", "lootmaster", "loot", "requests", "seasonstats", "tattle" },
 }
+UI.HOME_PAGE = "start" -- the page opened when the one asked for is gone or hidden
 
 function UI:IsModern()
     return CRT.db and CRT.db.ui and CRT.db.ui.modern and true or false
@@ -1267,7 +1269,7 @@ end
 -- pages as gold entries under it; a Modern theme draws a small muted label over each group's box. When the
 -- groups are taller than the menu, the menu scrolls with the theme's scroll bar, thin (8 px, 2 px from the buttons).
 -- Every number the menu is placed with, in px:
---   row, rowGap   a page's button and the space under it
+--   row, rowGap   a page's button and the space under it (a look's own row and rowGap come first)
 --   groupGap      between one group's last page and the next group's header
 --   classic       headerGap: between the header bar and its first page; textX: a page's label from the
 --                 left; labelX: the header's label from the left; art: the header's atlas. The game's
@@ -1285,13 +1287,17 @@ end
 -- Tightened for 14 pages (Development included) to fit the 560 px page height in Classic, whose header bars
 -- are taller than Modern's labels (job 20261022-requests). The side padding is thin (job 20261030-menu-scroll):
 -- a page's label has the room, and a scrolling menu gives its thin bar only UI.THIN_SCROLL_GAP + UI.THIN_SCROLL_W.
+-- Start here took one more row (job 20261124-ux-welcome): a pixel came off every row, and Classic's rows lost the
+-- gap between them (their highlights touch, as in the game's Settings list), so the players' menu still fits
+-- without scrolling in both looks.
 UI.MENU_LAYOUT = {
-    row = 30,
+    row = 29,
     rowGap = 1,
     classic = {
         groupGap = 0, -- the header's own border (4 px each side) is the space between groups
         headerGap = 1,
-        row = 29, -- a page's button, a pixel under the default: four bordered headers need the room
+        row = 28, -- a page's button, a pixel under the default: four bordered headers need the room
+        rowGap = 0, -- no gap between Classic's rows
         textX = 8,
         labelX = 10,
         frame = 3, -- the bevel around each header's bar, in the theme's steel colours
@@ -1357,7 +1363,8 @@ function UI.MenuLayout(groups, modern, width, height)
     local L = UI.MENU_LAYOUT
     local look = modern and L.modern or L.classic
     local row = look.row or L.row -- Classic's page rows are a pixel shorter, to fit the headers' borders
-    local step = row + L.rowGap
+    local rowGap = look.rowGap or L.rowGap
+    local step = row + rowGap
     local function place(w)
         local out = { width = w, row = row, headers = {}, boxes = {}, pages = {} }
         local y = 0
@@ -1378,7 +1385,7 @@ function UI.MenuLayout(groups, modern, width, height)
             y = y - h
             if modern then
                 -- pad above the first page's button and below the last one's (its rowGap is inside the box)
-                out.boxes[#out.boxes + 1] = { y = y, h = 2 * look.pad + #group.keys * step - L.rowGap, right = look.boxRight }
+                out.boxes[#out.boxes + 1] = { y = y, h = 2 * look.pad + #group.keys * step - rowGap, right = look.boxRight }
                 y = y - look.pad
                 left, right = look.buttonLeft, look.buttonRight
             else
@@ -1389,7 +1396,7 @@ function UI.MenuLayout(groups, modern, width, height)
                 y = y - step
             end
             if modern then
-                y = y + L.rowGap - look.pad -- the box ends pad under the last button
+                y = y + rowGap - look.pad -- the box ends pad under the last button
             end
         end
         out.height = -y
@@ -2402,6 +2409,9 @@ end
 function UI:SelectPage(key)
     local page = self.pages[key]
     if not page or page.hidden then
+        page = self.pages[UI.HOME_PAGE]
+    end
+    if not page or page.hidden then
         page = self.pages[self.order[1]]
     end
     if not page then
@@ -2515,6 +2525,10 @@ function UI:Show(key)
     self:SetMinimized(false)
     self:SelectPage(key or CRT.db.lastPage)
     f:Show()
+    -- the first open after a fresh install brings the Welcome over it (UI/Welcome.lua)
+    if CRT.Welcome then
+        CRT.Welcome:FirstOpen()
+    end
 end
 
 -- /crt: opens the window, restores it when it is minimized, and closes it when it is open.
