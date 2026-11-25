@@ -582,7 +582,10 @@ CRT.UI = {
   PreviewButton = function() return mock() end,
   RegisterTab = function() end, SetTabSelected = function() end,
   GoodText = function(s) return s end, BadText = function(s) return s end,
+  -- the shared Undo (CRT_Core/UI/Confirm.lua, run_confirm.js tests it): what it was given
+  UndoToast = function(o) QOL_TOASTS[#QOL_TOASTS + 1] = o return o end,
 }
+QOL_TOASTS = {}
 CRT_TEXT_FIT(CRT.UI) -- the real UI.FitButton and UI.TabStrip (CRT_Core/UI/Panel.lua)
 CRT.LowHealth = {}
 CRT.LowHealthSound = { Choices = function() return {} end, Outputs = {}, StopPreview = function() end }
@@ -642,6 +645,30 @@ if v then
     and read():find("Female01 has no Void, so", 1, true) ~= nil and read():find("Male01 and Female01", 1, true) ~= nil
     and read():find("Xavier", 1, true) == nil and read():find("Lola", 1, true) == nil, read())
   Lo.lacks = was
+end
+
+-- Quality of Life > Sounds: Remove on a typed file acts at once and offers Undo (UX rule 4), which puts the name back
+-- in its place, only while it isn't in the list again
+do
+  CRT.db.sound.custom = { "a.ogg", "horn.ogg", "b.ogg" }
+  dropdowns.Voice.opts.set("lola") -- any change redraws the rows
+  local removes = {}
+  for _, f in ipairs(frames) do if rawget(f, "text") == "Remove" then removes[#removes + 1] = f end end
+  check("a Remove button on each file row", #removes >= 3)
+  local r2 = removes[2]
+  r2.OnClick(r2)
+  local toast = QOL_TOASTS[#QOL_TOASTS]
+  check("Remove takes the typed name off the list", table.concat(CRT.db.sound.custom, ",") == "a.ogg,b.ogg", table.concat(CRT.db.sound.custom, ","))
+  check("and offers Undo naming the file, in the button's window", toast and toast.owner == r2 and toast.text:find("horn.ogg", 1, true) ~= nil and type(toast.onUndo) == "function", toast and toast.text)
+  toast.onUndo()
+  check("Undo puts it back in its place", table.concat(CRT.db.sound.custom, ",") == "a.ogg,horn.ogg,b.ogg", table.concat(CRT.db.sound.custom, ","))
+  r2.OnClick(r2)
+  toast = QOL_TOASTS[#QOL_TOASTS]
+  Sound:AddCustom("HORN.ogg") -- typed again since
+  toast.onUndo()
+  check("Undo after the name was added again changes nothing", table.concat(CRT.db.sound.custom, ",") == "a.ogg,b.ogg,HORN.ogg", table.concat(CRT.db.sound.custom, ","))
+  CRT.db.sound.custom = {}
+  CRT.db.sound.voice = "xavier"
 end
 
 -- Quality of Life > Low health: no sound controls of its own, a line pointing to the game's pulse (#1242)

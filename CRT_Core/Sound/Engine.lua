@@ -503,16 +503,30 @@ function Sound:AddCustom(name)
     return true, "Added " .. name .. "."
 end
 
--- Removes a typed name. A name from the companion addon's manifest is removed by editing Sounds.lua.
+-- Removes a typed name. A name from the companion addon's manifest is removed by editing Sounds.lua. Returns true and
+-- the place it had (for Sound:RestoreCustom), or false.
 function Sound:RemoveCustom(name)
     local list = settings().custom
     for i, existing in ipairs(list) do
         if existing == name then
             table.remove(list, i)
-            return true
+            return true, i
         end
     end
     return false
+end
+
+-- Puts a removed name back at its place (the QoL page's Undo). False when the list has that name again.
+function Sound:RestoreCustom(name, index)
+    for _, f in ipairs(self:CustomFiles()) do
+        if f.name:lower() == tostring(name):lower() then
+            return false
+        end
+    end
+    local list = settings().custom
+    table.insert(list, math.max(1, math.min(index or #list + 1, #list + 1)), name)
+    self:RegisterShared()
+    return true
 end
 
 -- Plays a file once to see whether the game finds it. Returns played (true or false) and a message.
