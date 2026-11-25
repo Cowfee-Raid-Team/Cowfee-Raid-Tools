@@ -232,6 +232,8 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
         -- dev gametimeline: add one event to the game's boss timeline and print the result (Dev/GameTimelineProbe.lua)
     elseif CRT.ClearProbe and CRT.ClearProbe:Command(msg) then
         -- dev clearprobe on, off, show: log a pull's possible reset moments for a marker display (Dev/ClearProbe.lua)
+    elseif CRT.MemProbe and CRT.MemProbe:Command(msg) then
+        -- dev mem [seconds]: the garbage CRT's scripts and timers make, top 10 (Dev/MemProbe.lua)
     elseif CRT.KickPerf and CRT.KickPerf:Command(msg) then
         -- dev kicks perf: time each show and refresh of the Interrupts page (Dev/KickPerf.lua)
     elseif CRT.KickProbe and CRT.KickProbe:Command(msg) then

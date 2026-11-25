@@ -1305,6 +1305,22 @@ local function createWindow(key, defaultPosition, build)
     end
 
     function w:Refresh()
+        -- A window that can't show here (out of a raid with Show outside of raid off, or turned off) builds
+        -- nothing: the updater never stops, and a hidden window used to build its whole text every
+        -- SAFETY_SECONDS anyway (#1315). Its first refresh where it may show builds it (drawnVersion forgotten).
+        -- A stamp asked for meanwhile is dropped, as it was when the window hid.
+        local mayShow = previewing[key] or (key == "assignments" and previewing.highlights)
+            or (s().shown and NoteWindow.AllowedHere())
+        if not mayShow then
+            self.flashPending, self.drawnVersion, self.wasLive = nil, nil, nil
+            if frame:IsShown() then
+                frame:Hide()
+                if CRT.NoteHighlights then
+                    CRT.NoteHighlights.Forget(self) -- shown again later, its first draw glows nothing
+                end
+            end
+            return
+        end
         -- the timers window counts down while a note runs, the personal window while a run of a boss
         -- you have reminders for goes
         local live = (key == "window" and Engine.running) or (key == "personal" and personalLive()) or false
