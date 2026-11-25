@@ -32,6 +32,7 @@ local W = LM.Wishlist
 
 W.TEXT.add = "Add to wishlist"
 W.TEXT.remove = "Remove from wishlist"
+W.TEXT.removed = "Took %s off your wishlist."
 W.TEXT.menuTitle = "Wishlist"
 
 local function secret(v)
@@ -104,8 +105,17 @@ function W.OpenMenu(owner, item)
             end, rank)
         end
         if W.Rank(id) then
+            -- at once, with Undo under the Journal (UI.UndoToast's window): the same rank and time come back, unless
+            -- the item was listed again since
             root:CreateButton(W.TEXT.remove, function()
-                W.Remove(id)
+                local e = W.Store()[id]
+                local was = type(e) == "table" and { rank = e.rank, at = e.at } or nil
+                if W.Remove(id) and was then
+                    UI.UndoToast({ text = string.format(W.TEXT.removed, type(name) == "string" and name or tostring(id)),
+                        window = owner, onUndo = function()
+                            W.Restore(id, was)
+                        end })
+                end
             end)
         end
     end)
