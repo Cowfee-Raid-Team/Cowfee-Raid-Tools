@@ -334,7 +334,8 @@ end
 
 -- The ability timeline Times from names, the one the list and the times are read from: the Timeline's own
 -- pick for the group on show (Timeline:ReferenceFor, the one picked in Times from preferred), as the
--- alerts' times pick it; with none in the group, the boss's first, as a pull then reads.
+-- alerts' times pick it; with none in the group, the boss's first, as a pull reads it for your reminders (special
+-- alerts never borrow it: Notes/SpecialAlerts.lua ref()).
 local function shownReference()
     local refs = bossRefs()
     local T = CRT.Timeline

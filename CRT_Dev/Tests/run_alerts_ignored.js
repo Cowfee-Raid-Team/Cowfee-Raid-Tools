@@ -109,7 +109,15 @@ check("ignored: nothing ignored, every mechanic alert plays", function()
   encounter()
   local seen = blocksOf(A.items)
   assert(seen["special:orbs"] == 2 and seen["special:slam"] == 2 and seen["special:typed"] == 1, "the special alerts")
-  assert(seen["mine:1"] == 2 and seen["mine:2"] == 2, "both Mech Alerts")
+  -- the Orb Burst Mech Alert steps aside for the special alerts on the same row (no double alerts, #1306)
+  assert(seen["mine:1"] == 2 and seen["mine:2"] == nil, "the Swap Mech Alert; the Orb Burst one covered by the special alerts")
+  local saved = CRT.db.alerts.special
+  CRT.db.alerts.special = { [9001] = { orbs = { on = false }, veil = { on = false } } }
+  encounter()
+  local off = blocksOf(A.items)["mine:2"]
+  CRT.db.alerts.special = saved
+  encounter()
+  assert(off == 2, "Orb soaks and Veil shield off: the Orb Burst Mech Alert plays: " .. tostring(off))
   assert((seen.note or 0) >= 1, "the raid note line")
   local w = S:AbsorbWatches(A.run)
   assert(#w == 1 and w[1].key == "veil", "the special shield bar's watch")
@@ -123,7 +131,8 @@ check("ignored: a mechanic ticked off plays no Mech Alert or special alert; the 
   encounter()
   local seen = blocksOf(A.items)
   assert(seen["mine:1"] == nil, "no Mech Alert on the Swap spell (mapped through its row)")
-  assert(seen["special:orbs"] == 2 and seen["special:slam"] == 2 and seen["mine:2"] == 2 and seen["special:typed"] == 1, "other mechanics play")
+  assert(seen["special:orbs"] == 2 and seen["special:slam"] == 2 and seen["mine:2"] == nil and seen["special:typed"] == 1,
+    "other mechanics play (the Orb Burst Mech Alert covered, as with nothing ignored)")
   assert((seen.note or 0) >= 1, "the raid note line on that spell still plays")
   -- nothing of it reaches the bars, the callout or the speech queue, which all read the run's lines
   A:StartPhase(1, "test", 0)
