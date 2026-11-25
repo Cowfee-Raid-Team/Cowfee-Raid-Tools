@@ -1,6 +1,6 @@
 local ADDON, CRT = ...
 
--- The Interrupts page, first in the menu's Modules group, shown only while Enable Interrupts is on (General Settings). Three tabs:
+-- The Interrupts page, first in the menu's Extras group, shown only while Enable Interrupts is on (Start here > What's on). Three tabs:
 --   Assignments  the boss and difficulty (every kick setup, Interrupts:Bosses) with Edit setup beside it (your own
 --                setup, Interrupts/SetupEditor.lua), the status bar (which list is in use and your kick), the Kick
 --                list heading (its (?) is how the numbers are worked out: the setup, read-only), the kick rows
@@ -125,14 +125,14 @@ local TEXT = {
     sharing = "Sharing",
     sharingHelp = "Ticked, a kick list the raid leader or an assistant shares replaces the raid's list here and sets your number. Your own list is never changed.",
     accept = "Accept kick lists from the leader and assistants",
-    slashOff = "Interrupts is switched off. Tick Enable Interrupts on General Settings > Appearance first.",
+    slashOff = "Interrupts is switched off. Tick Enable Interrupts on Start here > What's on first.",
     soundNone = "None",
     -- the Settings tab's previews: both displays, the number box, the reminder
     previewAll = "Preview kick displays",
     previewAllTip = "Shows a sample number box and the reminder on screen, so you can check the box and drag the reminder into place. Other previews stay as they are.",
     previewBox = "Preview number box",
     previewBoxTip = "Shows a sample number box in the middle of the screen, at its height above the plate, in your colours.",
-    previewBoxOff = "Turn on Interrupts (Enable Interrupts on General Settings > Appearance) to preview the number box.",
+    previewBoxOff = "Turn on Interrupts (Enable Interrupts on Start here > What's on) to preview the number box.",
     previewBoxNoBoss = "No boss has a kick setup, so there is no number to show.",
     previewReminder = "Preview reminder icon",
     previewReminderTip = "Shows the reminder with its drag box so you can drag it into place. Test reminder on the Assignments tab plays a test countdown instead.",
@@ -925,7 +925,7 @@ if CRT.Slash then
             end
             if not Interrupts:Enabled() then
                 CRT:Print(TEXT.slashOff)
-                UI:Show("settings")
+                UI:Show("start")
                 return
             end
             UI:Show("interrupts")

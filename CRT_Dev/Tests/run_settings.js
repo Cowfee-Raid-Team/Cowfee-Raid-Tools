@@ -261,24 +261,17 @@ print("  " .. fontLine("CRTFontNormal") .. "; " .. fontLine("CRTFontEdit") .. ";
 popup = nil dropdowns["Font"].set("Expressway")
 print("same font again: popup " .. tostring(popup))
 print("settings page built: " .. tostring(UI.pages.settings.frame ~= nil) .. ", title " .. UI.pages.settings.title .. ", profile " .. CRT.Profiles:Current() .. ", minimap " .. tostring(CRT.db.minimap.angle))
--- Appearance > Modules: Enable Interrupts switches the optional module (CRT_Modules/Interrupts/Data.lua, stood in for)
+-- Enable Interrupts moved to Start here > What's on (UI/StartPage.lua, run_start.js): Appearance has no Modules heading
+-- and no Enable Interrupts checkbox now
 do
-  local on
-  CRT.Interrupts = { Enabled = function() return on == true end, SetEnabled = function(_, v) on = v end }
-  local cb
+  local cb, heading
   for _, fr in ipairs(frames) do
     local l = rawget(fr, "label")
     if fr.kind == "CheckButton" and type(l) == "table" and rawget(l, "text") == "Enable Interrupts" then cb = fr end
+    for _, r in ipairs(rawget(fr, "regions") or {}) do if rawget(r, "text") == "Modules" then heading = r end end
   end
-  if not cb then
-    print("FAIL General Settings has an Enable Interrupts checkbox")
-  else
-    cb:SetChecked(true) cb.OnClick(cb)
-    if on ~= true then print("FAIL Enable Interrupts switches the module on") end
-    cb:SetChecked(false) cb.OnClick(cb)
-    if on ~= false then print("FAIL Enable Interrupts switches the module off") end
-  end
-  CRT.Interrupts = nil
+  if cb then print("FAIL General Settings no longer has an Enable Interrupts checkbox (it is on Start here > What's on)") end
+  if heading then print("FAIL General Settings > Appearance no longer has a Modules heading") end
 end
 -- Modules no longer holds Use assignment highlights: its switch is on Raid Notes > Notes Settings > Highlights
 do

@@ -1151,7 +1151,7 @@ eq(shown[#shown], "interrupts", "slash: opens the page")
 eq(words.interrupts.run("other"), false, "slash: another word after it is unknown")
 I:SetEnabled(false); check(pages.interrupts.hidden, "switch: off hides the page")
 words.interrupts.run("")
-eq(shown[#shown], "settings", "slash: off opens General Settings")
+eq(shown[#shown], "start", "slash: off opens Start here, where Enable Interrupts is")
 eq(printed[#printed], T.slashOff, "slash: and says why")
 I:SetEnabled(true); check(not pages.interrupts.hidden, "switch: on shows it again")
 
