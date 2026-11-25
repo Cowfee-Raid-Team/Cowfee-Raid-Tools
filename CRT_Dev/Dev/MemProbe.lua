@@ -16,40 +16,63 @@ local ADDON, CRT = ...
 --   never starts in combat.
 -- It also prints how often each note window rebuilt and why (CRT.NoteWindow.rebuilds), and how much of CRT's memory
 -- growth it saw. Scripts set on frames made while it runs aren't wrapped; the show that made them is.
--- A call's KB is what the Lua heap grew by during it: a garbage collector step in the middle reads as 0.
+-- A call's KB is what the Lua heap grew by during it, less what the measured calls inside it made (a menu click's
+-- page change, a page change's first build of the page and the dev layout editor each on their own line): a garbage
+-- collector step in the middle reads as 0. KB inside a call can be the game's or another addon's (a hook on what CRT
+-- called): after the run it measures the game's tooltip hide alone, which every OnLeave that hides the tooltip pays.
 -- Game calls (warcraft.wiki.gg, read 2026-11-25): EnumerateFrames([frame]) (every non-forbidden frame),
 -- ScriptRegion:GetSourceLocation() ("path\to\file.lua:10", "UnknownFile" with the CVar off), Frame:GetScript,
 -- Frame:SetScript, ScriptRegion:IsProtected, Frame:GetName, collectgarbage("count") (KB of Lua memory in use),
 -- debugstack(start, count1, count2), C_Timer.After/NewTimer/NewTicker, InCombatLockdown(),
 -- UpdateAddOnMemoryUsage(), GetAddOnMemoryUsage(name) (KB, cached by UpdateAddOnMemoryUsage),
--- C_CVar.GetCVar(name).
+-- C_CVar.GetCVar(name), GameTooltip:IsShown/SetText/Show/Hide.
 
+-- Each call counts only its own KB: what a measured call inside it made (a page's build inside a menu click, the dev
+-- layout editor inside a page change) is on that one's line instead, so no KB is counted twice (round 3).
 local Probe = { DEFAULT = 15, MAX = 120, TOP = 10, KINDS = { "OnUpdate", "OnEvent", "OnShow", "OnHide", "OnClick",
     "OnEnter", "OnLeave", "OnMouseDown", "OnMouseUp", "OnMouseWheel", "OnValueChanged", "OnSizeChanged", "OnTextChanged",
     "OnEditFocusGained", "OnEditFocusLost", "OnDragStart", "OnDragStop" },
-    -- CRT's own functions measured too: the main window's page shows (a page is built on its first)
-    FUNCTIONS = { { "UI", "Show" }, { "UI", "Hide" }, { "UI", "Toggle" } } }
+    -- CRT's own functions measured too: the main window's opening, a page change apart from the page's first build
+    -- (one line per page: one-time cost), and the developer build's layout editor run after each page change
+    FUNCTIONS = { { "UI", "Show" }, { "UI", "Hide" }, { "UI", "Toggle" },
+        { "UI", "SelectPage", label = "UI:SelectPage (page change, not the first build)" },
+        { "UI", "BuildPage", byPage = true },
+        { "Dev", "ApplyAll", label = "Dev:ApplyAll (dev layout editor, after a page change)" } } }
 CRT.MemProbe = Probe
 
-local P = { running = false, stats = {}, wrapped = {}, keys = {} }
+-- inner: the KB the measured calls nested in the one running made
+local P = { running = false, stats = {}, wrapped = {}, keys = {}, inner = 0 }
 Probe.state = P
 
 local function heapKB()
     return collectgarbage("count")
 end
 
--- One call's garbage on its stat: the heap's growth since before (0 when a collector step shrank it).
-local function record(key, before)
-    local grew = heapKB() - before
+-- One call's own garbage on its stat (nothing when a collector step shrank the heap).
+local function record(key, kb)
     local st = P.stats[key]
     if not st then
         st = { calls = 0, kb = 0 }
         P.stats[key] = st
     end
     st.calls = st.calls + 1
-    if grew > 0 then
-        st.kb = st.kb + grew
+    if kb > 0 then
+        st.kb = st.kb + kb
     end
+end
+
+-- Calls fn(...) and records under key what it made, less what the measured calls inside it made.
+local function run(key, fn, ...)
+    local before, outer = heapKB(), P.inner
+    P.inner = 0
+    fn(...)
+    local grew = heapKB() - before
+    if grew < 0 then
+        grew = 0
+    end
+    local own = grew - P.inner
+    P.inner = outer + grew
+    record(key, own)
 end
 
 -- "CRT_Modules/Notes/Window.lua:1437" from a path or a stack line naming a CRT file, else nil.
@@ -117,9 +140,7 @@ local function wrapScript(frame, kind, label)
             if not P.running then
                 return original(self, event, ...)
             end
-            local before = heapKB()
-            original(self, event, ...)
-            record(eventKey(label, event), before)
+            run(eventKey(label, event), original, self, event, ...)
         end
     else
         local key = kind .. "  " .. label
@@ -127,9 +148,7 @@ local function wrapScript(frame, kind, label)
             if not P.running then
                 return original(...)
             end
-            local before = heapKB()
-            original(...)
-            record(key, before)
+            run(key, original, ...)
         end
     end
     if not pcall(frame.SetScript, frame, kind, wrapper) then
@@ -153,9 +172,7 @@ local function measured(fn)
         if not P.running then
             return fn(...)
         end
-        local before = heapKB()
-        fn(...)
-        record(key, before)
+        run(key, fn, ...)
     end
 end
 
@@ -190,14 +207,24 @@ local function wrapFunctions()
         local owner = CRT[spec[1]]
         local original = type(owner) == "table" and rawget(owner, spec[2])
         if type(original) == "function" then
-            local key = spec[1] .. ":" .. spec[2]
+            local key = spec.label or (spec[1] .. ":" .. spec[2])
+            local byPage = {}
             local wrapper = function(...)
                 if not P.running then
                     return original(...)
                 end
-                local before = heapKB()
-                original(...)
-                record(key, before)
+                local k = key
+                if spec.byPage then
+                    -- UI:BuildPage(page): a line per page, its name made once
+                    local page = select(2, ...)
+                    local pageKey = type(page) == "table" and tostring(page.key) or "?"
+                    k = byPage[pageKey]
+                    if not k then
+                        k = "UI:BuildPage " .. pageKey .. " (first build, once)"
+                        byPage[pageKey] = k
+                    end
+                end
+                run(k, original, ...)
             end
             owner[spec[2]] = wrapper
             P.functions[#P.functions + 1] = { owner = owner, name = spec[2], original = original, wrapper = wrapper }
@@ -308,6 +335,31 @@ function Probe:Report()
         end
         print("  Note window rebuilds by cause: " .. table.concat(parts, "; ") .. ".")
     end
+    if P.tooltipHideKB then
+        print(string.format("  Hiding the game's tooltip alone makes %.1f KB (the game's and other addons' tooltip code); an OnLeave that hides it counts that too.", P.tooltipHideKB))
+    end
+end
+
+-- What hiding the game's tooltip makes by itself, the game's code and every addon hooked on the tooltip: a CRT OnLeave
+-- that only hides it (the menu buttons') counts this too. Measured after the run, a few times, only while the tooltip
+-- isn't showing (it is shown with no text and hidden in the same frame, never drawn); nil when it can't be.
+local TOOLTIP_TRIES = 3
+function Probe.TooltipHideKB()
+    local tip = GameTooltip
+    if not (tip and tip.Hide and tip.Show and tip.IsShown and CRT.UI and CRT.UI.TooltipOwner) or tip:IsShown() then
+        return nil
+    end
+    local kb = 0
+    for _ = 1, TOOLTIP_TRIES do
+        CRT.UI.TooltipOwner(tip, UIParent, "ANCHOR_NONE", nil, nil, CRT.UI.TOOLTIP_KEEP)
+        tip:SetText(" ")
+        tip:Show()
+        local before = heapKB()
+        tip:Hide()
+        local grew = heapKB() - before
+        kb = kb + (grew > 0 and grew or 0)
+    end
+    return kb / TOOLTIP_TRIES
 end
 
 function Probe:Stop()
@@ -320,6 +372,8 @@ function Probe:Stop()
     restoreTimers()
     restoreFunctions()
     restoreScripts()
+    local ok, kb = pcall(Probe.TooltipHideKB)
+    P.tooltipHideKB = ok and kb or nil
     self:Report()
 end
 
@@ -333,7 +387,7 @@ function Probe:Start(seconds)
         return false
     end
     seconds = math.max(1, math.min(Probe.MAX, math.floor(tonumber(seconds) or Probe.DEFAULT)))
-    P.stats, P.keys, P.wrapped, P.seconds = {}, {}, {}, seconds
+    P.stats, P.keys, P.wrapped, P.seconds, P.inner, P.tooltipHideKB = {}, {}, {}, seconds, 0, nil
     local frames, named = 0, 0
     local f = EnumerateFrames and EnumerateFrames()
     local located = false

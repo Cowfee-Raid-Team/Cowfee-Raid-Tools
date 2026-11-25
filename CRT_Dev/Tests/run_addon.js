@@ -808,6 +808,26 @@ do
     local parts = {}
     for i = 1, math.min(5, #shows) do parts[#parts + 1] = shows[i].key .. " " .. shows[i].n end
     print("  measure " .. name .. ": a built page's show, the most tables: " .. table.concat(parts, ", "))
+    -- hovering the menu and leaving it (#1315 round 3): CRT's part is the page's tip, then a hide
+    local hovers, enterT, leaveT = 0, 0, 0
+    for _ = 1, 5 do
+      for _, key in ipairs(UI.order) do
+        local b = UI.pages[key].button
+        local enter, leave = b and b.scripts.OnEnter, b and b.scripts.OnLeave
+        if enter and leave then
+          local t0 = TABLES_MADE()
+          local okE, errE = pcall(enter, b)
+          local t1 = TABLES_MADE()
+          local okL, errL = pcall(leave, b)
+          if not (okE and okL) then check(false, "a menu button's hover and leave run: " .. tostring(errE or errL)) end
+          enterT, leaveT, hovers = enterT + (t1 - t0), leaveT + (TABLES_MADE() - t1), hovers + 1
+        end
+      end
+    end
+    check(hovers > 0, "the menu buttons have OnEnter and OnLeave")
+    print(string.format("  measure %s: a menu hover makes %.1f tables, a leave %.1f", name, enterT / math.max(1, hovers), leaveT / math.max(1, hovers)))
+    check(leaveT == 0, "leaving a menu button makes no tables, got " .. leaveT)
+    check(enterT / math.max(1, hovers) <= 20, string.format("hovering a menu button makes at most 20 tables, got %.1f", enterT / math.max(1, hovers)))
   end
   -- the stand-ins put back as they were: Show without OnShow, CreateFrame, the skins and UI.Show
   stubs.CreateFrame = plainFrame
