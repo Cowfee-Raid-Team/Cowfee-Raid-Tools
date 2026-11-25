@@ -423,8 +423,9 @@ local function panelRows(panel, s)
     })
     -- voice, volume, rate and Test speech apply to every alert that speaks, so they stay usable with Read them out off;
     -- Read it at (ttsSeconds) times only the plain note lines, which the switch quiets, so it greys with it
-    -- the voice is sound.voice, the same setting as Quality of Life > Sounds, whose page reads it again each time it shows
-    panel:Dropdown(TEXT.voice, {
+    -- the voice is sound.voice, the same setting as Quality of Life > Sounds, whose page reads it again each time it shows;
+    -- its row is kept (Alert.voiceRow) for the Welcome's voice step, which spotlights it
+    Alert.voiceRow = panel:Dropdown(TEXT.voice, {
         options = function() return CRT.Sound:VoiceChoices() end,
         help = TEXT.voiceHelp,
         get = function() return CRT.Sound:VoiceKey() end,

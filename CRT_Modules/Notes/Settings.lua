@@ -204,7 +204,11 @@ local function buildColumn(pf, index, def, top)
         end
         return false, TEXT.hiddenWhy
     end
-    makeCheck(pf, x - 4, top - 20, TEXT.show, nil, setting(def.key, "shown"))
+    local show = makeCheck(pf, x - 4, top - 20, TEXT.show, nil, setting(def.key, "shown"))
+    -- Start here's window links spotlight it, by the window's key (UI:RegisterSpot, UI/Spotlight.lua)
+    if UI.RegisterSpot then
+        UI:RegisterSpot("notes", def.key, show)
+    end
     -- Use highlights (Highlights/Settings.lua), right under Show this window
     if CRT.HighlightsSettings then
         CRT.HighlightsSettings.WindowCheck(pf, x - 4, top - 20 - ROW_H, def.highlights, shown,
@@ -307,8 +311,13 @@ local function build(pf)
 
     -- Highlights: assignment highlights' own section (Highlights/Settings.lua), under Notes list
     if CRT.HighlightsSettings then
-        controls[#controls + 1] = CRT.HighlightsSettings.Build(pf, x, top - HIGHLIGHTS_Y, FOURTH_W,
+        local section = CRT.HighlightsSettings.Build(pf, x, top - HIGHLIGHTS_Y, FOURTH_W,
             { check = makeCheck, heading = heading, refresh = refresh })
+        controls[#controls + 1] = section
+        -- Start here's Assignment highlights link spotlights its switch (UI:RegisterSpot, UI/Spotlight.lua)
+        if UI.RegisterSpot then
+            UI:RegisterSpot("notes", "highlights", section.enable)
+        end
     end
 
     pf:SetScript("OnShow", refresh)

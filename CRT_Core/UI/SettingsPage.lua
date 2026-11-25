@@ -560,11 +560,15 @@ local function buildLeft(pf)
     end)
 
     heading(pf, x, -184, "Minimap", "Left-click the minimap button to open or close this window, right-click it for General Settings, and drag it to move it. The addon is also in the game's addon menu by the minimap, with the button hidden.")
-    checkbox(pf, x, -202, "Show the minimap button", function()
+    local minimap = checkbox(pf, x, -202, "Show the minimap button", function()
         return not CRT.db.minimap.hide
     end, function(on)
         CRT.MinimapButton:SetHidden(not on)
     end)
+    -- Start here's Minimap button link spotlights it (UI:RegisterSpot, UI/Spotlight.lua)
+    if UI.RegisterSpot then
+        UI:RegisterSpot("settings", "minimap", minimap)
+    end
 
     heading(pf, x, -246, "Tooltips", {
         "Where the addon's tooltips open.",

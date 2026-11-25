@@ -1077,7 +1077,11 @@ local function buildSettings(f)
         return Tattle:Settings().enabled and true or false, WHY_TEXT.tracking
     end
 
-    makeCheck(f, 4, -8, "Read the damage meter after each boss pull", "enabled")
+    local tracking = makeCheck(f, 4, -8, "Read the damage meter after each boss pull", "enabled")
+    -- Start here's Tattlebot link spotlights it (UI:RegisterSpot, UI/Spotlight.lua)
+    if UI.RegisterSpot then
+        UI:RegisterSpot("tattle", "enabled", tracking)
+    end
     makeCheck(f, 28, -32, "Only in raids", "raidsOnly", trackingOn)
     local avoidable = makeCheck(f, 28, -56, "Also count damage the game marks avoidable", "avoidable", trackingOn)
     UI.HelpRight(avoidable.label, "Avoidable damage", "Also count every spell the game's own damage meter files under Avoidable Damage Taken. The game decides what is avoidable, and not in every kind of content.")

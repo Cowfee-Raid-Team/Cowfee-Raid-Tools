@@ -66,6 +66,14 @@ local function settings()
     return CRT.db.readycheck
 end
 
+-- Names a switch for Start here's links (UI:RegisterSpot, UI/Spotlight.lua): "auto", "earlyPull", "bar", "window".
+local function spot(key, control)
+    if UI.RegisterSpot then
+        UI:RegisterSpot("readycheck", key, control)
+    end
+    return control
+end
+
 local function tooltip(frame, title, body)
     frame:SetScript("OnEnter", function(self)
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
@@ -164,7 +172,7 @@ end
 -- Settings tab (the automatic report) ------------------------------------------------------------
 
 local function buildAuto(f)
-    makeCheck(f, 4, -8, "Report automatically on a ready check", "auto")
+    spot("auto", makeCheck(f, 4, -8, "Report automatically on a ready check", "auto"))
     -- These three only matter for the automatic report.
     local function autoOn()
         return settings().auto and true or false, TEXT.autoWhy
@@ -201,7 +209,7 @@ local function buildAuto(f)
     local earlyTitle = label(f, "Early Pull Checker")
     earlyTitle:SetPoint("TOPLEFT", 404, -230)
     UI.HelpRight(earlyTitle, "Early Pull Checker", "While a pull timer counts down, CRT watches who enters combat and who cast just before. If the fight starts more than half a second early, it reports the first players in combat and the last casts. Only their names and times show, since the game hides other players' spells.")
-    makeCheck(f, 400, -250, "Report who starts the fight before the pull timer ends", "earlyPull")
+    spot("earlyPull", makeCheck(f, 400, -250, "Report who starts the fight before the pull timer ends", "earlyPull"))
     makeDropdown(f, 428, -276, "Post to", "earlyPullOutput", OUTPUTS, nil, 70, 170, function()
         return settings().earlyPull and true or false, TEXT.earlyWhy
     end)
@@ -218,7 +226,7 @@ local function buildAuto(f)
         "Your own row of consumable icons on a ready check. Arrange it on the Your bar tab.",
         { "Not when I start the ready check", "a raid leader who starts the check usually has no need to see it." },
     })
-    makeCheck(f, 400, -32, "Show my bar on a ready check", "enabled", bar)
+    spot("bar", makeCheck(f, 400, -32, "Show my bar on a ready check", "enabled", bar))
     makeCheck(f, 424, -56, "Not when I start the ready check", "notStarter", bar, function()
         return bar().enabled and true or false, TEXT.barWhy
     end)
@@ -303,7 +311,7 @@ local function makeNumber(parent, x, y, text, field, low, high)
 end
 
 local function buildWindow(f)
-    makeCheck(f, 4, -16, "Open the window on a ready check", "enabled", windowSettings)
+    spot("window", makeCheck(f, 4, -16, "Open the window on a ready check", "enabled", windowSettings))
     -- Only the automatic opening checks who you are, so this depends on the box above.
     makeCheck(f, 28, -40, "Only when I'm the raid leader or an assistant", "leadOnly", windowSettings, function()
         return windowSettings().enabled and true or false, TEXT.windowWhy

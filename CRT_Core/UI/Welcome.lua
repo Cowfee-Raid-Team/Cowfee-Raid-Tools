@@ -27,7 +27,8 @@ local TEXT = CRT.Locale("UI.Welcome", {
 })
 W.TEXT = TEXT
 
--- The next steps for each choice: the step's text, its button's label and where the button goes.
+-- The next steps for each choice: the step's text, its button's label and where the button goes; spot, for a step
+-- that names one setting, the page and key it is registered under (UI:RegisterSpot), spotlighted once there.
 local STEPS = {
     raider = {
         -- label() is the button's text while it follows a state; it reads like the title bar's Previews button
@@ -39,7 +40,7 @@ local STEPS = {
         end },
         { text = "Pick the voice that reads your alerts out.", button = "Alert settings", go = function()
             CRT.NotesPage.Open("alerts")
-        end },
+        end, spot = { "notes", "voice" } },
         { text = "See what's on, and switch off what you don't need.", button = "What's on", go = function()
             UI:Show("start")
         end },
@@ -62,7 +63,7 @@ W.STEPS = STEPS
 -- steps; a step's number column and the gap before its button; the choice's and the buttons' heights.
 local L = {
     width = 460, top = 4, introGap = 12, choiceGap = 12, stepGap = 8, number = 18, buttonGap = 10,
-    choiceH = 24, button = 22, footerGap = 14,
+    choiceH = 24, button = 22, footerGap = 14, aside = 12,
 }
 W.LAYOUT = L
 
@@ -72,6 +73,44 @@ end
 
 local view = { steps = {} }
 W.view = view
+
+-- A frame's edges on screen (its own units times its effective scale), or nil before it is laid out.
+local function screenRect(f)
+    if type(f) ~= "table" or not f.GetLeft then
+        return nil
+    end
+    local l, r, t, b = f:GetLeft(), f:GetRight(), f:GetTop(), f:GetBottom()
+    if not (tonumber(l) and tonumber(r) and tonumber(t) and tonumber(b)) then
+        return nil
+    end
+    local s = tonumber(f.GetEffectiveScale and f:GetEffectiveScale()) or 1
+    return { l = l * s, r = r * s, t = t * s, b = b * s, s = s }
+end
+
+local function overlaps(a, b)
+    return a.l < b.r and b.l < a.r and a.b < b.t and b.b < a.t
+end
+
+-- A step's spotlighted setting under the Welcome (the voice step's Voice row on Alert settings): the Welcome moves
+-- beside the main window, right of it or else left, kept on screen, so the box shows. Returns whether it moved.
+local function moveAside(target)
+    local win = view.win
+    local w, c, m, screen = screenRect(win), screenRect(target), screenRect(UI.frame), screenRect(UIParent)
+    if not (w and c and m and screen) or not overlaps(w, c) then
+        return false
+    end
+    local width, height = w.r - w.l, w.t - w.b
+    local x = m.r + L.aside
+    if x + width > screen.r then
+        x = m.l - L.aside - width
+    end
+    x = math.max(screen.l, math.min(x, screen.r - width))
+    local top = math.max(screen.b + height, math.min(w.t, screen.t))
+    win:ClearAllPoints()
+    win:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x / w.s, top / w.s)
+    return true
+end
+W.MoveAside = moveAside
 
 -- One step row: its number, its text and its button, made the first time it is needed.
 local function stepRow(i, c)
@@ -86,6 +125,20 @@ local function stepRow(i, c)
         r.button = UI.PanelButton(c, "", L.button, function()
             if r.go then
                 r.go()
+            end
+            if r.spot and UI.GoToSpot then
+                local target = UI:GoToSpot(r.spot[1], r.spot[2])
+                if target then
+                    -- now, and again on the next frame once the page that just opened is laid out
+                    moveAside(target)
+                    if C_Timer and C_Timer.After then
+                        C_Timer.After(0, function()
+                            if UI.spotlight and UI.spotlight.target == target then
+                                moveAside(target)
+                            end
+                        end)
+                    end
+                end
             end
         end)
         view.steps[i] = r
@@ -165,7 +218,7 @@ fill = function()
     end
     for i, step in ipairs(steps or {}) do
         local r = stepRow(i, c)
-        r.go = step.go
+        r.go, r.spot = step.go, step.spot
         r.number:SetText(i .. ".")
         r.button:SetText(step.label and step.label() or step.button)
         local fs = r.button:GetFontString()

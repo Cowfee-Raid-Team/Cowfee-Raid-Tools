@@ -139,6 +139,7 @@ local function checkbox(parent, x, y, text, get, set)
     local fs = parent:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     fs:SetPoint("LEFT", cb, "RIGHT", 2, 0)
     fs:SetText(text)
+    cb.label = fs
     cb:SetScript("OnClick", function(self)
         set(self:GetChecked() and true or false)
     end)
@@ -321,7 +322,7 @@ local function build(pf)
             Pace:SetEnabled(boss(), on)
         end
     end)
-    checkbox(pf, 4, -128, TEXT.showAll, function()
+    local showAll = checkbox(pf, 4, -128, TEXT.showAll, function()
         return CRT.db.pace.shown ~= false
     end, function(on)
         CRT.db.pace.shown = on
@@ -329,6 +330,10 @@ local function build(pf)
             Pace:Stop()
         end
     end)
+    -- Start here's Pace window link spotlights it (UI:RegisterSpot, UI/Spotlight.lua)
+    if UI.RegisterSpot then
+        UI:RegisterSpot("pace", "shown", showAll)
+    end
 
     -- Add a row.
     local phaseRow = UI.Dropdown(pf, TEXT.phase, { options = PHASES, labelWidth = 40, width = 100,

@@ -330,7 +330,7 @@ local function build(pf)
         y = y - 26
         return at
     end
-    makeCheck(pf, 4, nextRow(), TEXT.callout, nil, alertField("enabled"))
+    local callout = makeCheck(pf, 4, nextRow(), TEXT.callout, nil, alertField("enabled"))
     makeCheck(pf, 4, nextRow(), TEXT.text, areaOn("texts"), route("text"))
     makeCheck(pf, 4, nextRow(), TEXT.icon, areaOn("icons"), route("icon"))
     makeCheck(pf, 4, nextRow(), TEXT.bar, areaOn("bars"), function()
@@ -346,6 +346,24 @@ local function build(pf)
     makeCheck(pf, 4, nextRow(), TEXT.timeline, areaOn("timeline"), route("timeline"))
     local speech = makeCheck(pf, 4, nextRow(), TEXT.speech, nil, alertField("tts"))
     UI.HelpRight(speech.label, TEXT.speech, TEXT.speechHelp)
+    -- Start here's links and the Welcome spotlight these (UI:RegisterSpot, UI/Spotlight.lua): the callout's and speech's
+    -- switches, each area's Show these alerts (the area picked first) and the callout's Voice
+    if UI.RegisterSpot then
+        UI:RegisterSpot("notes", "callout", callout)
+        UI:RegisterSpot("notes", "tts", speech)
+        for _, kind in ipairs(KINDS) do
+            if kind.key ~= CALLOUT then
+                UI:RegisterSpot("notes", "area:" .. kind.key, function()
+                    show(kind.key)
+                    return panel and panel.showCheck
+                end)
+            end
+        end
+        UI:RegisterSpot("notes", "voice", function()
+            show(CALLOUT)
+            return CRT.NoteAlert and CRT.NoteAlert.voiceRow
+        end)
+    end
 
     -- Colours: the one switch for your own alert colours
     local colourTop = y - 20

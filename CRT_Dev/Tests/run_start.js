@@ -12,7 +12,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const FILES = ['CRT_Core/Core.lua', 'CRT_Core/Themes.lua', 'CRT_Core/Profiles.lua', 'CRT_Core/Slash.lua', 'CRT_Core/UI/Panel.lua',
-  'CRT_Core/UI/ScrollBar.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/Toggle.lua', 'CRT_Core/UI/StartPage.lua', 'CRT_Core/UI/Welcome.lua'];
+  'CRT_Core/UI/ScrollBar.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/Spotlight.lua', 'CRT_Core/UI/Toggle.lua', 'CRT_Core/UI/StartPage.lua', 'CRT_Core/UI/Welcome.lua'];
 const harness = `
 local sources = { ... }
 local NAMES = { ${FILES.map(f => JSON.stringify(f)).join(', ')} }
@@ -93,6 +93,14 @@ local function mock(kind)
     if k == "GetJustifyH" then return function(self) return rawget(self, "justify") or "CENTER" end end
     if k == "SetJustifyH" then return function(self, j) rawset(self, "justify", j) end end
     if k == "GetNumPoints" then return function(self) return #self.pts end end
+    if k == "SetParent" then return function(self, p)
+      local old = rawget(self, "parent")
+      if type(old) == "table" and rawget(old, "children") then for i, c in ipairs(old.children) do if c == self then table.remove(old.children, i) break end end end
+      rawset(self, "parent", p)
+      if type(p) == "table" and rawget(p, "children") then table.insert(p.children, self) end
+    end end
+    if k == "RegisterEvent" then return function(self, e) rawset(self, "events", rawget(self, "events") or {}) self.events[e] = true end end
+    if k == "UnregisterEvent" then return function(self, e) local ev = rawget(self, "events") if ev then ev[e] = nil end end end
     return function() end end })
 end
 function CreateFrame(kind, name, parent, template)
@@ -179,6 +187,7 @@ local function boot(saved)
   CRT.QoLPage = { Open = function(tab) opened[#opened + 1] = "qol:" .. tostring(tab) end }
   CRT.SettingsPage = { Open = function(tab) opened[#opened + 1] = "settings:" .. tostring(tab) end }
   CRT.TattlePage = { Open = function(tab) opened[#opened + 1] = "tattle:" .. tostring(tab) end }
+  CRT.TimelinePage = { Open = function(tab) opened[#opened + 1] = "timeline:" .. tostring(tab) end }
   local show = UI.Show
   UI.Show = function(self, key) opened[#opened + 1] = key or "?" return show(self, key) end
   return { CRT = CRT, UI = UI, opened = opened, printed = printed,
@@ -431,6 +440,22 @@ for _, look in ipairs({ { "blizzard", "Classic" }, { "cowfee", "Modern" } }) do
     check(welcomeW >= v.welcome:GetFontString():GetStringWidth() + 2 * p.UI.PANEL_BUTTON_PAD, name .. ": the Welcome button is as wide as its label at this size")
     local introW = S.LAYOUT.x + v.title:GetStringWidth() + S.LAYOUT.introGap + v.intro:GetStringWidth() + S.LAYOUT.linkGap + welcomeW
     check(introW <= PW, name .. ": the title, the intro and Welcome fit on one line (" .. math.floor(introW) .. " of " .. PW .. ")")
+    -- the help line (#1311): beside the heading and its (?), or under the heading when that doesn't fit; inside the
+    -- page either way, and above the first section
+    local hp, lp = v.whatsOn.pts[1], v.whatsOnLine.pts[1]
+    local headW, headH = v.whatsOn:GetStringWidth(), v.whatsOn:GetStringHeight()
+    local lineH = v.whatsOnLine:GetStringHeight()
+    local lineW = v.whatsOnLine.w and v.whatsOnLine.w > 0 and math.min(v.whatsOnLine.w, v.whatsOnLine:GetStringWidth()) or v.whatsOnLine:GetStringWidth()
+    if v.lineBeside then
+      check(lp[2] >= hp[2] + headW + p.UI.HELP_GAP + p.UI.HELP_SIZE, name .. ": the help line starts after the heading's (?)")
+      check(lp[3] <= hp[3] and lp[3] - lineH >= hp[3] - headH - 1, name .. ": the help line sits on the heading's line")
+    else
+      check(lp[2] == hp[2] and lp[3] <= hp[3] - headH, name .. ": the help line goes under the heading")
+      check(v.whatsOnLine:GetStringWidth() + lp[2] > PW - S.LAYOUT.x or hp[2] + headW + p.UI.HELP_GAP + p.UI.HELP_SIZE + S.LAYOUT.linkGap + v.whatsOnLine:GetStringWidth() > PW - S.LAYOUT.x, name .. ": under only when it doesn't fit beside")
+    end
+    if pt == 8 then check(v.lineBeside, name .. ": at the smallest size the help line is beside the heading") end
+    check(lp[2] + lineW <= PW, name .. ": the help line ends inside the page (" .. math.floor(lp[2] + lineW) .. " of " .. PW .. ")")
+    check(v.sections[1].heading.pts[1][3] <= lp[3] - lineH, name .. ": the first section starts under the help line")
   end
 end
 p.UI:SetTheme("blizzard")
@@ -442,6 +467,227 @@ check(p.UI.MENU_GROUPS[4].label == "Extras", "the Modules group is now Extras")
 p.UI:SelectPage("nothing")
 check(p.CRT.db.lastPage == "start", "a page that is gone falls back to Start here")
 section("the menu: Start here first, Extras")
+
+-- 9. The help line's text, and each link's spotlight (#1311) ----------------------------------------------------------
+-- The pages register stand-in switches here (the real pages' are checked in run_addon.js): a check box with its label.
+p = boot(nil)
+p.slash("")
+p.welcome():Hide()
+S = p.CRT.StartPage
+v = S.view
+local UI = p.UI
+local SP = UI.SPOTLIGHT
+check(v.whatsOnLine and v.whatsOnLine.text == "Tick to turn a feature on or off. Click a page name to go to its settings.", "the help line reads: " .. tostring(v.whatsOnLine and v.whatsOnLine.text))
+check(S.TEXT.whatsOnLine == v.whatsOnLine.text, "its text is in the TEXT table")
+check(v.whatsOnLine.font == "CRTFontSmall", "the help line is in the body text's font, not the muted grey")
+check(v.whatsOnHelp ~= nil, "the heading keeps its (?) for the longer explanation")
+local host = CreateFrame("Frame", nil, UIParent)
+local function control(text)
+  local cb = CreateFrame("CheckButton", nil, host, "UICheckButtonTemplate")
+  cb:SetSize(24, 24)
+  local fs = host:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+  fs:SetText(text)
+  fs:SetPoint("LEFT", cb, "RIGHT", 2, 0)
+  cb.label = fs
+  return cb
+end
+local function linkOf(key) for _, r in ipairs(v.rows) do if r.def.key == key then return r.link end end end
+local OPENS = {}
+for _, r in ipairs(v.rows) do
+  local d = r.def
+  OPENS[d.key] = d.tab and (d.page .. ":" .. d.tab) or d.page
+end
+local switches, without = {}, {}
+for _, r in ipairs(v.rows) do
+  if r.def.spot then
+    switches[r.def.key] = control(r.def.label .. " switch")
+    UI:RegisterSpot(r.def.page, r.def.spot, switches[r.def.key])
+  else
+    without[#without + 1] = r.def.key
+  end
+end
+table.sort(without)
+check(table.concat(without, " ") == "interrupts whatsNew", "every row names its switch but Enable Interrupts (its only switch) and What's new (a window): " .. table.concat(without, " "))
+local function boxOf() return UI.spotlight.box end
+p.CRT.WhatsNew = { ShowNow = function() end }
+for _, r in ipairs(v.rows) do
+  local key = r.def.key
+  local before = #p.opened
+  click(r.link)
+  if r.def.spot then
+    local sw = switches[key]
+    check(p.opened[before + 1] == OPENS[key], key .. ": its link opens " .. OPENS[key] .. ", got " .. tostring(p.opened[before + 1]))
+    check(UI.spotlight.target == sw, key .. ": its switch there is spotlighted")
+    local box = boxOf()
+    check(box and box.shown and box.parent == host, key .. ": the box shows, on the switch's own parent (it hides with its page)")
+    local pt = box and box.pts[1] or {}
+    check(pt[1] == "LEFT" and pt[2] == sw and pt[3] == "LEFT" and pt[4] == -SP.pad, key .. ": the box starts " .. SP.pad .. " px left of the box")
+    local textW = sw.label:GetStringWidth()
+    check(box.w == 24 + 2 + textW + 2 * SP.pad and box.h == 24 + 2 * SP.pad, key .. ": the box covers the switch and its label, " .. SP.pad .. " px around (" .. tostring(box.w) .. " x " .. tostring(box.h) .. ")")
+  end
+end
+-- the outline: four edges, 2 px, in the theme's accent colour
+UI.Spotlight(switches.pace, { label = switches.pace.label })
+local box = boxOf()
+local ar, ag, ab = UI.Color("accent")
+local e1 = box.edges and box.edges[1]
+check(SP.edge == 2 and #box.edges == 4 and e1.color and e1.color[1] == ar and e1.color[2] == ag and e1.color[3] == ab and e1.color[4] == 1, "the outline is four 2 px edges in the accent colour, full at first")
+check(box.events and box.events.GLOBAL_MOUSE_DOWN, "while it shows, it listens for a click")
+-- a gentle pulse, then a fade, gone by SP.seconds; never fast
+check(UI.SpotlightAlpha(0) == 1 and UI.SpotlightAlpha(SP.seconds) == 0, "the pulse starts full and ends at nothing")
+check(SP.seconds >= 2.5 and SP.seconds <= 3.5, "it lasts about 3 s (" .. SP.seconds .. ")")
+local dips, last, falling, low = 0, 1, false, 1
+for i = 1, math.floor(SP.seconds * 100) do
+  local a = UI.SpotlightAlpha(i / 100)
+  if a > last and falling then dips = dips + 1 end
+  falling = a < last
+  if i / 100 < SP.seconds - SP.fade then low = math.min(low, a) end
+  last = a
+end
+check(1 / SP.period < 3 and dips / SP.seconds < 3, "well under 3 pulses a second (" .. dips .. " in " .. SP.seconds .. " s)")
+check(low >= SP.low - 0.001 and low > 0, "it never blinks out while it pulses (lowest " .. low .. ")")
+local t = 0
+while t < SP.seconds - 0.2 do box.scripts.OnUpdate(box, 0.1) t = t + 0.1 end
+check(box.shown and UI.spotlight.target == switches.pace, "still up just before " .. SP.seconds .. " s")
+box.scripts.OnUpdate(box, 0.3)
+check(not box.shown and UI.spotlight.target == nil and not (box.events and box.events.GLOBAL_MOUSE_DOWN), "gone after " .. SP.seconds .. " s, and no longer listening")
+-- a click anywhere takes it away early
+UI.Spotlight(switches.pace)
+box.scripts.OnEvent(box, "GLOBAL_MOUSE_DOWN", "LeftButton")
+check(not box.shown and UI.spotlight.target == nil, "a click anywhere takes it away")
+-- its page hiding takes it away, and it stays away when the page shows again
+UI.Spotlight(switches.pace)
+local function hideTree(f)
+  f:Hide()
+  local function down(x) for _, c in ipairs(rawget(x, "children") or {}) do if c.shown and c.scripts.OnHide then c.scripts.OnHide(c) end down(c) end end
+  down(f)
+end
+hideTree(host)
+check(not box.shown and UI.spotlight.target == nil, "its page hiding takes it away")
+host:Show()
+check(not box.shown, "and it stays away when the page shows again")
+-- a missing switch: the page opens, no box, no error (logged here, never to chat)
+UI.spots.pace.shown = nil
+local printedBefore = #p.printed
+local okMissing, err = pcall(click, linkOf("pace"))
+check(okMissing, "a missing switch: no error: " .. tostring(err))
+check(p.opened[#p.opened] == "pace" and UI.spotlight.target == nil and not box.shown, "a missing switch: the page opens with no box")
+check(#p.printed == printedBefore, "a missing switch says nothing in chat")
+say("  log start: the Pace window's switch not registered: Pace opened with no box")
+-- a spot named by a function brings its control on screen first (an area picked in a list)
+local picked
+local area = control("Show these alerts")
+UI:RegisterSpot("notes", "area:icons", function() picked = "icons" return area end)
+click(linkOf("alertIcons"))
+check(picked == "icons" and UI.spotlight.target == area and UI.spotlight.label == area.label, "a spot named by a function: it runs first, then its control and label are spotlighted")
+-- a control in a scroll frame is scrolled into view, unless it already shows
+local scroll = CreateFrame("ScrollFrame", nil, UIParent)
+local child = CreateFrame("Frame", nil, scroll)
+local deep = CreateFrame("CheckButton", nil, child)
+local scrolled
+rawset(scroll, "GetScrollChild", function() return child end)
+rawset(scroll, "GetHeight", function() return 100 end)
+rawset(scroll, "GetVerticalScroll", function() return 0 end)
+rawset(scroll, "GetVerticalScrollRange", function() return 400 end)
+rawset(scroll, "SetVerticalScroll", function(_, y) scrolled = y end)
+rawset(child, "GetTop", function() return 500 end)
+rawset(deep, "GetTop", function() return 200 end)
+rawset(deep, "GetBottom", function() return 176 end)
+UI.Spotlight(deep)
+check(scrolled == 300 - SP.view, "a control below the fold is scrolled into view, with room above it: " .. tostring(scrolled))
+scrolled = nil
+rawset(deep, "GetTop", function() return 470 end)
+rawset(deep, "GetBottom", function() return 446 end)
+UI.Spotlight(deep)
+check(scrolled == nil, "a control already in view isn't scrolled")
+-- in a scroll frame the box sits on the scroll frame's parent, above it, cut to its edges, so nothing clips it
+local pane = CreateFrame("Frame", nil, UIParent)
+local list = CreateFrame("ScrollFrame", nil, pane)
+local rows = CreateFrame("Frame", nil, list)
+local first = CreateFrame("CheckButton", nil, rows)
+first:SetSize(24, 24)
+local wheel = 0
+list:SetScript("OnMouseWheel", function() wheel = wheel + 1 end)
+rawset(list, "GetScrollChild", function() return rows end)
+rawset(list, "GetLeft", function() return 100 end) rawset(list, "GetRight", function() return 400 end)
+rawset(list, "GetTop", function() return 500 end) rawset(list, "GetBottom", function() return 400 end)
+rawset(list, "GetHeight", function() return 100 end)
+rawset(list, "GetVerticalScroll", function() return 0 end)
+rawset(list, "GetVerticalScrollRange", function() return 300 end)
+rawset(list, "SetVerticalScroll", function() end)
+rawset(rows, "GetTop", function() return 500 end)
+-- the first row, its left edge 1 px inside the list and its top 2 px under the list's top
+rawset(first, "GetLeft", function() return 101 end)
+rawset(first, "GetTop", function() return 498 end) rawset(first, "GetBottom", function() return 474 end)
+check(UI.Spotlight(first) ~= nil, "a control at the top of a list is spotlighted")
+local bp = box.pts[1] or {}
+check(box.parent == pane, "in a scroll frame the box is on the scroll frame's parent, never inside what it clips")
+check(bp[1] == "TOPLEFT" and bp[2] == list and bp[3] == "TOPLEFT", "placed from the scroll frame's corner")
+check((bp[4] or -1) >= 0 and (bp[5] or 1) <= 0, "its left and top never pass the scroll frame's edges (" .. tostring(bp[4]) .. ", " .. tostring(bp[5]) .. ")")
+check(bp[4] + box.w <= 300 and -bp[5] + box.h <= 100, "nor its right and bottom")
+check(bp[4] == 0 and bp[5] == 0 and box.w == 101 + 24 + SP.pad - 100 and box.h == 500 - (486 - 12 - SP.pad), "cut where the list's edge is, the rest " .. SP.pad .. " px around (" .. box.w .. " x " .. box.h .. ")")
+-- the list scrolling takes it away: the wheel, or a scroll elsewhere; its own scroll doesn't
+list.scripts.OnVerticalScroll(list, 0)
+check(box.shown and UI.spotlight.target == first, "the scroll that brought it into view keeps it")
+list.scripts.OnVerticalScroll(list, 40)
+check(not box.shown and UI.spotlight.target == nil, "the list scrolled: the box goes")
+UI.Spotlight(first)
+list.scripts.OnMouseWheel(list, -1)
+check(not box.shown and wheel == 1, "the mouse wheel on the list takes it away, and the list still scrolls")
+-- a control out of the list's view gets no box
+rawset(first, "GetTop", function() return 380 end) rawset(first, "GetBottom", function() return 356 end)
+check(UI.Spotlight(first) == nil and not box.shown, "a control outside the list's view: no box")
+-- a control that isn't shown gets no box
+local hidden = control("Hidden switch")
+hidden:Hide()
+UI:RegisterSpot("pace", "hidden", hidden)
+check(UI:GoToSpot("pace", "hidden") == nil and UI.Spotlight(hidden) == nil and not box.shown and not (box.events and box.events.GLOBAL_MOUSE_DOWN), "a switch that isn't shown: no box, not listening")
+UI.ClearSpotlight()
+-- the Welcome's voice step spotlights the voice it names
+local voice = control("Voice")
+UI:RegisterSpot("notes", "voice", function() return voice end)
+local W = p.CRT.Welcome
+W:Open()
+for _, half in ipairs(W.view.choice.buttons) do if half.key == "raider" then click(half) end end
+check(W.STEPS.raider[2].spot and W.STEPS.raider[2].spot[1] == "notes" and W.STEPS.raider[2].spot[2] == "voice", "the Welcome's voice step names the voice setting")
+click(W.view.steps[2].button)
+check(p.opened[#p.opened] == "notes:alerts" and UI.spotlight.target == voice, "the Welcome's voice step opens Alert settings and spotlights the voice")
+-- the Welcome over the spotlighted Voice: it moves beside the main window, kept on screen
+local function rectOf(f, l, r, t, b)
+  rawset(f, "GetLeft", function() return l end) rawset(f, "GetRight", function() return r end)
+  rawset(f, "GetTop", function() return t end) rawset(f, "GetBottom", function() return b end)
+end
+local win = p.welcome()
+rectOf(UIParent, 0, 1920, 1080, 0)
+rectOf(UI.frame, 300, 1100, 900, 300)
+rectOf(win, 500, 960, 800, 600)
+rectOf(voice, 520, 700, 700, 676)
+win.pts = {}
+click(W.view.steps[2].button)
+local wp = win.pts[#win.pts] or {}
+check(wp[1] == "TOPLEFT" and wp[2] == UIParent and wp[4] == 1100 + W.LAYOUT.aside and wp[5] == 800, "the Welcome covering the Voice moves right of the main window: " .. tostring(wp[4]) .. ", " .. tostring(wp[5]))
+-- no room on the right: it goes left of it; no room on either side: kept on screen
+rectOf(UI.frame, 1000, 1800, 900, 300)
+win.pts = {}
+click(W.view.steps[2].button)
+wp = win.pts[#win.pts] or {}
+check(wp[4] == 1000 - W.LAYOUT.aside - 460, "no room on the right: left of the main window: " .. tostring(wp[4]))
+rectOf(UI.frame, 10, 1910, 900, 300)
+win.pts = {}
+click(W.view.steps[2].button)
+wp = win.pts[#win.pts] or {}
+check(wp[4] and wp[4] >= 0 and wp[4] + 460 <= 1920, "no room either side: kept on screen: " .. tostring(wp[4]))
+-- the Welcome clear of the Voice stays where it is
+rectOf(win, 1200, 1660, 800, 600)
+rectOf(UI.frame, 300, 1100, 900, 300)
+win.pts = {}
+click(W.view.steps[2].button)
+check(#win.pts == 0, "the Welcome clear of the Voice stays where it is")
+UI.ClearSpotlight()
+click(W.view.steps[3].button)
+check(UI.spotlight.target == nil, "a step that names no setting opens its page with no box")
+section("the help line, and each link's spotlight: opens, covers, pulses, fades, clears")
+
 
 say(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error("failures") end
