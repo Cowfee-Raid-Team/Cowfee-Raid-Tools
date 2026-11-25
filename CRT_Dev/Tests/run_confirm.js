@@ -27,6 +27,7 @@ local function mock(kind)
       Hide = function(self) self.shown = false for _, fn in ipairs(self.hooks or {}) do fn(self) end end,
       HookScript = function(self, n, fn) if n == "OnHide" then self.hooks = self.hooks or {} self.hooks[#self.hooks + 1] = fn end end,
       SetClampedToScreen = function(self, on) self.clamped = on end,
+      EnableMouse = function(self, on) self.mouse = on and true or false end,
       IsShown = function(self) return self.shown end,
       SetParent = function(self, p) self.parent = p end,
       GetParent = function(self) return self.parent end,
@@ -160,6 +161,8 @@ do
   eq(t.parent, mainWin, "no owner: in the main window")
   check(t.point and t.point[1] == "TOP" and t.point[2] == mainWin and t.point[3] == "BOTTOM" and t.point[5] < 0, "just under its bottom edge, so it covers no button row")
   check(t.clamped, "kept on the screen")
+  check(t.mouse == false, "the bar itself lets clicks through to the game under it (action bars)")
+  check(t.undo.mouse ~= false and t.undo.OnClick ~= nil, "only its Undo button takes clicks")
   check(t.level > mainWin.level, "above the page")
   check(t.w > 0 and t.w <= mainWin.w - 2 * UI.UNDO_TOAST.margin, "as wide as it needs, inside the window: " .. tostring(t.w))
   check(t.bg and t.border and t.edge.color, "painted: surface, border and accent edge")

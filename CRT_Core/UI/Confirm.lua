@@ -112,7 +112,9 @@ local function build()
     local f = CreateFrame("Frame", "CowfeeRaidToolsUndoToast", UIParent, "BackdropTemplate")
     f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     f:SetHeight(TOAST.height)
-    f:EnableMouse(true) -- clicks on the bar don't fall through to the page under it
+    -- the bar hangs under its window over the game's own UI (action bars), so it lets clicks through; only its Undo
+    -- button takes them
+    f:EnableMouse(false)
     f.edge = f:CreateTexture(nil, "ARTWORK")
     f.edge:SetPoint("TOPLEFT", 1, -1)
     f.edge:SetPoint("BOTTOMLEFT", 1, 1)
