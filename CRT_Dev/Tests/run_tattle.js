@@ -99,7 +99,10 @@ local UI = {
   Dropdown = function(parent, label, opts) local row = mock() row.parent = parent row.label, row.opts = label, opts row.refresh = function() row.refreshed = (row.refreshed or 0) + 1 end
     dropdowns[label] = row return row end,
   IsModern = function() return true end,
+  Confirm = function(o) CONFIRMS[#CONFIRMS + 1] = o return true end, -- the shared confirm and Undo: what they were given
+  UndoToast = function(o) TOASTS[#TOASTS + 1] = o return o end,
 }
+CONFIRMS, TOASTS = {}, {}
 local CRT = { UI = UI, db = {} }
 local posted = {}
 function CRT:Print() end
@@ -323,6 +326,51 @@ do
   check(text:find("Thisisfartaa 2", 1, true) ~= nil and text:find("Abu 1", 1, true) ~= nil and not text:find("Kil'jaeden", 1, true) and not text:find("Area 52", 1, true),
     "chat report: names without realms: " .. text)
   CRT.Tattle.MechanicBlocks = realBlocks
+end
+
+-- #1299: Delete this night asks once through the shared confirm; an own mechanic's Remove acts at once with Undo
+do
+  local function findMade(pred) for _, f in ipairs(made) do if pred(f) then return f end end end
+  local night = s.history[#s.history]
+  CRT.TattlePage.ShowNight(night.id)
+  local del = findMade(function(f) return f.text == "Delete this night" and f.scripts.OnClick end)
+  check(del ~= nil, "History's Delete this night")
+  CONFIRMS = {}
+  if del then del.scripts.OnClick(del) end
+  local c = CONFIRMS[1]
+  eq(c and c.text, "Delete the night of " .. os.date("%a %d %b", night.startedAt) .. "?", "it asks once, naming the night")
+  eq(c and c.detail, "Its " .. #night.pulls .. " " .. (#night.pulls == 1 and "pull goes" or "pulls go") .. " too, and the totals no longer count them. This can't be undone.", "and what goes with it")
+  check(c and c.accept == "Delete night" and c.danger, "the accept button names the action")
+  check(Tattle:Find(night.id) ~= nil, "nothing is deleted until it is accepted")
+  eq(del and del.text, "Delete this night", "the button never turns into a second click")
+  if c then c.onAccept() end
+  eq(Tattle:Find(night.id), nil, "accepted: the night is deleted")
+  -- Remove on Your own spells: at once, with Undo writing the same entry back
+  s.custom = s.custom or {}
+  Tattle:AddCustom(777, "Floor Fire", "Alpha", 9001)
+  Tattle:AddCustom(778, "Typed One")
+  dropdowns.Boss.opts.set("own")
+  local tab = findMade(function(f) for _, k in ipairs(f.kids or {}) do if k.isText and k.text == "Mechanics" then return f.scripts.OnClick ~= nil end end end)
+  if tab then tab.scripts.OnClick(tab) end
+  local function removeFor(id) return findMade(function(f) return f.text == "Remove" and rawget(f, "id") == id and f.scripts.OnClick end) end
+  local r777 = removeFor(777)
+  check(r777 ~= nil, "a Remove button on the own spell's row")
+  TOASTS = {}
+  if r777 then r777.scripts.OnClick(r777) end
+  eq(s.custom[777], nil, "Remove takes it off at once")
+  local t = TOASTS[1]
+  eq(t and t.text, "Removed Floor Fire from your own mechanics.", "and offers Undo, naming it")
+  check(t and t.owner == r777, "in the window the button is in")
+  if t then t.onUndo() end
+  local back = s.custom[777]
+  check(type(back) == "table" and back.name == "Floor Fire" and back.boss == "Alpha" and back.encounterID == 9001, "Undo writes the same entry back, boss and all")
+  check(Tattle.List()[777] ~= nil, "and it is tracked again")
+  local r778 = removeFor(778)
+  TOASTS = {}
+  if r778 then r778.scripts.OnClick(r778) end
+  if TOASTS[1] then TOASTS[1].onUndo() end
+  eq(s.custom[778], "Typed One", "a typed spell comes back as typed")
+  Tattle:RemoveCustom(777) Tattle:RemoveCustom(778)
 end
 
 print(string.format("%d passed, %d failed", passes, fails))

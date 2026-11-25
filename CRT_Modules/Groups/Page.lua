@@ -65,7 +65,8 @@ local TEXT = {
     name = "name", names = "names",
     clearMoved = "Another layout is open now, so the grid wasn't put back.",
     deleteAsk = "Delete the layout \"%s\"?",
-    deleteNames = "Its %d %s go too.",
+    deleteNames = "Its %d %s too.",
+    nameGoes = "name goes", namesGo = "names go",
     deleteActive = "It is the active group, so the Late Tracker stops expecting it.",
     deleteFinal = "This can't be undone.",
     delete = "Delete layout",
@@ -1351,7 +1352,7 @@ local function buildPage(pf)
         local n = #Groups:PresetNames(id)
         local detail = {}
         if n > 0 then
-            detail[#detail + 1] = format(TEXT.deleteNames, n, n == 1 and TEXT.name or TEXT.names)
+            detail[#detail + 1] = format(TEXT.deleteNames, n, n == 1 and TEXT.nameGoes or TEXT.namesGo)
         end
         if Groups:Active() == id then
             detail[#detail + 1] = TEXT.deleteActive
