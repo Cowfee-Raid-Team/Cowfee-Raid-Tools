@@ -1,8 +1,8 @@
 local ADDON, CRT = ...
 
 -- Interrupts: kick numbers above a boss's adds, a reminder before your own kick, and a kick list the raid leader
--- shares (CRT.Interrupts). An optional module, off for everyone until they tick Enable Interrupts on General
--- Settings (CRTDB.interrupts.enabled); off, nothing of it runs and nothing of Notes, Alerts or Timeline is touched.
+-- shares (CRT.Interrupts). An optional module, off for everyone until they tick Enable Interrupts on Start
+-- here > What's on (CRTDB.interrupts.enabled); off, nothing of it runs and nothing of Notes, Alerts or Timeline is touched.
 -- This file holds the kick setups in use, the kick lists, your number, the switch and the settings:
 --   Setup.lua     a setup's format (groups, raid markers, slots, optional timing) and the shape a share carries
 --   Lattice.lua   a timed setup's numbering;  Anchor.lua  each wave's anchor, or the fallback times from the pull

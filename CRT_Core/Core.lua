@@ -49,7 +49,8 @@ local defaults = {
     -- following the cursor (UI.TooltipOwner in UI/Tooltip.lua). They replaced tooltipAnchor, which is read
     -- once on load (below) and kept.
     ui = { font = "default", outline = "", textSize = 100, bgAlpha = 90, layers = {}, soundChannel = "Master", hideRealms = false, modern = false, theme = "blizzard", tooltipMode = "spot", tooltipSpot = "auto" },
-    lastPage = "groups",
+    -- the page the main window opens on: Start here for a new profile (UI/StartPage.lua); a saved page is kept
+    lastPage = "start",
     -- The minimap button (UI/Minimap.lua): angle is its place around the minimap, in degrees.
     minimap = { hide = false, angle = 225 },
     classCache = {},
@@ -475,7 +476,7 @@ local defaults = {
     -- and use[encounterID] = "own" uses your own plan in place of it.
     pace = { disabled = {}, own = {}, shared = {}, use = {}, shown = true },
     -- Interrupts (Interrupts/): enabled is the module's one switch, off until the player ticks Enable Interrupts on
-    -- General Settings; off, the page, its events, received kick lists and its Addon check column are all off.
+    -- Start here > What's on; off, the page, its events, received kick lists and its Addon check column are all off.
     -- kicks[encounterID][difficultyID] holds the kick lists by group key: your own, the raid's and which is in use
     -- (Interrupts/Data.lua); own, shared and use[encounterID] are the lists from before group keys, read into kicks
     -- once and kept. setups[encounterID][difficultyID] are your own kick setups (Edit setup, Interrupts/SetupEditor.lua). accept takes lists from the leader and assistants;
@@ -489,7 +490,7 @@ local defaults = {
         plates = { on = true, all = true, size = 50, font = 24, offset = 20,
             mineBox = { 0, 1, 0, 1 }, mineText = { 1, 0, 0, 1 }, box = { 1, 0, 0, 1 }, text = { 1, 1, 1, 1 } }, -- saved, the player's to change: not a theme colour
         reminder = { on = true, sound = "none", size = 48 } },
-    -- Assignment highlights (Highlights/; settings on Raid Notes > Notes Settings and General Settings > Modules): enabled
+    -- Assignment highlights (Highlights/; settings on Raid Notes > Notes Settings and Start here > What's on): enabled
     -- is the one switch, on from a fresh install. name and group mark the raid note lines that name you or your raid
     -- group; glow makes a line glow when a new version of the note changes your part (Added, Removed, Moved). windows
     -- says which note windows show them: the assignments window by default; the timers and personal note windows only
@@ -558,6 +559,11 @@ local defaults = {
     -- closed (or that had nothing to show), is saved only once known, so it has no default; window is the
     -- window's place once moved. Account-wide (Profiles.lua's SHARED), never in Export settings only.
     whatsNew = { show = true, window = {} },
+    -- The Welcome (UI/Welcome.lua): pending opens it the first time the main window opens. It is set on a fresh
+    -- install only (below), so a player upgrading never sees it by themselves (a default fills only a missing key,
+    -- so the default must be off), and cleared when it closes; window is its place once moved. Account-wide
+    -- (Profiles.lua's SHARED), never in Export settings only.
+    welcome = { pending = false, window = {} },
 }
 
 -- Profiles.lua reads these to know which keys a profile holds and to start a profile afresh.
@@ -873,6 +879,9 @@ frame:SetScript("OnEvent", function(self, event, arg1)
         local seedCallout = CRT.CalloutNeedsLook(CRTDB) -- before the defaults fill in its size
         CRT.SwitchOnHighlightsOnce(CRTDB) -- before the defaults fill in highlights.windows
         copyDefaults(defaults, CRTDB)
+        if CRT.freshInstall then
+            CRTDB.welcome.pending = true -- the first /crt opens the Welcome (UI/Welcome.lua)
+        end
         CRT:UseTheme(CRT:ResolveTheme(CRTDB.ui))
         -- once: the old default of axis labels every 30 seconds becomes Auto, which follows the zoom
         local tl = CRTDB.timeline
