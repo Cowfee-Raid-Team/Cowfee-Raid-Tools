@@ -33,14 +33,22 @@ local function onClick(mouseButton)
     end
 end
 
-local function showTooltip(owner)
-    UI.TooltipOwner(GameTooltip, owner, "ANCHOR_LEFT")
+-- The one tooltip for the minimap button and the addon menu's entry, saying what onClick does. how is
+-- UI.TooltipOwner's (the addon menu keeps its spot beside the menu); drag adds the minimap button's drag line.
+local function clickTooltip(owner, how, drag)
+    UI.TooltipOwner(GameTooltip, owner, "ANCHOR_LEFT", nil, nil, how)
     GameTooltip:SetText("Cowfee Raid Tools", 1, 0.82, 0)
     GameTooltip:AddLine("v" .. tostring(CRT.version), 0.6, 0.6, 0.6)
-    GameTooltip:AddLine("Left-click: open or close", 1, 1, 1)
-    GameTooltip:AddLine("Right-click: General Settings", 1, 1, 1)
-    GameTooltip:AddLine("Drag: move around the minimap", 1, 1, 1)
+    GameTooltip:AddLine("Left-click: open or close.", 1, 1, 1) -- UI:Toggle
+    GameTooltip:AddLine("Right-click: General Settings.", 1, 1, 1)
+    if drag then
+        GameTooltip:AddLine("Drag: move around the minimap.", 1, 1, 1)
+    end
     GameTooltip:Show()
+end
+
+local function showTooltip(owner)
+    clickTooltip(owner, nil, true)
 end
 
 local function create()
@@ -119,12 +127,7 @@ function CowfeeRaidTools_OnAddonCompartmentEnter(_, menuButton)
     if not menuButton then
         return
     end
-    UI.TooltipOwner(GameTooltip, menuButton, "ANCHOR_LEFT", nil, nil, UI.TOOLTIP_KEEP)
-    GameTooltip:SetText("Cowfee Raid Tools", 1, 0.82, 0)
-    GameTooltip:AddLine("v" .. tostring(CRT.version), 0.6, 0.6, 0.6)
-    GameTooltip:AddLine("Left-click: open or close.", 1, 1, 1) -- UI:Toggle
-    GameTooltip:AddLine("Right-click: General Settings.", 1, 1, 1)
-    GameTooltip:Show()
+    clickTooltip(menuButton, UI.TOOLTIP_KEEP, false)
 end
 
 function CowfeeRaidTools_OnAddonCompartmentLeave()

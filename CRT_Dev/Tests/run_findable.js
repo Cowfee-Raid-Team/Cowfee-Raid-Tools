@@ -214,7 +214,51 @@ CRT.UI.frame:Hide()
 O.Open()
 check(hidden == panel and CRT.UI.frame.shown, "with Close failing, HideUIPanel hides it and the window still opens")
 HideUIPanel = nil
+-- the game asks to discard unapplied settings first: the panel stays up, the window waits for it to close
+local function hidePanel() panel.shown = false if panel.scripts.OnHide then panel.scripts.OnHide(panel) end end
+panel.shown = true
+rawset(panel, "Close", function(self) self.asked = true end)
+CRT.UI.frame:Hide()
+O.Open()
+check(panel.asked and panel.shown and not CRT.UI.frame.shown, "the game asks first: Options stays up and CRT doesn't open under it")
+hidePanel()
+check(CRT.UI.frame.shown, "Options closes after the prompt: CRT opens")
+CRT.UI.frame:Hide()
+panel.shown = true hidePanel()
+check(not CRT.UI.frame.shown, "a later close of Options, not from the button, opens nothing")
+local hook = panel.scripts.OnHide
+panel.shown = true
+O.Open()
+check(panel.scripts.OnHide == hook, "the panel's OnHide is hooked once, not per click")
+hidePanel()
+check(CRT.UI.frame.shown, "and the second wait opens CRT too")
+-- combat: the panel is left alone (no commit from addon code), CRT just opens
+CRT.UI.frame:Hide()
+panel.shown = true rawset(panel, "asked", false) -- a nil field would read the stand-in's method
+InCombatLockdown = function() return true end
+O.Open()
+check(not panel.asked and panel.shown and CRT.UI.frame.shown, "in combat: Options isn't closed, CRT opens")
+InCombatLockdown = function() return false end
+hidePanel()
 section("Esc > Options > AddOns: a canvas category; its button closes Options and opens /crt")
+-- a panel that can't be hooked: a chat line instead of opening under it
+do
+  local p2 = mock("Frame")
+  rawset(p2, "Close", function() end) rawset(p2, "HookScript", false)
+  SettingsPanel = p2
+  local CRT2 = boot(fakeSettings, p2)
+  local before = #printed
+  CRT2.OptionsEntry.Open()
+  check(not (CRT2.UI.frame and CRT2.UI.frame.shown) and #printed == before + 1 and printed[#printed]:find("/crt", 1, true), "no hook: CRT stays closed and a chat line says what to do: " .. tostring(printed[#printed]))
+  -- building the canvas fails: Register catches it
+  CRT2.OptionsEntry.category = nil
+  local pb = CRT2.UI.PanelButton
+  CRT2.UI.PanelButton = function() error("no button") end
+  local ok, res = pcall(CRT2.OptionsEntry.Register)
+  check(ok and res == false and CRT2.OptionsEntry.category == nil, "an error building the canvas: Register returns false, no error")
+  CRT2.UI.PanelButton = pb
+end
+section("the button waits for the game's discard prompt, leaves Options alone in combat, builds inside the guard")
 
 -- a client without the Settings API, or with one that errors
 CRT, errs = boot(nil, nil)
@@ -240,8 +284,20 @@ local text = table.concat(GameTooltip.lines, " / ")
 check(GameTooltip.shown and GameTooltip.owner == menuButton, "enter: the tooltip shows on the menu's button")
 check(GameTooltip.lines[1] == "Cowfee Raid Tools", "titled Cowfee Raid Tools: " .. text)
 check(text:find("Left-click: open", 1, true) and text:find("Right-click: General Settings.", 1, true), "it says what each click does: " .. text)
+check(GameTooltip.how == "keep", "beside the addon menu, whatever Tooltip position says")
+local menuLines = { unpack(GameTooltip.lines) }
 CowfeeRaidTools_OnAddonCompartmentLeave("CowfeeRaidTools", menuButton)
 check(not GameTooltip.shown, "leave: it hides")
+-- the minimap button shows the same lines (one tooltip function), plus its drag line
+local mb = _G.CowfeeRaidToolsMinimapButton
+check(mb and mb.scripts.OnEnter, "the minimap button is made at login")
+if mb and mb.scripts.OnEnter then
+  mb.scripts.OnEnter(mb)
+  local same = #GameTooltip.lines == #menuLines + 1
+  for i, l in ipairs(menuLines) do same = same and GameTooltip.lines[i] == l end
+  check(same and GameTooltip.lines[#GameTooltip.lines]:find("^Drag"), "the minimap button's tooltip is the addon menu's plus the drag line: " .. table.concat(GameTooltip.lines, " / "))
+  mb.scripts.OnLeave(mb)
+end
 check(pcall(CowfeeRaidTools_OnAddonCompartmentEnter, "CowfeeRaidTools", nil), "enter with no button: no error")
 -- the tooltip matches the clicks: left opens (or closes) the window, right opens General Settings
 local shown = {}
@@ -313,10 +369,12 @@ for _, w in ipairs({ "/crt readycheck", "/crt check food", "/crt rc", "/crt debu
 end
 check(select(2, slash("help all")) > 20, "/crt help all is the whole list")
 check(select(2, slash("?")) == n, "/crt ? is /crt help")
-for _, word in ipairs({ "nonsense", "help nothing", "demo2" }) do
+for _, word in ipairs({ "nonsense", "help nothing", "Demo2" }) do
   local u, c = slash(word)
-  check(c == 1 and u:find("Unknown command. /crt help lists them.", 1, true) ~= nil, "/crt " .. word .. ": the one unknown line: " .. u)
+  check(c == 1 and u:find("Unknown command '" .. word .. "'. /crt help lists them.", 1, true) ~= nil, "/crt " .. word .. ": the one unknown line, with the word as typed: " .. u)
 end
+local piped = slash("a|cffff0000b")
+check(piped:find("Unknown command 'a||cffff0000b'.", 1, true) ~= nil, "a | in the word is doubled, so chat shows it as typed: " .. piped)
 section("/crt help is short, /crt help all has the rest, an unknown word says so")
 
 say(passes .. " passed, " .. fails .. " failed")

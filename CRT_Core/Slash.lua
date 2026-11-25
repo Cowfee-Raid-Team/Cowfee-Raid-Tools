@@ -62,7 +62,11 @@ Slash.EVERYDAY = {
     "[/crt help all] - every command",
 }
 
-Slash.UNKNOWN = "Unknown command. /crt help lists them."
+-- The line for anything /crt doesn't know, with the input as typed; a | in it is doubled, so chat shows it as typed
+-- instead of reading it as a colour or link code.
+function Slash.Unknown(raw)
+    return "Unknown command '" .. tostring(raw or ""):gsub("|", "||") .. "'. /crt help lists them."
+end
 
 local function printShort()
     CRT:Print("v" .. CRT.version .. " commands:")
@@ -320,6 +324,6 @@ SlashCmdList["COWFEERAIDTOOLS"] = function(msg)
     elseif msg == "help all" then
         printAll()
     else
-        CRT:Print(Slash.UNKNOWN)
+        CRT:Print(Slash.Unknown(raw))
     end
 end
