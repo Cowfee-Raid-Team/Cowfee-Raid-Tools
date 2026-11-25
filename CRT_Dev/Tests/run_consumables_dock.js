@@ -306,6 +306,7 @@ do
   format = format or string.format
   local B = { PALETTE = CRT.PALETTE, UI = CRT.UI, Consumables = { QUESTION_MARK = 1 },
     Ants = { Start = function(_, slot, r, g, b) ants[slot] = { r, g, b } end, Stop = function(_, slot) ants[slot] = nil end, Attach = function() end } }
+  assert(load(markSrc, "StatusMark.lua"))("CowfeeRaidTools", B) -- UI.CapFontSize, which Bar.Apply uses
   assert(load(barSrc, "Bar.lua"))("CowfeeRaidTools", B)
   local function fs() local f = mock("FontString") rawset(f, "SetTextColor", function(self, r, g, b) rawset(self, "rgb", { r, g, b }) end) return f end
   local slot = mock("Button")
@@ -334,6 +335,8 @@ do
     rawset(r, "SetColorTexture", function(self, ...) rawset(self, "ct", { ... }) end)
     rawset(r, "SetTextColor", function(self, ...) rawset(self, "rgb", { ... }) end)
     rawset(r, "SetSize", function(self, w, h) rawset(self, "w", w) rawset(self, "h", h) end)
+    rawset(r, "SetFont", function(self, path, size) rawset(self, "fontSize", size) end)
+    rawset(r, "ClearAllPoints", function(self) self.pts = {} rawset(self, "clears", (rawget(self, "clears") or 0) + 1) end)
     return r
   end
   CreateFrame = function(...)
@@ -379,7 +382,12 @@ do
     check(look .. ": missing: the !'s ink reads on the disc", inkOk("bad"))
     shapes.alert = shape()
     local cp = slot.count.pts[#slot.count.pts]
-    check(look .. ": missing: the bag count moves left of the mark", cp and cp[1] == "TOPRIGHT" and cp[4] <= -(size - 3), cp and cp[4])
+    check(look .. ": missing: the bag count moves under the mark", cp and cp[1] == "TOPRIGHT" and cp[4] == -3 and cp[5] <= -(size - 3), cp and cp[5])
+    check(look .. ": missing: the rim in the theme's outline colour", same(rawget(mark.rim, "vc"), "outline"))
+    check(look .. ": missing: no clock face on the !", not mark.face.shown)
+    local clears = rawget(slot.count, "clears") or 0
+    Bar.Apply(slot, { state = "missing", count = 3 })
+    check(look .. ": a refresh with the same mark doesn't move the bag count again", (rawget(slot.count, "clears") or 0) == clears)
     Bar.Apply(slot, { state = "low", left = 60 })
     check(look .. ": low: a dashed edge, no solid one", ants.style == "dashed" and allShown(ants.dashes) and not anyShown(ants.edges))
     check(look .. ": low: the dashes in the warn colour", same(rawget(ants.dashes[1], "ct"), "warn"))
@@ -387,6 +395,7 @@ do
     check(look .. ": low: the clock's ink reads on the disc", inkOk("warn"))
     check(look .. ": low: the minutes left stay", slot.time.text == "1m")
     shapes.clock = shape()
+    check(look .. ": low: the clock has a face in the glyph's ink", mark.face.shown and rawget(mark.face, "vc") and rawget(mark.face, "vc")[1] == rawget(mark.parts[1], "vc")[1])
     Bar.Apply(slot, { state = "active", left = 3000 })
     check(look .. ": fine: no edge and no mark", not ants.active and not anyShown(ants.dashes) and not anyShown(ants.edges) and not mark:IsShown() and not mark.disc.shown and not anyShown(mark.parts))
     local fp = slot.count.pts[#slot.count.pts]
@@ -400,6 +409,43 @@ do
   Bar.Apply(slot, { state = "missing" })
   B.Ants:Update(slot, 0.5)
   check("a solid edge doesn't crawl", ants.offset == 0)
+  -- every glyph part on whole pixels, never under 1, centred so its edges fall on pixels too
+  for _, glyph in ipairs({ "alert", "clock", "down" }) do
+    for _, sz in ipairs({ 10, 11, 15 }) do
+      local m = B.UI.StatusMark(slot, sz)
+      m:SetPoint("CENTER")
+      m:Set(glyph, CRT.PALETTE.bad)
+      local ok = true
+      for _, t in ipairs(m.parts) do
+        if t.shown then
+          local w, h, p = rawget(t, "w"), rawget(t, "h"), t.pts[#t.pts]
+          local function onGrid(o, len) local e = o - len / 2 + sz / 2 return math.abs(e - math.floor(e + 0.5)) < 1e-9 end
+          if not (w >= 1 and h >= 1 and w == math.floor(w) and h == math.floor(h) and onGrid(p[4], w) and onGrid(p[5], h)) then ok = false end
+        end
+      end
+      check(glyph .. " at " .. sz .. " px: its parts on whole pixels", ok)
+    end
+  end
+  -- the corner labels at text size 8 and 22: held at 10 to 12 points; a two-digit count, under the mark, never
+  -- reaches the MH/OH tag at the top left (a label taken as 0.75 of its size wide per letter, as tall as its size)
+  local realSmall = CRTFontSmall
+  for _, size in ipairs({ 7, 8, 19, 21 }) do
+    CRTFontSmall = { GetFont = function() return "Fonts\FRIZQT__.TTF", size, "" end }
+    for _, state in ipairs({ "low", "active" }) do
+      Bar.Apply(slot, { state = state, left = state == "low" and 60 or 3000, count = 12, tag = "MH" })
+      local cs, ts = rawget(slot.count, "fontSize"), rawget(slot.tag, "fontSize")
+      check(size .. " pt, " .. state .. ": the corner labels at 10 to 12 points", cs and ts and cs >= 10 and cs <= 12 and ts >= 10 and ts <= 12, tostring(cs) .. "/" .. tostring(ts))
+      local cp, tp = slot.count.pts[#slot.count.pts], slot.tag.pts[#slot.tag.pts]
+      local countLeft = Bar.ICON_SIZE + cp[4] - #"12" * cs * 0.75
+      local countTop = cp[5]
+      local tagRight, tagBottom = 3 + #"MH" * ts * 0.75, -3 - ts
+      check(size .. " pt, " .. state .. ": a two-digit count clear of the MH tag", countLeft > tagRight or countTop < tagBottom, countLeft .. " / " .. tagRight)
+      if state == "low" then
+        check(size .. " pt: the count's top under the mark's bottom", countTop < -(Bar.MARK_SIZE - 3), countTop)
+      end
+    end
+  end
+  CRTFontSmall = realSmall
 end
 
 print(passed .. " passed, " .. failed .. " failed")
@@ -418,5 +464,15 @@ const rcText = fs.readFileSync(path.join(dir, 'CRT_Modules/ReadyCheck/Page.lua')
 let helpBad = 0;
 if (!/\{ "! and a solid edge", "missing\." \}/.test(pageText) || !/\{ "Clock and a moving dashed edge", "running low\." \}/.test(pageText)) { console.log('FAIL Your bar\'s (?) does not explain the ! and clock marks'); helpBad++; }
 if (/marching ants/.test(rcText) || !/"Warn under", "An icon gets a clock and a moving dashed edge/.test(rcText)) { console.log('FAIL Warn under\'s (?) still says marching ants, or not the clock'); helpBad++; }
+// StatusMark's Mark:Set and the ink it picks make no closures on a refresh: lin is a file-level function, and no
+// function is written inside luminance, UI.StatusMarkInk or Mark:Set
+const markText = fs.readFileSync(path.join(dir, 'CRT_Core/UI/StatusMark.lua'), 'utf8').replace(/\r\n/g, '\n');
+if (!/^local function lin\(/m.test(markText)) { console.log('FAIL StatusMark.lua: lin is not a file-level function'); helpBad++; }
+for (const head of ['local function luminance(', 'function UI.StatusMarkInk(', 'function Mark:Set(']) {
+  const at = markText.indexOf(head);
+  const body = at < 0 ? '' : markText.slice(at + head.length, markText.indexOf('\nend', at));
+  if (at < 0 || /\bfunction\b/.test(body)) { console.log('FAIL StatusMark.lua: ' + head + ' is missing or makes a function'); helpBad++; }
+}
+if (/not a theme colour/.test(markText)) { console.log('FAIL StatusMark.lua: a fixed colour; the rim reads CRT.PALETTE.outline'); helpBad++; }
 if (helpBad) process.exit(1);
 console.log('ok the (?) texts explain the marks');

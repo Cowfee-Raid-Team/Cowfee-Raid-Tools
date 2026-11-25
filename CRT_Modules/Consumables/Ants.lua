@@ -10,7 +10,7 @@ CRT.Ants = Ants
 local COUNT = 14 -- dashes around the edge
 local SPEED = 38 -- pixels per second, clockwise
 local LONG, SHORT = 7, 2 -- dash length and thickness; the solid edge is SHORT thick too
-local LAYER = 5 -- OVERLAY sublevel: under a status mark's disc (UI.StatusMark)
+local LAYER = 3 -- OVERLAY sublevel: under a status mark (UI.StatusMark, its rim at 4)
 
 -- The solid edge's four sides, each centred on the frame's edge like the dashes.
 local SIDES = {
