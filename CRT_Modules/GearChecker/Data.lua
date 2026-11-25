@@ -65,7 +65,7 @@ GC.FILTERS = {
     { key = "enchants", label = "Missing enchants" },
 }
 
-GC.TEXT = {
+GC.TEXT = CRT.Locale("GearChecker.Data", {
     missingEnchant = "missing enchant",
     missingGem = "missing gem",
     missingGems = "missing %d gems",
@@ -87,7 +87,7 @@ GC.TEXT = {
     emptyWhisper = "Gear check: %s - %s", -- slot, what is wrong
     emptyHead = "%s - ", -- the badge tooltip's line start for an empty slot
     rankEnchant = "rank 1 enchant: %s", -- a Low rank enchants cell's words, with the enchant's name
-}
+})
 
 -- Extra filters (the page's Extra filters window): each one ticked in CRTDB.gearChecker.extra is a low
 -- issue with its own chip after Missing enchants; minIlvl is Item level below's level (0 is off). label is

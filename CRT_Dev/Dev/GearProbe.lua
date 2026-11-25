@@ -12,14 +12,14 @@ local Gear = CRT.Gear
 local Probe = {}
 CRT.GearProbe = Probe
 
-Probe.TEXT = {
+Probe.TEXT = CRT.Locale("Dev.GearProbe", {
     head = "Gear probe: %s (%d %s). Paste the IDs into the season's GearChecks.lua or Tracks.lua.",
     none = "Gear probe: nothing known for %s. Refresh the Gear Checker first.",
     line = "  %s: item %s, enchant %s, gems %s, bonus %s, track %s%s",
     unknownTrack = "unknown",
     trips = " | trips: %s",
     raw = "    %s",
-}
+})
 
 local function list(t)
     return (t and #t > 0) and table.concat(t, ",") or "-"

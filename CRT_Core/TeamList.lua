@@ -28,7 +28,7 @@ Team.MAX_TEAMS = 20 -- your own teams saved at most; a push of a new team past i
 -- by MatchKey, never a team's name in any spelling: Season Stats' All filter, and Team (the counts from before teams)
 Team.RESERVED = { all = true, team = true }
 Team.ADD_KEY = "\0add" -- the dropdown's Add team… entry, never a name (Clean refuses control characters)
-Team.LIST_TEXT = {
+Team.LIST_TEXT = CRT.Locale("Core.TeamList", {
     add = "Add team\226\128\166",
     empty = "Type a name for the team.",
     long = "A team name is at most 24 characters.",
@@ -37,7 +37,7 @@ Team.LIST_TEXT = {
     reserved = "%s can't be a team name.",
     full = "You have 20 teams. Remove one to add another.",
     before = "Before teams", -- the built-in Team's counts, from before your own teams (Season Stats' filter too)
-}
+})
 
 local function settings()
     local db = CRT.db

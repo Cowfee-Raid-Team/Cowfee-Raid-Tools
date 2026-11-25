@@ -287,7 +287,7 @@ local function outline(f)
 end
 
 -- What the tag says for each kind of thing under the cursor (P.PickTarget); over CRT's own it hides.
-local TAG_TEXT = { noname = "noName", nothing = "nothing", forbidden = "forbidden" }
+local TAG_KEY = { noname = "noName", nothing = "nothing", forbidden = "forbidden" }
 
 -- While selecting: the outline round what a click would anchor to, and the tag at the cursor with its name (a
 -- frame's name, another element's title), why there is nothing to anchor to there, or why a click on it was refused.
@@ -314,7 +314,7 @@ function P.PickHover()
     else
         box:Hide()
     end
-    local text = kind == "frame" and name or kind == "element" and what.title or P.TEXT[TAG_TEXT[kind] or "nothing"]
+    local text = kind == "frame" and name or kind == "element" and what.title or P.TEXT[TAG_KEY[kind] or "nothing"]
     if P.message and what ~= nil and P.messageFor == what then
         text = P.message
     end

@@ -27,7 +27,7 @@ local DAYS = {
 local HOW = { schedule = "from the schedule", button = "by Start raid now" }
 -- The page's and the expected roster's (?). A roster the leader sends with a note (Groups/Share.lua) becomes the
 -- active layout, so a raider's tracker expects the same people, but records only when it starts a night itself.
-local HELP_TEXT = {
+local HELP_TEXT = CRT.Locale("Late.Page.Help", {
     pageTitle = "The Late Tracker",
     page = {
         "On the Settings tab, tick your raid days and start time and pick the Raid Groups layout of who should be "
@@ -41,7 +41,7 @@ local HELP_TEXT = {
         .. "a raid night, tonight's list follows it when you change or switch layouts, with everyone's clock kept.\n\n"
         .. "When the raid leader pushes a note with their roster, it becomes your active layout, so this expects the "
         .. "same people as theirs.",
-}
+})
 local ENDED = {
     disband = "the group disbanded",
     button = "End raid was pressed",
@@ -51,7 +51,7 @@ local ENDED = {
 
 -- History > Edit night: the selected night's players, each with a status dropdown (Late:SetStatus). Developer builds
 -- only (the CRT_Dev files make CRT.Dev); a packaged build never shows the button.
-local EDIT_TEXT = {
+local EDIT_TEXT = CRT.Locale("Late.Page.Edit", {
     edit = "Edit night",
     done = "Done",
     help = "Fixes this night's record, such as someone marked late who was here. Pick each player's status: On time "
@@ -67,16 +67,16 @@ local EDIT_TEXT = {
     -- why a greyed control can't be used (UX rule 5), on its tooltip
     allListedWhy = "Everyone in your group is already on tonight's list.",
     noNightWhy = "No raid night is being tracked right now.",
-}
+})
 -- History's Delete this night asks once (UI.Confirm); the roster window's Remove acts at once with Undo (UI.UndoToast)
-local DELETE_TEXT = {
+local DELETE_TEXT = CRT.Locale("Late.Page.Delete", {
     button = "Delete this night",
     ask = "Delete the night of %s?",
     players = "Its record of %d %s goes too, and the totals no longer count it. This can't be undone.",
     player = "player", playersWord = "players",
     accept = "Delete night",
     removed = "Took %s off tonight's list.",
-}
+})
 local EDIT_LABEL_W = 200 -- the player's name in an edit row
 local EDIT_DROPDOWN_W = 200
 local EDIT_HEADING_PAD = 6 -- above and below the Not expected heading
@@ -285,11 +285,11 @@ local function plain(key)
 end
 
 -- Discord headings: heading 2 for the title, heading 3 for the date or the date range.
-local EXPORT_TEXT = {
+local EXPORT_TEXT = CRT.Locale("Late.Page.Export", {
     title = "## Late Tracker:",
     date = "### Date: %s",
     dates = "### Dates: %s - %s",
-}
+})
 
 -- "Nov 5": month abbreviation and day number, no leading zero.
 local function exportDay(t)
@@ -736,7 +736,7 @@ local previewNight
 
 -- Invites (Groups/Invite.lua): clicking a row that isn't here invites that player by the Name-Realm in the
 -- expected roster, and they move to its group when they join. Invite all not here does everyone.
-local INVITE_TEXT = {
+local INVITE_TEXT = CRT.Locale("Late.Page.Invite", {
     all = "Invite all not here (%d)",
     allBody = "Invites everyone on tonight's list who isn't in your group. Each one moves to their group in the expected roster when they join, if it has a free spot.",
     click = "Click to invite %s. They move to group %d when they join.",
@@ -744,7 +744,7 @@ local INVITE_TEXT = {
     onTimeHint = "Right-click to count them as here on time, such as for someone on another character or excused.",
     invite = "Invite %s",
     onTime = "Count as here on time",
-}
+})
 local inviteAllButton, inviteStatus
 
 -- The expected roster's slots, which give each player their group.

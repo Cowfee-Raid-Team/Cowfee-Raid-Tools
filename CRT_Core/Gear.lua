@@ -554,7 +554,7 @@ end
 
 -- Display ------------------------------------------------------------------------------------------------------
 
-Gear.TEXT = { equippedAt = "Equipped at item level %d" }
+Gear.TEXT = CRT.Locale("Core.Gear", { equippedAt = "Equipped at item level %d" })
 
 -- The game tooltip for a piece, owned by owner and placed by UI.TooltipOwner (UI/Tooltip.lua: anchor is used
 -- next to what you hover, ANCHOR_RIGHT when nil; the game's tooltip spot ignores it; area, when given, is the

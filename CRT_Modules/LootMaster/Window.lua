@@ -69,7 +69,7 @@ local function settings()
     return CRT.db.lootmaster.window
 end
 
-local ROLE_TEXT = { T = "Tank", H = "Heal", D = "DPS", N = "" }
+local ROLE_TEXT = CRT.Locale("LootMaster.Window.Roles", { T = "Tank", H = "Heal", D = "DPS", N = "" })
 
 local function classColor(file)
     return file and (C_ClassColor and C_ClassColor.GetClassColor(file) or RAID_CLASS_COLORS[file]) or nil
