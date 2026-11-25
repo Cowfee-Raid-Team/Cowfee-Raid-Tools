@@ -401,6 +401,23 @@ do
   if toasts[1] then toasts[1].onUndo() end
   check(G:Find(mineId).slots[1] == "Solex-Area52" and G:Find(mineId).slots[6] == "Gadios-Area52", "and Undo saves the names back")
   CRT.db.groups.keepChanges = false
+  -- Undo after the grid filled again (Set current roster on the empty grid) keeps what is there now
+  for _, keep in ipairs({ false, true }) do
+    G:Select(mineId)
+    CRT.db.groups.keepChanges = keep
+    toasts, confirms = {}, {}
+    clearB.OnClick(clearB)
+    rosterB.OnClick(rosterB) -- an empty grid: no question, the group goes in at once
+    local roster1 = G:Working()[1]
+    check(#confirms == 0 and roster1 == "Solex-Area52" and G:Working()[2] == "Abu-KelThuzad", "Keep changes " .. tostring(keep) .. ": Set current roster filled the cleared grid")
+    if toasts[1] then toasts[1].onUndo() end
+    check(G:Working()[2] == "Abu-KelThuzad" and G:Working()[6] ~= "Gadios-Area52", "Keep changes " .. tostring(keep) .. ": a late Undo keeps the roster, not the old grid")
+    if keep then check(G:Find(mineId).slots[2] == "Abu-KelThuzad", "and the saved layout keeps the roster too") end
+  end
+  CRT.db.groups.keepChanges = false
+  G:Find(mineId).slots = { "Solex-Area52", "", "Abu-KelThuzad", "", "", "Gadios-Area52" }
+  for i = 7, 40 do G:Find(mineId).slots[i] = "" end
+  G:Select(mineId)
   -- Undo after another layout opened leaves that one alone
   toasts = {}
   clearB.OnClick(clearB)

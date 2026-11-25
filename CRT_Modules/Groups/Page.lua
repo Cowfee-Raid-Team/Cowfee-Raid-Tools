@@ -64,7 +64,7 @@ local TEXT = {
     replace = "Replace grid",
     cleared = "Cleared the grid (%d %s).",
     name = "name", names = "names",
-    clearMoved = "Another layout is open now, so the grid wasn't put back.",
+    clearMoved = "The grid changed since it was cleared, so it wasn't put back.",
     deleteAsk = "Delete the layout \"%s\"?",
     deleteNames = "Its %d %s too.",
     nameGoes = "name goes", namesGo = "names go",
@@ -1254,7 +1254,15 @@ local function buildPage(pf)
         local openId, wasDirty = gdb().selected, Groups.dirty
         Groups:ReplaceWorking({})
         UI.UndoToast({ text = format(TEXT.cleared, n, n == 1 and TEXT.name or TEXT.names), owner = self, onUndo = function()
-            if gdb().selected ~= openId then
+            -- only onto the grid as the clear left it: the same layout, still empty, so nothing put in since is lost
+            local stillEmpty = true
+            for _, key in ipairs(Groups:Working()) do
+                if key ~= "" then
+                    stillEmpty = false
+                    break
+                end
+            end
+            if gdb().selected ~= openId or not stillEmpty then
                 CRT:Print(TEXT.clearMoved)
                 return
             end
