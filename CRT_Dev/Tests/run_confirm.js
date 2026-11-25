@@ -241,6 +241,8 @@ do
   UI.UndoToast({ text = "Took it off your wishlist.", window = journal })
   check(t.parent == journal and t.point and t.point[2] == journal and t.point[3] == "BOTTOM", "window: the toast sits under that frame")
   check(t.level > journal.level, "window: above it")
+  UI.UndoToast({ text = "Again.", window = journal })
+  check(rawget(journal, "crtUndoHook") == nil and #(journal.hooks or {}) == 1, "window: the game's frame is hooked once, and no field of CRT's is written on it")
   journal:Hide()
   check(not t.shown, "window: it goes when that frame hides")
   journal:Show()

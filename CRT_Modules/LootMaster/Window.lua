@@ -54,7 +54,7 @@ local TEXT = CRT.Locale("LootMaster.Window", {
     resend = "Show their popup again",
     rerollAsk = "Roll again for them",
     clear = "Clear their answer",
-    cleared = "Cleared %s's answer. Their popup opens again when Undo goes.",
+    cleared = "Cleared %s's answer. They're asked again in 10 seconds.",
     resendAll = "Show the popup again to everyone who hasn't answered (%d)",
     selected = "%d raiders",
 })

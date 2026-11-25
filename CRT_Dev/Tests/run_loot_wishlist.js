@@ -455,6 +455,16 @@ W.Set(212403, "small")
 toast.onUndo()
 eq(W.Rank(212403), "small", "menu: Undo after it was listed again changes nothing")
 W.Remove(212403)
+-- an item the game hasn't the name of yet: the Undo says the row's link, else "the item", never its number
+W.Set(990001, "big")
+W.OpenMenu(EncounterJournal, 990001, "|cffa335ee|Hitem:990001|h[Mystery Cloak]|h|r")
+menus[#menus].root.items[3].fn()
+local uncached = WISH_TOASTS[#WISH_TOASTS].text
+eq(uncached:find("[Mystery Cloak]", 1, true) ~= nil, true, "menu: an uncached item's Undo names it by the row's link: " .. uncached)
+W.Set(990001, "big")
+W.OpenMenu(EncounterJournal, 990001)
+menus[#menus].root.items[3].fn()
+eq(WISH_TOASTS[#WISH_TOASTS].text, "Took the item off your wishlist.", "menu: with no link either, never the item's number")
 menus = { menus[1], menus[2] }
 local modified = false
 IsModifiedClick = function() return modified end

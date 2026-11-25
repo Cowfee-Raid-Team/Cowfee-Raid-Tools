@@ -182,11 +182,12 @@ end
 
 -- The toast and its Undo go when the page it was made on hides (another page picked) or its window hides. The hook
 -- is added once per frame and acts only on the toast it was shown for.
+local hooked = setmetatable({}, { __mode = "k" }) -- the frames hooked, kept here so no field goes on a game frame
 local function dropWith(frame)
-    if not frame or frame.crtUndoHook or not frame.HookScript then
+    if not frame or hooked[frame] or not frame.HookScript then
         return
     end
-    frame.crtUndoHook = true
+    hooked[frame] = true
     frame:HookScript("OnHide", function(self)
         if toast and toast:IsShown() and (toast.page == self or toast.win == self) then
             UI.HideUndoToast()
