@@ -353,7 +353,7 @@ local NO_ICON = "~none~" -- the icon dropdown's key for no icon
 -- A small square button with a character on it (move up / down).
 local function smallButton(parent, text)
     local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    b:SetSize(18, 18)
+    b:SetSize(18, 18) -- fixed width: a square with one character (move up / down)
     skin(b, 0.5)
     b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     b.text:SetPoint("CENTER", 0, 1)

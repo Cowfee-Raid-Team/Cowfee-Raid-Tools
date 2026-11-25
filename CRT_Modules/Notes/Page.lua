@@ -156,7 +156,11 @@ local ROW_H = 24
 -- the note buttons and Send to (a UI.Dropdown row, UI.CONTROL_ROW_H high), at the bottom of the list's column: their
 -- height before the first layout (the row's own height after it)
 local BUTTONS_H = 4 * (24 + 4) + (UI.CONTROL_ROW_H or 32)
-local BUTTON_GAP = 6 -- between two buttons side by side
+-- The Notes tab's rows that re-flow with the text size (UI.Flow), in one table: kinds (Shared and Personal), chips
+-- (the difficulty chips), buttons (the note buttons' frame at the bottom of the list's column) and buttonRow (their
+-- row); KIND_H the Shared and Personal tabs' height, LINE_H the Notes heading's line they share or go under, GAP
+-- between two buttons side by side.
+local ROWS = { KIND_H = 20, LINE_H = 26, GAP = 6 }
 local LIST_SCROLL_W = 22 -- the list's scroll bar
 -- The Notes tab in three columns across the page (UI.PAGE_W): the notes list, the note text, and your
 -- personal note with Try it. The tab is UI.PAGE_H - 66 high, under the tabs.
@@ -197,13 +201,9 @@ local followedActive
 local kindTabs, toPersonal = {}, nil -- the Shared and Personal tabs, and Make my personal note
 local makeRow -- makes the notes list's i-th row (set in build)
 local diffDropdown, diffChips = nil, {} -- the list's difficulty filter, for the Dropdown and Chips styles
-local kindRow, chipRow -- the Shared and Personal tabs' row and the chips' row (UI.Flow)
-local KIND_H = 20 -- the Shared and Personal tabs' height
-local KIND_LINE_H = 26 -- the Notes heading's line, which the tabs share or go under
 local LIST_TOP = -36 -- where the notes list starts; a filter row takes one row of it
 local listScroll, listChild -- the notes list scrolls, from the top down to the note buttons
 local useButton, shareButton -- Use this note and Share to raid, for shared notes only
-local noteButtons, noteButtonRow -- the note buttons' frame at the bottom of the list's column, and their row (UI.Flow)
 local controls = {}
 local importDialog
 local refresh
@@ -407,17 +407,20 @@ local function getImportDialog()
     end)
     -- read again as you type or paste, so the row follows the text's EncounterID line
     d.edit:SetScript("OnTextChanged", function(self)
-        pick.read = readHeader(self:GetText() or "")
+        -- New note never reads it: its Boss and Difficulty are always the player's pick
+        pick.read = d.mode ~= "new" and readHeader(self:GetText() or "") or nil
         d.refreshRow()
     end)
     scroll:SetScrollChild(d.edit)
     -- a click anywhere in the scroll area types; the dialog itself is not passed (it drags)
     clickToType(scroll, scroll, d.edit)
 
-    -- Opens it empty, on No boss: mode "import" (paste a raid note; its EncounterID line picks the boss) or "new" (a
-    -- note for the boss you pick). Both save the text as it is (saveImport), so pasting a note under New note works too.
+    -- Opens it empty, on No boss: mode "import" pastes a raid note, whose EncounterID line picks the boss and greys the
+    -- row (with the Read from line); mode "new" is for typing a note for the boss you pick, and never reads the text.
+    -- Both save through saveImport.
     d.Open = function(mode)
-        UI.SetFrameTitle(d, mode == "new" and TEXT.newTitle or TEXT.importTitle)
+        d.mode = mode == "new" and "new" or "import"
+        UI.SetFrameTitle(d, d.mode == "new" and TEXT.newTitle or TEXT.importTitle)
         pick.boss = "none"
         d.edit:SetText("")
         pick.read = nil
@@ -493,8 +496,8 @@ refresh = function()
     local style = Notes:ListStyle()
     local filter = Notes:ListDifficulty()
     -- the list's filter row and the list start under the Shared and Personal tabs (a line lower when they wrapped)
-    local wrapped = (kindRow.height or 0) > KIND_LINE_H
-    local listTop = wrapped and (LIST_TOP - (kindRow.height - KIND_LINE_H + 6)) or LIST_TOP
+    local wrapped = (ROWS.kinds.height or 0) > ROWS.LINE_H
+    local listTop = wrapped and (LIST_TOP - (ROWS.kinds.height - ROWS.LINE_H + 6)) or LIST_TOP
     local items, top = {}, listTop
     if style == "grouped" then
         local groups = {}
@@ -540,8 +543,8 @@ refresh = function()
         UI:SetTabSelected(chip, key == filter)
     end
     if style == "chips" then
-        chipRow.opts.y = listTop - 2
-        top = listTop - chipRow:Layout() - 6
+        ROWS.chips.opts.y = listTop - 2
+        top = listTop - ROWS.chips:Layout() - 6
     end
     local list = items
     for _, kind in ipairs({ "shared", "personal" }) do
@@ -550,11 +553,11 @@ refresh = function()
     toPersonal:SetShown(listKind == "shared")
     useButton:SetShown(listKind == "shared")
     shareButton:SetShown(listKind == "shared")
-    noteButtonRow:Layout() -- the buttons shown close up
+    ROWS.buttonRow:Layout() -- the buttons shown close up
     -- the list scrolls under its filter row (when there is one) down to the note buttons
     listScroll:ClearAllPoints()
     listScroll:SetPoint("TOPLEFT", 8, top)
-    listScroll:SetPoint("BOTTOMRIGHT", noteButtons, "TOPLEFT", LIST_W - LIST_SCROLL_W, 6)
+    listScroll:SetPoint("BOTTOMRIGHT", ROWS.buttons, "TOPLEFT", LIST_W - LIST_SCROLL_W, 6)
     for i = #rows + 1, #list do
         rows[i] = makeRow(i)
     end
@@ -665,7 +668,7 @@ local function buildNotes(pf)
     local kindList = {}
     for _, kind in ipairs({ "shared", "personal" }) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        b:SetHeight(KIND_H)
+        b:SetHeight(ROWS.KIND_H)
         skin(b, 0.4)
         b.sel = b:CreateTexture(nil, "ARTWORK")
         b.sel:SetAllPoints()
@@ -683,7 +686,7 @@ local function buildNotes(pf)
         kindList[#kindList + 1] = b
     end
     -- the (?) just after the tabs, inside the column (clear of the Note text heading at TEXT_X)
-    kindRow = UI.Flow(pf, kindList, { x = 8, y = -10, gap = 4, width = LIST_W - UI.HELP_GAP - UI.HELP_SIZE, indentH = KIND_LINE_H,
+    ROWS.kinds = UI.Flow(pf, kindList, { x = 8, y = -10, gap = 4, width = LIST_W - UI.HELP_GAP - UI.HELP_SIZE, indentH = ROWS.LINE_H,
         indent = function()
             return math.ceil(listLabel:GetStringWidth() or 0) + UI.HELP_GAP + (listHelp and listHelp:GetWidth() or 0) + 6
         end })
@@ -729,7 +732,7 @@ local function buildNotes(pf)
         diffChips[key] = c
         chipList[#chipList + 1] = c
     end
-    chipRow = UI.Flow(pf, chipList, { x = 8, y = LIST_TOP - 2, gap = 4, width = LIST_W })
+    ROWS.chips = UI.Flow(pf, chipList, { x = 8, y = LIST_TOP - 2, gap = 4, width = LIST_W })
 
     -- the notes list: a scroll frame from under the tabs to the note buttons, holding a row per note or
     -- heading (made as the list grows), scrolled with the mouse wheel or its bar
@@ -837,17 +840,17 @@ local function buildNotes(pf)
             CRT:Print("This note has no boss (EncounterID), so there is no personal note to make for it.")
         end
     end)
-    noteButtons = CreateFrame("Frame", nil, pf)
-    noteButtons:SetPoint("BOTTOMLEFT", pf, "TOPLEFT", 8, -TAB_H)
-    noteButtons:SetSize(LIST_W, BUTTONS_H)
+    ROWS.buttons = CreateFrame("Frame", nil, pf)
+    ROWS.buttons:SetPoint("BOTTOMLEFT", pf, "TOPLEFT", 8, -TAB_H)
+    ROWS.buttons:SetSize(LIST_W, BUTTONS_H)
     local buttonList = { import, newNote, delete, active, share, roster, toPersonal }
     for _, b in ipairs(buttonList) do
         UI.FitButton(b, LIST_W)
     end
-    noteButtonRow = UI.Flow(noteButtons, buttonList, { width = LIST_W, gap = BUTTON_GAP, rowGap = 4, onLayout = function(row)
-        noteButtons:SetHeight(row.height + 4 + (UI.CONTROL_ROW_H or 32))
+    ROWS.buttonRow = UI.Flow(ROWS.buttons, buttonList, { width = LIST_W, gap = ROWS.GAP, rowGap = 4, onLayout = function(row)
+        ROWS.buttons:SetHeight(row.height + 4 + (UI.CONTROL_ROW_H or 32))
     end })
-    sendTo:SetPoint("BOTTOMLEFT", noteButtons, "BOTTOMLEFT", 0, 0)
+    sendTo:SetPoint("BOTTOMLEFT", ROWS.buttons, "BOTTOMLEFT", 0, 0)
     controls[#controls + 1] = sendTo
     UI.HelpRight(sendTo, TEXT.sendTo, shareHelp)
 
@@ -930,7 +933,7 @@ local function buildNotes(pf)
         -- at a large text size the count gives way, so both buttons stay clear of the Note text heading and its two (?)
         -- (the footer line still says how many)
         local room = TEXT_W - math.ceil(tonumber((textLabel:GetStringWidth())) or 0) - 2 * (UI.HELP_GAP + UI.HELP_SIZE) - 8
-        if (tonumber((popOut:GetWidth())) or 0) + BUTTON_GAP + (tonumber((history:GetWidth())) or 0) > room then
+        if (tonumber((popOut:GetWidth())) or 0) + ROWS.GAP + (tonumber((history:GetWidth())) or 0) > room then
             history:SetText(TEXT.historyLabel)
         end
         history:SetEnabled(n > 0)
@@ -1049,7 +1052,7 @@ local function buildNotes(pf)
     personalButtons:SetPoint("TOPLEFT", pbox, "BOTTOMLEFT", 0, -6)
     personalButtons:SetSize(RIGHT_W, 24)
     UI.FitButton(psave, RIGHT_W)
-    UI.Flow(personalButtons, { psave, ppop }, { width = RIGHT_W, gap = BUTTON_GAP, onLayout = function(row)
+    UI.Flow(personalButtons, { psave, ppop }, { width = RIGHT_W, gap = ROWS.GAP, onLayout = function(row)
         personalButtons:SetHeight(row.height)
     end })
     -- Display my notes first: what you typed above your Mech Alerts reminders in the personal window
@@ -1108,7 +1111,13 @@ local function buildNotes(pf)
     pf:SetScript("OnShow", refresh)
     Notes:OnChange(refresh)
     CRT.Bosses:OnRouteChange(refresh) -- the raid route, the note list's order
-    UI:OnFonts(refresh) -- a text size change: the list moves under the tabs' and chips' rows again
+    -- a text size change: the list moves under the tabs' and chips' rows again, now if the tab shows, else when it
+    -- shows (OnShow)
+    UI:OnFonts(function()
+        if pf:IsVisible() then
+            refresh()
+        end
+    end)
 end
 
 -- Tabs ---------------------------------------------------------------------------------------

@@ -504,7 +504,7 @@ function Table:Header(j)
         return h
     end
     h = CreateFrame("Button", nil, self.parent)
-    h:SetSize(COL_W, 20)
+    h:SetSize(COL_W, 20) -- fixed width: a column header, as wide as its column
     h.owner = self
     h.text = h:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
     h.text:SetPoint("CENTER")

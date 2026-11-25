@@ -1191,7 +1191,9 @@ end
 --   UI.FitButton(b, maxW)  sizes a button with a label (a UIPanelButtonTemplate, or any with SetFontString) to
 --                          UI.PanelButtonWidth of its label, now, on every b:SetText and on every text size change.
 --                          maxW (kept for later fits): the most room it has, as in a narrow column; a longer label
---                          wraps onto two lines and the button grows taller, never wider. Returns b.
+--                          wraps onto two lines and the button grows taller, never wider. minW (kept too): the
+--                          least it is, as a button that fills a layout's column; it grows past it for its label.
+--                          Returns b.
 --   UI:FitTab(b)           a tab (b.text) as wide as its label plus UI.TAB_PAD each side; UI:RegisterTab calls it,
 --                          so does RefitText. A tab sized by its own helper (UI.Toggle2) sets b.crtFixedWidth; one
 --                          with a part beside its label (an arrow) adds it as b.crtTabExtra. A page whose tab's label
@@ -1213,9 +1215,10 @@ UI.TAB_GAP = 4 -- between two tabs side by side
 UI.FLOW_GAP = 6
 UI.FLOW_ROW_GAP = 4
 UI.FIT_WRAP_PAD = 5 -- above and below a wrapped label
-UI.fitted = UI.fitted or {}
-UI.flows = UI.flows or {}
-UI.fontListeners = UI.fontListeners or {} -- UI:OnFonts's functions, run by UI:RefitText (UI/Fonts.lua)
+-- The lists UI:RefitText (CRT_Core/UI/Fonts.lua) walks after a text size change, made here only.
+UI.fitted = {} -- UI.FitButton's buttons, in the order fitted
+UI.flows = {} -- UI.Flow's rows
+UI.fontListeners = {} -- UI:OnFonts's functions
 
 -- fn() after a text size change, once every fitted button, tab and row has measured again (UI:RefitText): a page
 -- with a layout of its own (rows that hold text, columns sized from a label) places it again here.
@@ -1234,11 +1237,12 @@ local function refitOnText(b)
     UI.FitButton(b)
 end
 
--- What UI.FitButton keeps per button: max (its room), h (its one-line height while its label wraps), and that it is
--- in UI.fitted. Kept here, not on the button, so a button's own fields stay its own.
-local fitState = setmetatable({}, { __mode = "k" })
+-- What UI.FitButton keeps per button: max (its room), min (its least width), h (its one-line height while its label
+-- wraps). Kept here, not on the button, so a button's own fields stay its own; a fitted button lives as long as the
+-- UI (UI.fitted holds it), so this is a plain table.
+local fitState = {}
 
-function UI.FitButton(b, maxW)
+function UI.FitButton(b, maxW, minW)
     local st = fitState[b]
     if not st then
         st = {}
@@ -1249,8 +1253,9 @@ function UI.FitButton(b, maxW)
         end
     end
     st.max = maxW or st.max
+    st.min = minW or st.min
     local fs = b.GetFontString and b:GetFontString()
-    local w = UI.PanelButtonWidth(labelWidth(fs))
+    local w = math.max(st.min or 0, UI.PanelButtonWidth(labelWidth(fs)))
     if fs and st.max and w > st.max then
         -- wider than its room: as wide as the room, the label on two or more lines, the button as tall as they are
         st.h = st.h or b:GetHeight()

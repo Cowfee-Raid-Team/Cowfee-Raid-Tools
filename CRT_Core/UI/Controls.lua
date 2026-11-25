@@ -1269,7 +1269,7 @@ function UI.SpotPicker(parent, opts)
     local places = spotPlaces()
     for _, s in ipairs(UI.TOOLTIP_SPOTS or {}) do
         local b = CreateFrame("Button", nil, p)
-        b:SetSize(SPOT_SIZE, SPOT_SIZE)
+        b:SetSize(SPOT_SIZE, SPOT_SIZE) -- fixed width: the spot picker's squares have no label; each names itself in a tooltip
         b:SetPoint("TOPLEFT", places[s.key][1], places[s.key][2])
         b.key, b.label = s.key, s.label
         b.edge, b.fill = edgedSquare(b)

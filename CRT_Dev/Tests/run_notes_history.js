@@ -564,7 +564,7 @@ end
 -- 11. The Import and New note dialog's Boss and Difficulty row: pick the boss when the text doesn't name one
 do
   local d = CowfeeRaidToolsNoteImport
-  local nb = button("New note")
+  local imp, nb = button("Import"), button("New note")
   local save
   for _, b in ipairs(buttons) do if rawget(b, "text") == "Save" and rawget(b, "parent") == d then save = b end end
   local function typed(text) d.edit:SetText(text) d.edit.scripts.OnTextChanged(d.edit, true) end
@@ -587,11 +587,11 @@ do
   assert(L and L.H > 420 and L.H <= 470 and rawget(d, "height") == L.H and rawget(d, "width") == L.W, "the dialog grew, under 470 high")
   assert(L.PAD + L.BOSS_LABEL_W + 5 + L.BOSS_W + L.DIFF_GAP + L.DIFF_LABEL_W + 5 + L.DIFF_W + CRT.UI.HELP_GAP + CRT.UI.HELP_SIZE <= L.W - L.PAD, "the row fits across the dialog")
   assert(L.SCROLL_TOP <= L.ROW_Y - 32 - L.READ_H, "the text box under the row and its line")
-  ok("New note: Boss (No boss, then the route with raid headings), Difficulty and a (?) in one row over the text box")
+  ok("Import: Boss (No boss, then the route with raid headings), Difficulty and a (?) in one row over the text box")
 
   -- No boss each time it opens; Difficulty greyed until a boss is picked
   bo.set(3470)
-  nb.scripts.OnClick(nb)
+  imp.scripts.OnClick(imp)
   assert(bo.get() == "none" and bo.enabledIf() and not dopt.enabledIf(), "opens on No boss, Difficulty greyed")
   assert(not d.readLine:IsShown(), "no Read from line")
   bo.set(3470)
@@ -607,10 +607,23 @@ do
   assert(dopt.get() ~= nil and labelOf(dopt, dopt.get()), "no Difficulty: the dropdown still shows something")
   typed("plain again")
   assert(bo.get() == 3470 and bo.enabledIf() and dopt.enabledIf() and dopt.get() == "Mythic" and not d.readLine:IsShown(), "plain text again: your pick is back")
-  ok("New note: No boss on open, Difficulty greyed; an EncounterID line fills and greys both, with the Read from line")
+  ok("Import: No boss on open, Difficulty greyed; an EncounterID line fills and greys both, with the Read from line")
+
+  -- New note is for typing a note: it starts empty and never reads the text's EncounterID line, so Boss and
+  -- Difficulty stay yours to pick and there is no Read from line
+  typed("leftover")
+  nb.scripts.OnClick(nb)
+  assert(d.edit:GetText() == "" and bo.get() == "none", "New note starts empty, on No boss")
+  bo.set(3470)
+  typed("EncounterID:3480;Difficulty:Heroic;Name:Fresh\\ntime:5;text:Go;")
+  assert(bo.get() == 3470 and bo.enabledIf() and dopt.enabledIf() and not d.readLine:IsShown(), "New note: an EncounterID line is not read; the pick stays, nothing greys")
+  imp.scripts.OnClick(imp)
+  typed("EncounterID:3480;Difficulty:Heroic;Name:Fresh\\ntime:5;text:Go;")
+  assert(bo.get() == 3480 and d.readLine:IsShown(), "Import after it reads the line again")
+  ok("New note: starts empty, no Read from part; Import reads the EncounterID line")
 
   -- No boss: saved exactly as before
-  nb.scripts.OnClick(nb)
+  imp.scripts.OnClick(imp)
   typed("Just a plain line")
   local nextId = CRT.db.notes.nextId
   save.scripts.OnClick(save)
@@ -619,14 +632,14 @@ do
   assert(plain and plain.raw == "Just a plain line" and plain.encounterID == nil, "No boss: plain text, no boss")
   -- text with its own EncounterID line imports as today, replacing that boss's note, whatever was picked first
   local count = 0 for _ in pairs(CRT.db.notes.list) do count = count + 1 end
-  nb.scripts.OnClick(nb)
+  imp.scripts.OnClick(imp)
   bo.set(3480)
   typed("EncounterID:3470;Difficulty:Mythic;Name:Nek'zali\\nReplaced")
   save.scripts.OnClick(save)
   local after = 0 for _ in pairs(CRT.db.notes.list) do after = after + 1 end
   assert(after == count and Notes:Get(id).raw == "EncounterID:3470;Difficulty:Mythic;Name:Nek'zali\\nReplaced", "its EncounterID line replaces that boss's note")
   assert(said("Imported Nek'zali (Mythic)."), "the import message")
-  ok("New note: No boss and text with an EncounterID line save as before")
+  ok("Import: No boss and text with an EncounterID line save as before")
 
   -- a picked boss: always a new note, with the header line, even when that boss already has one
   nb.scripts.OnClick(nb)

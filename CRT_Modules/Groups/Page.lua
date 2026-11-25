@@ -112,11 +112,12 @@ local function styleButton(b)
 end
 
 -- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
-local function makeButton(parent, label, height)
+-- minW, when given: the least it is (a button filling grid slots), wider only for a longer label.
+local function makeButton(parent, label, height, minW)
     local b = styleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
     b:SetText(label)
     b:SetHeight(height or 26)
-    UI.FitButton(b)
+    UI.FitButton(b, nil, minW)
     return b
 end
 
@@ -1204,7 +1205,7 @@ local function buildPage(pf)
 
 
     -- Bottom left buttons
-    local setRoster = makeButton(pf, "Set current roster")
+    local setRoster = makeButton(pf, "Set current roster", nil, SLOT_W)
     setRoster:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 48)
     setRoster:SetScript("OnClick", function()
         local roster = Groups:ReadRoster()
@@ -1249,7 +1250,7 @@ local function buildPage(pf)
     end)
 
     -- Clear grid: at once, with Undo; an empty grid has nothing to clear
-    local clear = makeButton(pf, "Clear grid")
+    local clear = makeButton(pf, "Clear grid", nil, SLOT_W)
     clear:SetPoint("LEFT", setRoster, "RIGHT", COL_GAP, 0)
     clear:SetScript("OnClick", function(self)
         local saved, n = {}, 0
@@ -1287,7 +1288,7 @@ local function buildPage(pf)
 
     -- Use this group: the open layout becomes the raid's active roster (tagged active in Quick load),
     -- which the Late Tracker expects.
-    local useGroup = makeButton(pf, "Use this group", 32)
+    local useGroup = makeButton(pf, "Use this group", 32, 2 * SLOT_W + COL_GAP)
     useGroup:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 84)
     useGroup:SetScript("OnClick", function()
         local preset = gdb().selected and Groups:Find(gdb().selected)
@@ -1301,7 +1302,7 @@ local function buildPage(pf)
     local useHelp = UI.HelpRight(useGroup, "Use this group", "Makes the open layout the raid's active roster, marked active in Quick load; the Late Tracker expects the people in it. During a raid night, tonight's list updates at once and everyone's clock keeps running.")
     buildInvites(pf, useHelp)
 
-    local apply = makeButton(pf, "Arrange groups", 32)
+    local apply = makeButton(pf, "Arrange groups", 32, 2 * SLOT_W + COL_GAP)
     apply:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 8)
     apply:SetScript("OnClick", function()
         CRT.Apply:Start(Groups:Working())

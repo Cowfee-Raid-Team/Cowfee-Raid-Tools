@@ -2968,7 +2968,7 @@ function Methods:BuildStrip()
     self.cdEmpty:Hide()
 
     local plus = CreateFrame("Button", nil, row)
-    plus:SetSize(PLUS_W, CHIP_H)
+    plus:SetSize(PLUS_W, CHIP_H) -- fixed width: the + chip, one character
     chipBackground(plus)
     plus.text = plus:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     plus.text:SetPoint("CENTER", plus, "CENTER", 0, 0)

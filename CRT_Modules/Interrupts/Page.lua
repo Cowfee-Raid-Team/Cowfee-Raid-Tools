@@ -663,7 +663,7 @@ local function swatch(f, x, y, text, key)
     local name = label(f, text)
     name:SetPoint("TOPLEFT", x, y - 2)
     local b = CreateFrame("Button", nil, f, "BackdropTemplate")
-    b:SetSize(L.swatchW, L.swatchH)
+    b:SetSize(L.swatchW, L.swatchH) -- fixed width: a colour swatch, no label (its name is left of it)
     b:SetPoint("LEFT", name, "RIGHT", 6, 0)
     b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
     b:SetBackdropBorderColor(0, 0, 0, 1) -- the swatch's edge: not a theme colour

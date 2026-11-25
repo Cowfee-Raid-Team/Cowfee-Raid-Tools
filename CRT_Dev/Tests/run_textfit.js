@@ -690,6 +690,20 @@ for _, look in ipairs(looks) do
   for _, key in ipairs(PAGE_KEYS) do buttons = buttons + (visitPage(key, where) or 0) end
   if fails == before then print("ok " .. where .. " every page's text buttons fit, none overlap, none past the right edge (" .. buttons .. " checked)") end
 end
+-- 3. Raid Groups' main buttons keep their old widths as a minimum, growing only for a longer label: Use this group and
+-- Arrange groups span two slots, Set current roster and Clear grid one (Groups/Page.lua's SLOT_W), at the smallest size
+if UI.pages.groups and (#onlyPages == 0 or UI.pages.groups.frame) then
+  setLook("blizzard", 8)
+  pcall(UI.Show, UI, "groups")
+  local found = {}
+  for _, b in ipairs(collect(UI.pages.groups.frame, {})) do found[plain(labelOf(b)._text)] = b end
+  local use, arrange, set, clear = found["Use this group"], found["Arrange groups"], found["Set current roster"], found["Clear grid"]
+  check(use and arrange and set and clear, "Raid Groups: the four main buttons are there")
+  if use and arrange and set and clear then
+    check(use:GetWidth() == arrange:GetWidth() and set:GetWidth() == clear:GetWidth(), "Raid Groups: the pairs keep one width at text size 8 (their minimums)")
+    check(use:GetWidth() > set:GetWidth() + 40, "Raid Groups: Use this group spans two slots, Set current roster one (" .. use:GetWidth() .. ", " .. set:GetWidth() .. ")")
+  end
+end
 for i = 1, #errors do if not errors[i]:find("^done") then end end
 
 print(passes .. " passed, " .. fails .. " failed")

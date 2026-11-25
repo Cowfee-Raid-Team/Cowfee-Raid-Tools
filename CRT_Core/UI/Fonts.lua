@@ -20,10 +20,7 @@ local ADDON, CRT = ...
 --                        string, clear fs.crtCapPath so the next call sets the size again.
 
 local UI = CRT.UI
-
-UI.fitted = UI.fitted or {} -- UI.FitButton's buttons (CRT_Core/UI/Panel.lua)
-UI.flows = UI.flows or {} -- UI.Flow's rows (CRT_Core/UI/Panel.lua)
-UI.fontListeners = UI.fontListeners or {} -- UI:OnFonts's functions (CRT_Core/UI/Panel.lua)
+-- UI.fitted, UI.flows and UI.fontListeners, which refit walks, are made in CRT_Core/UI/Panel.lua's [text fit] block.
 
 local function refit()
     for _, b in ipairs(UI.fitted) do

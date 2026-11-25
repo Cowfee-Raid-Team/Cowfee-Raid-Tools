@@ -215,7 +215,7 @@ local function buildCategoryRows(pf)
     local top = -156
     for i = 1, #Consumables.CATEGORIES do
         local row = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        row:SetSize(LEFT_W, CAT_ROW_H - 4)
+        row:SetSize(LEFT_W, CAT_ROW_H - 4) -- fixed width: a list row as wide as its column, its name inside it
         row:SetPoint("TOPLEFT", pf, "TOPLEFT", 8, top - (i - 1) * CAT_ROW_H)
         skin(row, 0.5)
 

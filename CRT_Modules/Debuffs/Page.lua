@@ -372,7 +372,12 @@ local function build(pf)
 
     pf:SetScript("OnShow", refresh)
     Debuffs:OnChange(refresh)
-    UI:OnFonts(refresh) -- the Tooltip position row is placed again for the text size
+    -- a text size change: the Tooltip position row is placed again, now if the tab shows, else when it shows (OnShow)
+    UI:OnFonts(function()
+        if pf:IsVisible() then
+            refresh()
+        end
+    end)
 end
 
 CRT.DebuffsPage = { Build = build }
