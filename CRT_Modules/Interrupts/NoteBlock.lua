@@ -35,7 +35,8 @@ local Interrupts = CRT.Interrupts
 Block.START, Block.END = "intstart", "intend"
 Block.VIA = "Interrupts" -- how a note made here came (a note's via, in the Raid Notes list)
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Interrupts.NoteBlock", {
     noNotes = "Raid Notes isn't loaded.",
     busy = "The raid note can't be changed in combat or a boss fight.",
     noDifficulty = "This difficulty has no raid note.",
@@ -44,7 +45,7 @@ local TEXT = {
     noFit = "The kick block in the raid note \"%s\" doesn't fit %s: each line needs every name of its group, or none.",
     otherNote = "The %s pull reads the %s note. Make a %s note first (Raid Notes), then write.",
     anyNote = "The %s pull reads the note \"%s\", which is for every difficulty, and this boss has kick setups for more than one. Make a %s note first (Raid Notes), then write.",
-}
+})
 Block.TEXT = TEXT
 
 -- A note's Difficulty for a difficulty ID (the words Mech Alerts' notes use).
@@ -196,6 +197,7 @@ end
 -- line per group (the raid marker's icon before the label), never the intstart / intend lines. The note's text itself is
 -- never changed. Pure: the text in, the display out; Render.lua (the note view), Window.lua (the Assignments window) and
 -- EditModel.lua (the editor's rows) all take it from here.
+-- These two keys are added after CRT.Locale read the TEXT table, so they stay English until they move into it.
 TEXT.kickOrder = "Kick order"
 TEXT.group = "Group %d"
 local MARKER_TOKEN = "^{rt(%d)} (.*)$" -- Expand's way to carry a raid marker in plain text

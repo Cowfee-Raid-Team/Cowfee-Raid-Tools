@@ -11,7 +11,7 @@ local Alert = {}
 CRT.NoteAlert = Alert
 
 -- Every word the callout and its settings show, in one place so the wording is easy to change.
-local TEXT = {
+local TEXT = CRT.Locale("Notes.Alert", {
     title = "Note callout/assignments",
     drag = "%s: drag to move",
     sample = "Your spell",
@@ -40,7 +40,7 @@ local TEXT = {
     volumeHelp = "How loud the game's text to speech reads. A voice's clips (Quality of Life > Sounds) play at your sound channel's volume (General Settings > Appearance > Sound channel) instead: the game takes no volume for them.",
     rate = "Speech rate",
     testSpeech = "Test speech",
-}
+})
 
 local REFRESH_SECONDS = 0.1
 local ICON_GAP = 8 -- between the icon and the text

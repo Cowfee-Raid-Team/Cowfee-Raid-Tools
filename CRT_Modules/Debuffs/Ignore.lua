@@ -21,7 +21,7 @@ local LIST_W = 400
 local BUILT_IN_X = 440 -- Page.lua's LOOK_X: the right column
 local BOTTOM_GAP = 6
 
-local TEXT = {
+local TEXT = CRT.Locale("Debuffs.Ignore", {
     title = "Ignore these debuffs",
     help = "Debuffs on these lists don't show on the debuff panel.\n\nType a spell ID and press Add, or right-click a debuff on the panel out of combat. In combat the panel can't be clicked. Out of combat a right-drag to turn the camera doesn't start over a debuff icon.\n\nThe game only lets addons hide some debuffs on you, such as Exhaustion and other lockouts. For any other it says so, and the debuff still shows. The \"Hide debuffs longer than\" setting above can still leave out a long one.\n\nThe game's boss debuff slots (the second row) can't be filtered at all.",
     spellID = "Spell ID",
@@ -35,7 +35,7 @@ local TEXT = {
     canHide = "Add hides it on the panel.",
     stillShows = "still shows",
     added = "Added %s.",
-}
+})
 Ignore.TEXT = TEXT
 
 local view = {}

@@ -29,11 +29,11 @@ local UI = CRT.UI
 local DL = CRT.AlertDebuffList
 
 -- Every word on screen, in one place. Keep the keys, change the text in quotes, save, /reload.
-local TEXT = {
+local TEXT = CRT.Locale("Alerts.DebuffListView", {
     title = "%s list",
     drag = "%s: drag to move",
     sample = "Player %d",
-}
+})
 View.TEXT = TEXT
 
 local L = {

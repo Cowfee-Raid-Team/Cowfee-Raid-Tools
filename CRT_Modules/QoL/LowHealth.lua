@@ -20,12 +20,12 @@ local ADDON, CRT = ...
 local LowHealth = {}
 CRT.LowHealth = LowHealth
 
-local TEXT = {
+local TEXT = CRT.Locale("QoL.LowHealth", {
     curveFailed = "UnitHealthPercent with the curve raised an error",
     curveNothing = "UnitHealthPercent with the curve gave no number",
     alphaRefused = "SetAlpha refused the curve's result",
     combat = "The low-health alert can't read your health in combat on this client. Turn it off with /crt lowhp off.",
-}
+})
 
 local frame, curve
 local SCALE = 1 -- the curve's input range, 0 to 1

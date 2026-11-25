@@ -82,7 +82,8 @@ local ART = {
     slotDefault = "loottoast-itemborder-green", -- the roll frame's own default, for an unknown quality
 }
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("LootMaster.Popup", {
     title = "Loot",
     test = "TEST",
     testNote = "nothing is passed",
@@ -111,7 +112,7 @@ local TEXT = {
     pastNote = "last session, read only",
     youAnswered = "You answered %s",
     noAnswer = "No answer",
-}
+})
 
 -- What you bring to an answer ---------------------------------------------------------------------
 

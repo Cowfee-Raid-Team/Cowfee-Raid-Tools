@@ -22,7 +22,7 @@ local UI = CRT.UI
 
 -- Every word on this tab, in one place so the wording is easy to change. Keep the keys, change the
 -- text in quotes, save, and /reload.
-local TEXT = {
+local TEXT = CRT.Locale("Notes.AlertsTab", {
     routeTitle = "Your note lines go to",
     routeHelp = "Where your own lines from the raid note show, and whether they are read out. Tick as many as you like.\n\n"
         .. "This is for your note lines without their own displays. A line that names its own displays keeps them, though each display's own switch can still turn it off.\n\n"
@@ -92,7 +92,7 @@ local TEXT = {
     bars = "Bars",
     circles = "Circles",
     timelineArea = "Alert timeline",
-}
+})
 
 -- The note callout, then the areas, in the dropdown in this order. The callout is not an area: its rows
 -- come from CRT.NoteAlert.PanelEntry.

@@ -16,13 +16,13 @@ local UI = CRT.UI
 local Options = {}
 CRT.OptionsEntry = Options
 
-local TEXT = {
+local TEXT = CRT.Locale("UI.OptionsEntry", {
     name = "Cowfee Raid Tools",
     line = "Raid tools for groups, notes, ready checks, loot and ability timelines.",
     open = "Open Cowfee Raid Tools",
     orType = "Or type /crt.",
     closeFirst = "Close Options, then type /crt.",
-}
+})
 Options.TEXT = TEXT
 
 local L = { x = 16, top = -16, gap = 10, button = 24 }

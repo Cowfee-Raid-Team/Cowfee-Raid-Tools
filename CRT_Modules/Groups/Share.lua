@@ -39,7 +39,8 @@ local TIMEOUT = 30 -- seconds the parts of one roster may take to arrive
 local CHANNELS = { RAID = true, PARTY = true, INSTANCE_CHAT = true }
 Share.PREFIX = PREFIX
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Groups.Share", {
     sent = "Roster '%s' sent.",
     failed = "Roster '%s' not sent: the game refused it.",
     noLayout = "Roster not sent: no Raid Groups layout is active.",
@@ -53,7 +54,7 @@ local TEXT = {
     receivedKept = "Roster '%s' from %s is now your active group. Your unsaved changes on '%s' are kept; pick it in Quick load to see it.",
     receivedOwn = "Roster '%s' from %s is now your active group. Your unsaved changes on it are kept.",
     queued = "Roster '%s' is already on its way.",
-}
+})
 Share.TEXT = TEXT
 
 if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then

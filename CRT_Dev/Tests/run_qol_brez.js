@@ -467,7 +467,7 @@ let srcFails = 0;
 // no fixed colour: the texts and the border read the palette
 if (/SetTextColor\(\s*[\d.]+\s*,/.test(src) || /SetBackdropBorderColor\(\s*[\d.]+/.test(src)) { console.log('FAIL BattleRes.lua writes a fixed colour'); srcFails++; }
 // wording in a TEXT table, and no other addon's name
-if (!/^local TEXT = \{/m.test(src)) { console.log('FAIL BattleRes.lua has no TEXT table'); srcFails++; }
+if (!/^local TEXT = CRT\.Locale\("[^"]+", \{/m.test(src)) { console.log('FAIL BattleRes.lua has no TEXT table (through CRT.Locale)'); srcFails++; }
 for (const f of ['CRT_Modules/QoL/BattleRes.lua', 'CRT_Dev/Dev/BattleResProbe.lua']) {
   if (/BigWigs|DBM|Northern Sky|NSRT|\bMRT\b|WeakAuras|Details/i.test(read(f))) { console.log('FAIL ' + f + ' names another addon'); srcFails++; }
 }

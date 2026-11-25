@@ -28,7 +28,7 @@ local Fields = {}
 CRT.AlertFields = Fields
 
 -- Every word of the shared settings. Keep the keys, change the text in quotes, save, /reload.
-local TEXT = {
+local TEXT = CRT.Locale("Alerts.Fields", {
     sound = "Sound",
     none = "None",
     auraSound = "Also when it lands on me",
@@ -78,7 +78,7 @@ local TEXT = {
     auraSpellWhy = "Needs the alert's spell. Set it on the Looks tab.",
     auraSoundWhy = "Pick a sound above first.",
     auraGameWhy = "The game's aura sounds aren't available right now.",
-}
+})
 Fields.TEXT = TEXT
 
 -- Show as's boxes by key, in Alerts/Draft.lua SHOW_ROWS order.

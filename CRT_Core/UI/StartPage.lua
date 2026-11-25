@@ -56,7 +56,7 @@ local function noteWindowSet(key)
     end
 end
 
-local TEXT = {
+local TEXT = CRT.Locale("UI.StartPage", {
     title = "Start here",
     intro = "New here? The Welcome shows where to begin.",
     welcome = "Welcome",
@@ -71,7 +71,7 @@ local TEXT = {
     interruptsOff = "Tick Enable Interrupts to show its page.",
     pageHidden = "This page is hidden right now.",
     interruptsHelp = "Kick numbers above a boss's adds, a countdown before your kick and the leader's kick list. Off for everyone until they tick this. The Interrupts page lists the bosses it works on.",
-}
+})
 
 local WHATS_ON = {
     { title = "On screen",

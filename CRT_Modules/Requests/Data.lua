@@ -39,12 +39,13 @@ R.LABEL = "Requests" -- starts the trade's chat lines
 R.KIND = { ask = "N", answer = "W", close = "Z" }
 R.NEED, R.NO = "need", "no"
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Requests.Data", {
     status = "Asked %s ago. %s, %s, %s.",
     need = { "%d needs one", "%d need one" },
     no = { "%d said no", "%d said no" },
     waiting = { "%d hasn't answered", "%d haven't answered" },
-}
+})
 
 local function secret(v)
     return issecretvalue and issecretvalue(v) or false

@@ -63,7 +63,7 @@ local OTHER_LOGGERS = {
 local CombatLog = {}
 CRT.CombatLog = CombatLog
 
-local TEXT = {
+local TEXT = CRT.Locale("QoL.CombatLog", {
     on = "Combat log on: %s.",
     off = "Combat log off: you left the instance.",
     offNotTicked = "Combat log off: this content isn't ticked.",
@@ -108,7 +108,7 @@ local TEXT = {
     keepCRT = "Keep CRT on",
     otherHandles = "Combat log: %s handles it, CRT's automatic logging is off.",
     otherRunning = "%s is also running and may change your combat log.", -- each start by the zone logic
-}
+})
 
 CombatLog.ACL_CVAR = "advancedCombatLogging"
 local DECIDE_DELAY = 2 -- seconds after a zone change, so the instance's difficulty has settled

@@ -34,7 +34,7 @@ local WISH_COLS = {
     roll = { 418, 50 }, ilvl = { 472, 50 }, gear = { 526, 100 },
 }
 
-local TEXT = {
+local TEXT = CRT.Locale("LootMaster.RaiderWindow", {
     title = "Loot",
     test = "TEST",
     note = "all loot rolls, read only",
@@ -48,7 +48,7 @@ local TEXT = {
     given = "Given to %s",
     pastNote = "last session, read only",
     noneYet = "No loot session yet tonight.",
-}
+})
 
 local ROLE_TEXT = { T = "Tank", H = "Heal", D = "DPS", N = "" }
 

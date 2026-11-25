@@ -19,7 +19,8 @@ local UI = CRT.UI
 local Dev = {}
 CRT.AlertExportDev = Dev
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Dev.AlertExport", {
     title = "Alert export (dev)",
     helpTitle = "Alert export",
     help = "Export code: a code to paste into another CRT. It holds the boss's special alerts (your choices, and the boss file's entries) and your Mech Alerts.\n\n"
@@ -48,7 +49,7 @@ local TEXT = {
     lost = { count = "the count down", speakAt = "speaking at 0", speakBefore = "speaking before 0",
         speakText = "its Say instead words", sound = "its sound", glow = "the glow", color = "its colour",
         linger = "Linger", moved = "its moved and turned-off casts", priority = "its priority", icon = "its own icon" },
-}
+})
 Dev.TEXT = TEXT
 
 local WHAT = {

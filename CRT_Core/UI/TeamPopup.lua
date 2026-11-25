@@ -21,7 +21,7 @@ CRT.TeamPopup = P
 local L = { width = 400, height = 196, raiderH = 140, labelW = 130, dropW = 200, toggleW = 160, buttonH = 24, gap = 12, bottom = 6,
     pad = 14, rowH = 32 }
 
-local TEXT = {
+local TEXT = CRT.Locale("UI.TeamPopup", {
     leaderTitle = "New raid group",
     raiderTitle = "Which team is this raid?",
     loot = "Use Loot Master?",
@@ -39,7 +39,7 @@ local TEXT = {
         { "No", "leaves it off." },
         { "Save and push to raid", "sets the team for everyone in the raid with CRT. They can't change it until they leave the group." },
     },
-}
+})
 P.TEXT = TEXT
 
 -- What the popup holds until Save: the team picked and the Loot Master answer (nil: none yet).

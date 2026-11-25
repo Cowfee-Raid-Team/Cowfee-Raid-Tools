@@ -22,7 +22,7 @@ local Setup = CRT.InterruptSetup
 local Editor = { devButtons = {} }
 CRT.InterruptSetupEditor = Editor
 
-local TEXT = {
+local TEXT = CRT.Locale("Interrupts.SetupEditor", {
     title = "Kick setup",
     help = "Your own kick setup for a boss and difficulty. Each group kicks the add with its raid marker, in turn: its number moves on with each of that add's casts. So every group needs its own raid marker, and someone marks the adds, by hand or with a marker macro.\n\nYours is used in place of the setup CRT ships, until you go back to it. The kick list, the raid note and Share to raid work the same. A boss whose numbers come from timing can't be changed here.",
     boss = "Boss",
@@ -50,7 +50,7 @@ local TEXT = {
     timingWhy = "This boss's numbers come from timing, so its setup can't be changed here.",
     oneGroupWhy = "A setup needs at least one group.",
     maxGroupsWhy = "A setup has at most %d groups.",
-}
+})
 Editor.TEXT = TEXT
 
 local DIFFICULTIES = { { key = 16, label = "Mythic" }, { key = 15, label = "Heroic" }, { key = 14, label = "Normal" } }

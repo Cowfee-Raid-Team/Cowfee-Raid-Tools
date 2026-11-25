@@ -30,11 +30,11 @@ local Model = CRT.NoteEditModel
 local Palette = {}
 CRT.NotePalette = Palette
 
-local TEXT = {
+local TEXT = CRT.Locale("Notes.Palette", {
     search = "Search",
     playersFrom = "Players from",
     sections = { players = "Players", general = "General", groups = "Groups", classes = "Classes" },
-}
+})
 Palette.TEXT = TEXT
 
 local L = {

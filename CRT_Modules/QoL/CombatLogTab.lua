@@ -9,7 +9,7 @@ local ADDON, CRT = ...
 
 local UI = CRT.UI
 
-local TEXT = {
+local TEXT = CRT.Locale("QoL.CombatLogTab", {
     enable = "Log combat automatically",
     enableNote = "Starts the game's combat log when you enter content ticked below, so your log is written without typing /combatlog. Ticking it also turns on the game's Advanced Combat Logging, which log sites need. The log is a WoWCombatLog file in the game's Logs folder.",
     raids = "Raids",
@@ -33,7 +33,7 @@ local TEXT = {
     otherLine = "%s also changes your combat log.",
     now = "Now",
     announce = "Say in chat when logging starts or stops",
-}
+})
 
 local COLUMN_X = 480 -- the right column
 local LINE_W = 480

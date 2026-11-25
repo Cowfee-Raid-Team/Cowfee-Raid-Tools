@@ -3,7 +3,7 @@
   "private": true,
   "description": "Cowfee Raid Tools Lua test harnesses (fengari) and the syntax check (luaparse)",
   "dependencies": {
-    "fengari": "^0.1.4",
+    "fengari": "0.1.5",
     "luaparse": "^0.3.1"
   }
 }

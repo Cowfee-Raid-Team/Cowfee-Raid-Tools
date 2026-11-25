@@ -520,12 +520,12 @@ end
 
 -- The menu's groups, top to bottom, each under its header: its label, then its page keys in order. This is
 -- the one place the menu's order is set. A page not listed joins the last group.
-local TEXT = {
+local TEXT = CRT.Locale("UI.Panel", {
     general = "General",
     raidAdmin = "Raid Admin",
     bosses = "Bosses",
     extras = "Extras",
-}
+})
 -- The title bar's version text: "v1.1.2", or "v1.1.2 build#004" in a developer copy with CRT.BUILD.
 function UI.VersionText()
     local text = "v" .. tostring(CRT.version)

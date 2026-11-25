@@ -61,7 +61,7 @@ end
 -- may go here.
 Sound.BUNDLED = {}
 
-local TEXT = {
+local TEXT = CRT.Locale("Sound.Engine", {
     voices = "Voices",
     effects = "Sound effects",
     more = "More",
@@ -69,7 +69,7 @@ local TEXT = {
     shared = "Shared",
     yours = "Yours",
     other = "Other",
-}
+})
 
 -- The sound lists' top level, in order (#1241): a heading, then one submenu per group of its source. "voices" is a
 -- group per Sound.VOICES entry (Sound/Voices.lua), "effects" one per Sound.EFFECTS category (Sound/Effects.lua), and

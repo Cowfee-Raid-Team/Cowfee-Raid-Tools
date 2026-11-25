@@ -830,7 +830,7 @@ const logSrc = read('CRT_Modules/QoL/CombatLog.lua'), tabSrc = read('CRT_Modules
 if (!logSrc) fail('CRT_Modules/QoL/CombatLog.lua is missing');
 if (!tabSrc) fail('CRT_Modules/QoL/CombatLogTab.lua is missing');
 for (const [f, s] of [['CombatLog.lua', logSrc], ['CombatLogTab.lua', tabSrc]]) {
-  if (!/^local TEXT = \{/m.test(s)) fail(f + ' has no TEXT table');
+  if (!/^local TEXT = CRT\.Locale\("[^"]+", \{/m.test(s)) fail(f + ' has no TEXT table (through CRT.Locale)');
   if (/BigWigs|DBM|Northern Sky|NSRT|\bMRT\b|WeakAuras|Details!/i.test(s)) fail(f + ' names another addon');
   // never polled: no OnUpdate and no repeating ticker
   if (/OnUpdate|NewTicker/.test(s)) fail(f + ' polls (OnUpdate or a ticker)');

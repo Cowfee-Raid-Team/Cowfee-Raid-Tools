@@ -37,7 +37,8 @@ local COLS = {
     { key = "raid", x = 598, w = 72 },
 }
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("SeasonStats.Page", {
     title = "Season Stats",
     columns = { name = "Boss", pulls = "Pulls", wipes = "Wipes", kills = "Kills", toKill = "To first kill", best = "Best kill", first = "First kill",
         repairs = "Your repairs", raid = "Raid costs" },
@@ -93,7 +94,7 @@ local TEXT = {
     noAvoid = "Tattlebot has no pulls on this boss on this difficulty.",
     avoidOpen = "Open this night in Tattlebot", avoidGone = "This night is no longer in Tattlebot.", more = ">",
     pull = "pull", pullsWord = "pulls",
-}
+})
 
 for _, col in ipairs(COLS) do
     col.title = TEXT.columns[col.key]

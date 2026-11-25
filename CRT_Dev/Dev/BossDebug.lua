@@ -26,7 +26,8 @@ CRT.BossDebug = BossDebug
 BossDebug.MAX_LINES = 6000 -- per record, every section together
 BossDebug.SECTIONS = { "emotes", "clear", "absorb", "timeline" } -- the order the text lists them in
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Dev.BossDebug", {
     copyTitle = "Boss debug: %s (Ctrl+C to copy, paste to Claude)",
     emotesTitle = "Boss debug emotes: %s (Ctrl+C to copy, paste to Claude)",
     on = "Boss debug on: every boss pull is logged, one log per boss. /crt dev bossdebug show lists them.",
@@ -37,7 +38,7 @@ local TEXT = {
     listHead = "Boss debug logs (/crt dev bossdebug show <boss> to copy one):",
     legend = "<secret> or secret is a value the game hid; nil or missing is one that wasn't there. Each line starts with its seconds from the pull.",
     nothing = "(nothing logged)",
-}
+})
 
 local frame
 local current -- the record lines go to: the last pull opened this session, until the next one

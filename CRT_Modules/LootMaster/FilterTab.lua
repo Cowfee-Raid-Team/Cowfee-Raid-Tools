@@ -15,7 +15,7 @@ local L = {
     dropW = 180, sliderLabel = 70, sliderW = 200,
 }
 
-local TEXT = {
+local TEXT = CRT.Locale("LootMaster.FilterTab", {
     where = "Where it dropped",
     whereHelp = "Boss loot drops from a boss; trash loot from any other enemy in the instance. An item opens a loot session only when it passes every part of this filter: where it dropped, its quality, item level and kind. A part the game can't tell CRT about is let through, and chat says so.",
     boss = "Boss loot", trash = "Trash loot",
@@ -40,7 +40,7 @@ local TEXT = {
         other = "Recipes, reagents and other items",
     },
     defaults = "Defaults",
-}
+})
 LM.FILTER_TEXT = TEXT -- for tests
 
 -- Changes one part of your filter and saves it.

@@ -31,7 +31,8 @@ local Setup = CRT.InterruptSetup
 local Page = { tabs = {}, swatches = {} }
 CRT.InterruptsPage = Page
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Interrupts.Page", {
     title = "Interrupts",
     help = {
         "Kick numbers above a boss's adds, a reminder before your own kick, and the raid leader's kick list.\n\nSome bosses number their adds by timing, others by raid marker.",
@@ -139,7 +140,7 @@ local TEXT = {
     previewBoxNoBoss = "No boss has a kick setup, so there is no number to show.",
     previewReminder = "Preview reminder icon",
     previewReminderTip = "Shows the reminder with its drag box so you can drag it into place. Test reminder on the Assignments tab plays a test countdown instead.",
-}
+})
 -- The preview keys: Interrupts/Plates.lua's number box and Interrupts/Reminder.lua's reminder.
 local PREVIEW_BOX, PREVIEW_REMINDER = "interrupts-box", "interrupts-reminder"
 Page.TEXT = TEXT

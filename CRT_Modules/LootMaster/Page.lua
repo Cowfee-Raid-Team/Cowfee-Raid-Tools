@@ -42,7 +42,7 @@ local L = {
 L.col3W = UI.PAGE_W - L.col3 - 8 -- the third column, to the page's right margin
 L.col2W = L.col3 - L.col2 - 12 -- the second column, with a gap before the third
 
-local TEXT = {
+local TEXT = CRT.Locale("LootMaster.Page", {
     title = "Loot Master",
     help = {
         "Run the loot: the raid leader gives each boss item out from one window, and every raider with CRT answers from a popup.",
@@ -138,7 +138,7 @@ local TEXT = {
     syncPickOne = "Pick a player",
     syncNobody = "(no one with CRT found yet)",
     syncType = "Type a name",
-}
+})
 
 local page
 local tabButtons, tabFrames = {}, {}

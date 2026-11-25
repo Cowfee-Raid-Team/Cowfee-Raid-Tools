@@ -23,7 +23,8 @@ local ARM_WAIT = 1 -- seconds after the death before the wipe, as the encounter'
 local Test = { ARM_SECONDS = ARM_SECONDS, ARM_WAIT = ARM_WAIT }
 CRT.InstantReleaseTest = Test
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Dev.InstantReleaseTest", {
     prefix = "Auto release test: ",
     onShow = "Boss on show: %s (%d), %s",
     onShowNone = "Boss on show: none",
@@ -62,7 +63,7 @@ local TEXT = {
     armTimeout = "Disarmed: no death in %d minutes.",
     disarmed = "Disarmed.",
     usage = "/crt dev autorelease status, now [encounterID], arm [encounterID] or off.",
-}
+})
 
 local function say(line)
     CRT:Print(TEXT.prefix .. line)

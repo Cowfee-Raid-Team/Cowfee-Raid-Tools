@@ -16,7 +16,8 @@ local Sort = {}
 CRT.GroupSort = Sort
 
 -- Every word on the controls and in chat, in one place. Keep the keys, change the text in quotes.
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Groups.Sort", {
     roles = "Role blocks",
     melee = "Melee and ranged groups",
     spread = "Spread duplicates",
@@ -25,7 +26,7 @@ local TEXT = {
     sideLabel = "%s: %s", -- boss: the mechanic (or the assignment's name)
     prefix = "[CRT] ", -- before every group changes line
     changes = "<Group %d Changes>: %s",
-}
+})
 Sort.TEXT = TEXT
 
 -- The methods, in the Sort by dropdown's order; the first is the default (CRTDB.groups.sortMethod).

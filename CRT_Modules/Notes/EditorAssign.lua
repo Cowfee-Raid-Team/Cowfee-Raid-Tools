@@ -38,7 +38,8 @@ local EA = {}
 CRT.NoteEditorAssign = EA
 
 -- Every word of the view, in one place. Keep the keys, change the text in quotes, save, /reload.
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Notes.EditorAssign", {
     assignment = "Assignment",
     newBlock = "New assignment",
     fromRows = "Make an Assign block from %s",
@@ -89,7 +90,7 @@ local TEXT = {
         { "A mechanic", "its casts on the boss's ability timeline for this note's difficulty; each row gets a timer line on the casts it is on." },
         { "Assignment", "picks the block to edit: a new one, one the note has, or a group list with timer lines under it (such as a pasted note) to make into a block." },
     },
-}
+})
 EA.TEXT = TEXT
 
 -- Assignment, then Timers under it, each a dropdown row (UI.CONTROL_ROW_H); the block editor under them

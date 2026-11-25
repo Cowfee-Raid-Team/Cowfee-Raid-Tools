@@ -43,7 +43,7 @@ local ADDON, CRT = ...
 local Alerts = CRT.Alerts
 local Areas = CRT.AlertAreas
 
-local TEXT = {
+local TEXT = CRT.Locale("Alerts.GameTimeline", {
     mode = "Mode",
     modeHelp = {
         { "Standalone", "shows your alerts on this timeline only." },
@@ -55,7 +55,7 @@ local TEXT = {
     replace = "Replace the game's timeline",
     alsoHere = "Also show the Alert timeline",
     alsoHereHelp = "Shows your alerts here as well as on the game's timeline. Off, an alert shows here only when the game's timeline can't show it.",
-}
+})
 
 -- Tune in game.
 local DEFAULT_LEAD = 10 -- seconds ahead when the area's Seconds on the line can't be read (its default)

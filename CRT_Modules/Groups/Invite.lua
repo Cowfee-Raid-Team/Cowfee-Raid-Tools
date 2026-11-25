@@ -31,7 +31,8 @@ local MOVE_CHECK = 3 -- seconds after asking for a move before a roster that doe
 local MOVE_RETRY = 30
 local COMBAT_RECHECK = 5 -- seconds between tries to move a joiner who is in combat themselves
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Groups.Invite", {
     combat = "Invites wait until combat ends.",
     notLead = "Only the raid leader or an assist can invite.",
     nobody = "Everyone is already in the group.",
@@ -64,7 +65,7 @@ local TEXT = {
     stateJoined = "joined",
     stateStayed = "stayed in %d",
     stateAfterCombat = "moves after combat",
-}
+})
 Invite.TEXT = TEXT
 
 -- The game's system messages that answer an invite: the global string's name, the state and the reason.

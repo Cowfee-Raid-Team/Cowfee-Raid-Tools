@@ -33,12 +33,12 @@ local LAYOUT = {
     bottom = 14, -- the buttons, from the bottom
 }
 
-local TEXT = {
+local TEXT = CRT.Locale("Dev.ReferenceTypes", {
     title = "Manage ability timelines (dev)",
     boss = "Boss",
     help = "Every ability timeline of this boss, yours and shipped.\n\nDelete removes one of your copies; Delete all my copies removes every copy of yours for this boss. The shipped ones stay.\n\nThe game can't change the addon's files, so a shipped one is removed in two steps. Remove from addon hides it on this computer at once and marks it for removal; Keep undoes that. Export removals (or /crt dev removed) lists the marks: paste them to Claude, who deletes those blocks from the boss files. Opening this window clears marks whose blocks are already gone.\n\nA marked one also leaves the alerts and notes on this computer, as a preview of the deletion.\n\nAn ability's types are set by right-clicking it on the Timeline.",
     none = "No ability timelines for this boss.",
-}
+})
 
 local win
 

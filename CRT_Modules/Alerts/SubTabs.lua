@@ -24,7 +24,7 @@ local SubTabs = {}
 CRT.AlertSubTabs = SubTabs
 
 -- Every word of the strip, in one place. Keep the keys, change the text in quotes, save, /reload.
-local TEXT = {
+local TEXT = CRT.Locale("Alerts.SubTabs", {
     when = "When",
     who = "Who",
     looks = "Looks",
@@ -32,7 +32,7 @@ local TEXT = {
     shield = "Shield bar",
     assign = "Assign",
     markers = "Markers",
-}
+})
 SubTabs.TEXT = TEXT
 
 local L = {

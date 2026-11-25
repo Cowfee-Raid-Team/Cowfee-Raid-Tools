@@ -25,10 +25,10 @@ local Model = CRT.NoteEditModel
 local Parser = CRT.NoteParser
 local Page = CRT.InterruptsPage
 
-local TEXT = {
+local TEXT = CRT.Locale("Interrupts.PagePalette", {
     players = "Players",
     playersHelp = "Pick who is listed in Players from: your group or a Raid Groups layout.\n\nDrag a player onto a group's row to give them its next kick. Drag a name along its row to change the order, or onto another group's row to move it there. Click x on a name to take it off.\n\nDrag a General, Group or Class chip onto a row to add every matching player from the list you picked, in its order. Anyone already on the row is skipped, and the row takes no more than its slots. Melee and Ranged add only players CRT can place: tanks, players whose spec it has seen, and classes that are melee or ranged in every spec.\n\nIn a group, only the raid leader and assistants can change the list. Solo, the list is yours to test with.",
-}
+})
 Page.PaletteText = TEXT
 
 local LAYOUT = {

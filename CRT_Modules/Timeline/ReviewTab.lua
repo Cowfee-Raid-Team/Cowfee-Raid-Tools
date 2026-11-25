@@ -27,7 +27,7 @@ local RECENT_W = 150
 ReviewTab.RECENT_W = RECENT_W
 
 local EMPTY_ALL = "No boss pulls recorded yet"
-local TEXT = {
+local TEXT = CRT.Locale("Timeline.ReviewTab", {
     record = "Record every pull",
     overlay = "Deaths from the last", -- then the pill, then overlayPulls
     overlayPulls = "pulls",
@@ -37,7 +37,7 @@ local TEXT = {
     overlayHelp = "With no pull picked on the right, draws the deaths of this boss's recent pulls on the ability timeline, faded by how old they are, so deaths that repeat stand out. Pick a pull on the right to see only that pull's deaths; click it again to go back to all of them. How many pulls it covers: the number, or Overlay pulls on the Settings tab.",
     export = "Export labels",
     exportHelp = "Developer only. Shows this boss's ability labels (the right-click Type, Also, icons, name and row) in the boss file's format. Copy it and paste it to Claude to ship them.",
-}
+})
 
 -- The rows: the dropdowns and the label; the checkboxes (Import reminders, Rehearse, Pop out and Share note
 -- at the right, from Page.lua); a third row only when the frame is too narrow for Order beside the label

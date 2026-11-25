@@ -28,7 +28,7 @@ local L = {
 Panel.MAX_ROWS = 10
 Panel.HEIGHT = -L.rowsY + Panel.MAX_ROWS * L.rowH -- 310: what the page leaves for the section
 
-local TEXT = {
+local TEXT = CRT.Locale("Dev.BossDebugPanel", {
     heading = "Boss debug",
     check = "Log every boss pull",
     help = "While on, every boss pull records its phase events, boss casts, deaths and shield reads in one log per boss. A new pull on the same boss replaces the old log. Nothing ships; nothing shows during the pull.\n\nEmotes shows every boss emote and yell with its time, and a phase trigger to paste for each boss emote. Copy shows the whole log.",
@@ -39,7 +39,7 @@ local TEXT = {
     emotes = "Emotes",
     empty = "No boss logs yet.",
     more = "%d more: /crt dev bossdebug show lists them all.",
-}
+})
 
 local function confirmClear()
     if not StaticPopup_ShowCustomGenericConfirmation then

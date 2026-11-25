@@ -16,11 +16,11 @@ local W = LM.Wishlist
 
 W.SAVED_MAX = 200 -- raiders kept at most
 
-local TEXT = {
+local TEXT = CRT.Locale("LootMaster.WishlistSaved", {
     forgetAll = "Forget every raider's saved wishlist?",
     forget = "Forget all",
     cancel = "Cancel",
-}
+})
 
 local function secret(v)
     return issecretvalue ~= nil and issecretvalue(v) or false

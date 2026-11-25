@@ -21,7 +21,8 @@ CRT.TeamDialogs = D
 local L = { width = 380, height = 156, mergeH = 196, editW = 220, editH = 20, buttonH = 22, buttonMinW = 80, gap = 12, bottom = 6,
     pad = 12, labelW = 60, dropW = 240, rowH = 30 }
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("UI.TeamDialogs", {
     addTitle = "Add team",
     addLabel = "Team name",
     add = "Add",
@@ -37,7 +38,7 @@ local TEXT = {
     mergeAsk = "%s's %s, Tattlebot pulls and raid nights move into %s, and %s leaves your list. This can't be undone.",
     mergeAskBefore = "The %s from before teams, with their Tattlebot pulls and raid nights, move into %s. This can't be undone.",
     merged = "Merged %s into %s (%s).",
-}
+})
 D.TEXT = TEXT
 
 local function pullsText(n)

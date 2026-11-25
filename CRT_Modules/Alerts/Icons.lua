@@ -6,7 +6,7 @@ local ADDON, CRT = ...
 
 local Areas = CRT.AlertAreas
 
-local TEXT = {
+local TEXT = CRT.Locale("Alerts.Icons", {
     title = "Alert icons",
     now = "NOW",
     size = "Size",
@@ -20,7 +20,7 @@ local TEXT = {
     sampleLater = "Soak",
     -- why a greyed row can't be used (UX rule 5), on its tooltip
     showTextWhy = "Tick Show the text below to change this.",
-}
+})
 
 local MIN_ICON, MAX_ICON, DEFAULT_ICON = 24, 96, 44
 local MIN_FONT, MAX_FONT, DEFAULT_FONT = 10, 40, 20

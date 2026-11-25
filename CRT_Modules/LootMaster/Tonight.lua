@@ -37,7 +37,8 @@ local L = {
 L.colW = UI.PAGE_W - L.col - 8
 L.subW = UI.PAGE_W - L.sub - 8
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("LootMaster.Tonight", {
     myLoot = "My Loot",
     hint = "Click to open your roll window · /crt loot",
     wishlist = "My wishlist",
@@ -72,7 +73,7 @@ local TEXT = {
     turnOn = "Turn on", turnOff = "Turn off for everyone",
     awarded = "given to %s (%s)",
     open = "open",
-}
+})
 
 local T = {} -- the parts (LM.Tonight)
 LM.Tonight = T

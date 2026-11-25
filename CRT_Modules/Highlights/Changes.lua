@@ -22,11 +22,11 @@ local ADDON, CRT = ...
 
 local H = CRT.NoteHighlights
 
-local TEXT = {
+local TEXT = CRT.Locale("Highlights.Changes", {
     added = "Added",
     removed = "Removed",
     moved = "Moved",
-}
+})
 H.TEXT = TEXT
 -- Each change's tag colour, a theme key (CRT_Dev/StyleGuide.md): good, bad, and warn for in between.
 local TAG_COLOR = { added = "good", removed = "bad", moved = "warn" }

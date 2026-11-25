@@ -27,7 +27,8 @@ AS.VERSION = 1
 -- deeper than the engine's default: a definition's rotation steps sit 9 levels in
 AS.CAPS = { depth = 10, entries = 500, total = 20000, string = 2000 }
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Alerts.Share", {
     nothing = "Nothing to export: no Mech Alerts or special alerts there.",
     combat = "Can't import during combat.",
     -- an import over one of your Raid note Mech Alerts while you may not change the raid note
@@ -48,7 +49,7 @@ local TEXT = {
     fromSep = " · ",
     groups = { nh = "Normal/Heroic", mythic = "Mythic" },
     bothGroups = "Normal/Heroic and Mythic",
-}
+})
 AS.TEXT = TEXT
 
 local GROUPS = { nh = true, mythic = true, any = true }

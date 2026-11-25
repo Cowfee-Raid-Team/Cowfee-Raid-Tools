@@ -17,7 +17,8 @@ local ADDON, CRT = ...
 local LM = CRT.LootMaster
 local UI = CRT.UI
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("LootMaster.EndAll", {
     ask = "Are you sure you want to end all loot sessions?",
     deciding = "%d %s still being decided",
     waiting = "%d %s waiting to start", -- TEST items: they end too
@@ -25,7 +26,7 @@ local TEXT = {
     item = "item is", items = "items are", more = "more is", mores = "more are", goes = "goes", go = "go",
     endAll = "End all",
     cancel = "Cancel",
-}
+})
 
 -- What End all would end: the running session's items not given out yet, the real items waiting for their
 -- turn (they go back to the list) and the waiting TEST items. All 0 with a session running whose items are

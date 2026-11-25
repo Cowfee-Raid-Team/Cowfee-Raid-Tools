@@ -12,12 +12,12 @@ local ADDON, CRT = ...
 local Cooldowns = {}
 CRT.AlertCooldowns = Cooldowns
 
-local TEXT = {
+local TEXT = CRT.Locale("Alerts.Cooldowns", {
     mine = "Your class",
     all = "All",
     healer = "Healer cooldowns",
     raid = "Raid defensives",
-}
+})
 
 -- The season's { class, spellID, kind, cd } entries (CRT.Bosses:Cooldowns()), else the empty list in
 -- Alerts/CooldownData.lua; kind is "healer" or "raid". Asked each time, never kept at load: the season packs

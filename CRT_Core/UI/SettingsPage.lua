@@ -36,7 +36,8 @@ local IMPORT_BOTTOM = 76 + PREVIEW_H -- the text box's bottom edge when importin
 local EXPORT_BOTTOM = 76 -- and when exporting, over the copy hint (two lines when values were left out)
 local KEEP_TOP = 66 -- Keep my window positions' top edge, from the window's bottom
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("UI.SettingsPage", {
     export = "Export",
     import = "Import",
     reset = "Reset profile",
@@ -90,7 +91,7 @@ local TEXT = {
         { "Export settings only", "just settings and window positions, for raiders (where your reports go, whose notes and loot leaders you trust and your own sound files stay yours). Import shows what differs and applies it to this profile, after saving your settings for Undo last import." },
         { "Keep my window positions", "keeps where your windows are and the size of your note windows." },
     },
-}
+})
 
 local page
 local controls = {}

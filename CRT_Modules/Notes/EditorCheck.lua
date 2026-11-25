@@ -28,7 +28,8 @@ local EC = {}
 CRT.NoteEditorCheck = EC
 
 -- Every word of the banner, in one place. Keep the keys, change the text in quotes, save, /reload.
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Notes.EditorCheck", {
     title = "Note check",
     doublesOne = "1 double callout: a player gets two callouts at once.",
     doubles = "%d double callouts: a player gets two callouts at once.",
@@ -66,7 +67,7 @@ local TEXT = {
     removeButton = "Remove",
     removedOne = "Removed 1 old line.",
     removed = "Removed %d old lines.",
-}
+})
 EC.TEXT = TEXT
 
 local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 }

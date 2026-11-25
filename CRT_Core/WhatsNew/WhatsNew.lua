@@ -17,7 +17,7 @@ local WN = {}
 CRT.WhatsNew = WN
 local UI = CRT.UI
 
-local TEXT = {
+local TEXT = CRT.Locale("WhatsNew.WhatsNew", {
     title = "What's new in %s",
     bullet = "•",
     more = "and %d smaller fixes",
@@ -25,7 +25,7 @@ local TEXT = {
     show = "Show after updates",
     gotIt = "Got it",
     none = "No notes for this version.",
-}
+})
 WN.TEXT = TEXT
 
 -- delay: seconds after entering the world; retry: after a blocking state ends; poll: the slow re-check while blocked

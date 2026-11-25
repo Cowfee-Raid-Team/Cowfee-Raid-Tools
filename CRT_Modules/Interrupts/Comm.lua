@@ -40,7 +40,8 @@ KickComm.MIN_CHUNK = 40 -- a setup whose shape leaves less room than this for na
 KickComm.MAX_PARTS = 8
 KickComm.PARTS_TIMEOUT = 30 -- seconds a half-received list waits for its other parts
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Interrupts.Comm", {
     what = "the kick list",
     group = "You need to be in a group to share the kick list.",
     lead = "Only the raid leader or an assistant can share the kick list.",
@@ -53,7 +54,7 @@ local TEXT = {
     got = "%s shared the kick list for %s. Your kick: #%d %s.",
     notOn = "%s shared the kick list for %s. You are not on it.",
     damaged = "A kick list from %s arrived damaged. Ask them to share it again.",
-}
+})
 KickComm.TEXT = TEXT
 
 if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then

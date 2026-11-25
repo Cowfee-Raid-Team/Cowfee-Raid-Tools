@@ -55,9 +55,9 @@ local ROLE_ORDER = { TANK = 1, HEALER = 2, DAMAGER = 3, NONE = 4 }
 DL.ROLE_ORDER = ROLE_ORDER
 
 -- Every word a player can see, in one place. Keep the keys, change the text in quotes, save, /reload.
-local TEXT = {
+local TEXT = CRT.Locale("Alerts.DebuffList", {
     hidden = "The game hides this debuff from addons, so the list can't fill in.",
-}
+})
 DL.TEXT = TEXT
 
 local function isSecret(v)

@@ -60,9 +60,10 @@ Sound.EFFECTS = {
     },
 }
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Sound.Effects", {
     listAnd = "%s and %s",
-}
+})
 
 -- For the sound dropdowns' (?) (UI.SoundHelp), read from the table each time: the categories' names in list order,
 -- "Short, Impacts, Instruments and Devices".

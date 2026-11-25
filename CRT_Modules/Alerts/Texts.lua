@@ -6,7 +6,7 @@ local ADDON, CRT = ...
 
 local Areas = CRT.AlertAreas
 
-local TEXT = {
+local TEXT = CRT.Locale("Alerts.Texts", {
     title = "Critical alerts text",
     now = "NOW",
     font = "Font",
@@ -16,7 +16,7 @@ local TEXT = {
     sampleNow = "Spread",
     sampleSoon = "Stack on the boss",
     sampleLater = "Soak",
-}
+})
 
 local PAD = 8          -- around the letters, so the glow sits just outside them
 local MIN_SIZE, MAX_SIZE, DEFAULT_SIZE = 12, 72, 36

@@ -16,7 +16,8 @@ local Engine = CRT.NoteEngine
 local UI = CRT.UI
 local Targets = CRT.NoteTargets
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Notes.Page", {
     shared = "Shared",
     personal = "Personal",
     toPersonal = "Make my personal note",
@@ -69,7 +70,7 @@ local TEXT = {
     deleteVersions = "Its %d saved versions go too.",
     deleteFinal = "This can't be undone.",
     deleteNote = "Delete note",
-}
+})
 
 -- Delete: asks once, then deletes the note with its History and links (Notes:Delete). done() runs after.
 local function askDelete(id, done)

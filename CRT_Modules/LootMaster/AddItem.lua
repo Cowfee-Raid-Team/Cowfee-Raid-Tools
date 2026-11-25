@@ -37,7 +37,8 @@ local LM = CRT.LootMaster
 local UI = CRT.UI
 local Bags = CRT.Bags
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("LootMaster.AddItem", {
     -- one short line: the detail is in its (?), so it never wraps onto the status line under it
     label = "Drag or shift-click an item here.",
     helpTitle = "Add from bags",
@@ -52,7 +53,7 @@ local TEXT = {
     notInBags = "it isn't in your bags",
     already = "it's already in the list",
     cantRead = "CRT can't read its trade time",
-}
+})
 
 local BIND_ON_PICKUP = (Enum and Enum.ItemBind and type(Enum.ItemBind.OnAcquire) == "number") and Enum.ItemBind.OnAcquire or 1
 

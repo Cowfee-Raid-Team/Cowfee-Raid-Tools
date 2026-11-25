@@ -24,7 +24,7 @@ local GEAR_ICON = 16 -- the Had column's item icons
 local NOT_ROLLED = "~none~" -- the Response filter's key for items with no roll or response
 local MAX_CANDIDATES = 25 -- lines of RCLootCouncil's candidate list in a row's tooltip
 
-local TEXT = {
+local TEXT = CRT.Locale("Loot.Page", {
     title = "Loot History",
     help = "Every epic or better boss item someone in your group gets in a raid, recorded on your own computer: who got it, from which boss, on which difficulty, and how they rolled. With RCLootCouncil installed, its awards are read in too; hover a row for every candidate's response. Right-click an item to delete it.",
     filtersHelp = {
@@ -56,7 +56,7 @@ local TEXT = {
     deleteAll = "Delete the whole loot history?",
     deleteFinal = "This can't be undone.",
     delete = "Delete",
-}
+})
 
 local page, list, summary
 local tabButtons, tabFrames = {}, {}

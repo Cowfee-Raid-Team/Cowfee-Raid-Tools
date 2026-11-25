@@ -22,11 +22,11 @@ local Notes = CRT.Notes
 local Shifts = {}
 CRT.NoteShifts = Shifts
 
-local TEXT = {
+local TEXT = CRT.Locale("Notes.Shifts", {
     reset = "Your moved %s time was reset: the raid note changed that line.",
     taken = "The raid note now has your %s time.",
     cooldown = "cooldown",
-}
+})
 Shifts.TEXT = TEXT
 
 -- False for a secret value, which can't be compared.

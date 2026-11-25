@@ -31,7 +31,8 @@ local Draft = {}
 CRT.AlertDraft = Draft
 
 -- The messages a check or a save can give. Keep the keys, change the text in quotes.
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Alerts.Draft", {
     keptBad = "The saved times don't read (%s). Type a time to replace them.",
     nothing = "Tick a Show as box, Speak the text or Count down: a sound alone shows nothing.",
     noTime = "Type a time.",
@@ -48,7 +49,7 @@ local TEXT = {
     -- a tick that reads but is past the bar (Show from long): it still saves, and fits a longer Show from
     tickPast = "%s is past the %s s bar and won't show",
     ticksPast = "%s are past the %s s bar and won't show",
-}
+})
 Draft.TEXT = TEXT
 
 local SHOW_KEYS = { "alert", "text", "icon", "bar", "circle", "timeline" }

@@ -8,7 +8,7 @@ local ADDON, CRT = ...
 local Pace = CRT.Pace
 local UI = CRT.UI
 
-local TEXT = {
+local TEXT = CRT.Locale("Pace.Page", {
     title = "Pace",
     help = {
         "Where a boss's health should be as the fight goes, so you can see in the pull whether the raid is ahead or behind.",
@@ -54,7 +54,7 @@ local TEXT = {
     deleted = "Deleted a checkpoint from %s.",
     wasReset = "Put %s back to the shipped plan.",
     changedSince = "The plan changed since, so it wasn't put back.",
-}
+})
 
 -- Runs change(), then offers Undo putting the boss's own plan and its pick back as they were before it, only while
 -- nothing else changed the plan since (Pace:Change).

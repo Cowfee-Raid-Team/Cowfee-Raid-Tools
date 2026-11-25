@@ -36,7 +36,7 @@ local UI = CRT.UI
 local CONFIRM_POPUP = "CRT_CONFIRM"
 local UNDO_SECONDS = 10 -- how long Undo is offered
 local TOAST = { height = 32, pad = 10, gap = 10, edge = 3, below = 6, button = 22, margin = 20, level = 100 }
-local TEXT = { cancel = "Cancel", undo = "Undo" }
+local TEXT = CRT.Locale("UI.Confirm", { cancel = "Cancel", undo = "Undo" })
 UI.CONFIRM_POPUP = CONFIRM_POPUP
 UI.UNDO_SECONDS = UNDO_SECONDS
 UI.UNDO_TOAST = TOAST

@@ -44,7 +44,7 @@ CRT.TimelineImport = Import
 Import.SOURCE = "timeline-reminders"
 Import.FORMAT_NAME = "Timeline Reminders"
 
-local TEXT = {
+local TEXT = CRT.Locale("Timeline.ImportReminders", {
     placeholder = "Reminder",
     beforeBoss = "before any boss line",
     notReminder = "not a reminder line",
@@ -87,7 +87,7 @@ local TEXT = {
     duplicate = "already one of your reminders",
     combat = "Can't import during combat.",
     saveFailed = "could not be saved",
-}
+})
 Import.TEXT = TEXT
 
 -- The keys a reminder line reads, in lower case; any other is kept in import.extra.

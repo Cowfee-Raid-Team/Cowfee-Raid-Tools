@@ -11,7 +11,7 @@ local UI = CRT.UI
 
 -- Every word on this tab, in one place so the wording is easy to change. Keep the keys, change the
 -- text in quotes, save, and /reload.
-local TEXT = {
+local TEXT = CRT.Locale("Notes.Settings", {
     hint = {
         { "Locked", "untick it to drag a window and resize it from its corner, then lock it so clicks pass through." },
         { "Keep up when empty", "leaves a window on screen with nothing to show." },
@@ -63,7 +63,7 @@ local TEXT = {
     grouped = "Grouped headings",
     dropdown = "Dropdown",
     chips = "Chips",
-}
+})
 
 -- Four columns across the page (UI.PAGE_W), under All note windows: the three note windows, COLUMN_W
 -- each, then Sharing and Notes list in what is left. A slider row is 4 + labelWidth + 5 + width + its value

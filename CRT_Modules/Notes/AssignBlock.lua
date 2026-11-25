@@ -23,7 +23,8 @@ local Block = {}
 CRT.NoteAssignBlock = Block
 
 -- Every word of the block editor, in one place. Keep the keys, change the text in quotes, save, /reload.
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Notes.AssignBlock", {
     name = "Name",
     times = "Times",
     timesHelp = "The casts of this mechanic on the boss's ability timeline, for the difficulty on show. Each row gets a timer line on the casts it is on. Change the times on the Timeline: the lines follow.",
@@ -50,7 +51,7 @@ local TEXT = {
     tag = "%d lines",
     tagTip = "Timer lines of %s",
     drop = "Drop players here",
-}
+})
 Block.TEXT = TEXT
 
 local L = {

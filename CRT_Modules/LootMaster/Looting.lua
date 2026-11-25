@@ -60,7 +60,7 @@ LM.BEAT_RETRY = 2 -- seconds between tries of the heartbeat after an encounter, 
 LM.BEAT_RETRIES = 10
 LM.RESUME_WAIT = 5 -- seconds a fresh login waits for the group before a saved Yes is given up
 
-local TEXT = {
+local TEXT = CRT.Locale("LootMaster.Looting", {
     line = "CRT Looting: %s",
     raiderOn = "on (leader %s)",
     leaderOn = "on for everyone in the raid with CRT",
@@ -75,7 +75,7 @@ local TEXT = {
     lead = "CRT Looting: off: %s.",
     cant = "CRT Looting: can't turn it on: %s.",
     notLead = "you are not the raid leader",
-}
+})
 
 -- Why the leader turned it off, as a raider reads it (F's <why>); anything else is just off.
 local OFF_WHY = {

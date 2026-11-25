@@ -51,7 +51,8 @@ P.LOCK_TRIES = 15 -- tries while the game holds addon messages
 P.RETRY = 2 -- seconds before trying again
 P.CHAT_DELAY = 1 -- seconds of proposals from one player added up into one chat line
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Notes.Proposals", {
     proposed = "%s proposed %d cooldown change%s: /crt timeline",
     accepted = "Accepted %s's %s time: %s to %s. Share the note to send it to the raid.",
     autoAccepted = "Accepted %s's %s time automatically: %s to %s. Share the note to send it to the raid.",
@@ -62,7 +63,7 @@ local TEXT = {
     nothing = "You have no moved casts to send.",
     sent = "Sent %d moved cast%s to the raid lead.",
     afterCombat = "Your moved casts go to the raid lead once combat ends.",
-}
+})
 P.TEXT = TEXT
 
 local RESULT = Enum and Enum.SendAddonMessageResult or {}
