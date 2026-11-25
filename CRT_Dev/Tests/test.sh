@@ -22,6 +22,8 @@ out="$here/last-run.txt"
 # the worktree convention comes first: worktrees live in <main checkout>/.claude/worktrees/<name>. A main
 # checkout from before the CRT_Dev move still has the modules in Tests/.
 mods="$here/node_modules"
+# a run from inside another run (runner_selftest.sh) borrows the outer run's modules
+[ -d "$mods/fengari" ] || { [ -d "${NODE_PATH%%:*}/fengari" ] && mods="${NODE_PATH%%:*}"; }
 if [ ! -d "$mods/fengari" ]; then
     main=""
     case "$here" in
