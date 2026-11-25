@@ -119,6 +119,8 @@ local pages, shown, tabs, rows, picked, helps = {}, {}, {}, {}, {}, {}
 local UI = { PAGE_W = 1026, PAGE_H = 560 }
 KICK_TOASTS = {} -- what UI.UndoToast was given
 function UI.UndoToast(o) KICK_TOASTS[#KICK_TOASTS + 1] = o return o end
+KICK_CONFIRMS = {} -- what UI.Confirm was given
+function UI.Confirm(o) KICK_CONFIRMS[#KICK_CONFIRMS + 1] = o return true end
 function UI:RegisterPage(key, title, builder) pages[key] = { key = key, title = title, builder = builder } end
 function UI:SetPageHidden(key, hidden) if pages[key] then pages[key].hidden = hidden and true or false end end
 function UI:Show(key) shown[#shown + 1] = key end
@@ -612,19 +614,20 @@ end
 
 -- Use the raid's list and Clear list ask first
 check(P.useRaid.enabled, "use raid: there is a raid's list")
+-- (through the shared confirm, UI.Confirm, #1299: its accept button names the action; Cancel never calls onAccept)
+KICK_CONFIRMS = {}
 P.useRaid.scripts.OnClick(P.useRaid)
-local dlg
-for _, f in ipairs(all) do if f.name == "CowfeeRaidToolsKickConfirm" then dlg = f end end
-check(dlg and dlg.shown, "use raid: asks first")
-dlg.ok.scripts.OnClick(dlg.ok)
+local ask = KICK_CONFIRMS[#KICK_CONFIRMS]
+check(ask ~= nil and ask.accept == "Use the raid's list", "use raid: asks first, the button naming the action")
+if ask then ask.onAccept() end
 eq(I:Own(id)[2][1], "Other", "use raid: the raid's list copied over your own")
 P.clear.scripts.OnClick(P.clear)
-check(dlg.shown and plain(dlg.msg.text):find("Empty every name", 1, true), "clear: asks first")
-eq(I:Own(id)[1][1], "R11", "clear: nothing cleared before OK")
-dlg.cancel.scripts.OnClick(dlg.cancel)
-eq(I:Own(id)[1][1], "R11", "clear: Cancel keeps it")
-P.clear.scripts.OnClick(P.clear); dlg.ok.scripts.OnClick(dlg.ok)
-eq(I:Own(id)[1][1], "", "clear: OK empties your own list")
+ask = KICK_CONFIRMS[#KICK_CONFIRMS]
+check(ask and plain(ask.text):find("Empty every name", 1, true) and ask.accept == "Clear list", "clear: asks first")
+eq(I:Own(id)[1][1], "R11", "clear: nothing cleared before it is accepted (Cancel keeps it)")
+if ask then ask.onAccept() end
+eq(I:Own(id)[1][1], "", "clear: accepting empties your own list")
+check(not pageSrc or not pageSrc:find("KickConfirm", 1, true), "no confirm window of its own")
 
 -- Who has it: a pop-out window opened by its button, and How the numbers are worked out in a (?)
 fillOwn(true); I:SetUse(id, "own")
