@@ -2705,6 +2705,41 @@ do
   GetCurrentKeyBoardFocus = nil
 end
 print("ok Undo and Redo: every change undone and redone exactly, named; typing bursts; redo dropped; the cap; cleared by Save, Push, Close, Discard and another note; History's restore one step; greyed with reasons; the keys")
+
+-- Idle after the editor (#1315): open a note, make a change, Undo it (the button, then Ctrl+Z after a second change),
+-- close the editor. Then nothing of the editor runs any more: no frame with an OnUpdate is visible, and no timer is
+-- left that starts itself again.
+do
+  local id = Notes:Import(COILED)
+  assert(Editor.Open({ id = id }), "opened")
+  local before = W.session:Text()
+  Editor.Step("delete", 1)
+  Editor.ApplyText(before .. "\\nExtra line")
+  Editor.Refresh()
+  assert(W.undoButton:IsEnabled(), "a change to undo")
+  W.undoButton.scripts.OnClick(W.undoButton)
+  assert(W.session:Text() == before and not W.session:Dirty(), "undone: nothing unsaved")
+  Editor.ApplyText(before .. "\\nAnother")
+  Editor.Refresh()
+  IsControlKeyDown = function() return true end
+  W.window.scripts.OnKeyDown(W.window, "Z")
+  IsControlKeyDown = function() return false end
+  assert(W.session:Text() == before, "Ctrl+Z undid it")
+  W.window:Hide()
+  assert(not W.window:IsShown(), "the editor closed (nothing unsaved: no question)")
+  local function visible(f) while f do if not rawget(f, "shown") then return false end f = rawget(f, "parent") end return true end
+  local running = {}
+  for _, list in ipairs({ frames, buttons, checks, edits, scrolls }) do
+    for _, f in ipairs(list) do
+      if f.scripts.OnUpdate and visible(f) then running[#running + 1] = tostring(rawget(f, "name") or rawget(f, "kind")) end
+    end
+  end
+  assert(#running == 0, "no OnUpdate runs once the editor is closed: " .. table.concat(running, ", "))
+  for _ = 1, 3 do runTimers() end
+  assert(#afters == 0, "no timer keeps starting itself: " .. #afters .. " still waiting")
+  Editor.Discard()
+end
+print("ok idle after the editor: no OnUpdate runs and no timer re-arms once it is closed")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = process.argv.slice(2, 23);
