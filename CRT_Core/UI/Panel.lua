@@ -2484,7 +2484,9 @@ function UI:Create()
 
     -- Closing the panel also turns the previews off, so nothing is left floating on screen.
     f:SetScript("OnHide", function()
-        UI:SetPreviews(false)
+        if not UI.keepPreviews then
+            UI:SetPreviews(false)
+        end
         for key, page in pairs(UI.pages) do
             if page.closeHides and not page.hidden then
                 UI:SetPageHidden(key, true)
@@ -2755,6 +2757,22 @@ function UI:Show(key)
     if CRT.Welcome then
         CRT.Welcome:FirstOpen()
     end
+end
+
+-- Hides the main window and leaves the previews as they are (the Welcome's Previews step: the previews show
+-- where the window was). Returns true when it hid a shown window.
+function UI:HideKeepingPreviews()
+    local f = self.frame
+    if not (f and f:IsShown()) then
+        return false
+    end
+    self.keepPreviews = true
+    local ok, err = pcall(f.Hide, f)
+    self.keepPreviews = false
+    if not ok then
+        error(err, 0)
+    end
+    return true
 end
 
 -- /crt: opens the window, restores it when it is minimized, and closes it when it is open.

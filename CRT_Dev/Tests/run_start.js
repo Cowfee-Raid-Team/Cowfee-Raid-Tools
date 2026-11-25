@@ -265,7 +265,7 @@ check(table.concat(p.opened, " ", before + 1) == "groups readycheck notes:notes"
 for _, half in ipairs(wv.choice.buttons) do if half.key == "raider" then click(half) end end
 before = #p.opened
 for i = 1, 3 do click(wv.steps[i].button) end
-check(table.concat(p.opened, " ", before + 1) == "? notes:alerts start", "the raider's steps go to Previews, Alert settings and Start here: " .. table.concat(p.opened, " ", before + 1))
+check(table.concat(p.opened, " ", before + 1) == "notes:alerts start", "the raider's steps go to Previews (no page: the window steps aside), Alert settings and Start here: " .. table.concat(p.opened, " ", before + 1))
 check(p.UI.previewing == true or next(p.UI.previews) == nil, "Previews turns the previews on")
 p.UI:SetPreviews(false)
 check(p.shown(), "a step's button leaves the Welcome open; Got it closes it")
@@ -297,6 +297,34 @@ do
   check(p.UI.previewing == false and pb.text == "Previews", "Previews: in combat the click refuses and the button stays")
   check(#p.printed == n + 1 and p.printed[#p.printed]:find("combat", 1, true) ~= nil, "Previews: in combat the refusal is printed")
   p.UI:SetPreviews(false)
+  -- the main window steps aside while the Welcome shows the previews
+  p.UI:Show()
+  click(pb)
+  check(p.UI.previewing == true and not p.UI.frame:IsShown(), "Previews: on hides the main window and keeps the previews on")
+  check(p.welcome():IsShown() and pb.text == "Previews: ON", "Previews: the Welcome stays open and reads Previews: ON")
+  click(pb)
+  check(p.UI.previewing == false and p.UI.frame:IsShown(), "Previews: off brings the main window back")
+  click(pb)
+  p.welcome():Hide()
+  check(p.UI.previewing == false and p.UI.frame:IsShown(), "Previews: closing the Welcome turns them off and brings the main window back")
+  W:Open() click(wv.steps[1].button)
+  p.UI:Show()
+  check(p.UI.previewing == true and p.UI.frame:IsShown(), "Previews: opening the main window keeps them on")
+  p.welcome():Hide()
+  check(p.UI.previewing == true and p.UI.frame:IsShown(), "Previews: the main window was opened by hand, so closing the Welcome leaves them on")
+  p.UI.frame:Hide()
+  check(p.UI.previewing == false, "Previews: closing the main window yourself still turns them off")
+  p.UI:Show() p.UI:TogglePreviews() p.UI.frame:Hide()
+  check(p.UI.previewing == false, "Previews: the title bar's button path still turns them off on close")
+  -- in combat the main window stays
+  W:Open() wv = W.view
+  for _, half in ipairs(wv.choice.buttons) do if half.key == "raider" then click(half) end end
+  pb = wv.steps[1].button
+  p.UI:Show()
+  InCombatLockdown = function() return true end
+  click(pb)
+  InCombatLockdown = realCombat
+  check(p.UI.previewing == false and p.UI.frame:IsShown(), "Previews: in combat the main window stays shown")
   p.UI.previews.demo = nil
 end
 -- at the largest text size everything fits the window's width and the steps hold their text
