@@ -70,7 +70,9 @@ local function region(kind, parent)
   function m:SetTexture(t) self.file = t end
   function m:SetRotation(r) self.rotation = r end
   function m:GetFont() return "f", 12, "" end
-  function m:CreateTexture() return region("Texture", self) end
+  function m:SetFont(path, size, flags) self.font = { path, size, flags } end
+  function m:CreateTexture(_, layer, _, sub) local t = region("Texture", self) t.layer, t.sub = layer, sub return t end
+  function m:SetDrawLayer(layer, sub) self.layer, self.sub = layer, sub end
   function m:CreateFontString() return region("FontString", self) end
   function m:SetScript(k, fn) self.scripts[k] = fn end
   function m:GetScript(k) return self.scripts[k] end
@@ -300,9 +302,38 @@ check(hands.mark:IsShown() and hands.mark.glyph == "down" and near(hands.mark.di
 check(shapeOf(head) ~= shapeOf(hands) and shapeOf(head) ~= "" and shapeOf(hands) ~= "", "the ! and the arrow differ in shape (" .. shapeOf(head) .. " / " .. shapeOf(hands) .. ")")
 check(not cell(arrow, 2).mark:IsShown() and not cell(arrow, 2).mark.disc.shown, "no issue: no mark")
 check(not cell(quick, 3).mark:IsShown(), "an empty slot: no mark")
-local mp = hands.mark.disc.points[#hands.mark.disc.points]
-check(mp and mp[2] == hands.back and mp[3] == "LEFT", "the mark sits on the icon's left edge, clear of the track tag, the dot, the gems and the season square")
-check(Lt.mark <= Lt.icon - 2 * Lt.dot and Lt.mark >= 10, "the mark is big enough to read and fits between the tag and the dot (" .. Lt.mark .. ")")
+check(Lt.mark >= 10, "the mark is big enough to read (" .. Lt.mark .. ")")
+-- The mark clears the track tag and the enchant dot at every text size: CRTFontSmall at text size 8 and 22, in
+-- Classic and Modern (Core.lua's sizes: 7, 8, 19, 21 points; 12 and 13 at the default). Heights in pixels from
+-- the icon's top, y up; a font string is taken as tall as its font size.
+do
+  local realSmall = CRTFontSmall
+  for _, size in ipairs({ 7, 8, 12, 13, 19, 21 }) do
+    CRTFontSmall = { GetFont = function() return "Fonts\FRIZQT__.TTF", size, "" end }
+    P.Refresh()
+    local c
+    for _, f in ipairs(drawRows()) do if f.data.name == "Arrow-Sargeras" then c = cell(f, 10) end end
+    local h = c.trackTag.font and c.trackTag.font[2]
+    check(h and h >= 10 and h <= 12, size .. " pt small text: the track tag drawn at 10 to 12 points (" .. tostring(h) .. ")")
+    local tp, bp = c.trackTag.points[1], c.trackBack.points[2]
+    local backBottom = tp[5] - (h or size) + bp[5]
+    local mp = c.mark.disc.points[#c.mark.disc.points]
+    check(mp[2] == c.back and mp[3] == "LEFT", size .. " pt: the mark is placed from the icon's left edge")
+    local centre = -Lt.icon / 2 + mp[5]
+    local rimTop, rimBottom = centre + c.mark.rim.h / 2, centre - c.mark.rim.h / 2
+    local dp = c.dot.points[1]
+    local dotTop = -Lt.icon + dp[5] + c.dot.h / 2
+    check(backBottom > rimTop, size .. " pt: the track tag's backing ends above the mark's rim (" .. backBottom .. " > " .. rimTop .. ")")
+    check(rimBottom > dotTop, size .. " pt: the mark's rim ends above the enchant dot (" .. rimBottom .. " > " .. dotTop .. ")")
+    check(c.mark.glyph == "down" and c.mark.rim.shown, size .. " pt: the mark still shows")
+  end
+  CRTFontSmall = realSmall
+  P.Refresh()
+end
+-- the mark and the track tag never share a sublevel (OVERLAY -3 to -1 against 6 and 7)
+check(hands.trackBack.sub == 6 and hands.trackTag.sub == 7, "the track tag's sublevels")
+check(hands.mark.rim.sub == -3 and hands.mark.disc.sub == -2 and hands.mark.parts[1].sub == -1, "the mark's sublevels, under the tag's and over the outline's (" .. tostring(hands.flag[1].sub) .. ")")
+check(hands.flag[1].sub < hands.mark.rim.sub, "the mark sits over the outline")
 check(not ring.dotHole.shown, "an enchanted slot: a filled dot")
 check(head.dotHole.shown and head.dotHole.w < head.dot.w and head.dotHole.points[1][2] == head.dot, "a missing enchant: a hollow dot, a ring")
 check(not cell(arrow, 2).dotHole.shown, "no enchant dot: no hole either")

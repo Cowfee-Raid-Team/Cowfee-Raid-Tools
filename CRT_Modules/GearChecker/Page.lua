@@ -87,7 +87,9 @@ local L = {
     trackMaxW = 24, -- the tag's widest: it ends left of the gem column (L.icon - 1 - the diamond's half width)
     nameW = 98, ilvlW = 40, issuesW = 40, tracksW = 64, cellW = 47, rowH = 46,
     icon = 30, edge = 2, gem = 7, gemInner = 5, gemGap = 1, dot = 8, dotHole = 4, badgeW = 26, badgeH = 16,
-    mark = 11, markX = 1, markY = -1, -- the status mark, centred on the icon's left edge between the track tag and the dot
+    -- the status mark, centred on the icon's left edge, under the track tag (held at trackFont points at most, so it
+    -- never grows into the mark) and above the enchant dot
+    mark = 10, markX = 1, markY = -3.5, trackFontMin = 10, trackFontMax = 12,
     barGap = UI.SCROLL_GAP, barW = 8, -- the gap before the bar: the shared scroll bar gap
     popW = 1040, popH = 560, popMinW = 1024, popMinH = 300,
     helpW = 24, -- room kept right of the Extra filters button for the page's (?)
@@ -365,21 +367,23 @@ local function makeCell(rowFrame, i)
     c.icon = c:CreateTexture(nil, "ARTWORK")
     c.icon:SetAllPoints(c.back)
     c.quality = outline(c, c.back, 1, "BORDER", 1)
-    c.flag = outline(c, c.back, L.edge, "OVERLAY", 1) -- red (missing) or orange (low), over the quality
+    -- OVERLAY sublevels: the outline -4, the status mark -3 to -1, the enchant dot 0 and its hole 1, the gems 4
+    -- and 5, the season square and the track tag's backing 6, the track tag 7
+    c.flag = outline(c, c.back, L.edge, "OVERLAY", -4) -- red (missing) or orange (low), over the quality
     c.ilvl = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     c.ilvl:SetPoint("TOP", c.back, "BOTTOM", 0, -1)
-    c.dot = c:CreateTexture(nil, "OVERLAY", nil, 3) -- the enchant dot, bottom left (the track tag has the top left)
+    c.dot = c:CreateTexture(nil, "OVERLAY", nil, 0) -- the enchant dot, bottom left (the track tag has the top left)
     c.dot:SetTexture(DISC)
     c.dot:SetSize(L.dot, L.dot)
     c.dot:SetPoint("CENTER", c.back, "BOTTOMLEFT", 1, 1)
     -- a missing enchant's hole, so the dot is a ring: its shape tells it apart, not only its colour
-    c.dotHole = c:CreateTexture(nil, "OVERLAY", nil, 4)
+    c.dotHole = c:CreateTexture(nil, "OVERLAY", nil, 1)
     c.dotHole:SetTexture(DISC)
     c.dotHole:SetSize(L.dotHole, L.dotHole)
     c.dotHole:SetPoint("CENTER", c.dot, "CENTER")
     c.dotHole:SetVertexColor(COLORS.socket[1], COLORS.socket[2], COLORS.socket[3], 1)
     -- "!" for a missing enchant or gem, a down arrow for a low item, besides the outline's colour
-    c.mark = UI.StatusMark(c, L.mark)
+    c.mark = UI.StatusMark(c, L.mark, -3)
     c.mark:SetPoint("CENTER", c.back, "LEFT", L.markX, L.markY)
     -- the upgrade track and rank ("H4"), in the track's colour, over a dark backing so it reads on any icon
     c.trackBack = c:CreateTexture(nil, "OVERLAY", nil, 6)
@@ -443,6 +447,7 @@ local function paintCell(c, row, r, shown)
     local track = piece and r.track or nil
     c.trackTag:SetShown(track ~= nil)
     c.trackBack:SetShown(track ~= nil)
+    UI.CapFontSize(c.trackTag, CRTFontSmall, L.trackFontMin, L.trackFontMax)
     c.trackTag:SetText(track and GC.TrackTag(track) or "")
     if track then
         c.trackTag:SetTextColor(GC.TrackColor(track.track))
