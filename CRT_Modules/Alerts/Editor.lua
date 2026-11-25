@@ -92,6 +92,8 @@ local TEXT = CRT.Locale("Alerts.Editor", {
     noTimes = "No times",
     delete = "Delete",
     deleteConfirm = "Delete this alert?",
+    deleteNamed = "Delete the alert \"%s\"?",
+    deleteSavedNamed = "Delete the template \"%s\"?",
     export = "Export",
     exportTitle = "Alert as a note line",
     test = "Test",
@@ -1282,8 +1284,21 @@ function Editor:Export()
     return line
 end
 
-local function confirm(info)
-    UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation(info), "GENERIC_CONFIRMATION"))
+-- Delete's question, naming what goes (UX rule 4): a template by its name; an alert or note line by its saved text,
+-- else its spell's name; "this alert" when it has neither.
+local function deleteQuestion(c)
+    if c.savedMode then
+        local name = type(c.savedName) == "string" and trim(c.savedName) or ""
+        return name ~= "" and string.format(TEXT.deleteSavedNamed, name) or TEXT.deleteSavedConfirm
+    end
+    local saved = c.reminder or c.timer or {}
+    local name = type(saved.text) == "string" and trim(saved.text) or ""
+    if name == "" then
+        name = Reminders.SpellName(validID(saved.spellID or saved.spellId)) or ""
+    elseif CRT.MarkerText then
+        name = CRT.MarkerText(name)
+    end
+    return name ~= "" and string.format(TEXT.deleteNamed, name) or TEXT.deleteConfirm
 end
 
 -- The name popup of Save as saved alert: an edit box with the default name in it. data = { fields, default }.
@@ -1773,12 +1788,12 @@ local function build()
             return
         end
         local from = ctx
-        confirm({
-            text = from.savedMode and TEXT.deleteSavedConfirm or TEXT.deleteConfirm,
-            acceptText = TEXT.delete,
-            cancelText = TEXT.cancel,
-            showAlert = true,
-            callback = function()
+        -- the shared confirm (UI.Confirm): its text is shown as it is, so a "%" in a name is safe
+        UI.Confirm({
+            text = deleteQuestion(from),
+            accept = TEXT.delete,
+            danger = true,
+            onAccept = function()
                 if from.savedMode then
                     if CRT.AlertSaved then
                         CRT.AlertSaved:Delete(from.savedID)

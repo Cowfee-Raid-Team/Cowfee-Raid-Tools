@@ -9,7 +9,7 @@ local ADDON, CRT = ...
 -- detail (slot and item level, and for an item you have its time left to trade, a warning in its last
 -- LM.TRADE_WARN; or why the filter left it out), and its state on the right: rolling
 -- (honey), won (good), won by someone else or nobody (muted), or can't roll (red). Footer: the counts,
--- Clear, and Start session (only the ticked items you have won; it waits while a ticked one still rolls,
+-- Clear (asks first, UI.Confirm), and Start session (only the ticked items you have won; it waits while a ticked one still rolls,
 -- and queues behind a running session). While shown, it redraws every REDRAW_SECONDS so the times count down.
 
 local LM = CRT.LootMaster
@@ -24,6 +24,12 @@ local TEXT = CRT.Locale("LootMaster.BossLootWindow", {
     counts = "%d of %d items ticked · %d still rolling",
     session = " · a loot session is running",
     clear = "Clear",
+    clearAsk = "Clear the boss loot list?",
+    clearOne = "Its 1 item goes.",
+    clearMany = "Its %d items go.",
+    clearWaiting = "The %d waiting for the running session go too.",
+    clearFinal = "This can't be undone.",
+    clearAccept = "Clear list",
     start = "Start session",
     rolling = "Rolling… you rolled %s",
     won = "Won · you rolled %s",
@@ -230,8 +236,20 @@ local function build()
         BL:Start()
     end)
     footer.start:SetPoint("RIGHT", 0, 0)
+    -- Clear asks first (UI.Confirm): the rows' trade times and kills can't be put back, so it isn't a quick action
     footer.clear = UI.PanelButton(footer, TEXT.clear, 22, function()
-        BL:Clear()
+        local rows, waiting = #BL:Rows(), BL:WaitingCount()
+        if rows + waiting == 0 then
+            return
+        end
+        local detail = { rows == 1 and TEXT.clearOne or TEXT.clearMany:format(rows) }
+        if waiting > 0 then
+            detail[#detail + 1] = TEXT.clearWaiting:format(waiting)
+        end
+        detail[#detail + 1] = TEXT.clearFinal
+        UI.Confirm({ text = TEXT.clearAsk, detail = table.concat(detail, " "), accept = TEXT.clearAccept, onAccept = function()
+            BL:Clear()
+        end })
     end)
     footer.clear:SetPoint("RIGHT", footer.start, "LEFT", -8, 0)
     footer.counts = footer:CreateFontString(nil, "OVERLAY", "CRTFontSmall")

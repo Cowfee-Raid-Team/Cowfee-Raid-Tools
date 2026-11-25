@@ -11,6 +11,7 @@
 // loads right after MarkerText.lua; CRT_NAMES(CRT) loads only that.
 // CRT_THEME also puts the real greyed controls' reason helpers on UI (CRT_REASONS(UI): UI.Usable, UI.DisabledReason,
 // UI.DisabledTooltip, UI.DisabledCover, UI.GreyWhy from CRT_Core/UI/Controls.lua) unless the harness has its own.
+// CRT_THEME also puts the real UI.LinkButton on UI (Controls.lua's [link button] block) unless the harness has its own.
 // CRT_THEME also puts the real text-fit helpers and tab strip on UI (CRT_TEXT_FIT(UI): UI.FitButton, UI:FitTab, UI.Flow,
 // UI.TabStrip from CRT_Core/UI/Panel.lua) unless the harness has its own.
 // It also defines CRT_HELP_PLAIN(text), the real UI.TooltipPlain (Panel.lua, between its [tooltip plain] markers): a
@@ -52,6 +53,16 @@ function reasonBlock(root) {
   return controls.slice(controls.indexOf('\n', start) + 1, end);
 }
 
+// The link button from CRT_Core/UI/Controls.lua, between its [link button] markers: UI.LinkButton (the catalog's Link
+// line), which needs the theme helpers and the reason helpers above it.
+function linkBlock(root) {
+  const controls = fs.readFileSync(path.join(root, 'CRT_Core/UI/Controls.lua'), 'utf8');
+  const start = controls.indexOf('-- [link button]');
+  const end = controls.indexOf('-- [/link button]');
+  if (start < 0 || end < start) throw new Error('theme_stub: the [link button] markers are missing from Controls.lua');
+  return controls.slice(controls.indexOf('\n', start) + 1, end);
+}
+
 // A block of CRT_Core/UI/Panel.lua between its -- [name] and -- [/name] markers.
 function panelBlock(root, name) {
   const panel = fs.readFileSync(path.join(root, 'CRT_Core/UI/Panel.lua'), 'utf8');
@@ -79,9 +90,10 @@ module.exports = function themeLua(where) {
   const markers = fs.readFileSync(path.join(root, 'CRT_Core/MarkerText.lua'), 'utf8');
   const names = fs.readFileSync(path.join(root, 'CRT_Core/Names.lua'), 'utf8');
   const reasons = reasonBlock(root);
+  const link = linkBlock(root);
   const textFit = panelBlock(root, 'text fit');
   const tabStrip = panelBlock(root, 'tab strip');
-  for (const s of [src, helpers, plain, tooltip, markers, names, reasons, textFit, tabStrip]) if (s.includes(']====]')) throw new Error('theme_stub: a source holds the long-string closer');
+  for (const s of [src, helpers, plain, tooltip, markers, names, reasons, link, textFit, tabStrip]) if (s.includes(']====]')) throw new Error('theme_stub: a source holds the long-string closer');
   return `
 -- CRT_HELP_PLAIN(text): the real UI.TooltipPlain, a list-form help text as one string
 CRT_HELP_PLAIN = assert(load("local UI = {} " .. [====[${plain}]====] .. " return UI.TooltipPlain", "Panel.lua UI.TooltipPlain"))()
@@ -163,6 +175,10 @@ function CRT_THEME(CRT, UI)
   -- the real CRT_Core/UI/Tooltip.lua (UI.TooltipOwner) onto UI, reading CRT.db when a tooltip opens
   if not UI.TooltipOwner then
     CRT_TOOLTIP(CRT, UI)
+  end
+  -- the real UI.LinkButton (Controls.lua's [link button] block), unless the harness has its own
+  if not UI.LinkButton then
+    assert(load("local UI = ... " .. [====[${link}]====], "Controls.lua link button"))(UI)
   end
   -- UI.HelpRight over the harness's own UI.Help stand-in: the icon keeps its target (helpTarget) and
   -- sits HELP_GAP right of it. The real placement (a font string's text edge, a check box's label) is

@@ -113,6 +113,22 @@ local function size(region, method)
     return number(region, method) or 0
 end
 
+-- The x offset the label is anchored at from its box (label:SetPoint("LEFT", box, "RIGHT", x, 0)), or nil: the gap
+-- before the first layout, when GetLeft and GetRight have nothing yet (QoL's checkRow 1 px, the Shield bar's L.CHECK_GAP).
+local function anchorGap(label, box)
+    if not (label.GetPoint and label.GetNumPoints) then
+        return nil
+    end
+    local okN, n = pcall(label.GetNumPoints, label)
+    for i = 1, (okN and tonumber(n)) or 0 do
+        local ok, _, rel, relPoint, x = pcall(label.GetPoint, label, i)
+        if ok and rel == box and relPoint == "RIGHT" and type(x) == "number" then
+            return math.max(0, x)
+        end
+    end
+    return nil
+end
+
 function UI.DisabledCover(owner, tip, right)
     local cover = CreateFrame("Frame", nil, owner)
     if right then
@@ -128,9 +144,10 @@ function UI.DisabledCover(owner, tip, right)
         if width > 0 then
             text = math.min(text, width)
         end
-        -- the gap between the box and its label, as laid out (2 px, the helpers' own, before the first layout)
+        -- the gap between the box and its label, as laid out; before the first layout, the label's own anchor offset on
+        -- the box, else 2 px (the helpers' own)
         local l, r = number(right, "GetLeft"), number(owner, "GetRight")
-        local gap = (l and r) and math.max(0, l - r) or 2
+        local gap = (l and r) and math.max(0, l - r) or anchorGap(right, owner) or 2
         self:SetSize(size(owner, "GetWidth") + gap + text, math.max(size(owner, "GetHeight"), size(right, "GetStringHeight")))
     end
     if cover.SetFrameLevel and owner.GetFrameLevel then
@@ -1543,6 +1560,7 @@ function UI.SortHeaders(parent, cols, opts)
     return { refresh = refresh }
 end
 
+-- [link button] (CRT_Dev/Tests/theme_stub.js loads the code between these markers into harnesses' stubbed UI)
 -- A link button (the catalog's Link line): a short text that opens another page, such as Start here's page names
 -- beside each What's on switch. Its text in CRTFontSmall, a ">" after it in the theme's heading colour, a faint
 -- white highlight under the mouse, and a tooltip naming where it goes. Sized from its text (b:Fit() measures again,
@@ -1608,3 +1626,4 @@ function UI.LinkButton(parent, text, opts)
     b.refresh()
     return b
 end
+-- [/link button]

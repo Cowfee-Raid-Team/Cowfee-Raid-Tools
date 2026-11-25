@@ -217,6 +217,36 @@ do
   pageA:Hide() pageA:Show()
   check(t.shown and t.text.text == "Window.", "an old page's hide doesn't hide a newer toast elsewhere")
   UI.HideUndoToast()
+  -- onStand: runs once when the action stands (time up, another toast, its page or window hid), never after Undo
+  local stood, undid = {}, 0
+  local function standing(key) return function() stood[key] = (stood[key] or 0) + 1 end end
+  UI.UndoToast({ text = "Timed.", onStand = standing("timed") })
+  advance(10.5)
+  eq(stood.timed, 1, "onStand: runs when the time is up")
+  UI.UndoToast({ text = "Replaced.", onStand = standing("replaced") })
+  UI.UndoToast({ text = "Newer.", onStand = standing("newer") })
+  eq(stood.replaced, 1, "onStand: runs when another toast replaces it")
+  t.undo.OnClick(t.undo)
+  check(stood.newer == nil, "onStand: never after Undo")
+  UI.UndoToast({ text = "Paged.", owner = inPage, onStand = standing("paged") })
+  pageA:Hide() pageA:Show()
+  eq(stood.paged, 1, "onStand: runs when its page hides")
+  UI.UndoToast({ text = "Hidden.", onStand = standing("hidden"), onUndo = function() undid = undid + 1 end })
+  UI.HideUndoToast()
+  UI.HideUndoToast()
+  advance(11)
+  check(stood.hidden == 1 and undid == 0, "onStand: once, however it goes")
+  -- window: a frame that isn't CRT's (the game's Encounter Journal), for a toast under it
+  local journal = mock("Frame") journal.w = 800 journal.level = 5
+  UI.UndoToast({ text = "Took it off your wishlist.", window = journal })
+  check(t.parent == journal and t.point and t.point[2] == journal and t.point[3] == "BOTTOM", "window: the toast sits under that frame")
+  check(t.level > journal.level, "window: above it")
+  UI.UndoToast({ text = "Again.", window = journal })
+  check(rawget(journal, "crtUndoHook") == nil and #(journal.hooks or {}) == 1, "window: the game's frame is hooked once, and no field of CRT's is written on it")
+  journal:Hide()
+  check(not t.shown, "window: it goes when that frame hides")
+  journal:Show()
+  UI.HideUndoToast()
   -- both looks: Classic paints the dark ground, Modern the theme's surface; the accent edge in both
   modern = false
   for _, s in ipairs(UI.skinned) do s.crtSkin(false) end
@@ -260,7 +290,7 @@ function walk(d) {
 walk(path.join(dir, 'CRT_Core'));
 walk(path.join(dir, 'CRT_Modules'));
 // files moved onto UI.Confirm whole: no other confirm left in them
-for (const f of ['CRT_Modules/Loot/Page.lua', 'CRT_Modules/Interrupts/Page.lua']) {
+for (const f of ['CRT_Modules/Loot/Page.lua', 'CRT_Modules/Interrupts/Page.lua', 'CRT_Modules/Alerts/Editor.lua', 'CRT_Modules/LootMaster/WishlistSaved.lua']) {
   const src = fs.readFileSync(path.join(dir, f), 'utf8').replace(/--.*$/gm, '');
   if (/StaticPopup_ShowCustomGenericConfirmation|KickConfirm/.test(src)) hits.push(f + ': still has a confirm of its own (use UI.Confirm)');
 }

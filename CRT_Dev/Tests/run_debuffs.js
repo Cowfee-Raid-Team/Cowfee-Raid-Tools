@@ -162,6 +162,7 @@ CRT.db = { debuffs = fresh() }
 
 -- UI stubs: sliders, dropdowns and help icons record their options.
 local sliders, dropdowns, helps, previewFns, spotPickers = {}, {}, {}, {}, {}
+DEBUFF_TOASTS = {}
 CRT.UI = {
   PAGE_W = 1026, PAGE_H = 560, previewing = false,
   SkinScrollBar = function() end, ScrollGutter = function(w) return 6 + (w or 18) end,
@@ -177,6 +178,8 @@ CRT.UI = {
     return b
   end,
   RegisterLayer = function() end,
+  -- the shared Undo (CRT_Core/UI/Confirm.lua, run_confirm.js tests it): what it was given
+  UndoToast = function(o) DEBUFF_TOASTS[#DEBUFF_TOASTS + 1] = o return o end,
   ResetButtonWidth = function() return 44 end, ResetButton = function() return mock("Button") end,
   Slider = function(p, text, opts) local r = mock("Slider") rawset(r, "opts", opts) rawset(r, "refresh", function() end) sliders[text] = r return r end,
   Dropdown = function(p, text, opts) local r = mock("Dropdown") rawset(r, "opts", opts) rawset(r, "refresh", function() end) dropdowns[text] = r return r end,
@@ -1438,6 +1441,18 @@ do
   v.rows[1].remove.OnClick(v.rows[1].remove)
   check("Remove takes it off", CRT.db.debuffs.ignored[389123] == nil and v.rows[1].id == 442611 and not v.rows[2].shown)
   check("and the panel shows it again", box.lastFilters.excludeSpellIDs[389123] == nil)
+  -- Remove offers Undo (UX rule 4), naming the debuff; Undo puts it back only while it isn't ignored again
+  local toast = DEBUFF_TOASTS[#DEBUFF_TOASTS]
+  check("Remove offers Undo, naming the debuff", toast and toast.text and toast.text:find("Lingering Doom", 1, true) ~= nil and type(toast.onUndo) == "function", toast and toast.text)
+  check("its toast sits in the button's window", toast and toast.owner ~= nil)
+  toast.onUndo()
+  check("Undo puts it back on Yours", CRT.db.debuffs.ignored[389123] == true and box.lastFilters.excludeSpellIDs[389123] == true)
+  v.rows[1].remove.OnClick(v.rows[1].remove) -- 389123 again (lowest first)
+  toast = DEBUFF_TOASTS[#DEBUFF_TOASTS]
+  Debuffs:AddIgnored(389123) -- added again by hand, then Undo
+  toast.onUndo()
+  check("Undo after it was added again changes nothing", CRT.db.debuffs.ignored[389123] == true and #Debuffs:IgnoredList() == 2)
+  Debuffs:RemoveIgnored(389123)
   -- built in, greyed, no Remove, with "and N more" past what fits
   local built = Debuffs:BuiltInList()
   local shown, greyed, removable = 0, true, false

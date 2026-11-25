@@ -21,7 +21,7 @@ local L = {
     cards = 6, cardsTop = -44, cardH = 54, cardGap = 10, cardPad = 10,
     tableTop = -114, tableW = 670, headH = 22, row = 20, rows = 20,
     reflX = 690, reflW = 328, bodyTop = -26, line = 16, bars = 8, barsTop = -18, dateW = 70, barX = 74, barW = 150, barH = 10,
-    causes = 3, avoid = 4, arrowW = 12, causeIcon = 16, causeGap = 4,
+    causes = 3, avoid = 4, causeIcon = 16, causeGap = 4,
 }
 
 -- The table's columns: key, x, w; each title is TEXT.columns[key].
@@ -92,7 +92,7 @@ local TEXT = CRT.Locale("SeasonStats.Page", {
     avoid = "Avoidable damage a pull (Tattlebot)",
     avoidLine = "%s: %s a pull (%d %s)",
     noAvoid = "Tattlebot has no pulls on this boss on this difficulty.",
-    avoidOpen = "Open this night in Tattlebot", avoidGone = "This night is no longer in Tattlebot.", more = ">",
+    avoidOpen = "Open this night in Tattlebot", avoidGone = "This night is no longer in Tattlebot.",
     pull = "pull", pullsWord = "pulls",
 })
 
@@ -385,40 +385,43 @@ local function buildCause(body, y)
     return line
 end
 
--- An avoidable damage night's line: a button that opens the night in Tattlebot, with a ">" at its right. A night no
--- longer in Tattlebot (deleted there since the line was drawn) loses the ">" and opens nothing.
+-- An avoidable damage night's line: the shared link line (UI.LinkButton), which opens the night in Tattlebot, with a
+-- ">" after its text. A night no longer in Tattlebot (deleted there since the line was drawn) loses the ">", opens
+-- nothing and its tooltip says why.
 local function nightThere(line)
     local Tattle, Page = CRT.Tattle, CRT.TattlePage
-    local there = line.nightID ~= nil and Tattle and Tattle.Night and Tattle:Night(line.nightID) ~= nil
+    -- line is nil while it is being made
+    local there = line ~= nil and line.nightID ~= nil and Tattle and Tattle.Night and Tattle:Night(line.nightID) ~= nil
         and Page and Page.ShowNight ~= nil and Page.CanShow and Page.CanShow()
-    line.arrow:SetShown(there and true or false)
-    return there
-end
-
-local function avoidTip(line)
-    showTip(line, { nightThere(line) and TEXT.avoidOpen or TEXT.avoidGone })
+    return there and true or false
 end
 
 local function buildAvoid(body, y)
-    local line = CreateFrame("Button", nil, body)
+    local line
+    line = UI.LinkButton(body, "", {
+        tipTitle = TEXT.avoidOpen,
+        enabledIf = function()
+            return nightThere(line), TEXT.avoidGone
+        end,
+        onClick = function()
+            CRT.TattlePage.ShowNight(line.nightID)
+        end,
+    })
     line:SetPoint("TOPLEFT", 0, y)
-    line:SetSize(L.reflW, L.line)
-    local hl = line:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetAllPoints()
-    hl:SetColorTexture(1, 1, 1, 0.06)
-    line.label = text(line, "CRTFontSmall", 0, 0, L.reflW - L.arrowW)
-    line.arrow = text(line, "CRTFontSmall", L.reflW - L.arrowW, 0, L.arrowW)
-    line.arrow:SetJustifyH("RIGHT")
-    line.arrow:SetText(UI.HeadingText(TEXT.more))
-    line:SetScript("OnEnter", avoidTip)
-    line:SetScript("OnLeave", hideTip)
-    line:SetScript("OnClick", function(self)
-        if nightThere(self) then
-            hideTip()
-            CRT.TattlePage.ShowNight(self.nightID)
-        end
-    end)
+    -- the ">" follows the night as the mouse comes over it (it may have gone since the line was drawn)
+    line:HookScript("OnEnter", line.refresh)
     return line
+end
+
+-- Sizes a line from its text, never wider than the column: a longer text is cut off before its ">". A reused line's
+-- label is let go of the width a longer text gave it first.
+local function fitAvoid(line)
+    line.label:SetWidth(0)
+    if line:Fit() > L.reflW then
+        local link = UI.LINK_BUTTON
+        line.label:SetWidth(L.reflW - 2 * link.pad - link.gap - math.ceil(line.arrow:GetStringWidth() or 0))
+        line:SetWidth(L.reflW)
+    end
 end
 
 local function buildReflection(f)
@@ -451,7 +454,7 @@ local function buildReflection(f)
     text(body, "CRTFontSmall", 0, y, L.reflW):SetText(UI.HeadingText(TEXT.avoid))
     refl.avoid = {}
     for i = 1, L.avoid do
-        refl.avoid[i] = buildAvoid(body, y - i * L.line - 2)
+        refl.avoid[i] = buildAvoid(body, y - L.line - 2 - (i - 1) * UI.LINK_BUTTON.h) -- a link line's height apart
     end
     refl.avoidHint = text(body, "CRTFontSmall", 0, y - L.line - 2, L.reflW)
     refl.avoidHint:SetText(TEXT.noAvoid)
@@ -495,7 +498,8 @@ local function paintAvoid(trend)
         line.nightID = night and night.nightID
         if night then
             line.label:SetText(TEXT.avoidLine:format(night.key, short(night.perPull), night.pulls, night.pulls == 1 and TEXT.pull or TEXT.pullsWord))
-            nightThere(line)
+            fitAvoid(line)
+            line.refresh()
         end
     end
 end

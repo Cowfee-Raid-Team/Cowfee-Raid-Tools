@@ -715,6 +715,24 @@ do
     function label:GetStringWidth() return 600 end function label:GetStringHeight() return 30 end -- wrapped onto two lines
     bc:Set(false, "Tick Show the debuff panel to change this.")
     check(bc.w == 24 + 2 + 300 and bc.h == 30, "cover: a long label stops at its own width, and two lines make it taller: " .. tostring(bc.w) .. " x " .. tostring(bc.h))
+    -- before the first layout (no GetLeft yet) the gap is read from the label's anchor on the box (QoL's checkRow: 1 px)
+    local box2 = CreateFrame("CheckButton")
+    function box2:GetWidth() return 24 end function box2:GetHeight() return 24 end function box2:GetRight() return nil end
+    local label2 = region()
+    function label2:GetWidth() return 0 end function label2:GetStringWidth() return 100 end function label2:GetStringHeight() return 14 end
+    function label2:GetLeft() return nil end
+    function label2:GetNumPoints() return 1 end
+    function label2:GetPoint(i) if i == 1 then return "LEFT", box2, "RIGHT", 1, 0 end end
+    local bc2 = UI.DisabledCover(box2, function() return "x" end, label2)
+    rawset(bc2, "SetSize", function(self, w, h) self.w, self.h = w, h end)
+    bc2:Set(false, "Why.")
+    check(bc2.w == 24 + 1 + 100, "cover: before layout, the gap is the label's own anchor offset (1 px): " .. tostring(bc2.w))
+    function label2:GetPoint(i) if i == 1 then return "LEFT", box2, "RIGHT", 6, 0 end end
+    bc2:Set(false, "Why.")
+    check(bc2.w == 24 + 6 + 100, "cover: a 6 px anchor gives a 6 px gap: " .. tostring(bc2.w))
+    function label2:GetPoint(i) if i == 1 then return "TOPLEFT", UIParent, "TOPLEFT", 40, 0 end end
+    bc2:Set(false, "Why.")
+    check(bc2.w == 24 + 2 + 100, "cover: a label not anchored to its box falls back to the 2 px gap: " .. tostring(bc2.w))
     -- no cover ever takes the mouse wheel: it goes on to the page under it
     for name, c in pairs({ dropdown = vd.why, slider = sl.why, pill = vp.why, checkbox = bc }) do
       check(c.wheelOn ~= true, name .. ": the cover never takes the mouse wheel")

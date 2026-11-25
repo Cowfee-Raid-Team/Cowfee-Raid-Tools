@@ -9,7 +9,7 @@ local ADDON, CRT = ...
 --             then who wants each, by rank ("Big: A, B  Small: C  Off: D"), names in class colour.
 --             Raiders: per raider, Big/Small/Off counts per boss (one column a boss, blank when none) and Updated (how
 --             old their list is; past V.OLD_DAYS in warn). Players in your raid with no list show "no list". The X
---             forgets one raider's list.
+--             forgets one raider's list at once, with Undo (UI.UndoToast).
 --   Team      Everyone kept, In my raid now, Raid Groups layout: then a Layout dropdown beside it picks which saved
 --             layout (Groups:PresetNames; the one in use by default, never changing Use this group).
 --   Forget all asks first (W.AskForgetAll).
@@ -59,6 +59,7 @@ local TEXT = CRT.Locale("LootMaster.WishlistTab", {
     boss = "Boss",
     forgetAll = "Forget all",
     forget = "Forget %s's list",
+    forgot = "Forgot %s's wishlist.",
     colBoss = "Boss", colBig = "Big", colSmall = "Small", colOff = "Off", colValue = "Value",
     colItem = "Item", colWants = "Who wants it",
     colRaider = "Raider", colUpdated = "Updated",
@@ -341,9 +342,19 @@ local function initRaiderRow(row, data)
         row.forget = CreateFrame("Button", nil, row, "UIPanelCloseButton")
         row.forget:SetSize(L.forget, L.forget)
         UI:SkinCloseButton(row.forget)
-        row.forget:SetScript("OnClick", function()
-            if row.data then
-                W.Forget(row.data.name)
+        -- at once, with Undo: the raider's list can be heard again, so this is a quick action (UX rule 4); Undo puts
+        -- the same copy back unless a newer one arrived since
+        row.forget:SetScript("OnClick", function(self)
+            local name = row.data and row.data.name
+            if not name then
+                return
+            end
+            local gone, copy = W.Forget(name)
+            if gone then
+                local shown = CRT.ShortName and CRT.ShortName(name) or Ambiguate(name, "short")
+                UI.UndoToast({ text = TEXT.forgot:format(shown), owner = self, onUndo = function()
+                    W.Unforget(name, copy)
+                end })
             end
         end)
         row.forget:SetScript("OnEnter", function(self)

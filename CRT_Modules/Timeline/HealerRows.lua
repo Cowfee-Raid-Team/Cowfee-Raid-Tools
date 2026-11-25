@@ -16,6 +16,7 @@ CRT.TimelineHealerRows = Rows
 
 local TEXT = CRT.Locale("Timeline.HealerRows", {
     reset = "Reset to defaults",
+    resetDone = "%s's rows are back to the defaults.",
 })
 Rows.TEXT = TEXT
 
@@ -79,8 +80,9 @@ end
 
 -- Fills menu (a menu or a submenu, as a healer slot's Rows, Timeline/HealerSlots.lua) with a checkbox per spell that
 -- can be a row (info.options in order, each { spellID, label, icon, default }), then Reset to defaults. changed()
--- runs after each pick.
-function Rows.Fill(menu, info, changed)
+-- runs after each pick. Reset acts at once and offers Undo (UI.UndoToast in owner's window, the menu's owner): a
+-- player's picks are a few flags, so the same table goes back, only while no pick was made for them since.
+function Rows.Fill(menu, info, changed, owner)
     local key = info.key
     for _, o in ipairs(info.options) do
         local text = o.icon and string.format(ICON, tostring(o.icon), o.label) or o.label
@@ -93,8 +95,21 @@ function Rows.Fill(menu, info, changed)
     end
     menu:CreateDivider()
     menu:CreateButton(TEXT.reset, function()
+        local all = store(false)
+        local picks = all and all[key]
         Rows.Reset(key)
         changed()
+        local UI = CRT.UI
+        if type(picks) == "table" and next(picks) ~= nil and UI and UI.UndoToast then
+            UI.UndoToast({ text = string.format(TEXT.resetDone, CRT.ShortName(info.name or key)), owner = owner,
+                onUndo = function()
+                    local now = store(true)
+                    if now and now[key] == nil then
+                        now[key] = picks
+                        changed()
+                    end
+                end })
+        end
     end)
 end
 
@@ -106,7 +121,7 @@ function Rows.Menu(owner, info, changed)
     end
     View.OpenMenu(owner, function(root)
         root:CreateTitle(CRT.ShortName(info.name)) -- the player's name, drawn without the realm
-        Rows.Fill(root, info, changed)
+        Rows.Fill(root, info, changed, owner)
     end)
     return true
 end

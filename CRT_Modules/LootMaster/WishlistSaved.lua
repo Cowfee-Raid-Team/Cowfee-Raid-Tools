@@ -7,7 +7,8 @@ local ADDON, CRT = ...
 --   [Name-Realm] = { items = { [itemID] = "big" | "small" | "off" }, at = <the raider's stamp: when their list last
 --                    changed>, got = <time() it arrived>, class = <class file, when known> }
 -- A newer stamp replaces the copy; an older or equal one is ignored. At most MAX raiders are kept: past that, the
--- copy that arrived longest ago goes. Forget (one raider) and Forget all (asks first) clear them. Nothing here
+-- copy that arrived longest ago goes. Forget (one raider, with Undo: W.Unforget) and Forget all (asks first, UI.Confirm) clear
+-- them. Nothing here
 -- draws: the Wishlists tab is LootMaster/WishlistTab.lua, its numbers LootMaster/WishlistViews.lua.
 
 local LM = CRT.LootMaster
@@ -18,8 +19,8 @@ W.SAVED_MAX = 200 -- raiders kept at most
 
 local TEXT = CRT.Locale("LootMaster.WishlistSaved", {
     forgetAll = "Forget every raider's saved wishlist?",
+    forgetAllDetail = "This can't be undone: a list comes back only when its raider sends it again.",
     forget = "Forget all",
-    cancel = "Cancel",
 })
 
 local function secret(v)
@@ -102,12 +103,26 @@ function W.Keep(name, items, at)
     return true
 end
 
+-- Forgets one raider's copy. Returns true and the copy (for W.Unforget, the Wishlists tab's Undo), or false.
 function W.Forget(name)
     local store = W.Saved()
-    if store[name] == nil then
+    local was = store[name]
+    if was == nil then
         return false
     end
     store[name] = nil
+    LM:Fire("wishlists", name)
+    return true, was
+end
+
+-- Puts a forgotten copy back as it was. False when a copy of that raider arrived since.
+function W.Unforget(name, copy)
+    local store = W.Saved()
+    if type(name) ~= "string" or type(copy) ~= "table" or store[name] ~= nil then
+        return false
+    end
+    store[name] = copy
+    trim(store)
     LM:Fire("wishlists", name)
     return true
 end
@@ -118,16 +133,10 @@ function W.ForgetAll()
     LM:Fire("wishlists")
 end
 
--- Forget all asks first: the game's generic confirm dialog (StaticPopup_ShowCustomGenericConfirmation, as
--- LootMaster/EndAll.lua uses it), lifted over CRT's windows. No dialog, nothing forgotten.
+-- Forget all asks first, through the shared confirm (UI.Confirm), saying what goes. No dialog, nothing forgotten.
 function W.AskForgetAll()
-    if not StaticPopup_ShowCustomGenericConfirmation then
-        return
-    end
-    UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation({
-        text = TEXT.forgetAll, acceptText = TEXT.forget, cancelText = TEXT.cancel, showAlert = true,
-        callback = function()
+    UI.Confirm({ text = TEXT.forgetAll, detail = TEXT.forgetAllDetail, accept = TEXT.forget, danger = true,
+        onAccept = function()
             W.ForgetAll()
-        end,
-    }), "GENERIC_CONFIRMATION"))
+        end })
 end

@@ -85,7 +85,10 @@ local CRT = { UI = {
   ContextMenu = function(owner, fill) local root = fakeRoot() fill(root) menus[#menus + 1] = { owner = owner, root = root } return {} end,
   Color = function(key) local c = ({ good = { 0, 1, 0 }, warn = { 1, 0.5, 0 }, muted = { 0.5, 0.5, 0.5 } })[key] or { 1, 1, 1 } return c[1], c[2], c[3], 1 end,
   ColorText = function(text, key) return "<" .. key .. ">" .. text end,
+  -- the shared Undo (CRT_Core/UI/Confirm.lua, run_confirm.js tests it): what it was given
+  UndoToast = function(o) WISH_TOASTS[#WISH_TOASTS + 1] = o return o end,
 } }
+WISH_TOASTS = {}
 local function settings() return { responseSeconds = 60, authority = { leader = true, names = {} }, sort = {} } end
 CRT.db = { lootmaster = settings() }
 local CHARS = { Solex = {}, Halo = {}, Quick = {}, Arrow = {} }
@@ -435,8 +438,34 @@ root = menus[2].root
 eq(root.items[2].items[1].isSel(root.items[2].items[1].data), true, "menu: your rank ticked")
 eq(root.items[2].items[2].isSel(root.items[2].items[2].data), false, "menu: the others not")
 eq(root.items[3] and root.items[3].text, "Remove from wishlist", "menu: Remove when listed")
+local was = W.Store()[212403]
 root.items[3].fn()
 eq(W.Rank(212403), nil, "menu: Remove takes it off")
+-- Remove offers Undo under the Journal (UX rule 4), naming the item; Undo puts the same rank and time back, only while
+-- the item isn't on the list again
+local toast = WISH_TOASTS[#WISH_TOASTS]
+eq(toast and toast.window, EncounterJournal, "menu: Remove's Undo sits under the Journal")
+eq(toast and toast.text and toast.text:find("Scale Mantle", 1, true) ~= nil, true, "menu: the Undo names the item")
+toast.onUndo()
+eq(W.Rank(212403) == was.rank and W.Store()[212403].at == was.at, true, "menu: Undo puts back the same rank and time")
+row.hooks.OnMouseUp[1](row, "RightButton") runTimers()
+menus[#menus].root.items[3].fn()
+toast = WISH_TOASTS[#WISH_TOASTS]
+W.Set(212403, "small")
+toast.onUndo()
+eq(W.Rank(212403), "small", "menu: Undo after it was listed again changes nothing")
+W.Remove(212403)
+-- an item the game hasn't the name of yet: the Undo says the row's link, else "the item", never its number
+W.Set(990001, "big")
+W.OpenMenu(EncounterJournal, 990001, "|cffa335ee|Hitem:990001|h[Mystery Cloak]|h|r")
+menus[#menus].root.items[3].fn()
+local uncached = WISH_TOASTS[#WISH_TOASTS].text
+eq(uncached:find("[Mystery Cloak]", 1, true) ~= nil, true, "menu: an uncached item's Undo names it by the row's link: " .. uncached)
+W.Set(990001, "big")
+W.OpenMenu(EncounterJournal, 990001)
+menus[#menus].root.items[3].fn()
+eq(WISH_TOASTS[#WISH_TOASTS].text, "Took the item off your wishlist.", "menu: with no link either, never the item's number")
+menus = { menus[1], menus[2] }
 local modified = false
 IsModifiedClick = function() return modified end
 modified = true

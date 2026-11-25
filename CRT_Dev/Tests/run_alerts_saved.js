@@ -162,6 +162,19 @@ function CRT:Print(m) printed[#printed + 1] = m end
 function CRT:PlaySound() end
 assert(load(sources[1], "Panel"))("CowfeeRaidTools", CRT)
 local UI = CRT.UI
+-- the shared confirm (CRT_Core/UI/Confirm.lua, run_confirm.js tests it, a "%" in its text too): what it was asked, in
+-- the same list as the game's generic confirm, shown on StaticPopup1 and lifted over CRT's windows as the real one is
+GENERIC_ASKS = 0
+do
+  local generic = StaticPopup_ShowCustomGenericConfirmation
+  StaticPopup_ShowCustomGenericConfirmation = function(info) GENERIC_ASKS = GENERIC_ASKS + 1 return generic(info) end
+end
+UI.Confirm = function(o)
+  popups[#popups + 1] = { text = o.text, acceptText = o.accept, callback = o.onAccept, danger = o.danger, shared = true }
+  StaticPopup1.which, StaticPopup1.shown = "CRT_CONFIRM", true
+  UI.LiftOver(UI.ShownPopup(StaticPopup1, "CRT_CONFIRM"))
+  return true
+end
 assert(UI.StyleWindow and UI.ApplyStyle and UI.SkinTree, "Panel API")
 UI.RegisterLayer = function(_, key, f) layers[key] = f end
 UI.RegisterPreview = function(_, key, fn) previews[key] = fn end
@@ -563,7 +576,7 @@ do
   -- Delete asks, then deletes
   E:EditSaved(id)
   click(w.deleteBtn)
-  assert(#popups == 1 and popups[1].text == "Delete this template?" and S:Get(id), "asks first")
+  assert(#popups == 1 and popups[1].text == 'Delete the template "Soak"?' and popups[1].shared and S:Get(id), "asks first, naming the template: " .. tostring(popups[1] and popups[1].text))
   assert(StaticPopup1.strata == "FULLSCREEN_DIALOG" and StaticPopup1.raised, "popup above the editor")
   popups[1].callback()
   assert(S:Get(id) == nil and not w.shown and S:Get(other), "deleted after accept")

@@ -68,7 +68,8 @@ local TEXT = CRT.Locale("Interrupts.Page", {
     kick = "%s #%d",
     list = "Kick list",
     clear = "Clear list",
-    clearAsk = "Empty every name on your own kick list for %s?",
+    cleared = "Cleared your kick list for %s (%d names).",
+    clearedOne = "Cleared your kick list for %s (%d name).",
     useRaid = "Use the raid's list",
     useRaidAsk = "Copy the raid's kick list from %s over your own list for %s?",
     share = "Share to raid",
@@ -445,14 +446,25 @@ local function reasonTip(b, title)
 end
 
 local function buildButtons(f)
-    local clear = button(f, TEXT.clear, function()
+    -- Clear list: a quick clear with Undo (UX rule 4), which puts every name back while the list is still empty
+    local clear = button(f, TEXT.clear, function(self)
         local id = boss()
-        if id then
-            confirm(string.format(TEXT.clearAsk, Interrupts:BossName(id)), TEXT.clear, function()
-                Interrupts:Clear(id)
-            end)
+        local n = 0
+        for _, col in ipairs(id and Interrupts:Own(id) or {}) do
+            for _, name in ipairs(col) do
+                n = n + ((name ~= "") and 1 or 0)
+            end
         end
+        if n == 0 then
+            return
+        end
+        local undo = Interrupts:Clear(id)
+        UI.UndoToast({ text = string.format(n == 1 and TEXT.clearedOne or TEXT.cleared, Interrupts:BossName(id), n),
+            owner = self, onUndo = function()
+                Interrupts:Unclear(id, undo)
+            end })
     end)
+    -- Use the raid's list asks first: it writes the raid's names over your own list, and your own names are not kept
     local useRaid = button(f, TEXT.useRaid, function()
         local id = boss()
         local shared = id and Interrupts:Shared(id)

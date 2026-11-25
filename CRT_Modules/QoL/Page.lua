@@ -40,6 +40,7 @@ local TEXT = CRT.Locale("QoL.Page", {
     soundsAdd = "Add",
     soundsTest = "Test",
     soundsRemove = "Remove",
+    soundsRemoved = "Took %s off the list. The file stays where it is.",
     soundsNone = "No files yet. Type a file's name and press Add, or list them in CowfeeRaidTools_Media's Sounds.lua.",
     soundsMedia = "CowfeeRaidTools_Media: %s",
     soundsFromManifest = "from Sounds.lua",
@@ -300,10 +301,20 @@ local function buildSounds(pf, top)
                 refresh()
             end
         end)
-        row.remove:SetScript("OnClick", function()
-            if row.file and Engine:RemoveCustom(row.file) then
-                CRT:Print("Removed " .. row.file .. " from the list. The file itself stays where it is.")
+        -- Remove acts at once and offers Undo, which puts the name back in its place unless it is listed again
+        row.remove:SetScript("OnClick", function(self)
+            local file = row.file
+            if not file then
+                return
+            end
+            local removed, index = Engine:RemoveCustom(file)
+            if removed then
                 refresh()
+                UI.UndoToast({ text = string.format(TEXT.soundsRemoved, file), owner = self, onUndo = function()
+                    if Engine:RestoreCustom(file, index) then
+                        refresh()
+                    end
+                end })
             end
         end)
         rows[i] = row

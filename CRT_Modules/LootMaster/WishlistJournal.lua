@@ -32,6 +32,8 @@ local W = LM.Wishlist
 
 W.TEXT.add = "Add to wishlist"
 W.TEXT.remove = "Remove from wishlist"
+W.TEXT.removed = "Took %s off your wishlist."
+W.TEXT.theItem = "the item"
 W.TEXT.menuTitle = "Wishlist"
 
 local function secret(v)
@@ -86,8 +88,9 @@ end
 
 -- The Encounter Journal's right-click menu ---------------------------------------------------------------
 
--- The menu for one item: Add to wishlist with the ranks (yours ticked), and Remove when it is on your list.
-function W.OpenMenu(owner, item)
+-- The menu for one item: Add to wishlist with the ranks (yours ticked), and Remove when it is on your list. label:
+-- optional, the row's link, for the Undo's words while the game hasn't the item's name yet.
+function W.OpenMenu(owner, item, label)
     local id = W.ItemID(item)
     if not id then
         return nil
@@ -104,8 +107,18 @@ function W.OpenMenu(owner, item)
             end, rank)
         end
         if W.Rank(id) then
+            -- at once, with Undo under the Journal (UI.UndoToast's window): the same rank and time come back, unless
+            -- the item was listed again since
             root:CreateButton(W.TEXT.remove, function()
-                W.Remove(id)
+                local e = W.Store()[id]
+                local was = type(e) == "table" and { rank = e.rank, at = e.at } or nil
+                if W.Remove(id) and was then
+                    UI.UndoToast({ text = string.format(W.TEXT.removed, (type(name) == "string" and name)
+                        or (type(label) == "string" and not secret(label) and label ~= "" and label) or W.TEXT.theItem),
+                        window = owner, onUndo = function()
+                            W.Restore(id, was)
+                        end })
+                end
             end)
         end
     end)
@@ -123,8 +136,9 @@ local function onMouseUp(row, button)
         return
     end
     local owner = EncounterJournal or row
+    local link = not secret(row.link) and row.link or nil
     C_Timer.After(0, function()
-        W.OpenMenu(owner, id)
+        W.OpenMenu(owner, id, link)
     end)
 end
 

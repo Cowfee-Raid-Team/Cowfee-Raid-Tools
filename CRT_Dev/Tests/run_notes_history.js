@@ -351,6 +351,16 @@ do
   assert(rawget(h, "text") == "History (2)" and h:IsEnabled(), "History (2), enabled: " .. tostring(rawget(h, "text")))
   assert(rawget(h, "width") == CRT.UI.PanelButtonWidth(#"History (2)" * 6), "sized from its label")
   ok("History (N) left of Pop out editor, greyed with none, counts the versions")
+  -- Pop out editor greyed because the note editor isn't loaded says so (UX rule 5), not "pick a note"
+  local keep = CRT.NoteEditor
+  CRT.NoteEditor = nil
+  redraw()
+  local why = rawget(pop, "why")
+  assert(not pop:IsEnabled() and why and why.ok == false and type(why.reason) == "string" and why.reason:find("editor", 1, true), "no editor: greyed with its reason: " .. tostring(why and why.reason))
+  CRT.NoteEditor = keep
+  redraw()
+  assert(pop:IsEnabled() and rawget(pop, "why").ok, "the editor back: usable again")
+  ok("Pop out editor greyed without the editor says why")
 end
 
 -- 6. The layout: the box shrunk by the footer line; the details, Save and History inside the tab

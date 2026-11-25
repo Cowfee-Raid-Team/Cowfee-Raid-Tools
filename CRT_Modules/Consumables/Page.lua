@@ -20,6 +20,7 @@ local TEXT = CRT.Locale("Consumables.Page", {
     test = "Test on screen",
     preview = "Preview your bar",
     previewTip = "Shows your consumables bar on screen with its drag box so you can drag it into place. It stays until you stop it.",
+    removed = "Took %s off your list.",
 })
 
 local CAT_ROW_H = 32
@@ -279,8 +280,15 @@ local function itemRow(index)
     end)
     row.remove = makeButton(row, "Remove", 22)
     row.remove:SetPoint("RIGHT", -4, 0)
-    row.remove:SetScript("OnClick", function()
-        Consumables:RemoveExtra(selected, row.itemId)
+    -- Remove acts at once and offers Undo, which puts the item back in its place unless it was added again
+    row.remove:SetScript("OnClick", function(self)
+        local name = row.itemName
+        local undo = Consumables:RemoveExtra(selected, row.itemId)
+        if undo then
+            UI.UndoToast({ text = format(TEXT.removed, name or tostring(row.itemId)), owner = self, onUndo = function()
+                Consumables:RestoreExtra(undo)
+            end })
+        end
     end)
 
     -- The name on the top line, and how many are in your bags under it, so a long name has room.
@@ -313,6 +321,7 @@ local function refreshItems()
         row.itemId = entry.item
         row.icon:SetTexture(Consumables:ItemIcon(entry.item))
         local name = Consumables:ItemName(entry)
+        row.itemName = name
         if entry.user then
             name = name .. "  " .. UI.HeadingText("(yours)")
         end

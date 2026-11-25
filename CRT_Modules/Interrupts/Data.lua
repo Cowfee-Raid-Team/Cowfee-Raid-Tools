@@ -603,12 +603,31 @@ function Interrupts:SetOwn(key, list, quiet)
     return changed
 end
 
+-- Empties your own list. Returns what Interrupts:Unclear needs to put it back (the page's Undo), or nil for a key with
+-- no setup.
 function Interrupts:Clear(key)
     local skey, def, id, diff = self:Resolve(key)
     if def then
-        entry(id, diff, true).own = byKey(def, emptyList(def))
+        local e = entry(id, diff, true)
+        local undo = { entry = e, own = e.own }
+        e.own = byKey(def, emptyList(def))
+        undo.cleared = e.own
         self:Fire("list", skey, "own")
+        return undo
     end
+end
+
+-- Puts back the list a Clear emptied, every name in its slot. False when a name went on it since, or the list was
+-- replaced (Use the raid's list, a share's shape).
+function Interrupts:Unclear(key, undo)
+    local skey, def, id, diff = self:Resolve(key)
+    local e = def and entry(id, diff)
+    if not (undo and e and e == undo.entry and e.own == undo.cleared) or hasName(self:Own(skey)) then
+        return false
+    end
+    e.own = undo.own
+    self:Fire("list", skey, "own")
+    return true
 end
 
 -- Use the raid's list: copies it over your own, and the raid's is in use.

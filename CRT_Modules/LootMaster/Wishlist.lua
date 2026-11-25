@@ -214,6 +214,18 @@ function W.Remove(item)
     return W.Set(item, nil)
 end
 
+-- Puts a removed item back with the rank and time it had (entry: its old { rank, at }), for Remove's Undo. False when
+-- the item is on the list again or the list is full.
+function W.Restore(item, entry)
+    local id = W.ItemID(item)
+    if not (id and type(entry) == "table" and W.IsRank(entry.rank)) or W.Rank(id) or W.Count() >= W.MAX then
+        return false
+    end
+    W.Store()[id] = { rank = entry.rank, at = entry.at }
+    changed()
+    return true
+end
+
 function W.Label(rank)
     return rank and TEXT[rank] or TEXT.notListed
 end

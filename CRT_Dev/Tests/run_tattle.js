@@ -252,6 +252,14 @@ eq(o[1].key .. "=" .. o[1].label .. ", " .. o[2].key .. "=" .. o[2].label, "team
 CRT.TattlePage.ShowNight(pugNight.id)
 eq(select(5, CRT.TattlePage.State()), "all", "opening a night with other pulls shows All raids, so all of it is listed")
 eq(select(2, CRT.TattlePage.State()), pugNight.id, "and selected")
+-- Open(tab): the page on that tab (Start here's Tattlebot link opens Settings, where its switch is)
+check(type(CRT.TattlePage.Open) == "function", "TattlePage.Open(tab)")
+CRT.TattlePage.Open("settings")
+eq((CRT.TattlePage.State()), "settings", "Open(\\"settings\\") shows the Settings tab")
+CRT.TattlePage.Open("nosuchtab")
+eq((CRT.TattlePage.State()), "settings", "a tab that isn't there keeps the one shown")
+CRT.TattlePage.Open("history")
+eq((CRT.TattlePage.State()), "history", "Open(\\"history\\") shows History")
 -- with only team nights, the filter goes
 for _, n in ipairs(s.history) do for i = #n.pulls, 1, -1 do if not Tattle.IsTeam(n.pulls[i]) then table.remove(n.pulls, i) end end end
 s.current = nil
