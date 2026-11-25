@@ -717,7 +717,11 @@ do
         return f
       end
       local uon = true
+      local themeHooks = {}
+      local hadOnTheme = UI.OnTheme
+      UI.OnTheme = function(_, fn) themeHooks[#themeHooks + 1] = fn end
       local ub = UI.LinkButton({}, "Raid Notes", { enabledIf = function() return uon, "Gone." end })
+      UI.OnTheme = hadOnTheme
       CreateFrame = realCF
       local line = ub.underline
       check(line ~= nil and line.h == 1, "link button: it has a 1 px underline")
@@ -733,6 +737,20 @@ do
       check(line.c[4] == rest, "link button: back when the mouse leaves")
       ub.label:SetTextColor(0.2, 0.4, 0.6) ub.refresh()
       check(line.c[1] == 0.2 and line.c[3] == 0.6, "link button: a recoloured text recolours its underline")
+      -- a theme switch repaints it at once, with no hover or show
+      ub.label:SetTextColor(0.9, 0.1, 0.3)
+      check(#themeHooks == 1, "link button: it follows theme switches (UI:OnTheme)")
+      for _, fn in ipairs(themeHooks) do fn() end
+      check(line.c[1] == 0.9 and line.c[2] == 0.1 and line.c[3] == 0.3, "link button: a theme switch repaints the underline in the new text colour")
+      -- tall enough for the text and the underline under it at a large text size
+      local fitH
+      rawset(ub, "SetSize", function(_, w, h) fitH = h end)
+      ub.label.GetStringHeight = function() return 26 end
+      ub:Fit()
+      check(fitH and fitH >= 26 + UI.LINK_BUTTON.lineGap + UI.LINK_BUTTON.line, "link button: at a large text size its height holds the text and the underline (" .. tostring(fitH) .. ")")
+      ub.label.GetStringHeight = function() return 14 end
+      ub:Fit()
+      check(fitH == UI.LINK_BUTTON.h, "link button: at a small size it keeps its least height")
       uon = false ub.refresh()
       check(not line.shown and not ub.arrow.shown and ub.alpha < 1, "link button: greyed, no underline, no >, half alpha")
       uon = true ub.refresh()

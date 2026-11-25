@@ -1619,7 +1619,8 @@ function UI.LinkButton(parent, text, opts)
     end
     function b:Fit()
         local w = math.ceil(self.label:GetStringWidth() or 0) + LINK.gap + math.ceil(self.arrow:GetStringWidth() or 0)
-        local h = math.ceil(math.max(self.label:GetStringHeight() or 0, LINK.h))
+        -- tall enough for the text and the underline under it, at every text size
+        local h = math.ceil(math.max((self.label:GetStringHeight() or 0) + LINK.lineGap + LINK.line, LINK.h))
         self:SetSize(w + 2 * LINK.pad, h)
         return w + 2 * LINK.pad
     end
@@ -1630,10 +1631,15 @@ function UI.LinkButton(parent, text, opts)
         paintUnderline(b, false)
         b:SetAlpha(ok and 1 or LINK.offAlpha)
     end
-    -- shown again (a theme may have changed while it was hidden): the underline takes the text's colour again
+    -- shown again, or the theme changed: the underline takes the text's colour again
     b:SetScript("OnShow", function()
         paintUnderline(b, false)
     end)
+    if UI.OnTheme then
+        UI:OnTheme(function()
+            paintUnderline(b, false)
+        end)
+    end
     b:SetScript("OnEnter", function(self)
         paintUnderline(b, true)
         local ok, reason = state()
