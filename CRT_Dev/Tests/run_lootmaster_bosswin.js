@@ -107,6 +107,8 @@ CRT_UI = {
   PanelButton = function(parent, label, h, onClick) local b = mock() b.label, b.onClick = label, onClick buttons[label] = b return b end,
   SkinCheckButton = function(self, cb) cb.skinned = true end,
   Help = function() return mock() end,
+  -- the shared confirm (CRT_Core/UI/Confirm.lua, run_confirm.js tests it): what it was asked
+  Confirm = function(o) BOSS_CONFIRM = o return true end,
 }
 local CRT = { UI = CRT_UI, db = { lootmaster = { authority = { leader = true, names = {} }, bossLoot = {} } } }
 CRT_THEME(CRT, CRT_UI) -- the colour helpers read the theme's palette
@@ -191,7 +193,14 @@ check(LM.current ~= nil, "Start session starts the session")
 eq(LM.current and #LM.current.items, 1, "with the ticked item you won")
 eq(footer.enabled, false, "Start: waits while the session runs")
 check(buttons.Clear.enabled, "Clear: there are rows")
+-- Clear asks first through the shared confirm (UX rule 4): its rows have timers and kills behind them, so it can't be
+-- put back; the text names the list and says what goes
+local rowsBefore = #BL:Rows()
 buttons.Clear.onClick()
+eq(#BL:Rows(), rowsBefore, "Clear: nothing goes before the confirm")
+check(BOSS_CONFIRM and BOSS_CONFIRM.text:find("boss loot list", 1, true) and BOSS_CONFIRM.accept == "Clear list", "Clear: asks with the shared confirm, naming the list: " .. tostring(BOSS_CONFIRM and BOSS_CONFIRM.text))
+check(BOSS_CONFIRM and BOSS_CONFIRM.detail:find(tostring(rowsBefore) .. " items", 1, true) and BOSS_CONFIRM.detail:find("can't be undone", 1, true), "Clear: the detail says how many go: " .. tostring(BOSS_CONFIRM and BOSS_CONFIRM.detail))
+BOSS_CONFIRM.onAccept()
 eq(#BL:Rows(), 0, "Clear empties the list")
 eq(buttons.Clear.enabled, false, "Clear: nothing to clear")
 
