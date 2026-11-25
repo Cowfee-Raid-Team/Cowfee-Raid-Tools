@@ -699,6 +699,45 @@ do
     local lb = UI.LinkButton({}, "Open", { tipTitle = "Open in Tattlebot", tipText = "Shows the night.", enabledIf = function() return lon, lreason end })
     tip.lines = {} lb.OnEnter(lb)
     check(texts() == "Open in Tattlebot | Shows the night. | " .. lreason and red(last()), "link button: its tip, then the reason in red: " .. texts())
+    -- Link button: underlined like a web link (Link line, #1311): a 1 px line in its text's colour, from the text's left
+    -- edge to its right just under it, brighter under the mouse, gone while greyed
+    do
+      local realCF = CreateFrame
+      CreateFrame = function(...)
+        local f = realCF(...)
+        function f:CreateTexture()
+          local t = { pts = {}, shown = true }
+          function t:SetPoint(...) self.pts[#self.pts + 1] = { ... } end
+          function t:SetHeight(h) self.h = h end
+          function t:SetShown(on) self.shown = on and true or false end
+          function t:SetColorTexture(r, g, b, a) self.c = { r, g, b, a } end
+          function t:SetAllPoints() end
+          return t
+        end
+        return f
+      end
+      local uon = true
+      local ub = UI.LinkButton({}, "Raid Notes", { enabledIf = function() return uon, "Gone." end })
+      CreateFrame = realCF
+      local line = ub.underline
+      check(line ~= nil and line.h == 1, "link button: it has a 1 px underline")
+      local p1, p2 = line and line.pts[1] or {}, line and line.pts[2] or {}
+      check(p1[1] == "TOPLEFT" and p1[2] == ub.label and p1[3] == "BOTTOMLEFT" and p2[1] == "TOPRIGHT" and p2[2] == ub.label and p2[3] == "BOTTOMRIGHT", "link button: the underline runs from the text's left edge to its right, under it")
+      check((p1[5] or 0) < 0 and (p1[5] or 0) >= -2 and p1[5] == p2[5], "link button: a pixel or two under the text")
+      local lc = ub.label.color
+      check(line.shown and line.c and line.c[1] == lc[1] and line.c[2] == lc[2] and line.c[3] == lc[3], "link button: the underline shows in the text's colour")
+      local rest = line.c[4]
+      ub.OnEnter(ub)
+      check(line.c[4] > rest, "link button: brighter under the mouse (" .. tostring(rest) .. " to " .. tostring(line.c[4]) .. ")")
+      ub.OnLeave(ub)
+      check(line.c[4] == rest, "link button: back when the mouse leaves")
+      ub.label:SetTextColor(0.2, 0.4, 0.6) ub.refresh()
+      check(line.c[1] == 0.2 and line.c[3] == 0.6, "link button: a recoloured text recolours its underline")
+      uon = false ub.refresh()
+      check(not line.shown and not ub.arrow.shown and ub.alpha < 1, "link button: greyed, no underline, no >, half alpha")
+      uon = true ub.refresh()
+      check(line.shown, "link button: usable again, underlined again")
+    end
 
     -- A checkbox's cover reaches only as far as its label's text: a label of fixed width with a (?) after it leaves the
     -- (?) uncovered, and a two-line label makes the cover as tall as its lines.

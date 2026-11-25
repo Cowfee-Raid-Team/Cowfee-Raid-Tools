@@ -129,6 +129,26 @@ local function anchorGap(label, box)
     return nil
 end
 
+-- The width and height of a control and its label's text together: the box, the gap and the text as drawn (never a
+-- (?) after a label of fixed width), as tall as the box or the label's lines. With no label, the control's own size.
+-- The label sits level with the box's middle (anchored LEFT to its RIGHT), so a frame anchored by its LEFT to the
+-- box's LEFT and this size covers both (UI.DisabledCover, UI.Spotlight).
+function UI.ControlExtent(owner, right)
+    if not right then
+        return size(owner, "GetWidth"), size(owner, "GetHeight")
+    end
+    local text = size(right, "GetStringWidth")
+    local width = size(right, "GetWidth")
+    if width > 0 then
+        text = math.min(text, width)
+    end
+    -- the gap between the box and its label, as laid out; before the first layout, the label's own anchor offset on
+    -- the box, else 2 px (the helpers' own)
+    local l, r = number(right, "GetLeft"), number(owner, "GetRight")
+    local gap = (l and r) and math.max(0, l - r) or anchorGap(right, owner) or 2
+    return size(owner, "GetWidth") + gap + text, math.max(size(owner, "GetHeight"), size(right, "GetStringHeight"))
+end
+
 function UI.DisabledCover(owner, tip, right)
     local cover = CreateFrame("Frame", nil, owner)
     if right then
@@ -139,16 +159,7 @@ function UI.DisabledCover(owner, tip, right)
         cover:SetAllPoints(owner)
     end
     function cover:Fit()
-        local text = size(right, "GetStringWidth")
-        local width = size(right, "GetWidth")
-        if width > 0 then
-            text = math.min(text, width)
-        end
-        -- the gap between the box and its label, as laid out; before the first layout, the label's own anchor offset on
-        -- the box, else 2 px (the helpers' own)
-        local l, r = number(right, "GetLeft"), number(owner, "GetRight")
-        local gap = (l and r) and math.max(0, l - r) or anchorGap(right, owner) or 2
-        self:SetSize(size(owner, "GetWidth") + gap + text, math.max(size(owner, "GetHeight"), size(right, "GetStringHeight")))
+        self:SetSize(UI.ControlExtent(owner, right))
     end
     if cover.SetFrameLevel and owner.GetFrameLevel then
         cover:SetFrameLevel((owner:GetFrameLevel() or 0) + 20)
@@ -1562,15 +1573,26 @@ end
 
 -- [link button] (CRT_Dev/Tests/theme_stub.js loads the code between these markers into harnesses' stubbed UI)
 -- A link button (the catalog's Link line): a short text that opens another page, such as Start here's page names
--- beside each What's on switch. Its text in CRTFontSmall, a ">" after it in the theme's heading colour, a faint
--- white highlight under the mouse, and a tooltip naming where it goes. Sized from its text (b:Fit() measures again,
--- for a new text size).
+-- beside each What's on switch. Its text in CRTFontSmall, underlined like a web link (a 1 px line in the text's own
+-- colour, as wide as the text, just under it, brighter under the mouse), a ">" after it in the theme's heading colour,
+-- a faint white highlight under the mouse, and a tooltip naming where it goes. Sized from its text (b:Fit() measures
+-- again, for a new text size).
 --   local b = UI.LinkButton(parent, text, opts)
---     opts: onClick, tipTitle, tipText, enabledIf (returns ok, reason: while not ok the ">" hides, the button is at
---     half alpha, a click does nothing and the tooltip ends with the reason in red: UI.DisabledReason)
---   b.refresh()  reads enabledIf again; b.label, b.arrow
-local LINK = { gap = 3, pad = 2, h = 18, offAlpha = 0.5, more = ">" }
+--     opts: onClick, tipTitle, tipText, enabledIf (returns ok, reason: while not ok the ">" and the underline hide, the
+--     button is at half alpha, a click does nothing and the tooltip ends with the reason in red: UI.DisabledReason)
+--   b.refresh()  reads enabledIf again; b.label, b.arrow, b.underline
+-- underline: its height, its gap under the text, and its alpha at rest and under the mouse.
+local LINK = { gap = 3, pad = 2, h = 18, offAlpha = 0.5, more = ">", line = 1, lineGap = 1, lineAlpha = 0.6, lineHover = 1 }
 UI.LINK_BUTTON = LINK
+
+-- Paints a link's underline in its text's colour (read each time, so it follows a theme or a recoloured label).
+local function paintUnderline(b, hover)
+    local r, g, bl
+    if b.label.GetTextColor then
+        r, g, bl = b.label:GetTextColor()
+    end
+    b.underline:SetColorTexture(r or 1, g or 1, bl or 1, hover and LINK.lineHover or LINK.lineAlpha)
+end
 
 function UI.LinkButton(parent, text, opts)
     opts = opts or {}
@@ -1587,6 +1609,11 @@ function UI.LinkButton(parent, text, opts)
     UI.ThemedText(b.arrow, function()
         return UI.HeadingText(LINK.more)
     end)
+    -- the underline: from the text's left edge to its right (the label is as wide as its text), just under it
+    b.underline = b:CreateTexture(nil, "ARTWORK")
+    b.underline:SetHeight(LINK.line)
+    b.underline:SetPoint("TOPLEFT", b.label, "BOTTOMLEFT", 0, -LINK.lineGap)
+    b.underline:SetPoint("TOPRIGHT", b.label, "BOTTOMRIGHT", 0, -LINK.lineGap)
     local function state()
         return UI.Usable(opts.enabledIf)
     end
@@ -1599,9 +1626,16 @@ function UI.LinkButton(parent, text, opts)
     b.refresh = function()
         local ok = state()
         b.arrow:SetShown(ok)
+        b.underline:SetShown(ok)
+        paintUnderline(b, false)
         b:SetAlpha(ok and 1 or LINK.offAlpha)
     end
+    -- shown again (a theme may have changed while it was hidden): the underline takes the text's colour again
+    b:SetScript("OnShow", function()
+        paintUnderline(b, false)
+    end)
     b:SetScript("OnEnter", function(self)
+        paintUnderline(b, true)
         local ok, reason = state()
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
         GameTooltip:SetText(opts.tipTitle or text, 1, 1, 1)
@@ -1614,6 +1648,7 @@ function UI.LinkButton(parent, text, opts)
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function()
+        paintUnderline(b, false)
         GameTooltip:Hide()
     end)
     b:SetScript("OnClick", function()
