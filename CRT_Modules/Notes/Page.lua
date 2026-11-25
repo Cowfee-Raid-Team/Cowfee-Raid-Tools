@@ -62,6 +62,7 @@ local TEXT = CRT.Locale("Notes.Page", {
     readBossWhy = "The text's EncounterID line says the boss and difficulty.",
     pickBossWhy = "Pick a boss first.",
     pickNoteWhy = "Pick a note in the list first.",
+    noEditorWhy = "The note editor didn't load. Try /reload.",
     savedFor = "Saved as a new note for %s (%s): %s.",
     savedForEmpty = "Saved as a new note for %s (%s).",
     -- Delete asks once (UI.Confirm), naming the note and the saved versions that go with it
@@ -904,7 +905,7 @@ local function buildNotes(pf)
     end)
     popOut.refresh = function()
         popOut:SetEnabled(selected ~= nil and CRT.NoteEditor ~= nil)
-        UI.GreyWhy(popOut, selected ~= nil or CRT.NoteEditor == nil, TEXT.pickNoteWhy, TEXT.popOut)
+        UI.GreyWhy(popOut, selected ~= nil and CRT.NoteEditor ~= nil, CRT.NoteEditor == nil and TEXT.noEditorWhy or TEXT.pickNoteWhy, TEXT.popOut)
     end
     controls[#controls + 1] = popOut
     -- History, left of Pop out editor: the note's earlier versions (Notes/HistoryWindow.lua); greyed with none
