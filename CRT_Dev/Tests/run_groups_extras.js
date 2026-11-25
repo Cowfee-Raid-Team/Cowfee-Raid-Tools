@@ -174,8 +174,16 @@ items[2].fn()
 check(#invites == 1 and invites[1] == "Gadios-Area52", "the menu invites that player")
 items = openMenu(1)
 check(items and items[2].label == "Invite Solex-Area52" and items[2].enabled == false, "a player in the group: invite greyed (" .. tostring(items and items[2].label) .. ")")
+toasts = {}
+local dirtyBefore = G.dirty
 items[3].fn()
 check(w[1] == "", "Clear slot clears it")
+check(toasts[1] and toasts[1].text == "Cleared Solex's slot.", "and offers Undo, naming the player without the realm: " .. tostring(toasts[1] and toasts[1].text))
+if toasts[1] then toasts[1].onUndo() end
+check(w[1] == "Solex-Area52" and G.dirty == dirtyBefore, "Undo puts them back in the slot, as saved as before")
+items = openMenu(1)
+items[3].fn()
+check(w[1] == "", "cleared again")
 check(openMenu(1) == nil, "an empty slot opens no menu")
 
 -- Set role: a submenu on a filled slot (Tank, Healer, Damage, Use the game's role), saved per player.

@@ -32,6 +32,7 @@ local TEXT = {
     inviteBody = "Invites everyone in this layout who isn't in your group. Each one moves to their group when they join, if it has a free spot.",
     inviteName = "Invite %s",
     clearSlot = "Clear slot",
+    slotCleared = "Cleared %s's slot.",
     setRole = "Set role",
     gameRole = "Use the game's role",
     unsaved = "Unsaved layout",
@@ -676,9 +677,24 @@ local function openSlotMenu(slot)
             end)
         end
         root:CreateButton(TEXT.clearSlot, function()
-            if Groups:Working() == grid then
-                Groups:SetSlot(slot.index, "")
+            if Groups:Working() ~= grid then
+                return
             end
+            local index, wasDirty = slot.index, Groups.dirty
+            local was = grid[index]
+            if not was or was == "" then
+                return
+            end
+            Groups:SetSlot(index, "")
+            -- Undo: the name back in its slot, while the same grid is open and the slot still empty
+            local shown = CRT.ShortName and CRT.ShortName(was) or was
+            UI.UndoToast({ text = format(TEXT.slotCleared, shown), owner = slot, onUndo = function()
+                if Groups:Working() == grid and grid[index] == "" then
+                    Groups:SetSlot(index, was)
+                    Groups.dirty = wasDirty
+                    Groups:Fire()
+                end
+            end })
         end)
         -- Set role: one of the three, or back to the game's role; it wins over the game's (Groups.HandRole)
         local roles = root:CreateButton(TEXT.setRole)
