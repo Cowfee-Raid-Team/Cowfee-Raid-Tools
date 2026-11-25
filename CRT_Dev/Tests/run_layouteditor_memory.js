@@ -108,6 +108,30 @@ check(UI.pages.qol.frame.kids[7].x == 7, "and not applied")
 cost = perChange(30)
 check(cost <= 2 and #said == before + 1, format("then nothing is walked or said again: %.0f tables", cost))
 
+-- round 3: changes whose piece is gone (on a built page, on the panel, a text that isn't there), or whose page is
+-- gone, never make a page change walk anything: a developer's old changes made megabytes a click
+CRT.db.dev.overrides["qol.c999"] = { dx = 1, dy = 0, dw = 0, dh = 0, font = 0 }
+CRT.db.dev.overrides["start.c3.r5"] = { dx = 1, dy = 0, dw = 0, dh = 0, font = 0 }
+CRT.db.dev.overrides["panel.c99"] = { dx = 1, dy = 0, dw = 0, dh = 0, font = 0 }
+CRT.db.dev.overrides["nopage.c1"] = { dx = 1, dy = 0, dw = 0, dh = 0, font = 0 }
+before = #said
+UI:SelectPage("start")
+cost = perChange(30)
+print(format("measure page change with gone pieces saved: %.0f tables", cost))
+check(cost <= 2, format("changes whose piece or page is gone: a page change makes at most 2 tables, got %.0f", cost))
+check(#said == before, "and nothing is said about them on every click")
+-- a text on a piece: put on by its path
+CRT.db.dev.overrides["start.c4.r1"] = { dx = 0, dy = 2, dw = 0, dh = 0, font = 0 }
+UI:SelectPage("start")
+check(UI.pages.start.frame.kids[4].regs[1].y == 2, "a change on a text is put on it: y " .. tostring(UI.pages.start.frame.kids[4].regs[1].y))
+-- a piece made later (a tab built on its first show) still gets its change then, once
+local late = frame("Frame", UI.pages.qol.frame) -- qol's child 201
+CRT.db.dev.overrides["qol.c201"] = { dx = 4, dy = 0, dw = 0, dh = 0, font = 0 }
+UI:SelectPage("qol")
+check(late.x == 4, "a change whose piece was made later goes on: x " .. late.x)
+UI:SelectPage("start") UI:SelectPage("qol")
+check(late.x == 4, "and only once")
+
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error(fails .. " layout editor memory checks failed") end
 `;

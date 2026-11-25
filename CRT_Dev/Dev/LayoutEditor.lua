@@ -230,61 +230,108 @@ end
 -- Puts a saved override on a piece the first time the piece is seen after a /reload.
 local stale = {}
 
-local function applyOverride(piece)
-    local o = db().overrides[piece.path]
-    if not o or applied[piece.obj] then
+local function applyOverride(path, obj)
+    local o = db().overrides[path]
+    if not o or applied[obj] then
         return
     end
-    applied[piece.obj] = true
+    applied[obj] = true
     -- The code moved this piece since the change was made: the change is out of date.
-    if o.base and not sameSnapshot(o.base, snapshot(piece.obj)) then
-        stale[#stale + 1] = piece.path
+    if o.base and not sameSnapshot(o.base, snapshot(obj)) then
+        stale[#stale + 1] = path
         return
     end
     if o.dx ~= 0 or o.dy ~= 0 then
-        shift(piece.obj, o.dx, o.dy)
+        shift(obj, o.dx, o.dy)
     end
     if o.dw ~= 0 or o.dh ~= 0 then
-        resize(piece.obj, o.dw, o.dh)
+        resize(obj, o.dw, o.dh)
     end
     if o.font ~= 0 then
-        changeFont(piece.obj, o.font)
+        changeFont(obj, o.font)
     end
 end
 
--- The saved changes not put on their piece yet (nor skipped as out of date), by the first part of their path (a
--- page key, or "panel"). Walking every built page's every region on each page change made megabytes of garbage a
--- click (#1315), so a page is walked only while one of its changes still waits, and with no changes nothing is.
-local function waitingPrefixes()
-    local out
+-- A saved path split once into its first part (a page key, or "panel") and its steps: "c" or "r", and the index.
+local parsed = {}
+
+local function stepsOf(path)
+    local p = parsed[path]
+    if p == nil then
+        p = false
+        local prefix, rest = path:match("^([^.]+)(.*)$")
+        if prefix and rest ~= "" then
+            p = { prefix = prefix }
+            for kind, i in rest:gmatch("%.([cr])(%d+)") do
+                p[#p + 1] = kind
+                p[#p + 1] = tonumber(i)
+            end
+            -- every step but the last is a child frame, as walk names them
+            for s = 1, #p - 2, 2 do
+                if p[s] ~= "c" then
+                    p = false
+                    break
+                end
+            end
+            if p and #p == 0 then
+                p = false
+            end
+        end
+        parsed[path] = p
+    end
+    return p or nil
+end
+
+-- The piece a saved path names, found by its indices (select on GetChildren and GetRegions makes no tables), the
+-- same piece walk would name; nil when its page isn't built or the piece isn't there (not now, or not any more).
+local function resolve(path)
+    local p = stepsOf(path)
+    if not p then
+        return nil
+    end
+    local obj
+    if p.prefix == "panel" then
+        obj = UI.frame
+    else
+        local page = UI.pages[p.prefix]
+        obj = page and page.frame
+    end
+    for s = 1, #p, 2 do
+        if not obj then
+            return nil
+        end
+        local i = p[s + 1]
+        if p[s] == "c" then
+            obj = select(i, obj:GetChildren())
+            if obj == overlay or obj == info or (p.prefix == "panel" and s == 1 and UI.frame and obj == UI.frame.content) then
+                return nil
+            end
+        else
+            obj = select(i, obj:GetRegions())
+            if not (obj and obj:GetObjectType() == "FontString") then
+                return nil
+            end
+        end
+    end
+    return obj
+end
+
+-- Puts each saved change not on yet on its piece. Walking every built page's every region on each page change made
+-- megabytes of garbage a click (#1315), and a change whose piece is gone (or whose page is) kept its page walked on
+-- every click, so each change is looked up by its own path instead: nothing is walked, and nothing is made for a
+-- change already on, out of date or still without its piece. One whose piece shows up later (a tab built on its
+-- first show) still goes on then.
+function Dev:ApplyAll()
+    local before = #stale
     for path in pairs(db().overrides) do
         if not done[path] then
-            out = out or {}
-            out[path:match("^[^.]+")] = true
-        end
-    end
-    return out
-end
-
-function Dev:ApplyAll()
-    local waiting = waitingPrefixes()
-    if not waiting then
-        return
-    end
-    local before = #stale
-    local pieces = {}
-    for key, page in pairs(UI.pages) do
-        if waiting[key] and page.frame then
-            walk(page.frame, key, pieces)
-        end
-    end
-    if waiting.panel then
-        panelPieces(pieces)
-    end
-    for _, piece in ipairs(pieces) do
-        applyOverride(piece)
-        if db().overrides[piece.path] and applied[piece.obj] then
-            done[piece.path] = true
+            local obj = resolve(path)
+            if obj then
+                applyOverride(path, obj)
+                if applied[obj] then
+                    done[path] = true
+                end
+            end
         end
     end
     if #stale > before then
