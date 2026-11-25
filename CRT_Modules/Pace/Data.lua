@@ -167,6 +167,41 @@ function Pace:Restore(encounterID, snap)
     self:Fire()
 end
 
+local function samePlan(a, b)
+    if (a == nil) ~= (b == nil) then
+        return false
+    end
+    if not a then
+        return true
+    end
+    if a.mode ~= b.mode or #a.rows ~= #b.rows then
+        return false
+    end
+    for i, r in ipairs(a.rows) do
+        local o = b.rows[i]
+        if r.ph ~= o.ph or r.t ~= o.t or r.unit ~= o.unit or r.hp ~= o.hp then
+            return false
+        end
+    end
+    return true
+end
+
+-- Runs change() on a boss's plan and returns its Undo: a function that puts the plan and its pick back as they were
+-- before, true, only while they are still as change() left them (an edit since is kept: false).
+function Pace:Change(encounterID, change)
+    local before = self:Snapshot(encounterID)
+    change()
+    local after = self:Snapshot(encounterID)
+    return function()
+        local now = self:Snapshot(encounterID)
+        if now.use ~= after.use or not samePlan(now.own, after.own) then
+            return false
+        end
+        self:Restore(encounterID, before)
+        return true
+    end
+end
+
 function Pace:Enabled(encounterID)
     return not db().disabled[encounterID]
 end

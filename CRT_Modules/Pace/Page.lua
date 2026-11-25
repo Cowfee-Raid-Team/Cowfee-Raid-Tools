@@ -50,14 +50,17 @@ local TEXT = {
     -- Delete and Reset to shipped act at once with Undo (UI.UndoToast)
     deleted = "Deleted a checkpoint from %s.",
     wasReset = "Put %s back to the shipped plan.",
+    changedSince = "The plan changed since, so it wasn't put back.",
 }
 
--- Runs change(), then offers Undo putting the boss's own plan and its pick back as they were before it.
+-- Runs change(), then offers Undo putting the boss's own plan and its pick back as they were before it, only while
+-- nothing else changed the plan since (Pace:Change).
 local function withUndo(encounterID, text, owner, change)
-    local snap = Pace:Snapshot(encounterID)
-    change()
+    local undo = Pace:Change(encounterID, change)
     UI.UndoToast({ text = text:format(Pace:BossName(encounterID)), owner = owner, onUndo = function()
-        Pace:Restore(encounterID, snap)
+        if not undo() then
+            CRT:Print(TEXT.changedSince)
+        end
     end })
 end
 

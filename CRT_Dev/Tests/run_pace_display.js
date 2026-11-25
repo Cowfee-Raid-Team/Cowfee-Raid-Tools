@@ -316,6 +316,25 @@ do
     check(#p.own[1001].rows == 2, "Undo after a Delete: the row is back")
     p.own[1001], p.use[1001] = nil, nil
   end
+  -- Pace:Change(boss, fn): runs the change and hands back its Undo, which acts only while the plan is as the change left it
+  check(type(Pace.Change) == "function", "Pace:Change")
+  if Pace.Change then
+    p.own[1001] = { mode = "phase", rows = { { ph = 1, t = 10, unit = "boss1", hp = 90 }, { ph = 2, t = 20, unit = "boss1", hp = 50 } } }
+    local undo = Pace:Change(1001, function() Pace:RemoveRow(1001, 1) end)
+    check(#p.own[1001].rows == 1, "the change runs at once")
+    check(undo() == true and #p.own[1001].rows == 2 and p.own[1001].rows[1].hp == 90, "its Undo puts the row back")
+    undo = Pace:Change(1001, function() Pace:RemoveRow(1001, 1) end)
+    Pace:AddRow(1001, 3, 40, "boss1", 25) -- another edit after the delete
+    check(undo() == false, "an edit since: Undo does nothing")
+    local r = p.own[1001].rows
+    check(#r == 2 and r[2].ph == 3 and r[2].hp == 25, "and the edit is kept")
+    undo = Pace:Change(1001, function() Pace:Reset(1001) end)
+    Pace:AddRow(1001, 1, 5, "boss1", 99)
+    local hp99 = false
+    for _, row in ipairs(p.own[1001].rows) do if row.hp == 99 then hp99 = true end end
+    check(undo() == false and hp99 and #p.own[1001].rows == #TWO.rows + 1, "Reset, then a new plan of yours (the shipped one plus a row): Undo keeps the new one")
+    p.own[1001], p.use[1001] = nil, nil
+  end
   local _, undos = PAGE:gsub("withUndo%(", "")
   check(undos >= 3 and PAGE:find("UI.UndoToast", 1, true) ~= nil, "the page's Delete and Reset to shipped go through UI.UndoToast")
 end
