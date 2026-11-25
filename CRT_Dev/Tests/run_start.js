@@ -600,6 +600,48 @@ rawset(deep, "GetTop", function() return 470 end)
 rawset(deep, "GetBottom", function() return 446 end)
 UI.Spotlight(deep)
 check(scrolled == nil, "a control already in view isn't scrolled")
+-- in a scroll frame the box sits on the scroll frame's parent, above it, cut to its edges, so nothing clips it
+local pane = CreateFrame("Frame", nil, UIParent)
+local list = CreateFrame("ScrollFrame", nil, pane)
+local rows = CreateFrame("Frame", nil, list)
+local first = CreateFrame("CheckButton", nil, rows)
+first:SetSize(24, 24)
+local wheel = 0
+list:SetScript("OnMouseWheel", function() wheel = wheel + 1 end)
+rawset(list, "GetScrollChild", function() return rows end)
+rawset(list, "GetLeft", function() return 100 end) rawset(list, "GetRight", function() return 400 end)
+rawset(list, "GetTop", function() return 500 end) rawset(list, "GetBottom", function() return 400 end)
+rawset(list, "GetHeight", function() return 100 end)
+rawset(list, "GetVerticalScroll", function() return 0 end)
+rawset(list, "GetVerticalScrollRange", function() return 300 end)
+rawset(list, "SetVerticalScroll", function() end)
+rawset(rows, "GetTop", function() return 500 end)
+-- the first row, its left edge 1 px inside the list and its top 2 px under the list's top
+rawset(first, "GetLeft", function() return 101 end)
+rawset(first, "GetTop", function() return 498 end) rawset(first, "GetBottom", function() return 474 end)
+check(UI.Spotlight(first) ~= nil, "a control at the top of a list is spotlighted")
+local bp = box.pts[1] or {}
+check(box.parent == pane, "in a scroll frame the box is on the scroll frame's parent, never inside what it clips")
+check(bp[1] == "TOPLEFT" and bp[2] == list and bp[3] == "TOPLEFT", "placed from the scroll frame's corner")
+check((bp[4] or -1) >= 0 and (bp[5] or 1) <= 0, "its left and top never pass the scroll frame's edges (" .. tostring(bp[4]) .. ", " .. tostring(bp[5]) .. ")")
+check(bp[4] + box.w <= 300 and -bp[5] + box.h <= 100, "nor its right and bottom")
+check(bp[4] == 0 and bp[5] == 0 and box.w == 101 + 24 + SP.pad - 100 and box.h == 500 - (486 - 12 - SP.pad), "cut where the list's edge is, the rest " .. SP.pad .. " px around (" .. box.w .. " x " .. box.h .. ")")
+-- the list scrolling takes it away: the wheel, or a scroll elsewhere; its own scroll doesn't
+list.scripts.OnVerticalScroll(list, 0)
+check(box.shown and UI.spotlight.target == first, "the scroll that brought it into view keeps it")
+list.scripts.OnVerticalScroll(list, 40)
+check(not box.shown and UI.spotlight.target == nil, "the list scrolled: the box goes")
+UI.Spotlight(first)
+list.scripts.OnMouseWheel(list, -1)
+check(not box.shown and wheel == 1, "the mouse wheel on the list takes it away, and the list still scrolls")
+-- a control out of the list's view gets no box
+rawset(first, "GetTop", function() return 380 end) rawset(first, "GetBottom", function() return 356 end)
+check(UI.Spotlight(first) == nil and not box.shown, "a control outside the list's view: no box")
+-- a control that isn't shown gets no box
+local hidden = control("Hidden switch")
+hidden:Hide()
+UI:RegisterSpot("pace", "hidden", hidden)
+check(UI:GoToSpot("pace", "hidden") == nil and UI.Spotlight(hidden) == nil and not box.shown and not (box.events and box.events.GLOBAL_MOUSE_DOWN), "a switch that isn't shown: no box, not listening")
 UI.ClearSpotlight()
 -- the Welcome's voice step spotlights the voice it names
 local voice = control("Voice")
@@ -610,6 +652,37 @@ for _, half in ipairs(W.view.choice.buttons) do if half.key == "raider" then cli
 check(W.STEPS.raider[2].spot and W.STEPS.raider[2].spot[1] == "notes" and W.STEPS.raider[2].spot[2] == "voice", "the Welcome's voice step names the voice setting")
 click(W.view.steps[2].button)
 check(p.opened[#p.opened] == "notes:alerts" and UI.spotlight.target == voice, "the Welcome's voice step opens Alert settings and spotlights the voice")
+-- the Welcome over the spotlighted Voice: it moves beside the main window, kept on screen
+local function rectOf(f, l, r, t, b)
+  rawset(f, "GetLeft", function() return l end) rawset(f, "GetRight", function() return r end)
+  rawset(f, "GetTop", function() return t end) rawset(f, "GetBottom", function() return b end)
+end
+local win = p.welcome()
+rectOf(UIParent, 0, 1920, 1080, 0)
+rectOf(UI.frame, 300, 1100, 900, 300)
+rectOf(win, 500, 960, 800, 600)
+rectOf(voice, 520, 700, 700, 676)
+win.pts = {}
+click(W.view.steps[2].button)
+local wp = win.pts[#win.pts] or {}
+check(wp[1] == "TOPLEFT" and wp[2] == UIParent and wp[4] == 1100 + W.LAYOUT.aside and wp[5] == 800, "the Welcome covering the Voice moves right of the main window: " .. tostring(wp[4]) .. ", " .. tostring(wp[5]))
+-- no room on the right: it goes left of it; no room on either side: kept on screen
+rectOf(UI.frame, 1000, 1800, 900, 300)
+win.pts = {}
+click(W.view.steps[2].button)
+wp = win.pts[#win.pts] or {}
+check(wp[4] == 1000 - W.LAYOUT.aside - 460, "no room on the right: left of the main window: " .. tostring(wp[4]))
+rectOf(UI.frame, 10, 1910, 900, 300)
+win.pts = {}
+click(W.view.steps[2].button)
+wp = win.pts[#win.pts] or {}
+check(wp[4] and wp[4] >= 0 and wp[4] + 460 <= 1920, "no room either side: kept on screen: " .. tostring(wp[4]))
+-- the Welcome clear of the Voice stays where it is
+rectOf(win, 1200, 1660, 800, 600)
+rectOf(UI.frame, 300, 1100, 900, 300)
+win.pts = {}
+click(W.view.steps[2].button)
+check(#win.pts == 0, "the Welcome clear of the Voice stays where it is")
 UI.ClearSpotlight()
 click(W.view.steps[3].button)
 check(UI.spotlight.target == nil, "a step that names no setting opens its page with no box")

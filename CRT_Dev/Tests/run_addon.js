@@ -686,7 +686,9 @@ do
   local S = CRT.StartPage
   UI.Show = realShow
   -- the skins reach into the game's templates, which these stand-ins don't have; the pages are built bare
+  local skins = {}
   for _, k in ipairs({ "SkinTree", "SkinDropdown", "SkinButton", "SkinEditBox", "SkinCheckButton", "SkinScrollBar", "SkinCloseButton" }) do
+    skins[k] = UI[k]
     UI[k] = function() end
   end
   -- shown, a frame runs its OnShow, as in the game (the pages pick their tab there)
@@ -747,7 +749,17 @@ do
   local voice = UI:FindSpot("notes", "voice")
   check(voice ~= nil and voice.GetObjectType ~= nil, "the Welcome's voice step finds the Voice row on Alert settings")
   UI.ClearSpotlight()
+  -- the stand-ins put back as they were: Show without OnShow, CreateFrame, the skins and UI.Show
+  stubs.CreateFrame = plainFrame
+  for _, rec in ipairs(frames) do
+    rawset(rec.frame, "Show", nil)
+    rawset(rec.frame, "SetShown", nil)
+  end
+  for k, fn in pairs(skins) do
+    UI[k] = fn
+  end
   UI.Show = function(_, key) shownPages[#shownPages + 1] = key or "?" end
+  check(stubs.CreateFrame == plainFrame and rawget(frames[1].frame, "Show") == nil, "the page block puts the stand-ins back")
 end
 
 print(passes .. " passed, " .. fails .. " failed")
