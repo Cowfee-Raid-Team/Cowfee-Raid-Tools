@@ -1,4 +1,4 @@
-// CRT_Dev/Dev/MemProbe.lua (/crt dev mem [seconds], #1315) on mock frames and a mock heap: it wraps only CRT's own frames'
+// CRT_Dev/Dev/MemProbe.lua (/crt dev mem [seconds], #1315) on mock frames and a mock heap: it wraps only CRT's own frames' scripts (OnClick, OnShow and the rest too), CRT.UI:Show, and their
 // OnUpdate and OnEvent scripts (by name or source location; never another addon's, never a protected frame) and the
 // C_Timer callbacks CRT schedules (never another caller's), measures each call's heap growth, prints the top 10 by KB
 // with call counts and the total, and puts every script and C_Timer function back when it ends. Not running, it has no
@@ -91,6 +91,14 @@ local secureEvent = grows(50)
 secure.scripts.OnEvent = secureEvent
 
 local CRT = {}
+-- the main window's Show (a page built on its first show) and the note windows' rebuild counts
+local uiShow = function(_, key) heap = heap + (key == "start" and 300 or 40) end
+CRT.UI = { Show = uiShow }
+CRT.NoteWindow = { rebuilds = { window = { changed = 2 }, assignments = {}, personal = {} } }
+-- a CRT button's OnClick and a page's OnShow
+local button = frame(nil, CRT_PATH .. "CRT_Core/UI/StartPage.lua:90")
+local clickFn, showFn = grows(1.5), grows(20)
+button.scripts.OnClick, button.scripts.OnShow = clickFn, showFn
 local said = {}
 function CRT:Print(s) said[#said + 1] = s end
 assert(load(SRC, "@CRT_Dev/Dev/MemProbe.lua"))("CowfeeRaidTools", CRT)
@@ -112,7 +120,7 @@ check(Probe:Command("dev mem lots") == true and not Probe.state.running and said
 
 -- start for 10 seconds
 check(Probe:Command("dev mem 10") == true and Probe.state.running, "/crt dev mem 10 starts it")
-check(said[#said]:find("10 s", 1, true) and said[#said]:find("2 of CRT", 1, true), "it says for how long, and how many of CRT's frames: " .. tostring(said[#said]))
+check(said[#said]:find("10 s", 1, true) and said[#said]:find("3 of CRT", 1, true), "it says for how long, and how many of CRT's frames: " .. tostring(said[#said]))
 check(notesWin.scripts.OnUpdate ~= nwUpdate and notesWin.scripts.OnEvent ~= nwEvent, "CRT's frame (by source location) is wrapped")
 check(named.scripts.OnUpdate ~= namedUpdate, "a CRT frame by its name is wrapped")
 check(other.scripts.OnUpdate == otherUpdate, "another addon's frame isn't")
@@ -136,6 +144,13 @@ local shrink = function() heap = heap - 400 end
 notesWin.scripts.OnEvent(notesWin, "ZONE_CHANGED_NEW_AREA")
 local wrappedEvent = notesWin.scripts.OnEvent
 nwEvent = shrink
+button.scripts.OnClick(button, "LeftButton")
+button.scripts.OnClick(button, "LeftButton")
+button.scripts.OnShow(button)
+CRT.UI:Show("start")
+CRT.UI:Show("notes")
+CRT.NoteWindow.rebuilds.window.changed = 5
+CRT.NoteWindow.rebuilds.personal.live = 3
 -- CRT sets a new script on its frame meanwhile: that one stays after the probe
 local newer = function() end
 named.scripts.OnUpdate = newer
@@ -161,7 +176,18 @@ check(named0 and named0.calls == 30, "the named frame measured")
 local any999 = false
 for _, e in ipairs(list) do if e.kb >= 999 or e.key:find("Blizzard", 1, true) or e.key:find("OtherAddon", 1, true) then any999 = true end end
 check(not any999, "another caller's timer and another addon's frame aren't measured")
-check(list[1].key == "OnUpdate  CRT_Modules/Notes/Window.lua:1437", "the list is sorted by KB, the most first: " .. list[1].key)
+check(list[1].key == "UI:Show" and list[2].key == "OnUpdate  CRT_Modules/Notes/Window.lua:1437", "the list is sorted by KB, the most first: " .. list[1].key)
+local click = byKey["OnClick  CRT_Core/UI/StartPage.lua:90"]
+check(click and click.calls == 2 and math.abs(click.kb - 3) < 0.01, "OnClick measured")
+check(byKey["OnShow  CRT_Core/UI/StartPage.lua:90"] ~= nil, "OnShow measured")
+local shows = byKey["UI:Show"]
+check(shows and shows.calls == 2 and math.abs(shows.kb - 340) < 0.01, "CRT.UI:Show measured: " .. tostring(shows and shows.kb))
+check(CRT.UI.Show == uiShow, "CRT.UI.Show put back")
+check(button.scripts.OnClick == clickFn and button.scripts.OnShow == showFn, "OnClick and OnShow put back")
+local causes
+for _, p in ipairs(printed) do if p:find("Note window rebuilds", 1, true) then causes = p end end
+check(causes and causes:find("window: changed 3", 1, true) and causes:find("personal: live 3", 1, true) and causes:find("assignments: none", 1, true),
+  "the note windows' rebuilds during the run, by cause: " .. tostring(causes))
 -- the report: a total line, then the top lines with KB and calls
 local report = said[#said]
 check(report:find("Memory probe, 10 s", 1, true) and report:find("KB", 1, true), "the report's total line: " .. tostring(report))

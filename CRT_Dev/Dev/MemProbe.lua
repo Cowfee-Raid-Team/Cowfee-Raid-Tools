@@ -1,8 +1,9 @@
 local ADDON, CRT = ...
 
 -- DEVELOPER ONLY. /crt dev mem [seconds] (default 15, 1 to 120): what in CRT makes Lua garbage, measured in game
--- (#1315). For the given seconds it wraps CRT's own frames' OnUpdate and OnEvent scripts and the C_Timer callbacks
--- CRT schedules, reads collectgarbage("count") before and after each call, then prints the 10 that made the most KB,
+-- (#1315). For the given seconds it wraps CRT's own frames' scripts (Probe.KINDS: OnUpdate, OnEvent, OnShow, OnHide,
+-- OnClick, OnEnter and the other mouse, value, size and text scripts), CRT.UI's Show, Hide and Toggle (a page's build
+-- and show), and the C_Timer callbacks CRT schedules, reads collectgarbage("count") before and after each call, then prints the 10 that made the most KB,
 -- with their call counts, and the total. Everything it wrapped is put back when it ends; a wrapper still in place
 -- (a script CRT hooked on top of it meanwhile) only passes the call on. No effect when it isn't running.
 --   CRT's frames: those named CowfeeRaidTools..., and every frame the game says CRT's files made
@@ -13,6 +14,8 @@ local ADDON, CRT = ...
 --   debugstack) has its callback measured under the line that scheduled it. Timers and tickers made before the
 --   probe started aren't measured. While it runs, the game's own C_Timer calls go through the wrapper too, so it
 --   never starts in combat.
+-- It also prints how often each note window rebuilt and why (CRT.NoteWindow.rebuilds), and how much of CRT's memory
+-- growth it saw. Scripts set on frames made while it runs aren't wrapped; the show that made them is.
 -- A call's KB is what the Lua heap grew by during it: a garbage collector step in the middle reads as 0.
 -- Game calls (warcraft.wiki.gg, read 2026-11-25): EnumerateFrames([frame]) (every non-forbidden frame),
 -- ScriptRegion:GetSourceLocation() ("path\to\file.lua:10", "UnknownFile" with the CVar off), Frame:GetScript,
@@ -21,7 +24,11 @@ local ADDON, CRT = ...
 -- UpdateAddOnMemoryUsage(), GetAddOnMemoryUsage(name) (KB, cached by UpdateAddOnMemoryUsage),
 -- C_CVar.GetCVar(name).
 
-local Probe = { DEFAULT = 15, MAX = 120, TOP = 10, KINDS = { "OnUpdate", "OnEvent" } }
+local Probe = { DEFAULT = 15, MAX = 120, TOP = 10, KINDS = { "OnUpdate", "OnEvent", "OnShow", "OnHide", "OnClick",
+    "OnEnter", "OnLeave", "OnMouseDown", "OnMouseUp", "OnMouseWheel", "OnValueChanged", "OnSizeChanged", "OnTextChanged",
+    "OnEditFocusGained", "OnEditFocusLost", "OnDragStart", "OnDragStop" },
+    -- CRT's own functions measured too: the main window's page shows (a page is built on its first)
+    FUNCTIONS = { { "UI", "Show" }, { "UI", "Hide" }, { "UI", "Toggle" } } }
 CRT.MemProbe = Probe
 
 local P = { running = false, stats = {}, wrapped = {}, keys = {} }
@@ -176,6 +183,53 @@ local function wrapTimers()
     end
 end
 
+-- CRT's own functions (Probe.FUNCTIONS): each call measured under its name, put back after.
+local function wrapFunctions()
+    P.functions = {}
+    for _, spec in ipairs(Probe.FUNCTIONS) do
+        local owner = CRT[spec[1]]
+        local original = type(owner) == "table" and rawget(owner, spec[2])
+        if type(original) == "function" then
+            local key = spec[1] .. ":" .. spec[2]
+            local wrapper = function(...)
+                if not P.running then
+                    return original(...)
+                end
+                local before = heapKB()
+                original(...)
+                record(key, before)
+            end
+            owner[spec[2]] = wrapper
+            P.functions[#P.functions + 1] = { owner = owner, name = spec[2], original = original, wrapper = wrapper }
+        end
+    end
+end
+
+local function restoreFunctions()
+    for _, w in ipairs(P.functions or {}) do
+        if w.owner[w.name] == w.wrapper then
+            w.owner[w.name] = w.original
+        end
+    end
+    P.functions = nil
+end
+
+-- The note windows' rebuild counts by cause, copied (CRT.NoteWindow.rebuilds: { key = { cause = n } }).
+local function rebuildCounts()
+    local R = CRT.NoteWindow and CRT.NoteWindow.rebuilds
+    if type(R) ~= "table" then
+        return nil
+    end
+    local out = {}
+    for key, causes in pairs(R) do
+        out[key] = {}
+        for cause, n in pairs(causes) do
+            out[key][cause] = n
+        end
+    end
+    return out
+end
+
 local function restoreTimers()
     local saved = P.timers
     if saved and type(C_Timer) == "table" then
@@ -235,8 +289,24 @@ function Probe:Report()
         print("  Nothing of CRT's ran.")
     end
     if P.startAddonKB and P.endAddonKB then
-        print(string.format("  CRT's memory: %.0f KB -> %.0f KB. The whole Lua heap: %.0f KB -> %.0f KB.", P.startAddonKB,
-            P.endAddonKB, P.startHeap or 0, P.endHeap or 0))
+        print(string.format("  CRT's memory: %.0f KB -> %.0f KB (%.0f KB more; the probe saw %.0f KB of garbage made). The whole Lua heap: %.0f KB -> %.0f KB.",
+            P.startAddonKB, P.endAddonKB, P.endAddonKB - P.startAddonKB, kb, P.startHeap or 0, P.endHeap or 0))
+    end
+    local from, to = P.rebuildsFrom, P.rebuildsTo
+    if from and to then
+        local parts = {}
+        for _, key in ipairs({ "window", "assignments", "personal" }) do
+            local causes = {}
+            for cause, n in pairs(to[key] or {}) do
+                local d = n - ((from[key] or {})[cause] or 0)
+                if d > 0 then
+                    causes[#causes + 1] = cause .. " " .. d
+                end
+            end
+            table.sort(causes)
+            parts[#parts + 1] = key .. ": " .. (#causes > 0 and table.concat(causes, ", ") or "none")
+        end
+        print("  Note window rebuilds by cause: " .. table.concat(parts, "; ") .. ".")
     end
 end
 
@@ -246,7 +316,9 @@ function Probe:Stop()
     end
     P.running = false
     P.endHeap, P.endAddonKB = heapKB(), addonKB()
+    P.rebuildsTo = rebuildCounts()
     restoreTimers()
+    restoreFunctions()
     restoreScripts()
     self:Report()
 end
@@ -288,8 +360,9 @@ function Probe:Start(seconds)
     C_Timer.After(seconds, function()
         Probe:Stop()
     end)
-    P.startHeap, P.startAddonKB = heapKB(), addonKB()
+    P.startHeap, P.startAddonKB, P.rebuildsFrom = heapKB(), addonKB(), rebuildCounts()
     wrapTimers()
+    wrapFunctions()
     P.running = true
     CRT:Print(string.format("Memory probe on for %d s: %d of CRT's frames with scripts, and the timers CRT starts.", seconds, frames))
     if not located then
