@@ -50,7 +50,8 @@ local TEXT = {
     sourceCRT = "Recorded by CRT",
     sourceRC = "RCLootCouncil only",
     rcRow = "From RCLootCouncil (not recorded by CRT)",
-    deleteOne = "Delete this item from the history?",
+    deleteOne = "Delete this item from the history?", -- its name not loaded yet
+    deleteNamed = "Delete \"%s\" from the loot history? This can't be undone.",
     deleteBefore = "Delete every item from before %s?",
     deleteAll = "Delete the whole loot history? This can't be undone.",
     delete = "Delete",
@@ -403,7 +404,9 @@ local function initRow(row, entry)
         row:SetScript("OnClick", function(self)
             local e = self.entry
             if e and e.rec then -- an RCLootCouncil award is its data, not ours to delete
-                confirm(TEXT.deleteOne, function()
+                local it = item(e.rec[R.ITEM])
+                -- the game's generic confirm formats its text, so a "%" in the name is doubled
+                confirm(it and it.name and string.format(TEXT.deleteNamed, (it.name:gsub("%%", "%%%%"))) or TEXT.deleteOne, function()
                     Loot:Delete(e.rec, e.month)
                 end)
             end
