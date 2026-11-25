@@ -29,11 +29,12 @@ local function mock()
     if k == "Enable" then return function(self) rawset(self, "enabled", true) end end
     if k == "Disable" then return function(self) rawset(self, "enabled", false) end end
     if k == "GetText" then return function(self) return rawget(self, "text") end end
+    if k == "GetParent" then return function(self) return rawget(self, "parentFrame") end end
     return function() end end })
 end
 local frames = {}
 -- BasicFrameTemplate's TitleText (Blizzard_UIPanelTemplates: a GameFontNormal font string anchored TOP)
-function CreateFrame(_, _, _, template) local f = mock() frames[#frames + 1] = f
+function CreateFrame(_, _, parent, template) local f = mock() frames[#frames + 1] = f rawset(f, "parentFrame", parent)
   if template == "BasicFrameTemplateWithInset" then rawset(f, "TitleText", f:CreateFontString()) end
   return f end
 local tip = {}
@@ -50,8 +51,9 @@ function IsInGroup() return false end
 C_Timer = { After = function() end, NewTicker = function() end }
 RAID_CLASS_COLORS = {}
 local pages = {}
+local confirms, toasts = {}, {} -- what UI.Confirm and UI.UndoToast were given
 local CRT = { db = { late = { days = {}, hour = 20, minute = 0, grace = 0, history = {}, nextId = 3, lastAuto = "" } },
-  UI = { SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title, text) local m = mock() rawset(m, "helpTitle", title) rawset(m, "helpText", text) lateHelps[#lateHelps + 1] = m return m end, Dropdown = function(_, label, o) local m = mock() rawset(m, "Dropdown", mock()) rawset(m, "opts", o) local lab = mock() lab.text = label rawset(m, "Label", lab) dropdowns[#dropdowns + 1] = m
+  UI = { Confirm = function(o) confirms[#confirms + 1] = o return true end, UndoToast = function(o) toasts[#toasts + 1] = o return o end, SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title, text) local m = mock() rawset(m, "helpTitle", title) rawset(m, "helpText", text) lateHelps[#lateHelps + 1] = m return m end, Dropdown = function(_, label, o) local m = mock() rawset(m, "Dropdown", mock()) rawset(m, "opts", o) local lab = mock() lab.text = label rawset(m, "Label", lab) dropdowns[#dropdowns + 1] = m
     -- as the game's SetupMenu: a shown dropdown builds its menu at once, so options and get run before UI.Dropdown returns
     local function generate() if type(o.options) == "function" then o.options() end if o.get then rawset(m, "selected", o.get()) end end
     generate()
@@ -356,6 +358,58 @@ do
   CRT.UI.pages.dev.hidden = false
   pf:Show()
   check(edit.shown and edit.text == "Edit night", "dev reopened: the button is back, not editing")
+end
+-- Delete this night asks once through the shared confirm; the roster window's Remove acts at once with Undo (#1299)
+do
+  local function frameWith(text) for _, f in ipairs(frames) do if rawget(f, "text") == text and rawget(f, "OnClick") then return f end end end
+  local function selectNight(id) for _, f in ipairs(frames) do if rawget(f, "value") == id and rawget(f, "OnClick") then f.OnClick(f) return end end end
+  CRT.db.late.current = nil
+  pf:Show()
+  selectNight(2)
+  local del = frameWith("Delete this night")
+  check(del ~= nil, "History's Delete this night")
+  confirms = {}
+  del.OnClick(del)
+  local c = confirms[1]
+  check(c and c.text == "Delete the night of " .. os.date("%a %d %b", CRT.db.late.history[2].startedAt) .. "?", "it asks once, naming the night: " .. tostring(c and c.text))
+  check(c and c.detail == "Its record of 2 players goes too, and the totals no longer count it. This can't be undone.", "and what goes with it: " .. tostring(c and c.detail))
+  check(c and c.accept == "Delete night" and c.danger, "the accept button names the action")
+  check(CRT.Late:Find(2) ~= nil, "nothing is deleted until it is accepted")
+  check(del.text == "Delete this night", "the button never turns into a second click")
+  local keep = CRT.db.late.history[2]
+  if c then c.onAccept() end
+  check(CRT.Late:Find(2) == nil, "accepted: the night is deleted")
+  table.insert(CRT.db.late.history, keep)
+  selectNight("totals")
+  confirms = {}
+  del.OnClick(del)
+  check(#confirms == 0, "Totals: nothing to delete, nothing asks")
+  -- Remove on tonight's roster: at once, with Undo putting them back where they were
+  CRT.db.late.current = { id = 11, startedAt = time() - 600, how = "button", layout = "Main", grace = 0,
+    players = { { key = "Mesmertism-Stormrage" }, { key = "Gadios-Silvermoon", joinedAt = time() - 300 }, { key = "Balevolence-Stormrage" } } }
+  pf:Show()
+  local edit = frameWith("Edit roster")
+  edit.OnClick(edit)
+  local removeB
+  for _, f in ipairs(frames) do local p = rawget(f, "parentFrame") if rawget(f, "text") == "Remove" and rawget(f, "OnClick") and p and rawget(p, "key") == "Gadios-Silvermoon" and p.shown then removeB = f end end
+  check(removeB ~= nil, "a Remove button on Gadios's row")
+  toasts = {}
+  if removeB then removeB.OnClick(removeB) end
+  local night = CRT.db.late.current
+  check(#night.players == 2 and night.removed and night.removed["gadios-silvermoon"], "Remove takes them off at once")
+  local t = toasts[1]
+  check(t and t.text == "Took Gadios off tonight's list.", "and offers Undo, naming them without their realm: " .. tostring(t and t.text))
+  check(t and t.owner == removeB, "in the window the button is in")
+  if t then t.onUndo() end
+  check(#night.players == 3 and night.players[2].key == "Gadios-Silvermoon" and night.players[2].joinedAt == time() - 300, "Undo puts them back in their place, join time and all")
+  check(night.removed == nil, "and forgets the removal, as before it")
+  -- Undo after the night ended does nothing
+  if removeB then removeB.OnClick(removeB) end
+  local t2 = toasts[2]
+  CRT.db.late.current = nil
+  check(t2 and CRT.Late.RestorePlayer and not CRT.Late:RestorePlayer({ night = night, player = { key = "x" }, index = 1 }), "a night no longer running: nothing to put back")
+  if t2 then t2.onUndo() end
+  check(#night.players == 2, "and Undo leaves the ended night alone")
 end
 if fails > 0 then error(fails .. " late page checks failed") end
 `;

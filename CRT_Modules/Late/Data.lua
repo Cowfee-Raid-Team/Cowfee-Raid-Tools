@@ -270,17 +270,40 @@ function Late:AddPlayer(key)
     return true
 end
 
--- Takes someone off tonight's list, so they don't count as late or missing.
+-- Takes someone off tonight's list, so they don't count as late or missing. Returns what Late:RestorePlayer needs to
+-- put them back as they were (the page's Undo), or nil when they weren't on it.
 function Late:RemovePlayer(key)
     local night = ldb().current
     local i = night and findPlayer(night, key)
     if i then
+        local p = night.players[i]
+        local undo = { night = night, player = p, index = i, hadList = night.removed ~= nil,
+            wasMarked = night.removed and night.removed[p.key:lower()] }
         -- Remembered, so a later update from the layout doesn't put them back.
         night.removed = night.removed or {}
-        night.removed[night.players[i].key:lower()] = true
+        night.removed[p.key:lower()] = true
         table.remove(night.players, i)
         self:Fire()
+        return undo
     end
+end
+
+-- Puts a removed player back where they were on tonight's list, join time and all. False when that night isn't
+-- running any more or they are on the list again.
+function Late:RestorePlayer(undo)
+    local night = undo and ldb().current
+    if not (night and night == undo.night) or findPlayer(night, undo.player.key) then
+        return false
+    end
+    table.insert(night.players, math.min(undo.index, #night.players + 1), undo.player)
+    if night.removed then
+        night.removed[undo.player.key:lower()] = undo.wasMarked
+        if not undo.hadList and next(night.removed) == nil then
+            night.removed = nil -- as it was before the first removal
+        end
+    end
+    self:Fire()
+    return true
 end
 
 -- Brings tonight's list in line with the expected roster layout as it is saved now, keeping the

@@ -289,16 +289,32 @@ function Interrupts:SetCustom(key, raw)
 end
 
 -- Back to the shipped setup: your own is dropped.
+-- Returns the saved entry it dropped, for Interrupts:RestoreCustom (the editor's Undo); nil when there was none.
 function Interrupts:DropCustom(key)
     local id, diff = self.SplitKey(key)
     local boss = id and diff and db().setups[id]
     if type(boss) == "table" and boss[diff] then
+        local was = boss[diff]
         boss[diff] = nil
         if next(boss) == nil then
             db().setups[id] = nil
         end
         self:Fire("setup", self.Key(id, diff))
+        return was
     end
+end
+
+-- Puts back an entry Interrupts:DropCustom returned, as it was saved. False when a setup of yours is there again.
+function Interrupts:RestoreCustom(key, was)
+    local id, diff = self.SplitKey(key)
+    if not (id and diff and was) or self:IsCustom(key) then
+        return false
+    end
+    local setups = db().setups
+    setups[id] = type(setups[id]) == "table" and setups[id] or {}
+    setups[id][diff] = was
+    self:Fire("setup", self.Key(id, diff))
+    return true
 end
 
 -- Forgets the boss files read, for a boss file that changed (the tests).

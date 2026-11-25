@@ -22,6 +22,15 @@ local OUTPUTS = { { key = "self", label = "Only me" }, { key = "raid", label = "
 local ENDED = { button = "End night was pressed", gap = "no pull came for 6 hours" }
 local NOT_TEAM = "not a team raid" -- a pull's mark, beside its difficulty and length
 local SHOW_OPTIONS = { { key = "team", label = "Team raids" }, { key = "all", label = "All raids" } }
+-- History's Delete this night asks once (UI.Confirm); an own mechanic's Remove acts at once with Undo (UI.UndoToast)
+local DELETE_TEXT = {
+    button = "Delete this night",
+    ask = "Delete the night of %s?",
+    pulls = "Its %d %s too, and the totals no longer count them. This can't be undone.",
+    pull = "pull goes", pullsWord = "pulls go",
+    accept = "Delete night",
+    removed = "Removed %s from your own mechanics.",
+}
 
 local page, tonightText, tonightChild, detailText, detailChild, listChild, listScroll
 local scrollToSelected -- set by ShowNight: the next list refresh scrolls the selected night into view, once
@@ -718,9 +727,27 @@ local function getMechRow(i)
     row.remove = makeButton(row, "Remove", 70, 18)
     row.remove:SetPoint("RIGHT", -2, 0)
     row.remove:SetScript("OnClick", function(self)
-        if self.id then
-            Tattle:RemoveCustom(self.id)
+        local id = self.id
+        local was = id and Tattle:Settings().custom[id]
+        if was == nil then
+            return
         end
+        Tattle:RemoveCustom(id)
+        local name = type(was) == "table" and was.name or was
+        if type(name) ~= "string" or name == "" then
+            name = Tattle.SpellName(id)
+        end
+        -- Undo writes the same entry back (a table only when it had a boss, Tattle:AddCustom), only while the spell
+        -- hasn't been added again since
+        UI.UndoToast({ text = format(DELETE_TEXT.removed, name), owner = self, onUndo = function()
+            if Tattle:Settings().custom[id] ~= nil then
+                return
+            elseif type(was) == "table" then
+                Tattle:AddCustom(id, was.name, was.boss, was.encounterID)
+            else
+                Tattle:AddCustom(id, was)
+            end
+        end })
     end)
     row.check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
     row.check:SetSize(22, 22)
@@ -969,30 +996,20 @@ local function buildHistory(f)
     end)
     tooltip(postSelectedButton, "Post this night", "Posts this night's totals to the channel picked on the Settings tab.")
 
-    deleteButton = makeButton(f, "Delete this night", 160)
+    deleteButton = makeButton(f, DELETE_TEXT.button, 160)
     deleteButton:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
-    local armToken = 0
-    deleteButton:SetScript("OnClick", function(self)
-        if selected == TOTALS then
+    deleteButton:SetScript("OnClick", function()
+        local id = selected
+        local night = id ~= TOTALS and Tattle:Find(id)
+        if not night then
             return
         end
-        if not self.armed then
-            self.armed = true
-            armToken = armToken + 1
-            local token = armToken
-            self:SetText("Click again to delete")
-            C_Timer.After(3, function()
-                if token == armToken then
-                    self.armed = false
-                    self:SetText("Delete this night")
-                end
-            end)
-            return
-        end
-        armToken = armToken + 1
-        self.armed = false
-        self:SetText("Delete this night")
-        Tattle:Delete(selected)
+        local n = #(night.pulls or {})
+        UI.Confirm({ text = format(DELETE_TEXT.ask, day(night.startedAt)),
+            detail = format(DELETE_TEXT.pulls, n, n == 1 and DELETE_TEXT.pull or DELETE_TEXT.pullsWord),
+            accept = DELETE_TEXT.accept, danger = true, onAccept = function()
+                Tattle:Delete(id)
+            end })
     end)
 end
 

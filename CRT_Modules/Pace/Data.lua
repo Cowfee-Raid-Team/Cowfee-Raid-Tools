@@ -154,6 +154,54 @@ function Pace:Reset(encounterID)
     self:Fire()
 end
 
+-- A copy of your own plan for a boss and which plan is in use, taken before a Delete or a Reset, so the page's Undo
+-- (Pace:Restore) puts both back as they were.
+function Pace:Snapshot(encounterID)
+    local mine = db().own[encounterID]
+    return { own = mine and copyPlan(mine) or nil, use = db().use[encounterID] }
+end
+
+function Pace:Restore(encounterID, snap)
+    db().own[encounterID] = snap.own and copyPlan(snap.own) or nil
+    db().use[encounterID] = snap.use
+    self:Fire()
+end
+
+local function samePlan(a, b)
+    if (a == nil) ~= (b == nil) then
+        return false
+    end
+    if not a then
+        return true
+    end
+    if a.mode ~= b.mode or #a.rows ~= #b.rows then
+        return false
+    end
+    for i, r in ipairs(a.rows) do
+        local o = b.rows[i]
+        if r.ph ~= o.ph or r.t ~= o.t or r.unit ~= o.unit or r.hp ~= o.hp then
+            return false
+        end
+    end
+    return true
+end
+
+-- Runs change() on a boss's plan and returns its Undo: a function that puts the plan and its pick back as they were
+-- before, true, only while they are still as change() left them (an edit since is kept: false).
+function Pace:Change(encounterID, change)
+    local before = self:Snapshot(encounterID)
+    change()
+    local after = self:Snapshot(encounterID)
+    return function()
+        local now = self:Snapshot(encounterID)
+        if now.use ~= after.use or not samePlan(now.own, after.own) then
+            return false
+        end
+        self:Restore(encounterID, before)
+        return true
+    end
+end
+
 function Pace:Enabled(encounterID)
     return not db().disabled[encounterID]
 end

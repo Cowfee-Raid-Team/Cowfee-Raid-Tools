@@ -117,6 +117,10 @@ CRTFontButtonSmall, CRTFontButtonSmallHighlight, CRTFontButtonSmallDisable, CRTF
 -- the UI stand-ins
 local pages, shown, tabs, rows, picked, helps = {}, {}, {}, {}, {}, {}
 local UI = { PAGE_W = 1026, PAGE_H = 560 }
+KICK_TOASTS = {} -- what UI.UndoToast was given
+function UI.UndoToast(o) KICK_TOASTS[#KICK_TOASTS + 1] = o return o end
+KICK_CONFIRMS = {} -- what UI.Confirm was given
+function UI.Confirm(o) KICK_CONFIRMS[#KICK_CONFIRMS + 1] = o return true end
 function UI:RegisterPage(key, title, builder) pages[key] = { key = key, title = title, builder = builder } end
 function UI:SetPageHidden(key, hidden) if pages[key] then pages[key].hidden = hidden and true or false end end
 function UI:Show(key) shown[#shown + 1] = key end
@@ -610,19 +614,20 @@ end
 
 -- Use the raid's list and Clear list ask first
 check(P.useRaid.enabled, "use raid: there is a raid's list")
+-- (through the shared confirm, UI.Confirm, #1299: its accept button names the action; Cancel never calls onAccept)
+KICK_CONFIRMS = {}
 P.useRaid.scripts.OnClick(P.useRaid)
-local dlg
-for _, f in ipairs(all) do if f.name == "CowfeeRaidToolsKickConfirm" then dlg = f end end
-check(dlg and dlg.shown, "use raid: asks first")
-dlg.ok.scripts.OnClick(dlg.ok)
+local ask = KICK_CONFIRMS[#KICK_CONFIRMS]
+check(ask ~= nil and ask.accept == "Use the raid's list", "use raid: asks first, the button naming the action")
+if ask then ask.onAccept() end
 eq(I:Own(id)[2][1], "Other", "use raid: the raid's list copied over your own")
 P.clear.scripts.OnClick(P.clear)
-check(dlg.shown and plain(dlg.msg.text):find("Empty every name", 1, true), "clear: asks first")
-eq(I:Own(id)[1][1], "R11", "clear: nothing cleared before OK")
-dlg.cancel.scripts.OnClick(dlg.cancel)
-eq(I:Own(id)[1][1], "R11", "clear: Cancel keeps it")
-P.clear.scripts.OnClick(P.clear); dlg.ok.scripts.OnClick(dlg.ok)
-eq(I:Own(id)[1][1], "", "clear: OK empties your own list")
+ask = KICK_CONFIRMS[#KICK_CONFIRMS]
+check(ask and plain(ask.text):find("Empty every name", 1, true) and ask.accept == "Clear list", "clear: asks first")
+eq(I:Own(id)[1][1], "R11", "clear: nothing cleared before it is accepted (Cancel keeps it)")
+if ask then ask.onAccept() end
+eq(I:Own(id)[1][1], "", "clear: accepting empties your own list")
+check(not pageSrc or not pageSrc:find("KickConfirm", 1, true), "no confirm window of its own")
 
 -- Who has it: a pop-out window opened by its button, and How the numbers are worked out in a (?)
 fillOwn(true); I:SetUse(id, "own")
@@ -1116,6 +1121,23 @@ do
   E.shipped.scripts.OnClick(E.shipped)
   check(not I:IsCustom("3421:15") and I:Def("3421:15") == nil, "editor: Delete my setup drops it")
   check(printed[#printed]:find("Deleted your kick setup", 1, true), "editor: and says so")
+  -- #1299: it offers Undo, which saves your setup back as it was
+  local t = KICK_TOASTS[#KICK_TOASTS]
+  check(t and t.text:find("Deleted your kick setup", 1, true) and t.owner == E.shipped, "editor: Delete my setup offers Undo: " .. tostring(t and t.text))
+  if t then t.onUndo() end
+  check(I:IsCustom("3421:15") and I:Def("3421:15") ~= nil, "editor: Undo puts your setup back")
+  check(E.shipped.text == E.TEXT.delete and E.shipped.enabled, "editor: and the editor shows it again")
+  check(not I:RestoreCustom("3421:15", {}), "editor: a second Undo with a setup there does nothing")
+  E.shipped.scripts.OnClick(E.shipped)
+  check(not I:IsCustom("3421:15"), "editor: deleted again")
+  -- typing in the editor after the delete: Undo keeps what was typed and puts nothing back
+  I:SetCustom("3421:15", { label = "Mine", spell = { name = "Kick" }, groups = { { key = "a", label = "A", marker = 8, slots = 2 } } })
+  E:Open("3421:15")
+  E.shipped.scripts.OnClick(E.shipped)
+  local t2 = KICK_TOASTS[#KICK_TOASTS]
+  E.Draft().label = "Typed after"
+  if t2 then t2.onUndo() end
+  check(not I:IsCustom("3421:15") and E.Draft().label == "Typed after", "editor: an edit since the delete: Undo keeps the typing")
   P.bossRow.opts.set("3470:16")
 end
 

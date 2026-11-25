@@ -287,6 +287,58 @@ check(label(1) == "Alpha" and label(2) == "Beta" and barFrame(3).shown == false,
 previews.pace(false)
 Pace.PageBoss = nil
 
+-- Delete and Reset to shipped act at once with Undo (#1299): Pace:Snapshot before, Pace:Restore puts it back as it was
+do
+  local p = CRT.db.pace
+  check(type(Pace.Snapshot) == "function" and type(Pace.Restore) == "function", "Pace:Snapshot and Pace:Restore")
+  if Pace.Snapshot then
+    -- the shipped plan, nothing of yours: a Delete makes your own plan; Undo takes it away again
+    p.own[1002], p.use[1002] = nil, nil
+    local snap = Pace:Snapshot(1002)
+    Pace:RemoveRow(1002, 1)
+    check(p.own[1002] ~= nil and #p.own[1002].rows == 0, "a Delete on the shipped plan makes your own, one row less")
+    Pace:Restore(1002, snap)
+    check(p.own[1002] == nil and p.use[1002] == nil and Pace:Source(1002) == "shipped", "Undo: back to the shipped plan, nothing of yours")
+    -- your own plan, picked over the raid's: Reset drops both; Undo puts both back, rows and all
+    p.own[1001] = { mode = "phase", rows = { { ph = 2, t = 30, unit = "boss2", hp = 40 }, { ph = 3, t = 10, unit = "boss1", hp = 20 } } }
+    p.use[1001] = "own"
+    snap = Pace:Snapshot(1001)
+    Pace:Reset(1001)
+    check(p.own[1001] == nil and p.use[1001] == nil, "Reset to shipped drops your plan")
+    Pace:Restore(1001, snap)
+    local r = p.own[1001] and p.own[1001].rows
+    check(p.use[1001] == "own" and p.own[1001].mode == "phase" and r and #r == 2 and r[1].ph == 2 and r[1].t == 30 and r[1].unit == "boss2" and r[1].hp == 40 and r[2].hp == 20,
+      "Undo puts your plan and its pick back exactly")
+    -- the snapshot is a copy: edits after it don't change what Undo puts back
+    snap = Pace:Snapshot(1001)
+    Pace:RemoveRow(1001, 1)
+    Pace:Restore(1001, snap)
+    check(#p.own[1001].rows == 2, "Undo after a Delete: the row is back")
+    p.own[1001], p.use[1001] = nil, nil
+  end
+  -- Pace:Change(boss, fn): runs the change and hands back its Undo, which acts only while the plan is as the change left it
+  check(type(Pace.Change) == "function", "Pace:Change")
+  if Pace.Change then
+    p.own[1001] = { mode = "phase", rows = { { ph = 1, t = 10, unit = "boss1", hp = 90 }, { ph = 2, t = 20, unit = "boss1", hp = 50 } } }
+    local undo = Pace:Change(1001, function() Pace:RemoveRow(1001, 1) end)
+    check(#p.own[1001].rows == 1, "the change runs at once")
+    check(undo() == true and #p.own[1001].rows == 2 and p.own[1001].rows[1].hp == 90, "its Undo puts the row back")
+    undo = Pace:Change(1001, function() Pace:RemoveRow(1001, 1) end)
+    Pace:AddRow(1001, 3, 40, "boss1", 25) -- another edit after the delete
+    check(undo() == false, "an edit since: Undo does nothing")
+    local r = p.own[1001].rows
+    check(#r == 2 and r[2].ph == 3 and r[2].hp == 25, "and the edit is kept")
+    undo = Pace:Change(1001, function() Pace:Reset(1001) end)
+    Pace:AddRow(1001, 1, 5, "boss1", 99)
+    local hp99 = false
+    for _, row in ipairs(p.own[1001].rows) do if row.hp == 99 then hp99 = true end end
+    check(undo() == false and hp99 and #p.own[1001].rows == #TWO.rows + 1, "Reset, then a new plan of yours (the shipped one plus a row): Undo keeps the new one")
+    p.own[1001], p.use[1001] = nil, nil
+  end
+  local _, undos = PAGE:gsub("withUndo%(", "")
+  check(undos >= 3 and PAGE:find("UI.UndoToast", 1, true) ~= nil, "the page's Delete and Reset to shipped go through UI.UndoToast")
+end
+
 print(passes .. " passed, " .. fails .. " failed")
 if fails > 0 then error(fails .. " pace display checks failed") end
 `;

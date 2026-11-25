@@ -32,6 +32,7 @@ local TEXT = {
     inviteBody = "Invites everyone in this layout who isn't in your group. Each one moves to their group when they join, if it has a free spot.",
     inviteName = "Invite %s",
     clearSlot = "Clear slot",
+    slotCleared = "Cleared %s's slot.",
     setRole = "Set role",
     gameRole = "Use the game's role",
     unsaved = "Unsaved layout",
@@ -56,6 +57,20 @@ local TEXT = {
     extraClickBody = "put them in the first empty slot of that group.",
     extraDrag = "Drag",
     extraDragBody = "drop them on any slot.",
+    -- Set current roster, Clear grid and Delete layout: the shared confirm and Undo (UI.Confirm, UI.UndoToast)
+    replaceAsk = "Replace the grid with your current group?",
+    replaceKeep = "Keep changes is on, so the saved layout \"%s\" is overwritten too.",
+    replaceSaved = "The saved layout \"%s\" doesn't change until you save it.",
+    replace = "Replace grid",
+    cleared = "Cleared the grid (%d %s).",
+    name = "name", names = "names",
+    clearMoved = "The grid changed since it was cleared, so it wasn't put back.",
+    deleteAsk = "Delete the layout \"%s\"?",
+    deleteNames = "Its %d %s too.",
+    nameGoes = "name goes", namesGo = "names go",
+    deleteActive = "It is the active group, so the Late Tracker stops expecting it.",
+    deleteFinal = "This can't be undone.",
+    delete = "Delete layout",
     postHelp = "When Arrange Groups is done, posts one line to raid chat for each group with someone new in it, such as \"[CRT] <Group 1 Changes>: Name, Name\". If it stops part-way, it posts the groups that did change. Nothing is posted when nobody moved. In combat or during a boss encounter, the post waits until it ends.",
 }
 
@@ -183,21 +198,13 @@ local function getDialog()
     end)
     d.scroll:SetScrollChild(d.multi)
 
-    -- Message for confirm mode.
-    d.msg = d:CreateFontString(nil, "OVERLAY", "CRTFontHighlight")
-    d.msg:SetPoint("TOPLEFT", d, "TOPLEFT", 22, -42)
-    d.msg:SetPoint("TOPRIGHT", d, "TOPRIGHT", -22, -42)
-    d.msg:SetJustifyH("LEFT")
-    d.msg:SetJustifyV("TOP")
-    d.msg:Hide()
-
     d.ok = styleButton(CreateFrame("Button", nil, d, "UIPanelButtonTemplate"))
     d.ok:SetSize(110, 26)
     d.ok:SetScript("OnClick", function()
         local value
         if d.mode == "name" then
             value = d.edit:GetText()
-        elseif d.mode ~= "confirm" then
+        else
             value = d.multi:GetText()
         end
         if d.onAccept and d.onAccept(value) == false then
@@ -218,8 +225,7 @@ local function getDialog()
     return d
 end
 
--- mode "name" shows one line, "confirm" shows a message with OK and Cancel, anything else
--- shows a large multi-line box. For "confirm", text is the message.
+-- mode "name" shows one line, anything else a large multi-line box. A question asks through UI.Confirm instead.
 -- onAccept(text) may return false to keep the dialog open. No onAccept means a read-only close button.
 local function openDialog(mode, title, text, okLabel, onAccept)
     local d = getDialog()
@@ -230,16 +236,8 @@ local function openDialog(mode, title, text, okLabel, onAccept)
     d.cancel:SetShown(onAccept ~= nil)
     d.ok:ClearAllPoints()
     d.ok:SetPoint("BOTTOM", d, "BOTTOM", onAccept and -60 or 0, 12)
-    d.msg:Hide()
 
-    if mode == "confirm" then
-        d:SetSize(440, 170)
-        d.scroll:Hide()
-        d.edit:Hide()
-        d.msg:SetText(text or "")
-        d.msg:Show()
-        d:Show()
-    elseif mode == "name" then
+    if mode == "name" then
         d:SetSize(360, 130)
         d.scroll:Hide()
         d.edit:Show()
@@ -679,9 +677,24 @@ local function openSlotMenu(slot)
             end)
         end
         root:CreateButton(TEXT.clearSlot, function()
-            if Groups:Working() == grid then
-                Groups:SetSlot(slot.index, "")
+            if Groups:Working() ~= grid then
+                return
             end
+            local index, wasDirty = slot.index, Groups.dirty
+            local was = grid[index]
+            if not was or was == "" then
+                return
+            end
+            Groups:SetSlot(index, "")
+            -- Undo: the name back in its slot, while the same grid is open and the slot still empty
+            local shown = CRT.ShortName and CRT.ShortName(was) or was
+            UI.UndoToast({ text = format(TEXT.slotCleared, shown), owner = slot, onUndo = function()
+                if Groups:Working() == grid and grid[index] == "" then
+                    Groups:SetSlot(index, was)
+                    Groups.dirty = wasDirty
+                    Groups:Fire()
+                end
+            end })
         end)
         -- Set role: one of the three, or back to the game's role; it wins over the game's (Groups.HandRole)
         local roles = root:CreateButton(TEXT.setRole)
@@ -1215,21 +1228,48 @@ local function buildPage(pf)
 
         local g = gdb()
         local preset = g.selected and Groups:Find(g.selected)
-        local message = "This replaces everything in the grid with your current group."
-        if preset and g.keepChanges then
-            message = message .. format('\n\nKeep changes is on, so the saved layout "%s" will be overwritten too.', UI.HeadingText(preset.name))
-        elseif preset then
-            message = message .. format('\n\nThe saved layout "%s" is not changed until you save it.', UI.HeadingText(preset.name))
+        local detail
+        if preset then
+            detail = format(g.keepChanges and TEXT.replaceKeep or TEXT.replaceSaved, preset.name)
         end
-        openDialog("confirm", "Replace the grid?", message, "Replace", function()
+        UI.Confirm({ text = TEXT.replaceAsk, detail = detail, accept = TEXT.replace, onAccept = function()
             Groups:ReplaceWorking(slots)
-        end)
+        end })
     end)
 
+    -- Clear grid: at once, with Undo; an empty grid has nothing to clear
     local clear = makeButton(pf, "Clear grid", SLOT_W)
     clear:SetPoint("LEFT", setRoster, "RIGHT", COL_GAP, 0)
-    clear:SetScript("OnClick", function()
+    clear:SetScript("OnClick", function(self)
+        local saved, n = {}, 0
+        for i, key in ipairs(Groups:Working()) do
+            saved[i] = key
+            if key ~= "" then
+                n = n + 1
+            end
+        end
+        if n == 0 then
+            return
+        end
+        local openId, wasDirty = gdb().selected, Groups.dirty
         Groups:ReplaceWorking({})
+        UI.UndoToast({ text = format(TEXT.cleared, n, n == 1 and TEXT.name or TEXT.names), owner = self, onUndo = function()
+            -- only onto the grid as the clear left it: the same layout, still empty, so nothing put in since is lost
+            local stillEmpty = true
+            for _, key in ipairs(Groups:Working()) do
+                if key ~= "" then
+                    stillEmpty = false
+                    break
+                end
+            end
+            if gdb().selected ~= openId or not stillEmpty then
+                CRT:Print(TEXT.clearMoved)
+                return
+            end
+            Groups:ReplaceWorking(saved)
+            Groups.dirty = wasDirty -- Keep changes on saved it again; off, it was as unsaved as before
+            Groups:Fire()
+        end })
     end)
 
     UI.HelpRight(clear, "Editing the groups", TEXT.editHelp)
@@ -1323,32 +1363,29 @@ local function buildPage(pf)
         openDialog("text", "Export layout (Ctrl+C to copy)", Groups:Export(preset and preset.name or "Layout", Groups:Working()), "Close")
     end)
 
-    local delete = makeButton(pf, "Delete layout", RIGHT_W)
+    -- Delete layout asks once, naming the layout and how many names go with it
+    local delete = makeButton(pf, TEXT.delete, RIGHT_W)
     delete:SetPoint("BOTTOM", export, "TOP", 0, 6)
-    local armToken = 0
-    delete:SetScript("OnClick", function(self)
+    delete:SetScript("OnClick", function()
         local id = gdb().selected
-        if not id then
+        local preset = id and Groups:Find(id)
+        if not preset then
             CRT:Print("Select a saved layout first.")
             return
         end
-        if not self.armed then
-            self.armed = true
-            armToken = armToken + 1
-            local token = armToken
-            self:SetText("Click again to delete")
-            C_Timer.After(3, function()
-                if token == armToken then
-                    self.armed = false
-                    self:SetText("Delete layout")
-                end
-            end)
-            return
+        local n = #Groups:PresetNames(id)
+        local detail = {}
+        if n > 0 then
+            detail[#detail + 1] = format(TEXT.deleteNames, n, n == 1 and TEXT.nameGoes or TEXT.namesGo)
         end
-        armToken = armToken + 1
-        self.armed = false
-        self:SetText("Delete layout")
-        Groups:Delete(id)
+        if Groups:Active() == id then
+            detail[#detail + 1] = TEXT.deleteActive
+        end
+        detail[#detail + 1] = TEXT.deleteFinal
+        UI.Confirm({ text = format(TEXT.deleteAsk, preset.name), detail = table.concat(detail, " "), accept = TEXT.delete,
+            danger = true, onAccept = function()
+                Groups:Delete(id)
+            end })
     end)
 
     local saveNew = makeButton(pf, "Save current roster as new", RIGHT_W)

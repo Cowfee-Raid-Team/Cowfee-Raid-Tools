@@ -114,6 +114,7 @@ local CRT = {
     SetFrameTitle = function() end, StyleWindow = function() end,RegisterTab = function() end, SetTabSelected = function() end, SkinTree = function() end,
     SkinButton = function() end, SkinCheckButton = function() end, SkinEditBox = function() end, PANEL_BUTTON_PAD = 14,
     LiftOver = function() end, ShownPopup = function(ret) return ret end,
+    Confirm = function(o) CONFIRMED = o return true end, -- the shared confirm (CRT_Core/UI/Confirm.lua): what it was asked
     PanelButtonWidth = function(w) return math.max(40, math.ceil(w or 0) + 28) end },
   Alerts = { Settings = function() return { bars = {} } end, RegisterBlock = function() end, onPull = {}, OnChange = function() end, PeekNextPhase = function() return nil end },
   AlertRules = {},
@@ -715,6 +716,42 @@ do
   scroll.scripts.OnMouseDown(scroll)
   assert(d.edit:HasFocus() and rawget(d.edit, "cursor") == 7, "focused, cursor at the end")
   ok("Import/New: a click on the text area focuses the box with the cursor at the end")
+end
+
+-- 13. Delete asks once through the shared confirm, naming the note and its saved versions (#1299)
+do
+  local doomed = Notes:Import("EncounterID:3490;Difficulty:Mythic;Name:Doomed\\nA", nil, nil, nil, "Imported")
+  Notes:UpdateRaw(doomed, "EncounterID:3490;Difficulty:Mythic;Name:Doomed\\nB")
+  Notes:UpdateRaw(doomed, "EncounterID:3490;Difficulty:Mythic;Name:Doomed\\nC")
+  assert(Notes:HistoryCount(doomed) == 2, "a note with 2 saved versions")
+  redraw()
+  assert(pick(doomed), "the note is in the list")
+  CONFIRMED = nil
+  local del = button("Delete")
+  assert(del, "the Delete button")
+  del.scripts.OnClick(del)
+  local c = CONFIRMED
+  assert(c, "Delete asks first")
+  assert(c.text == 'Delete the note "Doomed (Mythic)"?', "naming the note: " .. tostring(c.text))
+  assert(c.detail == "Its 2 saved versions go too. This can't be undone.", "and its saved versions: " .. tostring(c.detail))
+  assert(c.accept == "Delete note" and c.danger, "the accept button names the action")
+  assert(Notes:Get(doomed) and Notes:HistoryCount(doomed) == 2, "nothing is deleted until it is accepted (Cancel and Escape never call onAccept)")
+  c.onAccept()
+  assert(Notes:Get(doomed) == nil and CRT.db.notes.history[doomed] == nil, "accepted: the note and its history are gone")
+  -- one saved version, and none
+  local one = Notes:Import("EncounterID:3491;Name:One\\nA", nil, nil, nil, "Imported")
+  Notes:UpdateRaw(one, "EncounterID:3491;Name:One\\nB")
+  P.AskDelete(one)
+  assert(CONFIRMED.text == 'Delete the note "One"?' and CONFIRMED.detail == "Its saved version goes too. This can't be undone.", "one version: " .. tostring(CONFIRMED.detail))
+  Notes:Delete(one)
+  local none = Notes:Import("EncounterID:3492;Name:None\\nA", nil, nil, nil, "Imported")
+  P.AskDelete(none)
+  assert(CONFIRMED.detail == "This can't be undone.", "no versions: " .. tostring(CONFIRMED.detail))
+  Notes:Delete(none)
+  CONFIRMED = nil
+  assert(P.AskDelete(nil) == false and CONFIRMED == nil, "no note picked: nothing asks")
+  redraw()
+  ok("Notes Delete asks once, naming the note and its saved versions; only accepting deletes it and its history")
 end
 print(passes .. " passed, 0 failed")
 `;

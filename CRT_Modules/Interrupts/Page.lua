@@ -125,9 +125,6 @@ local TEXT = {
     sharing = "Sharing",
     sharingHelp = "Ticked, a kick list the raid leader or an assistant shares replaces the raid's list here and sets your number. Your own list is never changed.",
     accept = "Accept kick lists from the leader and assistants",
-    ok = "OK",
-    cancel = "Cancel",
-    confirm = "Interrupts",
     slashOff = "Interrupts is switched off. Tick Enable Interrupts on Start here > What's on first.",
     soundNone = "None",
     -- the Settings tab's previews: both displays, the number box, the reminder
@@ -350,29 +347,9 @@ local function canEdit()
 end
 Page.CanEdit = canEdit
 
--- A confirm dialog: one window, made the first time.
-local dialog
-local function confirm(text, onAccept)
-    if not dialog then
-        dialog = UI.Window("CowfeeRaidToolsKickConfirm", { kind = "dialog", title = TEXT.confirm, width = 420, height = 150 })
-        dialog.msg = label(dialog.content, "", "CRTFontNormal")
-        dialog.msg:SetPoint("TOPLEFT", 8, -8)
-        dialog.msg:SetPoint("TOPRIGHT", -8, -8)
-        dialog.ok = button(dialog.content, TEXT.ok, function()
-            dialog:Hide()
-            if dialog.onAccept then
-                dialog.onAccept()
-            end
-        end)
-        dialog.ok:SetPoint("BOTTOMRIGHT", dialog.content, "BOTTOM", -4, 4)
-        dialog.cancel = button(dialog.content, TEXT.cancel, function()
-            dialog:Hide()
-        end)
-        dialog.cancel:SetPoint("BOTTOMLEFT", dialog.content, "BOTTOM", 4, 4)
-    end
-    dialog.msg:SetText(text)
-    dialog.onAccept = onAccept
-    dialog:Show()
+-- Asks first through the shared confirm (UI.Confirm); accept names the action.
+local function confirm(text, accept, onAccept)
+    return UI.Confirm({ text = text, accept = accept, onAccept = onAccept })
 end
 Page.Confirm = confirm
 
@@ -459,7 +436,7 @@ local function buildButtons(f)
     local clear = button(f, TEXT.clear, function()
         local id = boss()
         if id then
-            confirm(string.format(TEXT.clearAsk, Interrupts:BossName(id)), function()
+            confirm(string.format(TEXT.clearAsk, Interrupts:BossName(id)), TEXT.clear, function()
                 Interrupts:Clear(id)
             end)
         end
@@ -468,7 +445,7 @@ local function buildButtons(f)
         local id = boss()
         local shared = id and Interrupts:Shared(id)
         if shared then
-            confirm(string.format(TEXT.useRaidAsk, CRT.ShortName(shared.from) or "?", Interrupts:BossName(id)), function()
+            confirm(string.format(TEXT.useRaidAsk, CRT.ShortName(shared.from) or "?", Interrupts:BossName(id)), TEXT.useRaid, function()
                 Interrupts:CopyRaids(id)
             end)
         end

@@ -47,7 +47,22 @@ local TEXT = {
     },
     preview = "Preview pace window",
     previewTip = "Shows the pace window with a sample boss bar so you can drag it into place. Other previews stay as they are.",
+    -- Delete and Reset to shipped act at once with Undo (UI.UndoToast)
+    deleted = "Deleted a checkpoint from %s.",
+    wasReset = "Put %s back to the shipped plan.",
+    changedSince = "The plan changed since, so it wasn't put back.",
 }
+
+-- Runs change(), then offers Undo putting the boss's own plan and its pick back as they were before it, only while
+-- nothing else changed the plan since (Pace:Change).
+local function withUndo(encounterID, text, owner, change)
+    local undo = Pace:Change(encounterID, change)
+    UI.UndoToast({ text = text:format(Pace:BossName(encounterID)), owner = owner, onUndo = function()
+        if not undo() then
+            CRT:Print(TEXT.changedSince)
+        end
+    end })
+end
 
 local MODES = { { key = "phase", label = "By phase (seconds into each phase)" }, { key = "time", label = "By time from the pull" } }
 local PHASES = {}
@@ -208,7 +223,10 @@ local function makeRow(f, i)
     r.delete:SetHeight(18)
     r.delete:SetPoint("RIGHT", -4, 0)
     r.delete:SetScript("OnClick", function(self)
-        Pace:RemoveRow(boss(), self:GetParent().index)
+        local b, index = boss(), self:GetParent().index
+        withUndo(b, TEXT.deleted, self, function()
+            Pace:RemoveRow(b, index)
+        end)
     end)
     return r
 end
@@ -480,9 +498,12 @@ local function build(pf)
 
     local reset = button(pf, TEXT.reset, 140)
     reset:SetPoint("LEFT", export, "RIGHT", 6, 0)
-    reset:SetScript("OnClick", function()
-        if boss() then
-            Pace:Reset(boss())
+    reset:SetScript("OnClick", function(self)
+        local b = boss()
+        if b and (Pace:IsOwn(b) or Pace:Snapshot(b).use ~= nil) then -- nothing of yours: nothing to reset or undo
+            withUndo(b, TEXT.wasReset, self, function()
+                Pace:Reset(b)
+            end)
         end
     end)
 

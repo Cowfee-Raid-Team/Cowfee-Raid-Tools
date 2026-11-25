@@ -1,7 +1,7 @@
 // Tonight's team (CRT_Core/Team.lua, CRT_Core/TeamList.lua, CRT_Core/UI/TeamDialogs.lua, CRT_Core/UI/TeamPopup.lua):
 // several CRTs in one raid, each its own copy of the files and its own CRTDBChar, every message handed to every
 // other one. The dropdown's entries and default; adding (trimmed, 1 to 24 characters, no |, duplicates refused in
-// any case); removing in two steps, deleting only that team's data; the raid leader's push (T|1|<name>) taken only
+// any case); removing after one shared confirm (UI.Confirm), deleting only that team's data; the raid leader's push (T|1|<name>) taken only
 // from the current leader, the lock and its lifting (leaving the group, the lead moving), a joiner getting the push;
 // the new raid group popup once per group (not after a /reload, not in combat, not after a push, closed by one), the
 // leader's variant with Use Loot Master? and Save and push, and Add team… inside the popup.
@@ -164,6 +164,8 @@ local function makeUI(c)
   function UI.HelpRight() return mock("Button") end
   function UI:SkinEditBox(e) e.skinned = true end
   function UI.BadText(s) return "|cffff0000" .. s .. "|r" end
+  -- the shared confirm (CRT_Core/UI/Confirm.lua): what it was asked; Cancel and Escape are never calling onAccept
+  function UI.Confirm(o) c.confirm = o return true end
   return UI
 end
 
@@ -243,7 +245,7 @@ do
   check(not D.win.shown, "and closes")
 end
 
--- Remove: two steps, then only that team's data goes
+-- Remove: asks once through the shared confirm (#1299), then only that team's data goes
 do
   local D = S.Dialogs
   local deleted = {}
@@ -251,31 +253,23 @@ do
     delete = function(name) deleted[#deleted + 1] = name end })
   eq(T:TeamPulls("Cowfee Mythic"), 12, "the pulls saved under a team")
   check(not T:CanRemove("Team") and not T:CanRemove("Pug"), "Team and Pug can't be removed")
+  S.confirm = nil
   D.AskRemove("Team")
-  check(not D.win.shown or D.mode ~= "remove", "no warning for a built-in team")
+  check(S.confirm == nil, "no confirm for a built-in team")
   D.AskRemove("Night Crew")
-  eq(D.message.text, "Remove Night Crew? Season Stats for Night Crew (1 pull) will be deleted too.", "one pull: the singular")
-  D.cancel.OnClick()
-  check(not D.win.shown and T:Find("Night Crew") == "Night Crew", "Cancel at the first step removes nothing")
-  D.AskRemove("cowfee mythic")
-  eq(D.mode, "remove", "the first warning")
-  eq(D.message.text, "Remove Cowfee Mythic? Season Stats for Cowfee Mythic (12 pulls) will be deleted too.", "it names the team and its pulls")
-  eq(D.ok.text, "Remove", "[Remove]")
-  D.Accept()
-  eq(D.mode, "confirm", "Remove leads to the second warning")
-  eq(D.message.text, "This can't be undone. Type the team name to delete it and its 12 pulls.", "which asks for the name")
-  eq(D.ok.text, "Delete for good", "[Delete for good]")
-  eq(D.ok:IsEnabled(), false, "greyed until the name is typed")
-  D.edit:SetText("Cowfee") D.edit.OnTextChanged(D.edit)
-  eq(D.ok:IsEnabled(), false, "part of the name isn't enough")
-  D.Accept()
-  check(T:Find("Cowfee Mythic") ~= nil and #deleted == 0, "Accept with the wrong name does nothing")
-  D.edit:SetText(" cowfee mythic ") D.edit.OnTextChanged(D.edit)
-  eq(D.ok:IsEnabled(), true, "the name in any case enables it")
+  eq(S.confirm and S.confirm.detail, "Its Season Stats (1 pull) go too. This can't be undone.", "one pull: the singular")
+  check(T:Find("Night Crew") == "Night Crew", "Cancel or Escape (never accepting) removes nothing")
   local done = false
-  D.done = function() done = true end
-  D.Accept()
-  check(done and not D.win.shown, "deleted, the dialog closes")
+  D.AskRemove("cowfee mythic", function() done = true end)
+  local c = S.confirm
+  eq(c and c.text, 'Delete the team "Cowfee Mythic"?', "it asks once, naming the team")
+  eq(c and c.detail, "Its Season Stats (12 pulls) go too. This can't be undone.", "and its pulls")
+  eq(c and c.accept, "Delete team", "[Delete team]")
+  check(c and c.danger, "with the alert icon")
+  check(not D.win.shown or D.mode ~= "confirm", "no typed-name step")
+  check(T:Find("Cowfee Mythic") ~= nil and #deleted == 0, "nothing is deleted until it is accepted")
+  if c then c.onAccept() end
+  check(done, "deleted, done runs")
   eq(T:Find("Cowfee Mythic"), nil, "the team is gone from the list")
   eq(table.concat(deleted, ","), "Cowfee Mythic", "only that team's data is deleted")
   eq(T:Tonight(), "Pug", "tonight was that team: back to Pug")
