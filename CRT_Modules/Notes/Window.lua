@@ -47,8 +47,8 @@ local previewing = {}
 -- Work once, draw often. The windows' text is rebuilt only when something it shows may have changed: the
 -- note, the settings, the group, your role, your reminders, the alerts run (a phase start included), the
 -- class cache, the theme, or previews. contentVersion goes up on each of those, and a window rebuilds when
--- it has not drawn the current version; out of a run, a rebuild every few seconds anyway catches anything
--- missed. While a note runs (the timers window) or a run of your reminders goes (the personal window), each
+-- it has not drawn the current version, and at no other time (#1315: never on a timer), but every SAFETY_SECONDS
+-- while a spell it shows has no name from the game yet (unnamedSeen, set by describe). While a note runs (the timers window) or a run of your reminders goes (the personal window), each
 -- line's text is kept from that rebuild and a refresh only works out each line's whole second: a line's
 -- time is made again only when its second changes, and a refresh that changes nothing on screen sets no
 -- text at all.
@@ -57,6 +57,10 @@ local SAFETY_SECONDS = 5
 local function changed()
     contentVersion = contentVersion + 1
 end
+local unnamedSeen = false -- a build drew a spell the game hadn't named yet
+-- Rebuilds per window, by what made them: live (a run counting down), changed (contentVersion), classes (the class
+-- cache) or unnamed (a spell asked again). Counts only, for /crt dev mem.
+NoteWindow.rebuilds = { window = {}, assignments = {}, personal = {} }
 
 -- The lines a window shows. Each line is { t = time text or nil, x = text }: on screen, t then x on one row
 -- (the countdown in its own cell, so a new second sets only that cell). A line with no t and an empty x is
@@ -170,6 +174,9 @@ end
 local function describe(item)
     if item.kind == "spell" then
         local info = Notes:SpellInfo(item.spellId)
+        if not info then
+            unnamedSeen = true
+        end
         local icon = info and info.icon and ("|T" .. info.icon .. ":0|t ") or ""
         return icon .. (info and info.name or ("Spell " .. item.spellId)), not info
     end
@@ -1325,20 +1332,37 @@ local function createWindow(key, defaultPosition, build)
         -- you have reminders for goes
         local live = (key == "window" and Engine.running) or (key == "personal" and personalLive()) or false
         local classes = classVersion()
-        if not live and not self.wasLive and self.drawnVersion == contentVersion and self.drawnClasses == classes
-            and GetTime() - (self.drawnAt or 0) < SAFETY_SECONDS then
+        -- Out of a run a window rebuilds only when something it shows changed (#1315 round 2: the rebuild every
+        -- SAFETY_SECONDS made garbage the whole time a window showed). The one thing nothing tells it is a spell
+        -- the game hadn't named yet: while its last build had one, it asks again every SAFETY_SECONDS.
+        local why
+        if live or self.wasLive then
+            why = "live"
+        elseif self.drawnVersion ~= contentVersion then
+            why = "changed"
+        elseif self.drawnClasses ~= classes then
+            why = "classes"
+        elseif self.unnamed and GetTime() - (self.drawnAt or 0) >= SAFETY_SECONDS then
+            why = "unnamed"
+        end
+        if not why then
             -- nothing to rebuild; a resize or a new font still places the rows again
             if self.layoutDirty and frame:IsShown() then
                 drawLines(self, self.lines)
             end
             return
         end
+        -- what made each rebuild, counted (/crt dev mem prints it)
+        local counts = NoteWindow.rebuilds[key]
+        counts[why] = (counts[why] or 0) + 1
         self.wasLive = live
         self.drawnVersion = contentVersion
         self.drawnClasses = classes
         self.drawnAt = GetTime()
         -- out of a run, every refresh that gets here rebuilds; during one, the kept text is reused
+        unnamedSeen = false
         local lines, heading, hasContent, hlFull = build(self, not live)
+        self.unnamed = unnamedSeen
         -- a stamp waits for this draw, so a window the new note just made visible shows it too; and a
         -- note with nothing for this window (an empty note, or a boss with no timers or text) keeps it
         -- up, blank, at least for the stamp
