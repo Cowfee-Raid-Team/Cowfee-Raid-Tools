@@ -56,7 +56,31 @@ local TEXT = {
     readFromText = "Read from the note's EncounterID line",
     savedFor = "Saved as a new note for %s (%s): %s.",
     savedForEmpty = "Saved as a new note for %s (%s).",
+    -- Delete asks once (UI.Confirm), naming the note and the saved versions that go with it
+    deleteAsk = "Delete the note \"%s\"?",
+    deleteVersion = "Its saved version goes too.",
+    deleteVersions = "Its %d saved versions go too.",
+    deleteFinal = "This can't be undone.",
+    deleteNote = "Delete note",
 }
+
+-- Delete: asks once, then deletes the note with its History and links (Notes:Delete). done() runs after.
+local function askDelete(id, done)
+    local record = id and Notes:Get(id)
+    if not record then
+        return false
+    end
+    local name = (record.name or "Note") .. (record.difficulty and (" (" .. record.difficulty .. ")") or "")
+    local n = Notes.HistoryCount and Notes:HistoryCount(id) or 0
+    local detail = (n == 1 and TEXT.deleteVersion .. " " or n > 1 and TEXT.deleteVersions:format(n) .. " " or "") .. TEXT.deleteFinal
+    return UI.Confirm({ text = TEXT.deleteAsk:format(name), detail = detail, accept = TEXT.deleteNote, danger = true,
+        onAccept = function()
+            Notes:Delete(id)
+            if done then
+                done()
+            end
+        end })
+end
 
 -- Share's Send to: "crt", a note target's key, or "all". A saved target that no longer exists is CRT.
 local function shareTarget()
@@ -715,11 +739,13 @@ local function buildNotes(pf)
     local delete = makeButton(pf, "Delete", 122)
     delete:SetPoint("LEFT", import, "RIGHT", 6, 0)
     delete:SetScript("OnClick", function()
-        if selected then
-            Notes:Delete(selected)
-            selected = nil
+        local id = selected
+        askDelete(id, function()
+            if selected == id then
+                selected = nil
+            end
             refresh()
-        end
+        end)
     end)
     local active = makeButton(pf, "Use this note", 122)
     useButton = active
@@ -1123,6 +1149,7 @@ CRT.NotesPage = {
     NOTE_BOX_TOP = NOTE_BOX_TOP, NOTE_BOX_H = NOTE_BOX_H, STATUS_LINE_H = STATUS_LINE_H, STATUS_LINES = STATUS_LINES,
     IMPORT = IMPORT, -- the Import/New dialog's layout
     ShareNote = shareNote, -- shares a note to the Send to choice (Share to raid, the note editor's Push note)
+    AskDelete = askDelete, -- Delete's confirm: askDelete(id, done)
     Open = function(tab)
         currentTab = tab
         UI:Show("notes")
