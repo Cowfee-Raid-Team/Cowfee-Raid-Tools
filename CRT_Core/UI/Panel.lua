@@ -1188,7 +1188,7 @@ end
 
 -- Text that fits (UX rule 7): a button or tab takes its width from its label, never a fixed pixel width, and
 -- measures again when its label or the text size changes (UI:RefitText in CRT_Core/UI/Fonts.lua).
---   UI.FitButton(b, maxW)  sizes a button with a label (a UIPanelButtonTemplate, or any with SetFontString) to
+--   UI.FitButton(b, maxW, minW) sizes a button with a label (a UIPanelButtonTemplate, or any with SetFontString) to
 --                          UI.PanelButtonWidth of its label, now, on every b:SetText and on every text size change.
 --                          maxW (kept for later fits): the most room it has, as in a narrow column; a longer label
 --                          wraps onto two lines and the button grows taller, never wider. minW (kept too): the
