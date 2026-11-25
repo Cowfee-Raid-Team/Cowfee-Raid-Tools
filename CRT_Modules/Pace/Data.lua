@@ -154,6 +154,19 @@ function Pace:Reset(encounterID)
     self:Fire()
 end
 
+-- A copy of your own plan for a boss and which plan is in use, taken before a Delete or a Reset, so the page's Undo
+-- (Pace:Restore) puts both back as they were.
+function Pace:Snapshot(encounterID)
+    local mine = db().own[encounterID]
+    return { own = mine and copyPlan(mine) or nil, use = db().use[encounterID] }
+end
+
+function Pace:Restore(encounterID, snap)
+    db().own[encounterID] = snap.own and copyPlan(snap.own) or nil
+    db().use[encounterID] = snap.use
+    self:Fire()
+end
+
 function Pace:Enabled(encounterID)
     return not db().disabled[encounterID]
 end
