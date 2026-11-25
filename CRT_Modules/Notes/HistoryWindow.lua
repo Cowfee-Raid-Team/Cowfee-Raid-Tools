@@ -118,11 +118,15 @@ local function canRestore(record)
     return Notes:CanEditRaid()
 end
 
-local function showTip(owner, title, text)
+-- why: a greyed button's reason, after its text in red (UX rule 5)
+local function showTip(owner, title, text, why)
     UI.TooltipOwner(GameTooltip, owner, "ANCHOR_TOP")
     GameTooltip:SetText(title, 1, 1, 1)
     if text and text ~= "" then
         GameTooltip:AddLine(text, 0.85, 0.85, 0.85, true)
+    end
+    if why then
+        UI.DisabledReason(GameTooltip, why)
     end
     GameTooltip:Show()
 end
@@ -268,7 +272,7 @@ local function makeRow(c, i)
     row.restore:SetPoint("RIGHT", 0, 0)
     row.restore:SetMotionScriptsWhileDisabled(true)
     row.restore:SetScript("OnEnter", function(self)
-        showTip(self, TEXT.restore, self.why and UI.BadText(self.why) or TEXT.restoreTip)
+        showTip(self, TEXT.restore, TEXT.restoreTip, self.why)
     end)
     row.restore:SetScript("OnLeave", hideTip)
     row.compare = UI.PanelButton(row, TEXT.compare, L.buttonH, function(self)

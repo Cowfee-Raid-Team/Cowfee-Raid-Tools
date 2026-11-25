@@ -9,6 +9,8 @@
 // CRT_Core/MarkerText.lua (CRT.MarkerText and CRT.MarkerCodes), which the .toc loads right after Themes.lua; CRT_MARKERS(CRT)
 // loads only that. CRT_THEME also loads CRT_Core/Names.lua (CRT.ShortName, the name every window draws), which the .toc
 // loads right after MarkerText.lua; CRT_NAMES(CRT) loads only that.
+// CRT_THEME also puts the real greyed controls' reason helpers on UI (CRT_REASONS(UI): UI.Usable, UI.DisabledReason,
+// UI.DisabledTooltip, UI.DisabledCover, UI.GreyWhy from CRT_Core/UI/Controls.lua) unless the harness has its own.
 // It also defines CRT_HELP_PLAIN(text), the real UI.TooltipPlain (Panel.lua, between its [tooltip plain] markers): a
 // list-form help text (UI.AddTooltipText) as one string, for checks that search a (?)'s text. CRT_THEME puts it on UI
 // as UI.TooltipPlain when the harness has none.
@@ -38,6 +40,16 @@ function helperBlock(root) {
   return panel.slice(panel.indexOf('\n', start) + 1, end);
 }
 
+// The greyed controls' reason helpers from CRT_Core/UI/Controls.lua, between its [disabled reason] markers: UI.Usable,
+// UI.DisabledReason, UI.DisabledTooltip, UI.DisabledCover and UI.GreyWhy (UX rule 5).
+function reasonBlock(root) {
+  const controls = fs.readFileSync(path.join(root, 'CRT_Core/UI/Controls.lua'), 'utf8');
+  const start = controls.indexOf('-- [disabled reason]');
+  const end = controls.indexOf('-- [/disabled reason]');
+  if (start < 0 || end < start) throw new Error('theme_stub: the [disabled reason] markers are missing from Controls.lua');
+  return controls.slice(controls.indexOf('\n', start) + 1, end);
+}
+
 // UI.TooltipPlain from CRT_Core/UI/Panel.lua, between its [tooltip plain] markers.
 function plainBlock(root) {
   const panel = fs.readFileSync(path.join(root, 'CRT_Core/UI/Panel.lua'), 'utf8');
@@ -55,7 +67,8 @@ module.exports = function themeLua(where) {
   const tooltip = fs.readFileSync(path.join(root, 'CRT_Core/UI/Tooltip.lua'), 'utf8');
   const markers = fs.readFileSync(path.join(root, 'CRT_Core/MarkerText.lua'), 'utf8');
   const names = fs.readFileSync(path.join(root, 'CRT_Core/Names.lua'), 'utf8');
-  for (const s of [src, helpers, plain, tooltip, markers, names]) if (s.includes(']====]')) throw new Error('theme_stub: a source holds the long-string closer');
+  const reasons = reasonBlock(root);
+  for (const s of [src, helpers, plain, tooltip, markers, names, reasons]) if (s.includes(']====]')) throw new Error('theme_stub: a source holds the long-string closer');
   return `
 -- CRT_HELP_PLAIN(text): the real UI.TooltipPlain, a list-form help text as one string
 CRT_HELP_PLAIN = assert(load("local UI = {} " .. [====[${plain}]====] .. " return UI.TooltipPlain", "Panel.lua UI.TooltipPlain"))()
@@ -74,8 +87,16 @@ end
 function CRT_NAMES(CRT)
   assert(load([====[${names}]====], "CRT_Core/Names.lua"))("CowfeeRaidTools", CRT)
 end
+-- CRT_REASONS(UI): the real greyed controls' reason helpers (Controls.lua's [disabled reason] block) onto UI, unless it
+-- has its own
+function CRT_REASONS(UI)
+  if not UI.DisabledCover then
+    assert(load("local UI = ... " .. [====[${reasons}]====], "Controls.lua disabled reason"))(UI)
+  end
+end
 function CRT_THEME(CRT, UI)
   UI = UI or {} -- a harness with no CRT.UI yet takes the palette only
+  CRT_REASONS(UI)
   local own = CRT.PALETTE
   assert(load([====[${src}]====], "Themes.lua"))("CowfeeRaidTools", CRT)
   CRT_MARKERS(CRT)

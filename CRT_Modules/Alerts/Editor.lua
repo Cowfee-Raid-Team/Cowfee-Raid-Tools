@@ -205,16 +205,6 @@ local function editable()
     return true
 end
 
--- A control greyed by hand says why (UX rule 5): a cover made the first time, then set (UI.DisabledCover).
-local function greyWhy(el, ok, reason, title)
-    if not el.why then
-        el.why = UI.DisabledCover(el, function()
-            return title
-        end)
-    end
-    el.why:Set(ok, reason)
-end
-
 -- The Color row: a raid note line's colour is the raid leader's and always shows; your own alert's (Only me, as
 -- a reminder or a template) only with Use custom colours on (Alerts:CustomColors), so it is greyed without.
 local function colourEditable()
@@ -524,8 +514,8 @@ local function colourRow()
     local why = readOnly() and TEXT.readOnlyWhy or TEXT.customColoursWhy
     frame.colorSwatch:SetEnabled(colourOn)
     frame.colorDefault:SetEnabled(colourOn)
-    greyWhy(frame.colorSwatch, colourOn, why, TEXT.color)
-    greyWhy(frame.colorDefault, colourOn, why, TEXT.colorDefault)
+    UI.GreyWhy(frame.colorSwatch, colourOn, why, TEXT.color)
+    UI.GreyWhy(frame.colorDefault, colourOn, why, TEXT.colorDefault)
     frame.colorSwatch:SetAlpha(colourOn and 1 or 0.4)
     frame.colorLabel:SetAlpha(colourOn and 1 or 0.5)
 end
@@ -569,13 +559,13 @@ local function refresh(rows)
     -- a copy needs a boss to be saved for
     local canCopy = locked and type(ctx.encounterID) == "number"
     frame.copyBtn:SetEnabled(canCopy)
-    greyWhy(frame.copyBtn, canCopy or not locked, TEXT.copyNoBossWhy, TEXT.copyToMine)
+    UI.GreyWhy(frame.copyBtn, canCopy or not locked, TEXT.copyNoBossWhy, TEXT.copyToMine)
     -- why Raid note is greyed out (a saved alert may keep Raid note: it changes no note by itself)
     frame.saveAsHelp:SetShown(not savedMode and not canEditRaid())
     local titles = { [frame.textEdit] = TEXT.text, [frame.timeEdit] = TEXT.time, [frame.idEdit] = TEXT.icon }
     for _, el in ipairs({ frame.textEdit, frame.timeEdit, frame.idEdit }) do
         el:SetEnabled(not locked)
-        greyWhy(el, not locked, TEXT.readOnlyWhy, titles[el])
+        UI.GreyWhy(el, not locked, TEXT.readOnlyWhy, titles[el])
     end
     colourRow()
     if locked then

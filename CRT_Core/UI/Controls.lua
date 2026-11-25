@@ -31,6 +31,7 @@ local function makeRow(parent, text, labelWidth)
     return row
 end
 
+-- [disabled reason] (CRT_Dev/Tests/theme_stub.js loads the code between these markers into harnesses' stubbed UI)
 -- A greyed-out control says why (UX rule 5). A control's enabledIf returns ok, reason: reason is a short line in the
 -- player's words saying what to do, such as "Tick Read them out above to change this.". While greyed, hovering the
 -- control shows its tooltip (its title, then its help) and then the reason on its own line in the game's error red
@@ -81,11 +82,7 @@ function UI.DisabledTooltip(owner, title, text, reason, anchor)
     if not tip then
         return
     end
-    if UI.TooltipOwner then
-        UI.TooltipOwner(tip, owner, anchor or "ANCHOR_RIGHT")
-    else
-        tip:SetOwner(owner, anchor or "ANCHOR_RIGHT")
-    end
+    UI.TooltipOwner(tip, owner, anchor or "ANCHOR_RIGHT")
     if title and title ~= "" then
         tip:SetText(title, 1, 1, 1)
         if text and UI.AddTooltipText then
@@ -149,6 +146,20 @@ function UI.DisabledCover(owner, tip, right)
     end)
     return cover
 end
+
+-- For a control greyed by hand (control:SetEnabled(ok) in the caller's own refresh): the cover above, made the first
+-- time as el.why, then set. title and text are its tooltip's (text optional); right, optional, a region the cover reaches
+-- (a checkbox's label, as UI.DisabledCover's). Returns the cover.
+function UI.GreyWhy(el, ok, reason, title, text, right)
+    if not rawget(el, "why") then -- rawget: only a cover made here counts, never a lookup through the frame's metatable
+        el.why = UI.DisabledCover(el, function()
+            return title, text
+        end, right)
+    end
+    el.why:Set(ok, reason)
+    return el.why
+end
+-- [/disabled reason]
 
 local function greyLabel(row, on)
     if on then

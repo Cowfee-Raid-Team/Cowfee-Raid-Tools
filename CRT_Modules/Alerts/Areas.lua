@@ -400,7 +400,7 @@ end
 -- its label and the reason enabledIf gives (UI.DisabledCover, UI/Controls.lua). right: a region the cover reaches (a
 -- checkbox's label). The slot's opts are read on hover, as they are replaced on every showing.
 local function whyCover(frame, label, slot, right)
-    if not frame.why then
+    if not rawget(frame, "why") then
         frame.why = UI.DisabledCover(frame, function()
             return label
         end, right)

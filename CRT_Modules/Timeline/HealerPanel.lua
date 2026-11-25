@@ -274,7 +274,9 @@ local function proposalFrame(view, n)
     accept:HookScript("OnEnter", function(b)
         if f.p and f.p.stale then
             CRT.UI.TooltipOwner(GameTooltip, b, "ANCHOR_RIGHT", nil, nil, "timeline")
-            GameTooltip:SetText(TEXT.staleTip, 1, 1, 1, 1, true)
+            -- the button's name, then why it is greyed in red (UX rule 5)
+            GameTooltip:SetText(b:GetText() or "", 1, 1, 1)
+            CRT.UI.DisabledReason(GameTooltip, TEXT.staleTip)
             GameTooltip:Show()
         end
     end)

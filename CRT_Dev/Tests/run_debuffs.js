@@ -1032,6 +1032,7 @@ ds.opts.set(70)
 check("dispel icon size saves a fraction", math.abs(Debuffs:DispelIconScale() - 0.7) < 1e-9, Debuffs:DispelIconScale())
 Debuffs:SetDispelIcon(false)
 check("dispel icon size is off while the dispel icon is off", ds.opts.enabledIf() == false)
+check("greyed, it says what to tick (UX rule 5)", select(2, ds.opts.enabledIf()) == "Tick Show the dispel type icon on each debuff first.", select(2, ds.opts.enabledIf()))
 Debuffs:SetDispelIcon(true)
 check("dispel icon size is on with the dispel icon", ds.opts.enabledIf() == true)
 
@@ -1086,6 +1087,7 @@ do
     check("usable while they are on", pos.opts.enabledIf() == true)
     Debuffs:SetEnabled(false)
     check("greyed while the panel is off", pos.opts.enabledIf() == false)
+    check("greyed, it says to show the panel (UX rule 5)", select(2, pos.opts.enabledIf()) == "Tick Show the debuff panel to change this.", select(2, pos.opts.enabledIf()))
     Debuffs:SetEnabled(true)
     Debuffs:SetTooltips(false)
     -- placed from the box's label as drawn: beside it when the row fits on the page, else under the box

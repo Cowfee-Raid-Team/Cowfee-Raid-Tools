@@ -25,6 +25,12 @@ local TEXT = {
     opacity = "Background opacity",
     opacityTip = "How solid the window's background is. 100% is solid; lower lets the game show through. Text, icons and the class color bars never fade.",
     border = "Show a border",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    autoWhy = "Tick Report automatically on a ready check first.",
+    earlyWhy = "Tick Report who starts the fight before the pull timer ends first.",
+    barWhy = "Tick Show my bar on a ready check first.",
+    wipWhy = "Coming soon: it waits for the items' IDs.",
+    windowWhy = "Tick Open the window on a ready check first.",
 }
 -- The Window tab's Lock, Keep it open and Show a border boxes, in the right column under Class color bar, 24 apart.
 local WINDOW_LOCK_Y = -68
@@ -89,8 +95,8 @@ local function label(parent, text, font)
     return fs
 end
 
--- enabledIf, when given, returns whether the box can be used. When it returns false the box is
--- greyed out and can't be clicked, because the setting it depends on is off.
+-- enabledIf, when given, returns whether the box can be used, and why not (ok, reason). While it is not ok the box is
+-- greyed out and can't be clicked, because the setting it depends on is off, and hovering it says the reason.
 local function makeCheck(parent, x, y, text, field, sub, enabledIf)
     local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
     check:SetSize(24, 24)
@@ -112,11 +118,18 @@ local function makeCheck(parent, x, y, text, field, sub, enabledIf)
     check.refresh = function()
         check:SetChecked(holder()[field] and true or false)
         if enabledIf then
-            local on = enabledIf() and true or false
+            local on, reason = UI.Usable(enabledIf)
             check:SetEnabled(on)
             local c = on and 1 or 0.5
             fs:SetTextColor(c, c, c)
+            check.why:Set(on, reason)
         end
+    end
+    if enabledIf then
+        check.why = UI.DisabledCover(check, function()
+            return text
+        end, fs)
+        check.why.state = enabledIf
     end
     check.label = fs
     controls[#controls + 1] = check
@@ -152,7 +165,7 @@ local function buildAuto(f)
     makeCheck(f, 4, -8, "Report automatically on a ready check", "auto")
     -- These three only matter for the automatic report.
     local function autoOn()
-        return settings().auto
+        return settings().auto and true or false, TEXT.autoWhy
     end
     makeCheck(f, 28, -32, "Also on a pull timer", "onPull", nil, autoOn)
     makeCheck(f, 28, -56, "Only in raids", "raidsOnly", nil, autoOn)
@@ -188,7 +201,7 @@ local function buildAuto(f)
     UI.HelpRight(earlyTitle, "Early Pull Checker", "While a pull timer counts down, CRT watches who enters combat and who cast just before. If the fight starts more than half a second early, it reports the first players in combat and the last casts. Only their names and times show, since the game hides other players' spells.")
     makeCheck(f, 400, -250, "Report who starts the fight before the pull timer ends", "earlyPull")
     makeDropdown(f, 428, -276, "Post to", "earlyPullOutput", OUTPUTS, nil, 70, 170, function()
-        return settings().earlyPull
+        return settings().earlyPull and true or false, TEXT.earlyWhy
     end)
     UI.HelpRight(lock, "Ready button lock", "When a ready check starts and someone is missing your class's raid buff, your Ready button is greyed out until they have it; hover it to see who. Hold Shift and click Ready to ready anyway; it also unlocks by itself after 10 seconds.")
 
@@ -205,7 +218,7 @@ local function buildAuto(f)
     })
     makeCheck(f, 400, -32, "Show my bar on a ready check", "enabled", bar)
     makeCheck(f, 424, -56, "Not when I start the ready check", "notStarter", bar, function()
-        return bar().enabled
+        return bar().enabled and true or false, TEXT.barWhy
     end)
 
     local warn = label(f, "Warn under", "CRTFontSmall")
@@ -241,7 +254,7 @@ local function buildAuto(f)
     -- Work in progress: shown but greyed out until the cauldron flasks' and an unlimited rune's
     -- item IDs are in the built-in list (the season pack's GameIDs.lua).
     local function wip()
-        return false
+        return false, TEXT.wipWhy
     end
     local cauldron = makeCheck(f, 400, -112, "Flasks from a cauldron only (WIP)", "cauldronOnly", bar, wip)
     UI.HelpRight(cauldron, "Coming soon", {
@@ -291,14 +304,14 @@ local function buildWindow(f)
     makeCheck(f, 4, -16, "Open the window on a ready check", "enabled", windowSettings)
     -- Only the automatic opening checks who you are, so this depends on the box above.
     makeCheck(f, 28, -40, "Only when I'm the raid leader or an assistant", "leadOnly", windowSettings, function()
-        return windowSettings().enabled
+        return windowSettings().enabled and true or false, TEXT.windowWhy
     end)
     makeCheck(f, 28, -64, "Only raid buff columns my group can give", "groupBuffsOnly", windowSettings)
     makeDropdown(f, 400, -8, "Sort players by", "sort", CRT.ReadyCheckWindow.SORTS, windowSettings, 100, 150)
     makeCheck(f, 396, -44, "Class color bar behind each row", "classBars", windowSettings)
     -- How the open window moves and closes: only while it opens at all.
     local function windowOn()
-        return windowSettings().enabled
+        return windowSettings().enabled and true or false, TEXT.windowWhy
     end
     local lock = makeCheck(f, 396, WINDOW_LOCK_Y, TEXT.lock, "locked", windowSettings, windowOn)
     UI.HelpRight(lock, TEXT.lock, TEXT.lockTip)

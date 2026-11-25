@@ -755,7 +755,11 @@ local function buildInvites(pf, anchor)
         local ok, why = CRT.Invite.CanInvite()
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
         GameTooltip:SetText(self:GetText(), 1, 1, 1)
-        GameTooltip:AddLine(ok and TEXT.inviteBody or why, 0.8, 0.8, 0.8, true)
+        if ok then
+            GameTooltip:AddLine(TEXT.inviteBody, 0.8, 0.8, 0.8, true)
+        else
+            UI.DisabledReason(GameTooltip, why) -- the reason in red (UX rule 5)
+        end
         GameTooltip:Show()
     end)
     inviteButton:SetScript("OnLeave", function()
@@ -895,7 +899,7 @@ local function buildSort(pf, apply)
             refreshSort()
         end,
         enabledIf = function()
-            return #sideBlocks() > 0
+            return #sideBlocks() > 0, TEXT.noSidesWhy
         end,
     })
     sideRow:SetPoint("LEFT", sortRow, "RIGHT", SORT.gap, 0)
@@ -914,7 +918,7 @@ local function buildSort(pf, apply)
         end
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
         GameTooltip:SetText(TEXT.sortGrid, 1, 1, 1)
-        GameTooltip:AddLine(why, 0.8, 0.8, 0.8, true)
+        UI.DisabledReason(GameTooltip, why) -- the reason in red (UX rule 5)
         GameTooltip:Show()
     end)
     sortButton:SetScript("OnLeave", function()

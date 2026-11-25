@@ -614,6 +614,7 @@ do
   function tip:AddLine(t, r, g, b, wrap) self.lines[#self.lines + 1] = { text = t, r = r, g = g, b = b, wrap = wrap } end
   function tip:Show() self.shown = true end function tip:Hide() self.shown = false end
   GameTooltip = tip
+  UI.TooltipOwner = function(t, owner) t:SetOwner(owner) end
   UI.AddTooltipText = function(t, text) t:AddLine(type(text) == "table" and table.concat(text, " ") or text, 1, 0.82, 0, true) end
   local function texts() local t = {} for _, l in ipairs(tip.lines) do t[#t + 1] = l.text end return table.concat(t, " | ") end
   local function last() return tip.lines[#tip.lines] end

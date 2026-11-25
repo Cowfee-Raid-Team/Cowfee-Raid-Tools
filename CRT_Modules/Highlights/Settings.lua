@@ -39,8 +39,12 @@ local OPTIONS = {
     { field = "glow", label = TEXT.glow },
 }
 
+-- ok, reason (UX rule 5): the options grey with the switch, and say so
 local function enabled()
-    return H:Enabled()
+    if H:Enabled() then
+        return true
+    end
+    return false, TEXT.previewOff
 end
 
 local function windows()
@@ -104,7 +108,11 @@ end
 -- page: the same helpers as Build. labelWidth: room for the label and its (?). Returns the check box.
 local function windowCheck(pf, x, y, window, shown, page, labelWidth)
     local check, label = page.check(pf, x, y, TEXT.windowLabel, function()
-        return enabled() and shown()
+        local ok, why = enabled()
+        if not ok then
+            return false, why
+        end
+        return shown()
     end, function()
         return windows()[window] == true
     end, function(on)

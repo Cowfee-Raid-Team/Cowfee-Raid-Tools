@@ -401,7 +401,7 @@ local realCanLoot = LM.CanLoot
 local canLoot = true
 function LM:CanLoot() return canLoot end
 local tip = { lines = {}, hidden = false }
-GameTooltip = { SetText = function(_, t) tip.title = t end, AddLine = function(_, t) tip.lines[#tip.lines + 1] = t end,
+GameTooltip = { SetText = function(_, t) tip.title = t end, AddLine = function(_, t, r, g, b) tip.lines[#tip.lines + 1] = t tip.rgb = { r, g, b } end,
   Show = function() tip.shown = true end, Hide = function() tip.hidden = true end }
 CRT_UI.TooltipOwner = function() tip.lines = {} tip.title = nil end
 BL:Clear()
@@ -422,7 +422,7 @@ tip.lines = {}
 b.scripts.OnEnter(b)
 eq(#tip.lines, 1, "greyed: the tooltip has a reason line")
 check(tip.lines[1] and tip.lines[1]:find("Only the raid leader, or a looter they name in Loot authority, can run loot.", 1, true) ~= nil
-  and tip.lines[1]:find("|cff" .. CRT_UI.Hex("bad"), 1, true) ~= nil, "greyed: the reason is in the bad colour")
+  and tip.rgb and tip.rgb[1] == 1 and tip.rgb[2] < 0.2 and tip.rgb[3] < 0.2, "greyed: the reason is in the game's error red (UI.DisabledReason)")
 -- clicks do nothing without authority
 local rowsBefore = #BL:Rows()
 b.onClick()

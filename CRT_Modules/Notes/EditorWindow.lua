@@ -87,6 +87,10 @@ local TEXT = {
     history = "History (%d)",
     historyTitle = "History",
     historyTip = "The note's last 5 earlier versions: when, how and who changed them. Compare one with the note now, or restore it.",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    noHistoryWhy = "No earlier version of this note is saved yet.",
+    noChangesWhy = "Nothing to save: the note has no changes.",
+    rawWhy = "Press Done on the assignment first.",
     spell = "Spell %s",
     invite = "Invite list (%d):",
     timers = "Timers (from the note; right-click one to delete it)",
@@ -639,14 +643,22 @@ function Editor.Refresh()
         W.raw:SetText(text)
     end
     local dirty = W.session:Dirty()
-    W.save:SetEnabled(dirty and not readOnly())
-    W.quick:SetEnabled(not readOnly())
+    -- greyed controls say why (UX rule 5): a raid note you can't change says Notes:CanEditRaid's reason
+    local locked = readOnly()
+    local _, lockedWhy = Notes:CanEditRaid()
+    lockedWhy = locked and lockedWhy or nil
+    W.save:SetEnabled(dirty and not locked)
+    UI.GreyWhy(W.save, dirty and not locked, lockedWhy or TEXT.noChangesWhy, TEXT.save)
+    W.quick:SetEnabled(not locked)
+    UI.GreyWhy(W.quick, not locked, lockedWhy, TEXT.quickFill)
     W.quick:SetChecked(W.session.quickFill)
     if W.assignButton then
-        W.assignButton:SetEnabled(not readOnly() or W.assignOn == true)
+        W.assignButton:SetEnabled(not locked or W.assignOn == true)
+        UI.GreyWhy(W.assignButton, not locked or W.assignOn == true, lockedWhy, TEXT.addAssignment)
     end
     -- Raw text can't show while Add assignment holds the left side: greyed until Done
     W.rawButton:SetEnabled(not W.assignOn)
+    UI.GreyWhy(W.rawButton, not W.assignOn, TEXT.rawWhy, W.rawButton:GetText())
     -- Delete selected, left of Add assignment while lines are selected; the status line ends before it
     local del = lines() and W.deleteButton and lines().RefreshButton()
     W.status:SetPoint("RIGHT", del and W.deleteButton or W.assignButton, "LEFT", -8, 0)
@@ -1031,7 +1043,11 @@ local function buildFooter(c)
     W.push:SetScript("OnEnter", function(self)
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
         GameTooltip:SetText(TEXT.push, 1, 1, 1)
-        GameTooltip:AddLine(W.pushWhy and UI.BadText(W.pushWhy) or TEXT.pushTip, 0.85, 0.85, 0.85, true)
+        if W.pushWhy then
+            UI.DisabledReason(GameTooltip, W.pushWhy) -- in red (UX rule 5)
+        else
+            GameTooltip:AddLine(TEXT.pushTip, 0.85, 0.85, 0.85, true)
+        end
         GameTooltip:Show()
     end)
     W.push:SetScript("OnLeave", function()
@@ -1093,6 +1109,7 @@ local function refreshHistory()
     local n = id and Notes:Get(id) and Notes:HistoryCount(id) or 0
     b:SetLabel(string.format(TEXT.history, n))
     b:SetEnabled(n > 0)
+    UI.GreyWhy(b, n > 0, TEXT.noHistoryWhy, TEXT.historyTitle, TEXT.historyTip) -- says why it is greyed (UX rule 5)
 end
 Editor.RefreshHistory = refreshHistory
 

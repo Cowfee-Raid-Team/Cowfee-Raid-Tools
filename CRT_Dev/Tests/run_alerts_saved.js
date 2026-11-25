@@ -170,6 +170,8 @@ UI.SetFrameTitle = function(f, t) f.title = t end
 -- as CRT_Core/UI/Controls.lua's: enabledIf's ok, reason; a greyed control's cover keeps what it was set to
 UI.Usable = function(f, ...) if not f then return true end local ok, why = f(...) if ok then return true end return false, why end
 UI.DisabledCover = function() return { Set = function(self, ok, why) self.ok, self.reason = ok, why end } end
+UI.GreyWhy = function(el, ok, why) local c = rawget(el, "why") or {} c.ok, c.reason = ok, why rawset(el, "why", c) return c end
+UI.DisabledReason = function() return true end
 UI.Help = function(parent, title, text) local b = mock("Button", parent) rawset(b, "helpTitle", title) rawset(b, "helpText", text) helps[#helps + 1] = b return b end
 UI.Dropdown = function(parent, label, opts) local r = mock("Row", parent) rawset(r, "label", label) rawset(r, "opts", opts)
   rawset(r, "refresh", function() rawset(r, "refreshed", (rawget(r, "refreshed") or 0) + 1) end) dropdowns[label] = r return r end

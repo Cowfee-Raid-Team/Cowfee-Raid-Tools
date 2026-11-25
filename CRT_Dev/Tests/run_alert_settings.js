@@ -19,6 +19,8 @@ function CreateFrame() return { SetScript = function() end, RegisterEvent = func
 function GetTime() return 0 end
 C_Timer = { After = function() end }
 local CRT = { db = { alerts = { reminders = {}, phases = {}, overrides = {}, nextId = 1 }, notes = {} }, UI = {} }
+-- as CRT_Core/UI/Controls.lua's UI.Usable: enabledIf's ok, reason
+function CRT.UI.Usable(f, ...) if not f then return true end local ok, why = f(...) if ok then return true end return false, why end
 for i = 1, #sources, 2 do
   assert(load(sources[i + 1], "@" .. sources[i]))("CowfeeRaidTools", CRT)
 end
@@ -54,6 +56,20 @@ check("every setting is whole: key, tab, kind, label, meaning, default, where it
   end
   assert(F.BY_KEY.countFrom.range == CRT.AlertReminders.COUNT_FROM and F.BY_KEY.speakBefore.range == CRT.AlertReminders.SPEAK_BEFORE,
     "the ranges are the reminders' own (Alerts/Reminders.lua)")
+end)
+check("a greyed setting says why (UX rule 5): Fields.Enabled gives the reason", function()
+  local T = F.TEXT
+  local function why(key, d, h) local ok, reason = F.Enabled(key, d, h) assert(ok == false, key .. ": greyed") return reason end
+  assert(why("speakText", { speak = false }) == T.speakWhy, "Say instead: tick Speak the text")
+  assert(why("speakAt", { speak = false }) == T.speakWhy, "Speak at: tick Speak the text")
+  assert(why("countFrom", { count = false }) == T.countWhy, "Count down from's slider: tick it")
+  assert(why("auraSound", { spellID = 5 }, { kind = function() return "note" end }) == T.auraLivesWhy, "Also when it lands on me: only your own alerts")
+  assert(why("auraSound", { }, { kind = function() return "reminder" end }) == T.auraSpellWhy, "and it needs the spell")
+  -- a read-only host's own reason comes first
+  local host = { editable = function() return false, "Read only." end }
+  assert(why("sound", {}, host) == "Read only." and why("speakText", { speak = false }, host) == "Read only.", "the host's reason first")
+  local ok, reason = F.Enabled("speakText", { speak = true })
+  assert(ok == true and reason == nil, "usable: no reason")
 end)
 check("the document (CRT_Dev/AlertSettings.md) has every key in its table", function()
   local missing = {}

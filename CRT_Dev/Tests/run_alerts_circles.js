@@ -156,7 +156,7 @@ do -- the real CRT_Core/UI/Controls.lua: only PickColor is taken, the harness ke
   local tmp = { UI = {} }
   assert(load(controlsSrc, "CRT_Core/UI/Controls.lua"))("CowfeeRaidTools", tmp)
   CRT.UI.PickColor = tmp.UI.PickColor
-  for _, k in ipairs({ "NOT_AVAILABLE", "Usable", "DisabledReason", "DisabledTooltip", "DisabledCover" }) do CRT.UI[k] = tmp.UI[k] end -- and the greyed controls' reasons
+  for _, k in ipairs({ "NOT_AVAILABLE", "Usable", "DisabledReason", "DisabledTooltip", "DisabledCover", "GreyWhy" }) do CRT.UI[k] = tmp.UI[k] end -- and the greyed controls' reasons
 end
 local A, Areas, I = CRT.Alerts, CRT.AlertAreas, CRT.AlertCircles
 -- The settings rows show in the panel the Alerts tab owns (Areas.Panel), as on Raid Notes > Alerts.

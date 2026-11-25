@@ -329,6 +329,10 @@ local function buildLooting(f, body, refreshers)
         end
     end)
     toggle:SetPoint("TOPLEFT", looting, "BOTTOMLEFT", 4, -8) -- under the line, however many lines it takes
+    -- greyed, it says why (UX rule 5): CanRunLooting's reason (UI.DisabledCover)
+    local toggleWhy = UI.DisabledCover(toggle, function()
+        return toggle:GetText()
+    end)
     refreshers[#refreshers + 1] = function()
         local line, on = LM:LootingStatus()
         -- on: the good colour in a Modern theme, plain in Default: Blizzard, as before themes: not a theme colour
@@ -337,7 +341,10 @@ local function buildLooting(f, body, refreshers)
         toggle:SetShown(leader and true or false)
         toggle:SetText(LM:LootingOn() and TEXT.turnOff or TEXT.turnOn)
         fitWidth(toggle)
-        toggle:SetEnabled(LM:LootingOn() or (LM:CanRunLooting()) or false)
+        local can, why = LM:CanRunLooting()
+        local usable = LM:LootingOn() or can or false
+        toggle:SetEnabled(usable)
+        toggleWhy:Set(usable, why)
     end
 end
 
@@ -354,7 +361,7 @@ local function gatedButton(f, label, action)
         if not LM:CanLoot() then
             UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, "lootmaster")
             GameTooltip:SetText(self:GetText() or "")
-            GameTooltip:AddLine(UI.BadText(TEXT.noAuthority), 1, 1, 1, true)
+            UI.DisabledReason(GameTooltip, TEXT.noAuthority) -- in red (UX rule 5)
             GameTooltip:Show()
         end
     end)

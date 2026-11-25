@@ -64,6 +64,9 @@ local EDIT_TEXT = {
     excluded = "Not expected",
     excludedHeading = "Not expected (%d)",
     edited = "(edited)",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    allListedWhy = "Everyone in your group is already on tonight's list.",
+    noNightWhy = "No raid night is being tracked right now.",
 }
 -- History's Delete this night asks once (UI.Confirm); the roster window's Remove acts at once with Undo (UI.UndoToast)
 local DELETE_TEXT = {
@@ -928,6 +931,8 @@ local function refreshTonight()
         startButton:SetText("Restart from now")
         endButton:Enable()
         editButton:Enable()
+        UI.GreyWhy(endButton, true, nil, "End raid")
+        UI.GreyWhy(editButton, true, nil, "Edit roster")
     else
         local nextStart = Late:NextScheduled(now)
         local s = "No raid night is running."
@@ -940,6 +945,9 @@ local function refreshTonight()
         startButton:SetText("Start raid now")
         endButton:Disable()
         editButton:Disable()
+        -- greyed, they say why (UX rule 5)
+        UI.GreyWhy(endButton, false, EDIT_TEXT.noNightWhy, "End raid")
+        UI.GreyWhy(editButton, false, EDIT_TEXT.noNightWhy, "Edit roster")
     end
 end
 
@@ -1122,7 +1130,10 @@ local function getEditor()
             end
         end,
         enabledIf = function()
-            return #groupNotListed() > 0
+            if not Late:Current() then
+                return false, EDIT_TEXT.noNightWhy
+            end
+            return #groupNotListed() > 0, EDIT_TEXT.allListedWhy
         end,
     })
     d.addGroup:SetPoint("TOPLEFT", 14, -30)
@@ -1269,7 +1280,11 @@ local function buildTonight(f)
         local ok, why = CRT.Invite.CanInvite()
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_TOP")
         GameTooltip:SetText(self:GetText(), 1, 1, 1)
-        GameTooltip:AddLine(ok and INVITE_TEXT.allBody or why, 0.8, 0.8, 0.8, true)
+        if ok then
+            GameTooltip:AddLine(INVITE_TEXT.allBody, 0.8, 0.8, 0.8, true)
+        else
+            UI.DisabledReason(GameTooltip, why) -- the reason in red (UX rule 5)
+        end
         GameTooltip:Show()
     end)
     inviteAllButton:SetScript("OnLeave", function()

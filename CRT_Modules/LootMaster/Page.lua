@@ -123,6 +123,10 @@ local TEXT = {
     },
     lootWindow = "Master Loot Window",
     itemTabs = "Item tabs",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    scoreOffWhy = "Tick Show the Score column to change this.",
+    syncLeaderWhy = "Only the group leader can sync Master Loot.",
+    pickerWhy = "Used with Next to the window under Item tabs. Click a side to switch to it.",
     channels = {
         { key = "RAID", label = "Raid" }, { key = "RAID_WARNING", label = "Raid warning" }, { key = "PARTY", label = "Party" },
         { key = "GUILD", label = "Guild" }, { key = "OFFICER", label = "Officer" }, { key = "SELF", label = "Only you" },
@@ -455,7 +459,7 @@ local function slider(f, x, y, text, key, format)
             LM.ScoreChanged()
         end,
         enabledIf = function()
-            return LM:Settings().score.show
+            return LM:Settings().score.show and true or false, TEXT.scoreOffWhy
         end,
     })
     row:SetPoint("TOPLEFT", x, y)
@@ -470,7 +474,7 @@ local function buildSync(f)
     local picked -- the name picked in the dropdown; a typed name wins over it
     local typed
     local function canSync()
-        return LM:CanSync()
+        return LM:CanSync(), TEXT.syncLeaderWhy -- ok, reason (UX rule 5)
     end
     local pick = UI.Dropdown(f, TEXT.syncTo, {
         labelWidth = L.syncLabel, width = L.syncPick, maxHeight = 300,
@@ -524,11 +528,12 @@ local function buildSync(f)
     -- greyed out during chat lockdown, with the reason on hover (motion scripts run while disabled)
     button:SetMotionScriptsWhileDisabled(true)
     button:SetScript("OnEnter", function(self)
-        local why = LM:CanSync() and LM:SyncBlocked()
+        -- the reason in red (UX rule 5): not the leader, or chat is locked
+        local why = (not LM:CanSync() and TEXT.syncLeaderWhy) or LM:SyncBlocked()
         if why then
             UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, "lootmaster")
             GameTooltip:SetText(TEXT.sync)
-            GameTooltip:AddLine(why, 1, 0.82, 0, true)
+            UI.DisabledReason(GameTooltip, why)
             GameTooltip:Show()
         end
     end)
@@ -552,6 +557,10 @@ local function buildSync(f)
         GameTooltip:Hide()
     end)
     cover:Hide()
+    -- the typed name's box, greyed with the dropdown, says why too (UI.DisabledCover)
+    local typedWhy = UI.DisabledCover(typed, function()
+        return TEXT.syncTo
+    end)
     status:SetPoint("TOPLEFT", L.col2, L.syncTop - 90)
     status:SetWidth(L.col2W)
     status:SetJustifyH("LEFT")
@@ -559,6 +568,7 @@ local function buildSync(f)
         local on = canSync()
         pick.refresh()
         typed:SetEnabled(on)
+        typedWhy:Set(on, TEXT.syncLeaderWhy)
         typed.showHint()
         button:SetEnabled(on and not LM:SyncBlocked())
         cover:SetShown(on and LM:SyncBlocked() ~= nil)
@@ -605,7 +615,7 @@ local function buildTooltips(f)
             tip.refresh()
         end,
         enabledIf = function()
-            return LM:ItemTooltipChoice() == "window"
+            return LM:ItemTooltipChoice() == "window", TEXT.pickerWhy
         end,
     })
     picker:SetPoint("LEFT", tip, "RIGHT", UI.SPOT_PICKER_GAP, 0)

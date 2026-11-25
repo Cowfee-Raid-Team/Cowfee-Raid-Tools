@@ -23,6 +23,9 @@ local TEXT = {
     lowHealthTag = "(experimental)",
     lowHealthEnable = "Show a LOW HEALTH banner when my health is low",
     lowHealthThreshold = "Show it at or under this much health:",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    lowHealthWhy = "Tick Show a LOW HEALTH banner first.",
+    brezWhy = "Tick Show battle res icon first.",
     -- the sound: a pointer to the game's own pulse (#1242); CRT plays none and changes none of its settings
     lowHealthSound = "Low-health sound",
     lowHealthSoundLine = "For a sound when your health is low, turn on the game's own low-health pulse in Options > Accessibility > Combat Audio Alerts, and set its health threshold near your banner's.",
@@ -155,7 +158,7 @@ local function buildLowHealth(pf, top)
             LowHealth:Apply()
         end,
         enabledIf = function()
-            return settings().enabled
+            return settings().enabled and true or false, TEXT.lowHealthWhy
         end,
     })
     slider:SetPoint("TOPLEFT", 10, top - 42)
@@ -410,8 +413,9 @@ local function buildBattleRes(pf, top)
     local function brez()
         return CRT.db.qol.battleRes
     end
+    -- ok, reason (UX rule 5)
     local function on()
-        return brez().enabled
+        return brez().enabled and true or false, TEXT.brezWhy
     end
     local function changed()
         BattleRes:Apply()
@@ -464,6 +468,7 @@ local function buildBattleRes(pf, top)
         local enabled = on() and true or false
         groupOnly:SetChecked(brez().groupOnly and true or false)
         groupOnly:SetEnabled(enabled)
+        UI.GreyWhy(groupOnly, enabled, TEXT.brezWhy, TEXT.brezGroupOnly, nil, groupOnly.label)
         groupOnly.label:SetFontObject(enabled and CRTFontSmall or CRTFontDisableSmall)
     end
     controls[#controls + 1] = groupOnly
@@ -497,6 +502,7 @@ local function buildBattleRes(pf, top)
         local enabled = on() and true or false
         timer:SetChecked(brez().timer and true or false)
         timer:SetEnabled(enabled)
+        UI.GreyWhy(timer, enabled, TEXT.brezWhy, TEXT.brezTimer, nil, timer.label)
         timer.label:SetFontObject(enabled and CRTFontSmall or CRTFontDisableSmall)
     end
     controls[#controls + 1] = timer
