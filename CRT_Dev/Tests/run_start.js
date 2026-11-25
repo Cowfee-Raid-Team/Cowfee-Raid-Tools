@@ -178,6 +178,7 @@ local function boot(saved)
   CRT.ReadyCheckPage = { Open = function(tab) opened[#opened + 1] = "readycheck:" .. tostring(tab) end }
   CRT.QoLPage = { Open = function(tab) opened[#opened + 1] = "qol:" .. tostring(tab) end }
   CRT.SettingsPage = { Open = function(tab) opened[#opened + 1] = "settings:" .. tostring(tab) end }
+  CRT.TattlePage = { Open = function(tab) opened[#opened + 1] = "tattle:" .. tostring(tab) end }
   local show = UI.Show
   UI.Show = function(self, key) opened[#opened + 1] = key or "?" return show(self, key) end
   return { CRT = CRT, UI = UI, opened = opened, printed = printed,
@@ -343,7 +344,8 @@ check(p.CRT.db.minimap.hide == false and S.Get(mm.def) == true, "ticked shows it
 -- the links open their page on its tab
 local before = #p.opened
 click(rowOf("consumables").link) click(rowOf("debuffs").link) click(rowOf("speech").link) click(rowOf("pace").link) click(rowOf("minimap").link)
-check(table.concat(p.opened, " ", before + 1) == "readycheck:auto qol:debuffs notes:alerts pace settings:appearance", "the links open their page and tab: " .. table.concat(p.opened, " ", before + 1))
+click(rowOf("tattle").link)
+check(table.concat(p.opened, " ", before + 1) == "readycheck:auto qol:debuffs notes:alerts pace settings:appearance tattle:settings", "the links open their page and tab (Tattlebot on its Settings tab, where its switch is): " .. table.concat(p.opened, " ", before + 1))
 check(rowOf("consumables").link.label.text == "Ready Check" and rowOf("debuffs").link.label.text == "Quality of Life", "a link reads its page's name")
 -- Interrupts' page is hidden while it is off: its link greys, says why, and opens nothing
 local kick = rowOf("interrupts")

@@ -126,7 +126,7 @@ local WHATS_ON = {
             set = function(on) db().readycheck.auto = on readyCheckApply() end },
         { key = "earlyPull", label = "Early pull report", path = "readycheck.earlyPull", page = "readycheck", tab = "auto", where = "Ready Check > Settings",
             set = function(on) db().readycheck.earlyPull = on readyCheckApply() end },
-        { key = "tattle", label = "Tattlebot", path = "tattle.enabled", page = "tattle", where = "Tattlebot (the switch is on its Settings tab)",
+        { key = "tattle", label = "Tattlebot", path = "tattle.enabled", page = "tattle", tab = "settings", where = "Tattlebot > Settings",
             set = function(on) CRT.Tattle:Set("enabled", on) end },
         { key = "timeline", label = "Timeline recording", path = "timeline.record", page = "timeline", where = "Timeline",
             set = function(on) CRT.Timeline:Set("record", on) end },
@@ -136,7 +136,7 @@ local WHATS_ON = {
 }
 
 -- The pages that open on a tab, by their own Open(tab).
-local OPENERS = { readycheck = "ReadyCheckPage", qol = "QoLPage", notes = "NotesPage", settings = "SettingsPage" }
+local OPENERS = { readycheck = "ReadyCheckPage", qol = "QoLPage", notes = "NotesPage", settings = "SettingsPage", tattle = "TattlePage" }
 
 -- Every number the page is placed with, in px: the left margin; the right column's start (half the page) and the
 -- room before it; a row's least height and the room around its text; the checkbox and the space after it; the

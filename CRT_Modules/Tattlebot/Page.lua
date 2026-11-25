@@ -1349,6 +1349,22 @@ CRT.TattlePage = {
         end
         return true
     end,
+    -- Opens the page on a tab ("tonight", "history", "mechanics" or "settings"; Start here's link opens Settings,
+    -- where the switch is). A key that isn't a tab keeps the one shown.
+    Open = function(tab)
+        for _, t in ipairs(TABS) do
+            if t.key == tab then
+                currentTab = tab
+            end
+        end
+        local wasShown = page and page:IsShown()
+        UI:Show("tattle")
+        -- a page that was hidden ran both from its OnShow
+        if wasShown then
+            selectTab(currentTab)
+            refresh()
+        end
+    end,
     -- Whether the panel can open the page: registered and not hidden (UI:SelectPage opens another one then).
     CanShow = function()
         local p = UI.pages and UI.pages.tattle
