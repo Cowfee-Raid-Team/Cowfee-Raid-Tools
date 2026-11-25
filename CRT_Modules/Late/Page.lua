@@ -65,6 +65,15 @@ local EDIT_TEXT = {
     excludedHeading = "Not expected (%d)",
     edited = "(edited)",
 }
+-- History's Delete this night asks once (UI.Confirm); the roster window's Remove acts at once with Undo (UI.UndoToast)
+local DELETE_TEXT = {
+    button = "Delete this night",
+    ask = "Delete the night of %s?",
+    players = "Its record of %d %s goes too, and the totals no longer count it. This can't be undone.",
+    player = "player", playersWord = "players",
+    accept = "Delete night",
+    removed = "Took %s off tonight's list.",
+}
 local EDIT_LABEL_W = 200 -- the player's name in an edit row
 local EDIT_DROPDOWN_W = 200
 local EDIT_HEADING_PAD = 6 -- above and below the Not expected heading
@@ -1038,7 +1047,14 @@ local function refreshEditor()
             editorFont(row.remove)
             row.remove:SetPoint("RIGHT", -2, 0)
             row.remove:SetScript("OnClick", function(self)
-                Late:RemovePlayer(self:GetParent().key)
+                local key = self:GetParent().key
+                local undo = Late:RemovePlayer(key)
+                if undo then
+                    local shown = CRT.ShortName and CRT.ShortName(key) or Ambiguate(key, "short")
+                    UI.UndoToast({ text = format(DELETE_TEXT.removed, shown), owner = self, onUndo = function()
+                        Late:RestorePlayer(undo)
+                    end })
+                end
             end)
             row.onTime = makeButton(row, "On time", 66, 20)
             editorFont(row.onTime)
@@ -1370,30 +1386,20 @@ local function buildHistory(f)
     end
     controls[#controls + 1] = showDropdown
 
-    deleteButton = makeButton(f, "Delete this night", 190)
+    deleteButton = makeButton(f, DELETE_TEXT.button, 190)
     deleteButton:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
-    local armToken = 0
-    deleteButton:SetScript("OnClick", function(self)
-        if selected == TOTALS then
+    deleteButton:SetScript("OnClick", function()
+        local id = selected
+        local night = id ~= TOTALS and Late:Find(id)
+        if not night then
             return
         end
-        if not self.armed then
-            self.armed = true
-            armToken = armToken + 1
-            local token = armToken
-            self:SetText("Click again to delete")
-            C_Timer.After(3, function()
-                if token == armToken then
-                    self.armed = false
-                    self:SetText("Delete this night")
-                end
-            end)
-            return
-        end
-        armToken = armToken + 1
-        self.armed = false
-        self:SetText("Delete this night")
-        Late:Delete(selected)
+        local n = #(night.players or {})
+        UI.Confirm({ text = format(DELETE_TEXT.ask, day(night.startedAt)),
+            detail = format(DELETE_TEXT.players, n, n == 1 and DELETE_TEXT.player or DELETE_TEXT.playersWord),
+            accept = DELETE_TEXT.accept, danger = true, onAccept = function()
+                Late:Delete(id)
+            end })
     end)
 
     -- Edit night (developer builds only), left of Delete with its (?) between them
