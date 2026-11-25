@@ -76,13 +76,14 @@ function UI.DisabledReason(tooltip, reason, hasTip)
 end
 
 -- The whole tooltip of a greyed control on owner: title in white and text (its help: a string or a list, as
--- UI.AddTooltipText takes) when given, then the reason line. Without a title the reason is the tooltip's one line.
-function UI.DisabledTooltip(owner, title, text, reason, anchor)
+-- UI.AddTooltipText takes) when given, then the reason line. Without a title the reason is the tooltip's one line. how:
+-- optional, UI.TooltipOwner's flag (UI.TOOLTIP_KEEP for a control whose own tooltip keeps its anchor).
+function UI.DisabledTooltip(owner, title, text, reason, anchor, how)
     local tip = GameTooltip
     if not tip then
         return
     end
-    UI.TooltipOwner(tip, owner, anchor or "ANCHOR_RIGHT")
+    UI.TooltipOwner(tip, owner, anchor or "ANCHOR_RIGHT", nil, nil, how)
     if title and title ~= "" then
         tip:SetText(title, 1, 1, 1)
         if text and UI.AddTooltipText then
@@ -98,19 +99,39 @@ end
 
 -- A see-through cover over a greyed control, so the mouse over it shows UI.DisabledTooltip: a disabled button or
 -- slider gets no OnEnter of its own. It takes the clicks (the control under it is greyed and takes none) and lets
--- the mouse wheel through to the page. owner: the frame to cover; right: optional, a region whose right edge the
--- cover reaches (a checkbox's label); tip(): optional, returns title, text. cover:Set(ok, reason) shows it while not
--- ok; cover.state(), when set, is asked again on hover, so the reason is the one that holds now.
+-- the mouse wheel through to the page. owner: the frame to cover; right: optional, a checkbox's label right of it,
+-- which the cover reaches as far as its text goes (never a (?) after a label of fixed width), as tall as its lines;
+-- tip(): optional, returns title, text. cover:Set(ok, reason) shows it while not ok; cover.state(), when set, is asked
+-- again on hover, so the reason is the one that holds now; cover.tipHow, UI.TooltipOwner's flag for its tooltip.
+local function number(region, method)
+    local f = region[method]
+    local v = f and f(region) -- one value, or nil (a region not laid out yet)
+    return tonumber(v)
+end
+
+local function size(region, method)
+    return number(region, method) or 0
+end
+
 function UI.DisabledCover(owner, tip, right)
     local cover = CreateFrame("Frame", nil, owner)
     if right then
-        -- two corners only, so no edge is set twice: the label sits level with the box's middle (anchored LEFT to its
-        -- RIGHT), so half the box's height under the label's right end is the box's bottom
-        cover:SetPoint("TOPLEFT", owner, "TOPLEFT")
-        local h = owner.GetHeight and owner:GetHeight() or 0
-        cover:SetPoint("BOTTOMRIGHT", right, "RIGHT", 0, -(h / 2))
+        -- the label sits level with the box's middle (anchored LEFT to its RIGHT): the cover's left middle is the box's,
+        -- its size from the box, the gap and the text as drawn (fit, on every Set: the text and font may change)
+        cover:SetPoint("LEFT", owner, "LEFT")
     else
         cover:SetAllPoints(owner)
+    end
+    function cover:Fit()
+        local text = size(right, "GetStringWidth")
+        local width = size(right, "GetWidth")
+        if width > 0 then
+            text = math.min(text, width)
+        end
+        -- the gap between the box and its label, as laid out (2 px, the helpers' own, before the first layout)
+        local l, r = number(right, "GetLeft"), number(owner, "GetRight")
+        local gap = (l and r) and math.max(0, l - r) or 2
+        self:SetSize(size(owner, "GetWidth") + gap + text, math.max(size(owner, "GetHeight"), size(right, "GetStringHeight")))
     end
     if cover.SetFrameLevel and owner.GetFrameLevel then
         cover:SetFrameLevel((owner:GetFrameLevel() or 0) + 20)
@@ -120,6 +141,9 @@ function UI.DisabledCover(owner, tip, right)
     cover.ok = true
     function cover:Set(ok, reason)
         self.ok, self.reason = ok and true or false, reason
+        if right and not self.ok then
+            self:Fit()
+        end
         self:SetShown(not self.ok)
     end
     -- what the tooltip says now: the reason that holds as the mouse comes over it, or the last one Set kept
@@ -139,7 +163,7 @@ function UI.DisabledCover(owner, tip, right)
     end
     cover:SetScript("OnEnter", function(self)
         local title, text, reason = self:Tip()
-        UI.DisabledTooltip(self, title, text, reason)
+        UI.DisabledTooltip(self, title, text, reason, nil, self.tipHow)
     end)
     cover:SetScript("OnLeave", function()
         if GameTooltip then
@@ -150,16 +174,23 @@ function UI.DisabledCover(owner, tip, right)
 end
 
 -- For a control greyed by hand (control:SetEnabled(ok) in the caller's own refresh): the cover above, made the first
--- time as el.why, then set. title and text are its tooltip's (text optional); right, optional, a region the cover reaches
--- (a checkbox's label, as UI.DisabledCover's). Returns the cover.
-function UI.GreyWhy(el, ok, reason, title, text, right)
-    if not rawget(el, "why") then -- rawget: only a cover made here counts, never a lookup through the frame's metatable
-        el.why = UI.DisabledCover(el, function()
-            return title, text
+-- time as el.why, then set. title and text are its tooltip's (text optional), kept from each call (a label may change);
+-- right, optional, a checkbox's label (as UI.DisabledCover's); state, optional, asked again on hover for the reason that
+-- holds then (ok, reason). Returns the cover.
+function UI.GreyWhy(el, ok, reason, title, text, right, state)
+    local why = rawget(el, "why") -- rawget: only a cover made here counts, never a lookup through the frame's metatable
+    if not why then
+        why = UI.DisabledCover(el, function()
+            return el.why.title, el.why.text
         end, right)
+        el.why = why
     end
-    el.why:Set(ok, reason)
-    return el.why
+    why.title, why.text = title, text
+    if state then
+        why.state = state
+    end
+    why:Set(ok, reason)
+    return why
 end
 -- [/disabled reason]
 
@@ -858,11 +889,13 @@ function UI.Slider(parent, text, opts)
         end)
         row.labelHit = hit
     end
-    -- greyed, a cover over the row (and over the label's tooltip) shows the tooltip with the reason
+    -- greyed, a cover over the row (and over the label's tooltip) shows the tooltip with the reason, placed as the
+    -- label's own (UI.TOOLTIP_KEEP)
     if opts.enabledIf then
         row.why = UI.DisabledCover(row, function()
             return opts.tipTitle or row.Label:GetText(), opts.tipText
         end)
+        row.why.tipHow = UI.TOOLTIP_KEEP
         row.why.state = function()
             return UI.Usable(opts.enabledIf)
         end
@@ -1274,7 +1307,7 @@ function UI.SpotPicker(parent, opts)
     box:EnableMouse(true)
     box:SetScript("OnEnter", function(self)
         if not p.enabled then
-            UI.DisabledTooltip(self, opts.label, nil, p.reason)
+            UI.DisabledTooltip(self, opts.label, nil, p.reason, nil, UI.TOOLTIP_KEEP) -- placed as the spots' own
         end
     end)
     box:SetScript("OnLeave", function()

@@ -33,7 +33,7 @@ local TEXT = {
     dispelWhy = "Tick Show the dispel type icon on each debuff first.",
     swipeWhy = "Tick Swipe animation as the debuff runs out first.",
     tooltipsWhy = "Tick Show tooltips on hover first.",
-    nudgeWhy = "The timer has no place of its own with this Timer choice, so there is nothing to nudge.",
+    nudgeWhy = "Set Timer to a place on or around the icon to nudge it.",
 }
 
 -- ok, reason: the panel's settings while Show the debuff panel is ticked

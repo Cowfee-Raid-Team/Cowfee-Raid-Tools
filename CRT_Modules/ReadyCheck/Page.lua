@@ -29,7 +29,7 @@ local TEXT = {
     autoWhy = "Tick Report automatically on a ready check first.",
     earlyWhy = "Tick Report who starts the fight before the pull timer ends first.",
     barWhy = "Tick Show my bar on a ready check first.",
-    wipWhy = "Coming soon: it waits for the items' IDs.",
+    wipWhy = "Not ready yet. It comes in a later version.",
     windowWhy = "Tick Open the window on a ready check first.",
 }
 -- The Window tab's Lock, Keep it open and Show a border boxes, in the right column under Class color bar, 24 apart.

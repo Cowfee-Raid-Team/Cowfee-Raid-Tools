@@ -72,7 +72,7 @@ local TEXT = {
     teamLockIcon = "|TInterface\\LFGFrame\\UI-LFG-ICON-LOCK:14:14|t ",
     -- why a greyed control can't be used (UX rule 5), on its tooltip
     teamPushWhy = "Only the raid leader can push the team.",
-    teamPugWhy = "Pug can't be removed. Pick one of your own teams first.",
+    teamPugWhy = "%s is built in and can't be removed. Pick one of your own teams first.",
     teamTonightOnlyWhy = "This team is only here for tonight's raid: it isn't on your list.",
     teamMergeWhy = "You need at least two teams to merge one into another.",
     onlyProfileWhy = "This is your only profile. Make another under New profile first.",
@@ -595,16 +595,12 @@ local function buildTeam(pf, x, top)
         end
         return true
     end
-    -- a hand-made button greyed with a reason: a cover shows its name and why (UI.DisabledCover)
+    -- a button greyed while usable() says no; hovering it then says why (UI.GreyWhy, which asks usable again on hover)
     local function greyWhy(b, label, usable)
-        local why = UI.DisabledCover(b, function()
-            return label
-        end)
-        why.state = usable
         b.refresh = function()
             local ok, reason = usable()
             b:SetEnabled(ok and true or false)
-            why:Set(ok, reason)
+            UI.GreyWhy(b, ok, reason, label, nil, nil, usable)
         end
         controls[#controls + 1] = b
     end
@@ -660,7 +656,7 @@ local function buildTeam(pf, x, top)
         if found ~= nil and not Team.BuiltIn(found) then
             return false, TEXT.teamTonightOnlyWhy
         end
-        return false, TEXT.teamPugWhy
+        return false, TEXT.teamPugWhy:format(found or tonight or "")
     end)
     -- Merge team…: greyed while a push locks the pick (as Remove) and with fewer than two teams to merge from
     local merge = button(pf, TEXT.teamMerge)

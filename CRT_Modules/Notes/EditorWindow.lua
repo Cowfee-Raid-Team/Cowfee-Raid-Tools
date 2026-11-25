@@ -650,7 +650,7 @@ function Editor.Refresh()
     W.save:SetEnabled(dirty and not locked)
     UI.GreyWhy(W.save, dirty and not locked, lockedWhy or TEXT.noChangesWhy, TEXT.save)
     W.quick:SetEnabled(not locked)
-    UI.GreyWhy(W.quick, not locked, lockedWhy, TEXT.quickFill)
+    UI.GreyWhy(W.quick, not locked, lockedWhy, TEXT.quickFill, nil, W.quickText)
     W.quick:SetChecked(W.session.quickFill)
     if W.assignButton then
         W.assignButton:SetEnabled(not locked or W.assignOn == true)
@@ -1022,7 +1022,7 @@ local function buildFooter(c)
         end
     end)
     quick:SetPoint("BOTTOMLEFT", -2, 0)
-    W.quick = quick
+    W.quick, W.quickText = quick, quickText
     -- Send my roster with the note: at the foot of the palette's column, over Push note
     W.roster = checkBox(c, TEXT.roster, TEXT.rosterHelpTitle, TEXT.rosterHelp, function(self)
         Notes:Set(nil, "pushRoster", self:GetChecked() and true or false)

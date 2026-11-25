@@ -44,6 +44,7 @@ local TEXT = {
         .. "protected by the game and that one isn't.\n\n"
         .. "A frame from another addon that loads late is found when it loads. Until then this stays where it was.",
     fixedHelp = "This one holds the game's own buttons, so it always sits on the screen.",
+    noneWhy = "Click a window first to place it.", -- why Anchor to is greyed with nothing picked (UX rule 5)
 }
 P.PANEL_TEXT = TEXT
 
@@ -390,7 +391,7 @@ local function build()
         -- ok, reason (UX rule 5): the panel shows for one element; one holding the game's buttons stays on the screen
         enabledIf = function()
             if shown == nil then
-                return false
+                return false, TEXT.noneWhy
             end
             if shown.spec.canAnchor == false then
                 return false, TEXT.fixedHelp

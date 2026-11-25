@@ -178,12 +178,15 @@ function UI.PreviewButton(parent, label, keys, opts)
         GameTooltip:SetText(label, 1, 1, 1)
         UI.AddTooltipText(GameTooltip, opts.tooltip, 0.8, 0.8, 0.8)
         local ok, reason = usable()
-        if not ok and reason then
-            local r, g, bl = UI.Color("warn")
-            GameTooltip:AddLine(reason, r, g, bl, true)
+        if not ok then
+            UI.DisabledReason(GameTooltip, reason, opts.tooltip ~= nil) -- the one red reason line (UI/Controls.lua)
         end
         GameTooltip:Show()
     end)
+    -- a greyed button gets no OnEnter unless told to, and its tooltip is where the reason is
+    if b.SetMotionScriptsWhileDisabled then
+        b:SetMotionScriptsWhileDisabled(true)
+    end
     b:SetScript("OnLeave", function()
         GameTooltip:Hide()
     end)

@@ -49,7 +49,7 @@ local TEXT = {
         { "Left and right sides", "pick an assignment with two rows of players, made on Raid Notes > Mech Alerts > Mechanics (pick the boss and the ability, then its Assign tab). The first row goes to groups 1 and 2, the second to groups 3 and 4. Everyone else is split between the two sides to even them out." },
     },
     side = "Assignment",
-    noSidesWhy = "No assignment this season has two rows of players. Make one on Raid Notes > Mech Alerts > Mechanics (pick the boss and the ability, then its Assign tab).",
+    noSidesWhy = "No assignment has two rows of players yet. Make one on Raid Notes > Mech Alerts > Mechanics (pick the boss and the ability, then its Assign tab).",
     emptyGrid = "The grid is empty.",
     postChanges = "Post group changes to raid chat",
     extraBody = "In your group, in raid group %d, but not in this layout.", -- a player beside the grid

@@ -615,6 +615,7 @@ do
   function tip:Show() self.shown = true end function tip:Hide() self.shown = false end
   GameTooltip = tip
   UI.TooltipOwner = function(t, owner) t:SetOwner(owner) end
+  UI.TOOLTIP_KEEP = UI.TOOLTIP_KEEP or "keep" -- as UI/Tooltip.lua's flag
   UI.AddTooltipText = function(t, text) t:AddLine(type(text) == "table" and table.concat(text, " ") or text, 1, 0.82, 0, true) end
   local function texts() local t = {} for _, l in ipairs(tip.lines) do t[#t + 1] = l.text end return table.concat(t, " | ") end
   local function last() return tip.lines[#tip.lines] end
@@ -698,6 +699,34 @@ do
     local lb = UI.LinkButton({}, "Open", { tipTitle = "Open in Tattlebot", tipText = "Shows the night.", enabledIf = function() return lon, lreason end })
     tip.lines = {} lb.OnEnter(lb)
     check(texts() == "Open in Tattlebot | Shows the night. | " .. lreason and red(last()), "link button: its tip, then the reason in red: " .. texts())
+
+    -- A checkbox's cover reaches only as far as its label's text: a label of fixed width with a (?) after it leaves the
+    -- (?) uncovered, and a two-line label makes the cover as tall as its lines.
+    local box = CreateFrame("CheckButton")
+    function box:GetWidth() return 24 end function box:GetHeight() return 24 end function box:GetRight() return 124 end
+    local label = region()
+    label.text = "Glow on dispellable debuffs"
+    function label:GetWidth() return 300 end -- fixed: the (?) sits right of these 300 px
+    function label:GetStringWidth() return 160 end function label:GetStringHeight() return 14 end function label:GetLeft() return 126 end
+    local bc = UI.DisabledCover(box, function() return label.text end, label)
+    rawset(bc, "SetSize", function(self, w, h) self.w, self.h = w, h end)
+    bc:Set(false, "Tick Show the debuff panel to change this.")
+    check(bc.w == 24 + 2 + 160 and bc.w < 24 + 2 + 300 and bc.h == 24, "cover: the box, the gap and the text only, never the (?): " .. tostring(bc.w) .. " x " .. tostring(bc.h))
+    function label:GetStringWidth() return 600 end function label:GetStringHeight() return 30 end -- wrapped onto two lines
+    bc:Set(false, "Tick Show the debuff panel to change this.")
+    check(bc.w == 24 + 2 + 300 and bc.h == 30, "cover: a long label stops at its own width, and two lines make it taller: " .. tostring(bc.w) .. " x " .. tostring(bc.h))
+    -- no cover ever takes the mouse wheel: it goes on to the page under it
+    for name, c in pairs({ dropdown = vd.why, slider = sl.why, pill = vp.why, checkbox = bc }) do
+      check(c.wheelOn ~= true, name .. ": the cover never takes the mouse wheel")
+    end
+    -- the greyed slider's tooltip is placed as its label's own (UI.TOOLTIP_KEEP)
+    check(sl.why.tipHow ~= nil and sl.why.tipHow == UI.TOOLTIP_KEEP, "slider: the cover's tooltip keeps the label's anchor")
+    -- UI.GreyWhy: the title from each call (a button's label may change), and state asked again on hover
+    local btn = CreateFrame("Button")
+    UI.GreyWhy(btn, false, "First.", "Raw text")
+    local now = "Press Done on the assignment first."
+    UI.GreyWhy(btn, false, "First.", "Hide raw text", nil, nil, function() return false, now end)
+    check(hover(btn.why) == "Hide raw text | " .. now, "GreyWhy: the latest title, and the state's reason on hover: " .. texts())
   end
 end
 print("ok controls: a greyed-out control says why")

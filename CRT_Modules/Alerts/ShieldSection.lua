@@ -334,7 +334,14 @@ function ShieldSection.Refresh(s, rows)
     local anyOn = on and (not o.anyApplies or o.anyApplies()) and true or false
     s.any:SetEnabled(anyOn)
     s.any.label:SetAlpha(anyOn and 1 or 0.5)
-    s.any.why:Set(anyOn, not on and onWhy or TEXT.anyWhy)
+    -- the rows' reason while they are greyed (none: the generic line), else why Any time adds nothing here
+    local anyWhy
+    if on then
+        anyWhy = TEXT.anyWhy
+    else
+        anyWhy = onWhy
+    end
+    s.any.why:Set(anyOn, anyWhy)
     if s.anyX > 0 then
         -- beside Shield on: its label is cut to the column (a large text size), its (?) after it
         local room = o.width - s.anyX - L.CHECK - L.CHECK_GAP - UI.HELP_GAP - UI.HELP_SIZE
