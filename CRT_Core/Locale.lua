@@ -19,8 +19,9 @@ local ADDON, CRT = ...
 -- { "intro", { "Name", "text" } }) is replaced whole, never merged.
 --
 -- Format strings: a translation keeps every %s and %d of the English, in the same order, since the code passes
--- the values in that order. A file that formats several values in an order a language may want changed says so
--- in a comment by that key; such a key gets reworked before it is translated.
+-- the values in that order. A TEXT table with keys that format two or more values (names, items, a count and a
+-- word), whose order a language may want changed, says so in a comment above it; such a key gets reworked (to
+-- values a translation can reorder) before it is translated.
 --
 -- With no overrides for the client's language and namespace, CRT.Locale returns the English table itself: no
 -- copy, no metatable, nothing more to read in hot paths. With overrides it returns a plain copy with the

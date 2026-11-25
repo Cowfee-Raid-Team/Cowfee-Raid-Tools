@@ -99,6 +99,33 @@ const localePath = path.join(dir, 'CRT_Core/Locale.lua');
 lua.lua_pushstring(L, to_luastring(fs.existsSync(localePath) ? fs.readFileSync(localePath, 'utf8') : 'error("missing CRT_Core/Locale.lua")'));
 if (lua.lua_pcall(L, 1, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
 
+// ---- the harnesses' preload (locale_preload.js, through runner_lib.sh): an addon file gets the real CRT.Locale ----
+{
+  const preloaded = Object.keys(require.cache).some((k) => /locale_preload\.js$/.test(k));
+  check(preloaded, 'the harnesses run with locale_preload.js (run this group through test.sh)');
+  const P = lauxlib.luaL_newstate();
+  lualib.luaL_openlibs(P);
+  const probe = `
+local fileSrc = ...
+local CRT = {}
+assert(load(fileSrc, "Fake/File.lua"))("CowfeeRaidTools", CRT)
+local kept = { Locale = function(ns, e) return { mine = true } end }
+assert(load(fileSrc, "Fake/File.lua"))("CowfeeRaidTools", kept)
+local ok, err = pcall(assert(load(fileSrc .. "\\nerror('on line 5')", "Fake/File.lua")), "CowfeeRaidTools", {})
+return CRT.got, type(CRT.LOCALE), kept.got, tostring(err)
+`;
+  const file = 'local ADDON, CRT = ...\nlocal TEXT = CRT.Locale("Fake.File", { title = "Title" })\nCRT.got = TEXT.title or (TEXT.mine and "mine")\n-- line 4';
+  if (lauxlib.luaL_loadstring(P, to_luastring(probe)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(P, -1)); process.exit(1); }
+  lua.lua_pushstring(P, to_luastring(file));
+  if (lua.lua_pcall(P, 1, 4, 0) !== lua.LUA_OK) {
+    check(false, 'an addon file loads in a harness with no Locale.lua of its own: ' + lua.lua_tojsstring(P, -1));
+  } else {
+    check(lua.lua_tojsstring(P, -4) === 'Title' && lua.lua_tojsstring(P, -3) === 'table', 'an addon file loaded in a harness gets the real CRT.Locale (English)');
+    check(lua.lua_tojsstring(P, -2) === 'mine', 'a CRT that has its own Locale keeps it');
+    check(/Fake\/File\.lua"?\]?:5:/.test(lua.lua_tojsstring(P, -1)), 'line numbers in errors stay as written: ' + lua.lua_tojsstring(P, -1));
+  }
+}
+
 // ---- the lint ----
 // A file's code with its comments taken out (line comments and --[[ ]] blocks), lines kept in place.
 function code(src) {
