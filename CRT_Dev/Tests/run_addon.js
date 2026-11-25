@@ -7,6 +7,11 @@
 const fs = require('fs');
 const path = require('path');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
+// every Lua table made, counted (fengari's luaH_new), for the page shows' garbage check (#1315)
+const ltable = require('fengari/src/ltable.js');
+let tablesMade = 0;
+const newTable = ltable.luaH_new;
+ltable.luaH_new = function (L) { tablesMade++; return newTable(L); };
 
 const root = process.argv[2];
 if (!root) { console.error('usage: node run_addon.js <addon folder>'); process.exit(2); }
@@ -749,6 +754,23 @@ do
   local voice = UI:FindSpot("notes", "voice")
   check(voice ~= nil and voice.GetObjectType ~= nil, "the Welcome's voice step finds the Voice row on Alert settings")
   UI.ClearSpotlight()
+  -- Page shows (#1315 round 2): every page built, then shown again and again, adds nothing to the lists that live as
+  -- long as the UI (skinned controls, fitted buttons, flows, font listeners) and makes little garbage. A developer
+  -- build's layout editor walked every built page on each page change: about 93000 tables a round of every page here.
+  do
+    local function lens()
+      return { skinned = #UI.skinned, fitted = #UI.fitted, flows = #UI.flows, fonts = #UI.fontListeners }
+    end
+    for _ = 1, 2 do for _, key in ipairs(UI.order) do pcall(UI.Show, UI, key) end end
+    local before, t0 = lens(), TABLES_MADE()
+    for _ = 1, 3 do for _, key in ipairs(UI.order) do pcall(UI.Show, UI, key) end end
+    local perRound, after = (TABLES_MADE() - t0) / 3, lens()
+    for k, v in pairs(after) do
+      check(v == before[k], "page shows add nothing to UI." .. k .. ": " .. before[k] .. " -> " .. v)
+    end
+    print("  measure " .. name .. ": " .. math.floor(perRound) .. " tables a round of every page (" .. #UI.order .. " pages)")
+    check(perRound <= 5000, "a round of every page's show makes at most 5000 tables, got " .. math.floor(perRound))
+  end
   -- the stand-ins put back as they were: Show without OnShow, CreateFrame, the skins and UI.Show
   stubs.CreateFrame = plainFrame
   for _, rec in ipairs(frames) do
@@ -799,6 +821,8 @@ let failed = 0;
 for (const sc of scenarios) {
   const L = lauxlib.luaL_newstate();
   lualib.luaL_openlibs(L);
+  lua.lua_pushcfunction(L, (L) => { lua.lua_pushnumber(L, tablesMade); return 1; });
+  lua.lua_setglobal(L, to_luastring('TABLES_MADE'));
   if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
   // files and sources as Lua tables, the scenario as a table
   const { files, sources } = builds[sc.release ? 'release' : 'dev'];
