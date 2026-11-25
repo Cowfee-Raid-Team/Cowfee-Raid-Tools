@@ -18,9 +18,9 @@ local ADDON, CRT = ...
 -- back. One with `pin` is pinned; when you already have a template of that name, yours is pinned instead
 -- of a copy being added.
 
-local TEXT = {
+local TEXT = CRT.Locale("Alerts.Saved", {
     unnamed = "Template",
-}
+})
 
 local Alerts = CRT.Alerts
 

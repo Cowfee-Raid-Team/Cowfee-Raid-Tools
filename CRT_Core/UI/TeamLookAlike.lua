@@ -22,12 +22,13 @@ CRT.TeamLookAlike = P
 
 local L = { width = 360, height = 130, buttonH = 22, buttonMinW = 90, gap = 12, bottom = 6, pad = 12 }
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("UI.TeamLookAlike", {
     title = "Same team?",
     ask = "%s looks like %s. Merge %s (%s) into %s?",
     merge = "Merge",
     keep = "Keep apart",
-}
+})
 P.TEXT = TEXT
 
 -- "1 pull", "7 pulls": the Merge teams dialog's wording (TeamDialogs.lua).

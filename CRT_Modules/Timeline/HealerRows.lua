@@ -14,9 +14,9 @@ local ADDON, CRT = ...
 local Rows = {}
 CRT.TimelineHealerRows = Rows
 
-local TEXT = {
+local TEXT = CRT.Locale("Timeline.HealerRows", {
     reset = "Reset to defaults",
-}
+})
 Rows.TEXT = TEXT
 
 local ICON = "|T%s:14:14:0:0:64:64:4:60:4:60|t %s" -- a menu line's spell icon, its border trimmed, then the name

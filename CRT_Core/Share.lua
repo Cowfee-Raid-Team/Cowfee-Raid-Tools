@@ -30,13 +30,13 @@ Share.CAPS = { depth = 8, entries = 500, total = 20000, string = 2000 }
 local ZLIB = (Enum and Enum.CompressionMethod and Enum.CompressionMethod.Zlib) or 1
 Share.ZLIB = ZLIB
 
-local TEXT = {
+local TEXT = CRT.Locale("Core.Share", {
     noApi = "This game client can't read or write CRT codes.",
     notOurs = "Not a CRT %s code.",
     newer = "Made by a newer CRT. Update the addon first.",
     damaged = "Damaged code. Copy it again.",
     tooLong = "That code is too long to read.",
-}
+})
 Share.TEXT = TEXT
 
 -- The game's encoder, or nil when this client lacks a part of it.

@@ -16,7 +16,8 @@ CRT.BattleResProbe = Probe
 
 local FIELDS = { "currentCharges", "maxCharges", "cooldownStartTime", "cooldownDuration", "chargeModRate", "isActive" }
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Dev.BattleResProbe", {
     head = "Battle res probe (spell %d). Paste these lines to Claude.",
     missing = "C_Spell.GetSpellCharges is missing on this client.",
     failed = "C_Spell.GetSpellCharges raised an error: %s",
@@ -25,7 +26,7 @@ local TEXT = {
     encounter = "Encounter active: our flag %s, IsEncounterInProgress %s. Combat flag %s, in a group %s, instance %s.",
     duration = "Charge duration object: %s",
     icon = "Icon: setting %s, shown %s.",
-}
+})
 
 local testCooldown
 

@@ -23,12 +23,13 @@ local ADDON, CRT = ...
 -- A note's invite list becomes a Raid Groups layout when you import it yourself (presetId links them); a note shared
 -- to you makes none, as the sender's roster comes with the share (Groups/Share.lua).
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Notes.Data", {
     notAdmin = "Only the raid leader or assistants can change the raid note.",
     -- WriteTarget: the pull of that difficulty reads a note for another difficulty, or for any
     otherNote = "The %s pull reads the %s note. Make a %s note first (Raid Notes), then write.",
     anyDifficulty = "any difficulty",
-}
+})
 
 local Parser = CRT.NoteParser
 local Notes = { listeners = {} }

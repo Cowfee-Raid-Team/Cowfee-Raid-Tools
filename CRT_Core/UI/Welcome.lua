@@ -16,7 +16,7 @@ local W = {}
 CRT.Welcome = W
 local UI = CRT.UI
 
-local TEXT = {
+local TEXT = CRT.Locale("UI.Welcome", {
     ready = "Ready. Type |cffffd100/crt|r to open it, or |cffffd100/crt help|r for the commands.",
     title = "Welcome to Cowfee Raid Tools",
     intro = "Cowfee Raid Tools helps your raid with boss alerts, raid notes, ready checks and raid layouts.",
@@ -24,7 +24,7 @@ local TEXT = {
     leader = "I lead or assist",
     pick = "Pick one to see where to start.",
     gotIt = "Got it",
-}
+})
 W.TEXT = TEXT
 
 -- The next steps for each choice: the step's text, its button's label and where the button goes.

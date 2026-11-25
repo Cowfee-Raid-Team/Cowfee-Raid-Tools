@@ -27,7 +27,8 @@ local ADDON, CRT = ...
 local Slots = {}
 CRT.TimelineHealerSlots = Slots
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Timeline.HealerSlots", {
     addHealer = "+ Add healer",
     addTitle = "Add healer",
     addHelp = "Plan a healer you don't have yet, by spec. Their casts name the spec in the raid note until you assign a "
@@ -61,7 +62,7 @@ local TEXT = {
     leadOnly = "Only the raid leader or an assistant can change the raid note.",
     slotTip = "A healer slot for this boss.",
     slotTipMenu = "Right-click to assign a player, change the spec or remove the slot.",
-}
+})
 Slots.TEXT = TEXT
 
 local DOT = " \194\183 "

@@ -16,11 +16,11 @@ local UI = CRT.UI
 
 -- The tab's wording for its two on-screen buttons. Test on screen is a short test of the bar; Preview your bar
 -- keeps it up, with its drag box, until you stop it.
-local TEXT = {
+local TEXT = CRT.Locale("Consumables.Page", {
     test = "Test on screen",
     preview = "Preview your bar",
     previewTip = "Shows your consumables bar on screen with its drag box so you can drag it into place. It stays until you stop it.",
-}
+})
 
 local CAT_ROW_H = 32
 local BUTTON_GAP = 8 -- between the two buttons in the top right

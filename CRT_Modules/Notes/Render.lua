@@ -14,14 +14,14 @@ local Render = { views = {} }
 CRT.NoteRender = Render
 local UI = CRT.UI
 
-local TEXT = {
+local TEXT = CRT.Locale("Notes.Render", {
     encounter = "Encounter %s",
     roster = "roster linked in Raid Groups",
     you = "(you)",
     invite = "Invite list (%d)",
     spell = "Spell %s",
     empty = "Empty. Click to write.",
-}
+})
 
 local QUESTION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local SWATCH = "Interface\\Buttons\\WHITE8X8"

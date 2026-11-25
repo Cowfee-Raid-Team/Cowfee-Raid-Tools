@@ -19,11 +19,11 @@ local ADDON, CRT = ...
 local Tip = {}
 CRT.AbilityTip = Tip
 
-local TEXT = {
+local TEXT = CRT.Locale("Timeline.AbilityTip", {
     journal = "Encounter Journal (%s)",
     journalPlain = "Encounter Journal",
     unknown = "Unknown",
-}
+})
 
 local GOLD = { 1, 0.82, 0 } -- GameTooltip's own title gold, as its spell titles
 local WHITE = { 1, 1, 1 }

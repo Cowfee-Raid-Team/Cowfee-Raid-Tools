@@ -55,7 +55,8 @@ end
 -- Codes the chat frame draws, not shows as text: colour, texture, atlas, link and line break.
 local CODES = { "|c%x%x%x%x%x%x%x%x", "|cn[^:|]*:", "|r", "|T.-|t", "|A.-|a", "|H.-|h", "|h", "|n", "|K.-|k" }
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Dev.BossEmotes", {
     summary = "Summary: each distinct text, its first time, how many times, and a phase trigger to paste:",
     noTexts = "(no texts)",
     noTrigger = "  (no trigger: phase triggers read boss emotes only)",
@@ -64,7 +65,7 @@ local TEXT = {
     also = " -- also matches %d other emote%s",
     over = "... %d more texts not listed (the summary keeps %d)",
     leftOut = "... %d more emote lines left out (the section keeps %d)",
-}
+})
 
 local frame
 local follow = false

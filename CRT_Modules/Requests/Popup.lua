@@ -9,12 +9,12 @@ local ADDON, CRT = ...
 local R = CRT.Requests
 local UI = CRT.UI
 
-local TEXT = {
+local TEXT = CRT.Locale("Requests.Popup", {
     title = "Request",
     asks = "%s asks: need one?",
     need = "Need one",
     no = "No thanks",
-}
+})
 
 local L = { w = 300, h = 132, icon = 32, gap = 8, button = 24, askTop = -2, itemTop = -24 }
 

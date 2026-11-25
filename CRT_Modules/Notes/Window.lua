@@ -576,12 +576,12 @@ end
 -- timers window's "Hide lines once passed". The current boss is the running encounter, else the boss
 -- of the note in use, else none (then only the free text). An editor Test run is not a boss.
 
-local TEXT = {
+local TEXT = CRT.Locale("Notes.Window", {
     phase = "Phase %s",
     waiting = "Phase %s starts on Next phase",
     boss = "Boss %s",
     reminder = "Reminder",
-}
+})
 
 -- False for a secret value (CRT.Timeline.readable, loaded later than this file).
 local function readable(v)

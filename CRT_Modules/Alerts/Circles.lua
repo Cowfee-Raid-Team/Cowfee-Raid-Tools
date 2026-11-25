@@ -10,7 +10,7 @@ local ADDON, CRT = ...
 
 local Areas = CRT.AlertAreas
 
-local TEXT = {
+local TEXT = CRT.Locale("Alerts.Circles", {
     title = "Alert circles",
     now = "NOW",
     size = "Size",
@@ -25,7 +25,7 @@ local TEXT = {
     sampleNow = "Spread",
     sampleSoon = "Stack on the boss",
     sampleLater = "Soak",
-}
+})
 
 -- Tune the look in game here.
 -- The swipe and the faint ring: 256 px white rings, outer radius 126 px, 12 / 22 / 36 px wide (make_rings.js).

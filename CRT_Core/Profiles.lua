@@ -32,7 +32,8 @@ local MAX_DEPTH = 5 -- a table with no default to match (a position, a list) may
 local MAX_STRING = 255 -- the longest text a shared setting may hold
 local MAX_FROM = 48 -- the sender's name, as the preview shows it
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Core.Profiles", {
     header = "# Cowfee Raid Tools settings",
     from = "# From: %s, %s, v%s",
     noApi = "This game client can't read or write profile text.",
@@ -41,7 +42,7 @@ local TEXT = {
     newer = "This text is from a newer version of Cowfee Raid Tools. Update the addon first.",
     badValue = "The text has a wrong value for %s, so nothing was read.",
     someone = "someone",
-}
+})
 Profiles.TEXT = TEXT
 
 -- What Export settings only carries: settings and window positions, never notes, layouts, saved alerts,

@@ -17,7 +17,7 @@ local LM = CRT.LootMaster
 local L = { width = 146, height = 40, gap = 6, icon = 36 }
 LM.TAB_COLUMN = L.width
 
-local TEXT = { given = "Given to", open = "Open", answered = "%d/%d answered" }
+local TEXT = CRT.Locale("LootMaster.Tabs", { given = "Given to", open = "Open", answered = "%d/%d answered" })
 local COUNT_COLOR = { 0.85, 0.85, 0.85 }
 LM.TAB_LATE_COLOR = { 1, 0.54, 0.25 } -- the count when someone ran out of time
 

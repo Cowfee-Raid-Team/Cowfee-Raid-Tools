@@ -135,7 +135,8 @@ local ZOOM_SEL = {
     edgeStep = 12, -- the most pixels a frame the track scrolls while a selection is past its edge
 }
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Timeline.View", {
     notes = "Notes",
     personal = "Personal notes",
     ignoredHead = "Ignored mechanics (%d)",
@@ -213,7 +214,7 @@ local TEXT = {
     kill = "Kill %s", -- the end line's tag on the axis: how the overlaid pull ended, and when
     wipe = "Wipe %s",
     ended = "End %s", -- a pull with no saved result
-}
+})
 
 local function settings()
     return CRT.Timeline:Settings()

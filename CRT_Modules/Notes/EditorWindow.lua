@@ -54,7 +54,8 @@ local function lines()
     return CRT.NoteEditorLines
 end
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Notes.EditorWindow", {
     title = "Note editor: %s",
     personalTitle = "Personal note editor",
     untitled = "Note",
@@ -121,7 +122,7 @@ local TEXT = {
         .. "Drag players onto a group. Drop a name on another name to put it there. A group takes as many names as "
         .. "it has kicks.\n\nSave, and the Interrupts lists for this boss follow.",
     kickChip = "%d %s",
-}
+})
 
 local L = {
     width = 900, height = 580, minWidth = 680, minHeight = 420,

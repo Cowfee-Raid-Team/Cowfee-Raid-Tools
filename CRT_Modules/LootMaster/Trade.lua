@@ -29,7 +29,8 @@ local TRADE_SLOTS = 6 -- the trade window's slots for your items (the 7th never 
 local PENDING_SECONDS = 20 -- how long CRT waits for the trade window to open
 local DONE_SECONDS = 2 -- how long after TRADE_CLOSED the game's "Trade complete." line still counts
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("LootMaster.Trade", {
     notGiven = "give the item out first, then double-click it to trade.",
     notHere = "%s is not in your group.",
     opening = "opening a trade with %s for %s...",
@@ -42,7 +43,7 @@ local TEXT = {
     noCount = "CRT couldn't read how many %s you have, so nothing was put in the trade. Put one in yourself.",
     noPickup = "CRT couldn't pick up %s. Put it in the trade yourself.",
     notPlaced = "%s couldn't be put in the trade, so it is back in your bags. Put it in yourself.",
-}
+})
 
 local pending -- { name, itemString, link, at, label, done }
 local active -- the trade CRT put an item in: { name, id, label, done, inTrade, closedAt }

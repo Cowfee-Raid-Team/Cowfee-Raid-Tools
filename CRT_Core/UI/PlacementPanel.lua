@@ -16,7 +16,7 @@ local ADDON, CRT = ...
 local UI = CRT.UI
 local P = UI.Placement
 
-local TEXT = {
+local TEXT = CRT.Locale("UI.PlacementPanel", {
     title = "Placement: %s",
     x = "X",
     y = "Y",
@@ -45,7 +45,7 @@ local TEXT = {
         .. "A frame from another addon that loads late is found when it loads. Until then this stays where it was.",
     fixedHelp = "This one holds the game's own buttons, so it always sits on the screen.",
     noneWhy = "Click a window first to place it.", -- why Anchor to is greyed with nothing picked (UX rule 5)
-}
+})
 P.PANEL_TEXT = TEXT
 
 local L = {

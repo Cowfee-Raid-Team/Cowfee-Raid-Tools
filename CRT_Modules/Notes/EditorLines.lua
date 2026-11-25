@@ -35,7 +35,8 @@ local ELn = {}
 CRT.NoteEditorLines = ELn
 
 -- Every word of it, in one place. Keep the keys, change the text in quotes, save, /reload.
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Notes.EditorLines", {
     deleteLine = "Delete line",
     deleteAll = "Delete all \"%s\" lines for %s",
     deleteSelected = "Delete selected (%d)",
@@ -48,7 +49,7 @@ local TEXT = {
     deleted = "Deleted %d lines.",
     moved = "The note's lines moved. Nothing was deleted: try again.",
     more = "...",
-}
+})
 ELn.TEXT = TEXT
 
 local L = { buttonH = 24, tint = 0.18, edge = 1, menuText = 40 }

@@ -17,7 +17,8 @@ local L = {
     name = 0, nameW = 150, answer = 156, answerW = 100, given = 262, givenW = 44, trade = 312, tradeH = 18,
 }
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Requests.Page", {
     title = "Requests",
     help = {
         "Ask everyone in the group who needs an item: a Vantus Rune, a flask, a feast, anything you can trade.\n\n"
@@ -40,7 +41,7 @@ local TEXT = {
     player = "Player", answer = "Answer", given = "Given",
     needs = "Needs one", no = "No thanks", noAnswer = "No answer",
     trade = "Trade 1", done = "Done",
-}
+})
 
 local view -- the parts, once built
 local chosen -- the item for the next ask: its link

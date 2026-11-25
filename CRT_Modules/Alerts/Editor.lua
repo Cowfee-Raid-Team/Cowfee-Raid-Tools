@@ -32,7 +32,8 @@ local ADDON, CRT = ...
 -- Export, Relative to, Time or Difficulty; Save overwrites it (keeping the name its chip gave it, and
 -- making nothing once it was deleted), and Test plays it as phase 1, NO_TIME seconds in.
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Alerts.Editor", {
     title = "Alert",
     saveAs = "Save as",
     asNote = "Raid note",
@@ -117,7 +118,7 @@ local TEXT = {
     readOnlyWhy = "Only the raid leader or an assistant can change the raid note. Copy to my reminders makes it your own.",
     customColoursWhy = "Tick Use custom colours on Raid Notes > Alerts to colour your own alerts.",
     copyNoBossWhy = "This line has no boss, so there is nothing to save a copy for.",
-}
+})
 
 local Alerts = CRT.Alerts
 local Reminders = CRT.AlertReminders

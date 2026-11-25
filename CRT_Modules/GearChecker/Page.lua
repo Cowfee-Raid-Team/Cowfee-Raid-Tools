@@ -35,7 +35,7 @@ local UI = CRT.UI
 local GC = CRT.GearChecker
 local Gear = CRT.Gear
 
-local TEXT = {
+local TEXT = CRT.Locale("GearChecker.Page", {
     title = "Gear Checker",
     -- %d in an item's text is GC.LOW_ILVL (gearHelp)
     help = {
@@ -73,7 +73,7 @@ local TEXT = {
     empty = "Nothing here",
     count = "%d shown",
     extra = "Extra filters",
-}
+})
 
 -- Sizes in pixels. A row is NAME + ILVL + ISSUES + TRACKS + 16 cells; with the scroll bar it fits UI.PAGE_W
 -- and the pop-out at its smallest (popMinW).

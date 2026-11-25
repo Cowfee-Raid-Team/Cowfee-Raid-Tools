@@ -27,7 +27,8 @@ local GOLD = CRT.PALETTE.heading
 local ABSENT_BORDER = { 0.65, 0.25, 0.35 }
 local ABSENT_TEXT = { 0.5, 0.5, 0.5 }
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Groups.Page", {
     inviteMissing = "Invite missing (%d)",
     inviteBody = "Invites everyone in this layout who isn't in your group. Each one moves to their group when they join, if it has a free spot.",
     inviteName = "Invite %s",
@@ -72,7 +73,7 @@ local TEXT = {
     deleteFinal = "This can't be undone.",
     delete = "Delete layout",
     postHelp = "When Arrange groups is done, posts one line to raid chat for each group with someone new in it, such as \"[CRT] <Group 1 Changes>: Name, Name\". If it stops part-way, it posts the groups that did change. Nothing is posted when nobody moved. In combat or during a boss encounter, the post waits until it ends.",
-}
+})
 
 local ROLE_TEXTURE = "Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES"
 local ROLE_COORDS = {

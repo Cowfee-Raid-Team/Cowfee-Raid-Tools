@@ -39,7 +39,7 @@ local RECORDING_Y = VIEW_Y - HEADING_GAP - 4 * ROW_STEP - CHECK_STEP - SECTION_G
 local ICON_SIZES = { min = 16, max = 32, step = 1 }
 local TOOLTIPS_Y = DEATHS_Y - HEADING_GAP - DROPDOWN_TO_CHECKS - CHECKS_TO_SLIDER - 2 * ROW_STEP - SECTION_GAP
 
-local TEXT = {
+local TEXT = CRT.Locale("Timeline.SettingsTab", {
     hideEmpty = "Hide rows with no casts in this pull",
     viewHelp = {
         { "Seconds visible", "how much time is visible at once (the mouse wheel zooms too)." },
@@ -55,7 +55,7 @@ local TEXT = {
         { "First deaths only", "whether only the first few deaths show (0 shows all)." },
         { "Overlay pulls", "how many pulls the Deaths from the last pulls checkbox covers on the Review tab; the number there changes it too." },
     },
-}
+})
 
 local GRIDS = {
     { key = "auto", label = "Auto (by zoom)" },

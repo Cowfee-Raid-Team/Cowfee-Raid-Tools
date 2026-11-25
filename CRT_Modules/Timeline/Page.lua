@@ -29,7 +29,7 @@ local DOT = " \194\183 "
 local EMPTY_BOSS = "No pulls recorded for this boss yet"
 local EMPTY_ALL = "No boss pulls recorded yet"
 
-local TEXT = {
+local TEXT = CRT.Locale("Timeline.Page", {
     needsDev = "Writing ability timelines isn't part of this version.",
     shareNote = "Share note",
     shareHelp = "Sends this boss's raid note to everyone in the group with the addon, with every line added or moved here, and makes it everyone's active note. Only the raid leader or an assistant can send it; anyone else just sets their own active note. Notes can't be sent during a boss fight.",
@@ -53,7 +53,7 @@ local TEXT = {
         "The healers are the players on the active Raid Groups layout whose role is healer: the role you set there (right-click a name, Set role), else the game's role. Anyone the raid note gives a cooldown gets rows too.\n\n"
         .. "The casts are the raid note's cooldown lines. The raid leader or an assistant drags one to move it in the raid note, or double-clicks a row to add one. Anyone else drags only their own casts: the new time is only yours, for your own alerts, and Send to raid lead proposes it. Only this window has Healer CDs; the docked timeline always shows the abilities.",
     },
-}
+})
 
 local GRAY = { 0.35, 0.35, 0.35 }
 local BACKDROP = {

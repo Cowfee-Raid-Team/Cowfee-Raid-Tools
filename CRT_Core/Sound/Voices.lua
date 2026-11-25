@@ -94,14 +94,15 @@ Sound.VOICES = {
     },
 }
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Sound.Voices", {
     tts = "Game text to speech",
     lacks = "%s has no %s, so those use text to speech.",
     lacksOne = "%s has no %s, so that uses text to speech.",
     listAnd = "%s and %s",
     listOr = "%s or %s",
     noVolume = "Clips play on your sound channel (General Settings > Appearance > Sound channel) at that channel's volume: the game takes no volume for them.",
-}
+})
 
 -- A text as a clip's word is matched: lower case, without spaces or punctuation. Nil for anything that isn't
 -- a plain string.

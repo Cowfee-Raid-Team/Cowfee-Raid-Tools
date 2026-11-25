@@ -24,7 +24,7 @@ local Markers = CRT.MarkerDisplay
 local SET = "markers" -- Markers/Macros.lua's set
 
 -- Every word on this tab, in one place so the wording is easy to change.
-local TEXT = {
+local TEXT = CRT.Locale("Markers.MacrosTab", {
     boss = "Boss",
     how = "How it works on this boss",
     howHelp = "What raiders do with their marker macros on this boss. It comes with the addon, written for each boss.",
@@ -48,7 +48,7 @@ local TEXT = {
     sayCombat = "Not in combat: the test's /say waits until the fight ends.",
     preview = "Preview marker display",
     previewTip = "Shows the marker display on screen with sample markers so you can drag it into place.",
-}
+})
 
 local LAYOUTS = { row = "Row, left to right", column = "Column, top to bottom", grid = "Grid, rows of four", free = "Freeform" }
 

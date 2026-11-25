@@ -33,13 +33,14 @@ local Anchor = CRT.InterruptAnchor
 local Lattice = CRT.InterruptLattice
 local UI = CRT.UI
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Interrupts.Reminder", {
     title = "Kick reminder",
     drag = "Kick reminder: drag to move",
     line = "%s #%d %s", -- Kick #3 Left
     next = "Your kick next: %s #%d", -- Your kick next: Skull add #2
     now = "Kick now: %s #%d",
-}
+})
 local FALLBACK_ICON = "Interface\\Icons\\ability_kick"
 local GAP = 4 -- between the icon and the line under it
 

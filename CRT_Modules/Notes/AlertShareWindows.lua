@@ -18,7 +18,7 @@ local UI = CRT.UI
 local W = {}
 CRT.NoteAlertShare = W
 
-local TEXT = {
+local TEXT = CRT.Locale("Notes.AlertShareWindows", {
     exportTitle = "Export Mech Alerts",
     exportHelp = "Pick a boss, then tick the alerts to share: your Mech Alerts and your special alert choices. The box at the bottom holds the code of the ticked ones, selected: press Ctrl+C to copy it. Your friend pastes it in Raid Notes > Mech Alerts > Import. Nothing is sent over chat.",
     importTitle = "Import Mech Alerts",
@@ -43,7 +43,7 @@ local TEXT = {
     nothingChanged = "Nothing changed: it is all the same as yours.",
     leftOut = "%d left out: not valid.",
     anyDifficulty = "Any difficulty",
-}
+})
 W.TEXT = TEXT
 
 -- the tag colours: new is good, replaces yours a warning, same as yours quiet

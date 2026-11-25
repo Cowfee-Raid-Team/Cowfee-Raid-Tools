@@ -16,7 +16,7 @@ local look = {} -- the Look section's controls, each with refresh(on)
 local PREVIEW_GAP = 12 -- Preview debuffs, this far right of the title's (?)
 
 -- The wording of the preview button and the tooltip settings.
-local TEXT = {
+local TEXT = CRT.Locale("Debuffs.Page", {
     preview = "Preview debuffs",
     previewTip = "Shows the debuff panel with sample debuffs so you can drag it into place and see each Look change. Other previews stay as they are.",
     tooltips = "Show tooltips on hover",
@@ -34,7 +34,7 @@ local TEXT = {
     swipeWhy = "Tick Swipe animation as the debuff runs out first.",
     tooltipsWhy = "Tick Show tooltips on hover first.",
     nudgeWhy = "Set Timer to a place on or around the icon to nudge it.",
-}
+})
 
 -- ok, reason: the panel's settings while Show the debuff panel is ticked
 local function panelUsable()

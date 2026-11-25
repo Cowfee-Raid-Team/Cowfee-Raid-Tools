@@ -103,13 +103,13 @@ UI.TOOLTIP_AREAS = {
 }
 
 local MODE = { spot = true, game = true, cursor = true }
-local TEXT = {
+local TEXT = CRT.Locale("UI.Tooltip", {
     position = "Tooltip position",
     window = "The window",
     auto = "Each on its own side",
     -- why the spot picker is greyed (UX rule 5): a click on a spot still works, and switches to Outside the window
     pickOutside = "Used with Outside the window above. Click a spot to switch to it.",
-}
+})
 
 -- The saved table for General Settings (area nil) or an area; nil before the saved data loads, or for an
 -- unknown area.

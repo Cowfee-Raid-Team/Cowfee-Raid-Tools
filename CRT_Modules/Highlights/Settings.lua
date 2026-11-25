@@ -10,7 +10,7 @@ local UI = CRT.UI
 local H = CRT.NoteHighlights
 
 -- Every word of the section, in one place so the wording is easy to change.
-local TEXT = {
+local TEXT = CRT.Locale("Highlights.Settings", {
     title = "Highlights",
     enable = "Use assignment highlights",
     enableHelp = "In the note windows whose Use highlights box is ticked (one in each window's column above), the lines that name you or your raid group get a band behind them, with your name or group in the theme's accent colour.\n\nWhen a new version of the same note changes your part, the line glows for a few seconds and says Added, Removed or Moved. A line you were taken off that is gone shows faded for those seconds. The personal note shows the bands only: you write it yourself.\n\nLines about others stay as they are.",
@@ -24,7 +24,7 @@ local TEXT = {
     preview = "Preview highlights",
     previewTip = "Shows the assignments window with a sample note that names you and your group, with one Added, Moved and Removed line. Other previews stay as they are.",
     previewOff = "Tick Use assignment highlights first.",
-}
+})
 
 -- Where things sit, from the section's heading down: the switch, the options indented under it, the preview button.
 local ROW_H = 24

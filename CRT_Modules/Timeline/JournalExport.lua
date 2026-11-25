@@ -13,7 +13,7 @@ local ADDON, CRT = ...
 local Export = {}
 CRT.TimelineJournalExport = Export
 
-local TEXT = {
+local TEXT = CRT.Locale("Timeline.JournalExport", {
     button = "Export abilities",
     tip = "Cowfee Raid Tools: writes this boss's abilities as an ability timeline, with every spell and its ID, for you to copy.",
     title = "Abilities for %s (Ctrl+C to copy)",
@@ -26,7 +26,7 @@ local TEXT = {
     },
     saved = "Saved the abilities for %s. Add their times on the Timeline's Advanced tab.", -- /crt dev only
     replaced = "Saved the abilities for %s: they replaced your copy. Add their times on the Timeline's Advanced tab.", -- /crt dev only
-}
+})
 
 -- The Journal's icons that are reference types too: a dispellable debuff, a Heroic or a Mythic mechanic.
 local TYPE_OF_TAG = CRT.TimelineReference.TAG_TYPES

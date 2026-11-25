@@ -37,7 +37,7 @@ local Alerts = CRT.Alerts
 local Rules = CRT.AlertRules
 local Notes = CRT.Notes
 
-local TEXT = {
+local TEXT = CRT.Locale("Alerts.Bars", {
     title = "Alert bars",
     ahead = "Show bars from",
     width = "Width",
@@ -63,7 +63,7 @@ local TEXT = {
     -- why a greyed row can't be used (UX rule 5), on its tooltip
     offWhy = "Tick Show these alerts above to change this.",
     customWhy = "Tick Use custom colours to choose your own colours.",
-}
+})
 
 local ICON_GAP = 4 -- between the icon and the text, and at the edges
 local MORE_GAP = 2

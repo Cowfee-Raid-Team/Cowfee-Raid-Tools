@@ -10,7 +10,7 @@ local UI = CRT.UI
 
 -- Every word on this tab, in one place so the wording is easy to change. Keep the keys, change the
 -- text in quotes, save, and /reload.
-local TEXT = {
+local TEXT = CRT.Locale("Notes.Phases", {
     title = "Phases",
     help = "What starts each phase after the first, which starts with the pull. A phase set to Next phase starts when you press Next phase on the Notes tab or type /crt note next. A phase appears here when your note or reminders use it. Change a shipped trigger and it becomes yours; Use shipped puts it back.",
     boss = "Boss",
@@ -19,7 +19,7 @@ local TEXT = {
     shipped = "Shipped",
     yours = "Yours",
     useShipped = "Use shipped",
-}
+})
 
 local ROW_H = 28
 local MAX_ROWS = 12

@@ -19,10 +19,10 @@ local Setup = CRT.InterruptSetup
 local Palette = CRT.NotePalette
 local Page = CRT.InterruptsPage
 
-local TEXT = {
+local TEXT = CRT.Locale("Interrupts.PageGrid", {
     count = "%d/%d",
     add = "Add name",
-}
+})
 Page.GridText = TEXT
 
 local LAYOUT = {

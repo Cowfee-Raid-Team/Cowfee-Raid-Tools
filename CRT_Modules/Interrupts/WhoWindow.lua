@@ -10,7 +10,7 @@ local UI = CRT.UI
 local Interrupts = CRT.Interrupts
 local Page = CRT.InterruptsPage
 
-local TEXT = {
+local TEXT = CRT.Locale("Interrupts.WhoWindow", {
     title = "Who has it",
     button = "Who has it (%d of %d)",
     buttonNone = "Who has it",
@@ -32,7 +32,7 @@ local TEXT = {
     none = "No CRT",
     waiting = "asking...",
     offline = "offline",
-}
+})
 Page.WhoTextTable = TEXT
 
 local LAYOUT = {

@@ -21,7 +21,7 @@ local ADDON, CRT = ...
 local UI = CRT.UI
 
 -- Every word of the block, in one place so the wording is easy to change.
-local TEXT = {
+local TEXT = CRT.Locale("UI.MacroSet", {
     generate = "Generate all macros",
     remove = "Remove macros",
     removeAsk = "Remove the %s macros the addon made? Macros you edited or renamed stay.",
@@ -42,7 +42,7 @@ local TEXT = {
     removeOneAsk = "Remove %s? It's on your action bars, and making it again won't put it back there.",
     tipChanged = "You edited this macro, so the addon leaves it as it is.",
     tipConflict = "You have your own macro with this name, so the addon doesn't make one.",
-}
+})
 
 -- Every place and size, from the heading's top left.
 local ICON = 36

@@ -82,7 +82,7 @@ local UI = CRT.UI
 local Areas = { list = {} }
 CRT.AlertAreas = Areas
 
-local TEXT = {
+local TEXT = CRT.Locale("Alerts.Areas", {
     drag = "%s: drag to move",
     show = "Show these alerts",
     cap = "At once",
@@ -95,7 +95,7 @@ local TEXT = {
     none = "None",
     thin = "Outline",
     thick = "Thick",
-}
+})
 
 local REFRESH_SECONDS = 0.1
 local GAP = 4

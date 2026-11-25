@@ -75,7 +75,8 @@ local LM = CRT.LootMaster
 local BL = { rows = {}, waiting = {} }
 LM.BossLoot = BL
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("LootMaster.BossLoot", {
     cleared = "Loot Master cleared the boss loot list: %s.",
     dropped = "Loot Master dropped the waiting boss loot: %s.",
     testEnded = "Loot Master ended the test session to start this one.",
@@ -85,7 +86,7 @@ local TEXT = {
     tooOld = "the game's 2 hours to trade it are over",
     warn = "Loot Master: %s can be traded for about %d more minutes. Start a session soon or it can't be given out.",
     realOnly = "Loot Master started the real items only. TEST items never go into a real session; they stay in the list.",
-}
+})
 
 local function secret(v)
     return issecretvalue and issecretvalue(v) or false

@@ -23,7 +23,8 @@ local ADDON, CRT = ...
 local UI = CRT.UI
 
 -- Every word of the Special view, in one place. Keep the keys, change the text in quotes, save, /reload.
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Notes.SpecialAlerts", {
     mechanics = "Mechanics",
     special = "Special (%d)",
     instantRelease = "Instantly release after wipe",
@@ -100,7 +101,7 @@ local TEXT = {
     noTest = "Nothing to test: this alert has no times on the ability timeline on show.",
     -- an alert on a mechanic unticked on the Timeline: its row grey, this on hover (it plays nothing until ticked again)
     ignored = "Ignored on the Timeline",
-}
+})
 
 local L = {
     INSET = 12,

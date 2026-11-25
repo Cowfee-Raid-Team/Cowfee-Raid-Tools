@@ -18,7 +18,7 @@ local BL = LM.BossLoot
 
 local L = { width = 620, height = 340, minWidth = 480, minHeight = 220, rowH = 40, footerH = 28, statusW = 230 }
 
-local TEXT = {
+local TEXT = CRT.Locale("LootMaster.BossLootWindow", {
     title = "Boss loot",
     help = "The boss items CRT rolled on for you, and in old raids with no rolls, the items the game gave you. Tick the ones to give out and press Start session; nothing starts by itself. Start waits while a ticked item is still rolling. A test session still running is ended first; if a loot session is running, these start when it ends. The Master loot window opens either way. Items someone else won can't be ticked, and red means CRT couldn't roll on it. The list is kept for the whole raid, through a /reload or leaving the instance. An item you have stays until the game's 2 hours to trade it are over; chat warns 15 minutes before. Other rows leave 10 minutes after the kill. TEST items come from Test boss kill on Loot Master > Tonight; they never go into a real session.",
     counts = "%d of %d items ticked · %d still rolling",
@@ -40,7 +40,7 @@ local TEXT = {
     untimedMinutes = "Not bound: leaves in %dm",
     test = "TEST",
     testWon = "Yours · a test boss kill",
-}
+})
 
 -- The loot filter's reasons, as the detail line says them (LM.PassesFilter's why).
 local FILTER_WHY = {

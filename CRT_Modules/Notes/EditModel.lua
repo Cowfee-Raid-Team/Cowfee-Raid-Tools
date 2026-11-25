@@ -42,7 +42,8 @@ CRT.NoteEditModel = Model
 
 local Parser = CRT.NoteParser
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Notes.EditModel", {
     everyone = "Everyone",
     tanks = "Tanks",
     healers = "Healers",
@@ -53,7 +54,7 @@ local TEXT = {
     fromGroup = "Current group",
     fromInvite = "This note's invite list",
     rowFull = "%s takes %d names at most.",
-}
+})
 Model.TEXT = TEXT
 
 -- The tag words the alerts understand (Notes/Engine.lua: IsMine, groupTag and the class words), which the

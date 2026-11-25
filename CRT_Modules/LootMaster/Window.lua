@@ -32,7 +32,8 @@ local COLS = {
 }
 local GEAR_X = 494 -- the gear column's x, for its icons
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("LootMaster.Window", {
     title = "Master loot window",
     test = "TEST",
     help = "Every raider's answer for the item picked on the left, best first: the answer's weight, then their wishlist rank, then Raider Score, then the roll. Wishlist shows the rank the raider gave the item in their wishlist, or Not listed (no list, or no CRT). Right-click a raider to give them the item, show their popup again, roll again for them, or clear their answer. Ctrl- or Shift-click picks several raiders first. Right-click an item on the left to do that for everyone who still needs it.",
@@ -55,7 +56,7 @@ local TEXT = {
     clear = "Clear their answer",
     resendAll = "Show the popup again to everyone who hasn't answered (%d)",
     selected = "%d raiders",
-}
+})
 
 local win, list, header, sorter
 local tabs -- LM.ItemTabs

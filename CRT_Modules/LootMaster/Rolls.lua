@@ -41,7 +41,8 @@ local BL = LM.BossLoot
 
 LM.CLOSE_SECONDS = AutoPass.CLOSE_SECONDS
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("LootMaster.Rolls", {
     passed = "CRT Looting passed %s for %s.",
     passKept = "CRT Looting couldn't pass %s (the game kept the roll open), so roll it yourself.",
     passFailed = "CRT Looting couldn't pass %s (%s), so roll it yourself.",
@@ -57,7 +58,7 @@ local TEXT = {
     confirmType = "CRT Looting didn't confirm %s: the game asked about another kind of roll, so answer it yourself.",
     confirmFailed = "CRT Looting couldn't confirm %s (%s), so answer it yourself.",
     anItem = "an item",
-}
+})
 
 local open = {} -- rolls CRT passed or rolled, waiting for the game to close them: { [rollID] = text }
 local toldKill -- the kill (its time) a raider was last told about a roll CRT didn't pass

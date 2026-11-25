@@ -30,7 +30,7 @@ local ADDON, CRT = ...
 local Areas = CRT.AlertAreas
 local Alerts = CRT.Alerts
 
-local TEXT = {
+local TEXT = CRT.Locale("Alerts.TimelineArea", {
     title = "Alert timeline",
     direction = "Direction",
     down = "Down",
@@ -74,7 +74,7 @@ local TEXT = {
     -- why a greyed row can't be used (UX rule 5), on its tooltip
     popWhy = "Used with the Text pop NOW effect. Pick it above to change this.",
     noEffectWhy = "NOW effect is None. Pick an effect above to change this.",
-}
+})
 
 -- Tune the look in game here.
 local MEDIA = CRT.MEDIA or ("Interface\\AddOns\\" .. ADDON .. "\\CRT_Media\\Media\\") -- the fallback is for test harnesses without Core.lua

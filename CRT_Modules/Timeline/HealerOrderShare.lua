@@ -37,12 +37,13 @@ local TIMEOUT = 30
 local CHANNELS = { RAID = true, PARTY = true, INSTANCE_CHAT = true }
 Share.PREFIX = PREFIX
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Timeline.HealerOrderShare", {
     received = "Healer CDs: %s's healer order for %s is now yours.",
     busy = "Healer order not sent during combat or a boss fight.",
     tooLong = "Healer order not sent: it is too long to send.",
     thisBoss = "this boss",
-}
+})
 Share.TEXT = TEXT
 
 if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then

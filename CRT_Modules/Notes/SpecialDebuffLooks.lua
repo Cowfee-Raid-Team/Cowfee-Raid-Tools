@@ -18,7 +18,7 @@ local ADDON, CRT = ...
 local UI = CRT.UI
 
 -- Every word on this tab, in one place. Keep the keys, change the text in quotes, save, /reload.
-local TEXT = {
+local TEXT = CRT.Locale("Notes.SpecialDebuffLooks", {
     sides = "Sides",
     sidesHelp = "Each side lists the players of its raid groups. Type the groups as numbers 1 to 8, such as 1, 3. With it and Without it are the bar's colours. Default puts back the boss file's groups and colours for that side.",
     withIt = "With it",
@@ -35,7 +35,7 @@ local TEXT = {
     pixels = "%d px",
     preview = "Preview %s",
     previewTip = "Shows the list with sample names, so you can drag it into place.",
-}
+})
 
 local L = {
     ROW_H = 28, -- a side's row

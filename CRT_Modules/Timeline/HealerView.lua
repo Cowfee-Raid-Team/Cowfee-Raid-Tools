@@ -44,7 +44,8 @@ local ADDON, CRT = ...
 local HV = {}
 CRT.TimelineHealerView = HV
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Timeline.HealerView", {
     hint = "Click a row to add a cast \194\183 drag a cast to move it \194\183 drag a name to reorder \194\183 drag across "
         .. "the track to zoom",
     -- for someone who may not change the raid note
@@ -70,7 +71,7 @@ local TEXT = {
     ownCast = "Yours: drag it to move it for you.",
     raidTime = "Raid note time: %s",
     moved = "%s to %s", -- a moved cast's label: the raid's time, then yours
-}
+})
 HV.TEXT = TEXT
 
 local DOT = " \194\183 "

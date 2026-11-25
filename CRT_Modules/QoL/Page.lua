@@ -15,7 +15,7 @@ local UI = CRT.UI
 local LowHealth = CRT.LowHealth
 
 -- Every word on this page, in one place so the wording is easy to change.
-local TEXT = {
+local TEXT = CRT.Locale("QoL.Page", {
     title = "Quality of Life",
     hint = "Small conveniences for raid nights.",
 
@@ -71,7 +71,7 @@ local TEXT = {
     brezTimer = "Show the timer",
     brezPreview = "Preview battle res",
     brezPreviewTip = "Shows the icon with 2 charges and one coming back, so you can drag it into place. Other previews stay as they are.",
-}
+})
 
 local page
 local controls = {}

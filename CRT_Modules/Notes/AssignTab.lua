@@ -29,7 +29,8 @@ local Tab = {}
 CRT.NoteAssignTab = Tab
 
 -- Every word on the tab, in one place. Keep the keys, change the text in quotes, save, /reload.
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Notes.AssignTab", {
     pick = "Assignment",
     pickHelp = "This mechanic's assignments in the raid note: pick the one to change. + Assignment adds another, such as a second set of soaks. Each has its own name in the note.",
     addBlock = "+ Assignment",
@@ -45,7 +46,7 @@ local TEXT = {
     -- why a greyed control can't be used (UX rule 5), on its tooltip
     noBossWhy = "Pick a boss first.",
     notWrittenWhy = "This assignment isn't in the raid note yet, so there is nothing to remove.",
-}
+})
 Tab.TEXT = TEXT
 
 local L = {

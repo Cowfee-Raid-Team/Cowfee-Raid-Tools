@@ -28,7 +28,8 @@ local ShieldSection = {}
 CRT.AlertShieldSection = ShieldSection
 
 -- Every word of the section, in one place. Keep the keys, change the text in quotes, save, /reload.
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Alerts.ShieldSection", {
     shieldBar = "Shield bar",
     shieldHelp = "Draws a bar of the boss's shield on every cast of this alert, and on any shield that goes up between them. The fill drains as the raid breaks it; the tick and seconds count the time you have.",
     note = "every cast above, plus any shield between them",
@@ -51,7 +52,7 @@ local TEXT = {
     barWhy = "Tick Bar under Show as first: the shield shows on the alert's bar.",
     onWhy = "Tick Shield bar first.",
     anyWhy = "This alert plays on every difficulty, so this has nothing to add.",
-}
+})
 ShieldSection.TEXT = TEXT
 
 local L = {

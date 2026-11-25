@@ -57,7 +57,7 @@ RehearsalWindow.CAST_W = CAST_W
 RehearsalWindow.NEXT_COUNT = NEXT_COUNT
 RehearsalWindow.NEXT_BAR_W = NEXT_BAR_W
 
-local TEXT = {
+local TEXT = CRT.Locale("Timeline.RehearsalWindow", {
     title = "Rehearsal \194\183 ",
     boss = "Boss",
     over = "Rehearsal over",
@@ -82,7 +82,7 @@ local TEXT = {
     running = "Rehearsal can't start while the alerts are running a pull or a test.",
     testing = "Testing: ",
     noSource = "Rehearsal has no ability timeline or recorded pull for this boss.",
-}
+})
 
 local function rgba(key, alpha)
     local c = CRT.PALETTE[key]

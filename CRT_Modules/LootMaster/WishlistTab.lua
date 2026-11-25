@@ -37,7 +37,7 @@ local L = {
     name = 4, nameW = 160, grid = 170, updatedW = 80, forget = 16, minCol = 48,
 }
 
-local TEXT = {
+local TEXT = CRT.Locale("LootMaster.WishlistTab", {
     title = "Raiders' wishlists",
     -- the list form (UI.AddTooltipText): one paragraph per view and the Team filter
     help = {
@@ -68,7 +68,7 @@ local TEXT = {
     none = "No wishlists kept yet.",
     noneDetail = "Nobody wants this boss's items yet.",
     loading = "Loading the items...",
-}
+})
 
 local parts = {} -- the tab's frames, kept for the tests
 local rows = { bosses = {}, detail = {}, raiders = {} } -- worked out per data change; people: who counts (V.Raiders)

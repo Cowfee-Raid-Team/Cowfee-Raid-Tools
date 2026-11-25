@@ -153,12 +153,13 @@ end
 local KILL_ITEMS = { 2, 4 } -- the fewest and most items a test kill drops
 local testKills = 0
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("LootMaster.Test", {
     boss = "Test boss %d",
     unknown = "Item %d",
     killed = "Loot Master test: %s dropped %d %s. Tick them and press Start session.",
     item = "item", items = "items",
-}
+})
 
 -- A link for the row: the sample's own, else the game's, else one made from the item string (its name
 -- comes once the game has the item).

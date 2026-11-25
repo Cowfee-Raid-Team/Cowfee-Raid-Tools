@@ -9,13 +9,13 @@ local ADDON, CRT = ...
 local Dev = {}
 CRT.SpecialSampleDev = Dev
 
-local TEXT = {
+local TEXT = CRT.Locale("Dev.SpecialSample", {
     noBoss = "No boss to add the sample to. Open Raid Notes > Mech Alerts and pick one.",
     added = "Added a sample special alert to %s: Raid Notes > Mech Alerts > Special. A /reload takes it away.",
     removed = "Took the sample special alert off %s.",
     label = "Sample: soak rotation",
     help = "A developer sample: groups 1 and 2 soak the first cast, groups 3 and 4 the next, and so on. Its bar marks the two impacts of each soak.",
-}
+})
 
 local SAMPLE_TIMES = "P1 0:20, 0:50, 1:20, 1:50"
 

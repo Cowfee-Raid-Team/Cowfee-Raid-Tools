@@ -23,12 +23,12 @@ local ADDON, CRT = ...
 
 local Reminders = CRT.AlertReminders
 
-local TEXT = {
+local TEXT = CRT.Locale("Alerts.SpellLookup", {
     boss = "Boss",
     timeline = "Timeline",
     yours = "Yours",
     none = "No spells match",
-}
+})
 
 local MIN_LETTERS = 3 -- letters before a name lookup opens
 local ROWS = 8

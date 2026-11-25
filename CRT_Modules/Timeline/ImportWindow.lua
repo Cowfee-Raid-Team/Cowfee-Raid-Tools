@@ -18,7 +18,7 @@ local UI = CRT.UI
 local W = {}
 CRT.TimelineImportWindow = W
 
-local TEXT = {
+local TEXT = CRT.Locale("Timeline.ImportWindow", {
     title = "Import reminders",
     help = "Paste a %s export in the box. The list shows each boss in it, with how many lines are for you and how many are for others. Click a boss to see its lines.\n\nYour lines are ticked. Tick any line for someone else to import it too: it alerts you like your own, and its flag says who it was for. Lines that couldn't be read can't be imported.\n\nImported lines become your own reminders on the Personal notes row, never raid note lines.",
     paste = "Paste an export in the box.",
@@ -50,7 +50,7 @@ local TEXT = {
     -- a boss row's toggle, as the Timeline's own (View.lua's Ignored rows)
     open = "v",
     closed = ">",
-}
+})
 W.TEXT = TEXT
 
 local L = {

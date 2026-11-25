@@ -21,12 +21,12 @@ CRT.TimelineUndo = Undo
 
 local MAX = 30 -- steps kept
 
-local TEXT = {
+local TEXT = CRT.Locale("Timeline.Undo", {
     undone = "Undone (%d more to undo).",
     redone = "Redone (%d more to redo).",
     nothing = "Nothing to undo.",
     nothingRedo = "Nothing to redo.",
-}
+})
 
 local GROUPS = { "notes", "reminders", "references", "shifts" }
 

@@ -13,7 +13,8 @@ local UI = CRT.UI
 local Notes = CRT.Notes
 local Diff = CRT.NoteDiff
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Notes.HistoryWindow", {
     title = "History: %s",
     helpTitle = "History",
     help = {
@@ -46,7 +47,7 @@ local TEXT = {
     cancel = CANCEL or "Cancel",
     done = "Restored the version of %s from %s. Click Share to raid to send it.",
     failed = "That version couldn't be restored. The note may have changed or been deleted.",
-}
+})
 
 -- Sizes, in the window's content area (UI.Window: 8 in from the sides, under the title strip).
 local L = {

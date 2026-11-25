@@ -13,7 +13,7 @@ local UI = CRT.UI
 
 -- The page's preview buttons: Settings previews both its displays, the Window tab the ready check window.
 -- Your bar's own is on that tab (Consumables/Page.lua).
-local TEXT = {
+local TEXT = CRT.Locale("ReadyCheck.Page", {
     previewAll = "Preview ready check",
     previewAllTip = "Shows the ready check window and your consumables bar on screen so you can drag them into place. Other previews stay as they are.",
     previewWindow = "Preview window",
@@ -31,7 +31,7 @@ local TEXT = {
     barWhy = "Tick Show my bar on a ready check first.",
     wipWhy = "Not ready yet. It comes in a later version.",
     windowWhy = "Tick Open the window on a ready check first.",
-}
+})
 -- The Window tab's Lock, Keep it open and Show a border boxes, in the right column under Class color bar, 24 apart.
 local WINDOW_LOCK_Y = -68
 -- The Window tab's left column: the Background opacity slider (an Edit Mode style row, 32 high) under Size %, its

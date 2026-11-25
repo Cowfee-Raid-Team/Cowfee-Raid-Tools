@@ -61,10 +61,10 @@ Assign.ALL, Assign.ROTATE = "all", "rotate"
 Assign.MAX_ROWS = 20
 Assign.SAME_TIME = 0.05 -- seconds: a line's time and a cast's this close are the same cast
 
-local TEXT = {
+local TEXT = CRT.Locale("Notes.Assign", {
     row = "Row %d",
     untitled = "Assignment",
-}
+})
 Assign.TEXT = TEXT
 
 local function trim(s)

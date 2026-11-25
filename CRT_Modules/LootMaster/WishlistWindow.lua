@@ -23,7 +23,8 @@ local L = {
     tick = 2, icon = 26, iconSize = 24, iconEdge = 2, name = 56, nameW = 200, slot = 262, slotW = 90, rank = 356, rankW = 130,
 }
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("LootMaster.WishlistWindow", {
     title = "My wishlist",
     -- why a greyed control can't be used (UX rule 5), on its tooltip
     rankWhy = "Tick the item first to give it a rank.",
@@ -37,7 +38,7 @@ local TEXT = {
     missing = "This boss isn't in the Adventure Guide's current expansion.",
     noJournal = "The Adventure Guide can't be read here.",
     none = "No items to show.",
-}
+})
 
 local win, list, bossRow, classCheck, status, empty
 local rebuildSet = false -- a rebuild waits for the next frame

@@ -26,10 +26,10 @@ local ADDON, CRT = ...
 local Reference = {}
 CRT.TimelineReference = Reference
 
-local TEXT = {
+local TEXT = CRT.Locale("Timeline.Reference", {
     folded = "Your ability timelines now keep one copy per boss and difficulty. %d older copies were kept aside in your saved data.",
     foldedOne = "Your ability timelines now keep one copy per boss and difficulty. 1 older copy was kept aside in your saved data.",
-}
+})
 
 -- Ability types ----------------------------------------------------------------------------------------
 -- What an ability is, written (type raid) or (type mythic soak) in an ability timeline. The first type is

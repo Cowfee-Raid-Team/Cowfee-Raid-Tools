@@ -31,14 +31,14 @@ CRT.LowHealthProbe = Probe
 
 Probe.MAX_LINES = 1500
 
-local TEXT = {
+local TEXT = CRT.Locale("Dev.LowHealthProbe", {
     on = "Low-health probe on. Drop under your threshold out of combat, then in combat, then heal. /crt dev lowhp show after.",
     off = "Low-health probe off. The last log is kept.",
     state = "Low-health probe is %s. /crt dev lowhp on, off or show.",
     none = "The low-health probe has no log yet. Run /crt dev lowhp on first.",
     title = "Low-health probe log (Ctrl+C to copy, paste to Claude)",
     head = "Low-health probe, started %s",
-}
+})
 
 local frame, hooked
 

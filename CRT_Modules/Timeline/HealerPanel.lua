@@ -18,7 +18,8 @@ local ADDON, CRT = ...
 local Panel = {}
 CRT.TimelineHealerPanel = Panel
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Timeline.HealerPanel", {
     moved = "You moved %d cast%s from the raid note.",
     movedTitle = "Your moved casts",
     movedHelp = {
@@ -48,7 +49,7 @@ local TEXT = {
     accept = "Accept",
     decline = "Decline",
     show = "Show on Timeline",
-}
+})
 Panel.TEXT = TEXT
 
 local BUTTON_H = 20

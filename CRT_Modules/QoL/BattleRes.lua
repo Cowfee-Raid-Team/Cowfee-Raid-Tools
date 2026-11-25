@@ -42,11 +42,11 @@ CRT.BattleRes = BattleRes
 
 local UI = CRT.UI
 
-local TEXT = {
+local TEXT = CRT.Locale("QoL.BattleRes", {
     title = "Battle res",
     drag = "Battle res: drag to move",
     noPool = "\226\128\147", -- an en dash: no charges to count here
-}
+})
 
 BattleRes.SPELL_ID = 20484 -- Rebirth: the group's shared battle res charges
 BattleRes.ICON = 136080 -- Interface\Icons\Spell_Nature_Reincarnation

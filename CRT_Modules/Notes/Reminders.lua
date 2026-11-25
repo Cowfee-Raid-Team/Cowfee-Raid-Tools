@@ -19,7 +19,8 @@ local UI = CRT.UI
 -- text in quotes, save, and /reload.
 -- (The shared settings' words, Show as, Text, Icon, Color and the bar's rows among them, are Alerts/Fields.lua's TEXT,
 -- read when the tab is built: this file loads first.)
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Notes.Reminders", {
     title = "Mech Alerts",
     help = "Alerts are saved per difficulty: Normal/Heroic has one set and Mythic its own. Pick one beside the boss. On the left: the abilities on the ability timeline Times from names, as the Timeline shows it (mechanics you ignored there are grey and play no alerts), then your own reminders. Tick an ability to get a reminder for it, with its times from that timeline; untick it to turn it off. A ticked one that isn't on that timeline stays, marked. A dot means the timeline has times for it. Click a row to edit its alert on the right; changes save at once, for the difficulty on show only. Your own reminder adds one not tied to an ability.",
     boss = "Boss",
@@ -122,7 +123,7 @@ local TEXT = {
     specialTip = "The special alert %s covers this ability. With it on, a reminder of your own here only alerts the casts it doesn't.",
     -- a mechanic unticked on the Timeline: its row grey, this on hover (it plays no alerts until ticked again there)
     ignoredTip = "Ignored on the Timeline",
-}
+})
 
 -- Layout, from the page's width (UI.PAGE_W) and the tab's height (CRT.NotesPage.TAB_H, under the Raid
 -- Notes tabs; Notes/Page.lua loads after this file, so the heights are worked out when the tab is built).

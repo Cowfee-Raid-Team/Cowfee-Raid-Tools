@@ -21,7 +21,8 @@ CRT.AbilityLabelsDev = Labels
 
 local UI = CRT.UI
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Dev.AbilityLabels", {
     title = "Ability labels (dev)",
     help = "Each boss with how many ability labels you set: the right-click Type, Also, Name, Row and icons of an ability.\n\nExport writes a block per ticked boss to paste to Claude, who ships it in the boss's file. Players then see the labels too.\n\nOnce they ship, Clear my labels drops yours, so you see what raiders see.",
     all = "All",
@@ -42,7 +43,7 @@ local TEXT = {
     noBosses = "No bosses are loaded.",
     noLabels = "%s has no ability labels yet. Right-click an ability to set one.",
     spell = "spell %d",
-}
+})
 Labels.TEXT = TEXT
 
 local LAYOUT = {

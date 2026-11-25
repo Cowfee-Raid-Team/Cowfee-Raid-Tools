@@ -84,7 +84,7 @@ P.NUDGE, P.NUDGE_BIG = 1, 10 -- an arrow key, and Shift with it
 P.GEAR_TEXTURE = "Interface\\WorldMap\\Gear_64Grey"
 P.GEAR_SIZE, P.GEAR_GAP = 16, 4 -- the gear, and its gap from Reset
 
-local TEXT = {
+local TEXT = CRT.Locale("UI.Placement", {
     combat = "Can't move that in combat.",
     placement = "Placement",
     settings = "Settings",
@@ -102,7 +102,7 @@ local TEXT = {
     fixed = "This one always sits on the screen.",
     notTarget = "That element can't be anchored to.",
     nothing = "Nothing to anchor to there.",
-}
+})
 P.TEXT = TEXT
 
 local DEFAULT = { point = "CENTER", relativePoint = "CENTER", x = 0, y = 0 }

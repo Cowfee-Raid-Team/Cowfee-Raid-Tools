@@ -30,7 +30,8 @@ local W = Editor.state
 local EL = {}
 CRT.NoteEditorLinks = EL
 
-local TEXT = {
+-- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
+local TEXT = CRT.Locale("Notes.EditorLinks", {
     titleOne = "1 timer line lists the same players as a group row. Link it so it follows the row?",
     title = "%d timer lines list the same players as a group row. Link them so they follow the row?",
     nearTitleOne = "1 timer line is close to a group row.",
@@ -70,7 +71,7 @@ local TEXT = {
         .. "players.\n\nLink remembers which lines follow which row, so a line that later lists other players "
         .. "shows here instead of changing by surprise.\n\nThe note itself keeps plain names, so everyone gets "
         .. "their countdowns as before, on any version.",
-}
+})
 
 local L = { pad = 6, gap = 4, buttonH = 22, buttonGap = 6, maxGroups = 5, tagGap = 6, tagH = 14, below = 6 }
 local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 }

@@ -10,13 +10,13 @@ local UI = CRT.UI
 
 local L = { width = 360, height = 112, buttonH = 24, buttonMinW = 80, gap = 12, bottom = 6, top = -14 }
 
-local TEXT = {
+local TEXT = CRT.Locale("LootMaster.LootingPrompt", {
     title = "CRT Looting",
     question = "Use CRT Looting in this instance?",
     help = "Yes turns CRT Looting on for everyone in the raid with CRT: for 10 minutes after each boss kill their CRT passes the loot rolls (trash too) and yours rolls Need, so you get the items to give out. Only items in your loot filter: everything else is a normal roll for everyone. It stays on through a wipe, a /reload and a log out tonight, until you turn it off on Loot Master > Tonight. It also turns off if you enter another instance, stay out of this one for over 10 minutes, or stop being the raid leader. Raiders can't change it.",
     yes = "Yes",
     no = "No",
-}
+})
 
 local win
 
