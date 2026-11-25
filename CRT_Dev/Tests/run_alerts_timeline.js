@@ -222,7 +222,7 @@ do
   print = function(s) out[#out + 1] = s end
   assert(load(slashSrc, "CRT_Core/Slash.lua"))("CowfeeRaidTools", CRT)
   SlashCmdList["COWFEERAIDTOOLS"]("reminders")
-  SlashCmdList["COWFEERAIDTOOLS"]("help")
+  SlashCmdList["COWFEERAIDTOOLS"]("help all")
   print = realPrint
   assert(#slashed == 1 and slashed[1] == "reminders", "slash opens tab")
   local help
