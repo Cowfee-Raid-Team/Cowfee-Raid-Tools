@@ -1130,6 +1130,14 @@ do
   check(not I:RestoreCustom("3421:15", {}), "editor: a second Undo with a setup there does nothing")
   E.shipped.scripts.OnClick(E.shipped)
   check(not I:IsCustom("3421:15"), "editor: deleted again")
+  -- typing in the editor after the delete: Undo keeps what was typed and puts nothing back
+  I:SetCustom("3421:15", { label = "Mine", spell = { name = "Kick" }, groups = { { key = "a", label = "A", marker = 8, slots = 2 } } })
+  E:Open("3421:15")
+  E.shipped.scripts.OnClick(E.shipped)
+  local t2 = KICK_TOASTS[#KICK_TOASTS]
+  E.Draft().label = "Typed after"
+  if t2 then t2.onUndo() end
+  check(not I:IsCustom("3421:15") and E.Draft().label == "Typed after", "editor: an edit since the delete: Undo keeps the typing")
   P.bossRow.opts.set("3470:16")
 end
 

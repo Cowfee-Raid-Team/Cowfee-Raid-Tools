@@ -40,6 +40,7 @@ local TEXT = {
     shipped = "Back to the shipped setup",
     delete = "Delete my setup",
     deleted = "Deleted your kick setup for %s.",
+    typedSince = "You changed the setup in the editor since, so your old one wasn't put back.",
     close = "Close",
     saved = "Saved your kick setup for %s.",
     dropped = "Back to the shipped kick setup for %s.",
@@ -163,7 +164,27 @@ function Editor:Save()
     return true
 end
 
--- Drops your own setup at once and offers Undo (UI.UndoToast), which saves it back as it was.
+-- A draft as one string, keys sorted, to tell whether it changed.
+local function signature(v)
+    if type(v) ~= "table" then
+        return tostring(v)
+    end
+    local keys = {}
+    for k in pairs(v) do
+        keys[#keys + 1] = k
+    end
+    table.sort(keys, function(a, b)
+        return tostring(a) < tostring(b)
+    end)
+    local out = {}
+    for _, k in ipairs(keys) do
+        out[#out + 1] = tostring(k) .. "=" .. signature(v[k])
+    end
+    return "{" .. table.concat(out, ",") .. "}"
+end
+
+-- Drops your own setup at once and offers Undo (UI.UndoToast), which saves it back as it was, unless the editor still
+-- shows that boss with something typed since (the typing stays; nothing is put back).
 function Editor:BackToShipped()
     local key = Editor.Key(draft)
     if key and Interrupts:IsCustom(key) then
@@ -172,9 +193,15 @@ function Editor:BackToShipped()
         local text = string.format(shipped and TEXT.dropped or TEXT.deleted, Interrupts:BossName(key))
         CRT:Print(text)
         draft = Editor.DraftFor(key)
+        local fresh = signature(draft)
         self:Refresh()
         UI.UndoToast({ text = text, owner = self.shipped, onUndo = function()
-            if Interrupts:RestoreCustom(key, was) and Editor.Key(draft) == key then
+            local here = Editor.Key(draft) == key
+            if here and signature(draft) ~= fresh then
+                CRT:Print(TEXT.typedSince)
+                return
+            end
+            if Interrupts:RestoreCustom(key, was) and here then
                 draft = Editor.DraftFor(key)
                 Editor:Refresh()
             end
