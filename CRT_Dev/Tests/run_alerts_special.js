@@ -501,6 +501,42 @@ check("special: no double alerts: your own reminder steps aside for the casts th
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- #1306: a row with no spell. The special alert follows the row by its name and your reminder follows the same row (by
+-- its text, with or without a spell of its own), so they share no spell: the row's name is what they share.
+check("special: no double alerts by row: a special alert on a row with no spell covers your reminder on that row", function()
+  fresh()
+  S.dev[9001] = { { key = "orbs", label = "Orbs", default = true, when = { row = "Orb Burst" }, text = "Orbs" } }
+  local orbs = S:Get(9001, "orbs")
+  assert(next(S:Covers(9001, orbs, "mythic")) == nil, "Orb Burst has no spell: no spell to cover")
+  CRT.db.alerts.special[9001] = { everyone = { on = false } }
+  CRT.db.alerts.reminders[9001] = {
+    [1] = { text = "Orb Burst", outputs = { alert = true }, enabled = true },                 -- the row by name, no spell
+    [2] = { text = " orb burst", spellID = 5555, outputs = { alert = true }, enabled = true }, -- a spell the row doesn't have
+    [3] = { text = "Swap", spellID = 4242, outputs = { alert = true }, enabled = true },       -- another row
+    [4] = { text = "Mine", times = "0:30", outputs = { alert = true }, enabled = true },       -- typed, on no row
+  }
+  local function ids()
+    local out = {}
+    for _, x in ipairs(A.items) do if x.block == "mine" or x.block == "special" then out[#out + 1] = x.id end end
+    table.sort(out) return table.concat(out, ",")
+  end
+  A:Start(9001, "Mythic", "encounter", { difficultyID = 16 })
+  assert(ids() == "mine:3:1,mine:3:2,mine:4:1,special:orbs:1,special:orbs:2,special:orbs:3,special:orbs:4",
+    "each Orb Burst cast once, by the special alert; another row and a typed time at the same moment keep theirs: " .. ids())
+  -- the special alert off: your reminders on the row come back
+  S:SetChoice(9001, orbs, "on", false)
+  A:Start(9001, "Mythic", "encounter", { difficultyID = 16 })
+  assert(ids():find("mine:1:4", 1, true) and ids():find("mine:2:4", 1, true), "special off: yours alert: " .. ids())
+  -- a special alert on another row covers nothing of this one
+  S.dev[9001] = { { key = "swapRow", label = "Swap row", default = true, when = { row = "Swap" } } }
+  A:Start(9001, "Mythic", "encounter", { difficultyID = 16 })
+  local got = ids()
+  assert(got:find("mine:1:1", 1, true) and not got:find("mine:3:", 1, true), "only the special alert's own row: " .. got)
+  A:Stop(true)
+  CRT.db.alerts.reminders = {}
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("special: a per-alert icon: icon is a spell, iconFile a texture file; else when's spell; unreadable left out", function()
   fresh()
   local SECRET = setmetatable({}, { __tostring = function() return "SECRET" end })
@@ -834,6 +870,29 @@ check("special: absorb items on the timeline, a watch of its own where there are
   assert(#S:AbsorbWatches({ encounterID = 9003, group = "nh", reason = "rehearsal" }) == 0, "a rehearsal: no watch")
   assert(#S:AbsorbWatches({ encounterID = 9003, group = "nh", reason = "countdown" }) == 0, "the countdown run: no watch")
   assert(#S:AbsorbWatches(nil) == 0, "no run: none")
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
+-- #1306: a special alert reads its own difficulty's ability timeline only. Shield Boss (9003) has a Mythic one alone.
+check("special: no other difficulty's ability timeline: none for Heroic, no times; your reminders keep the fallback", function()
+  fresh()
+  S.dev[9003] = { { key = "veil", label = "Veil", default = true, when = { row = "Veil" }, text = "Veil" } }
+  local veil = S:Get(9003, "veil")
+  assert(#S:Times(9003, veil, "mythic") == 2, "Mythic: the row's casts")
+  assert(#S:Times(9003, veil, "nh") == 0, "Normal/Heroic: no ability timeline of its own, no times: " .. #S:Times(9003, veil, "nh"))
+  assert(S:TestItem(9003, veil, "nh") == nil, "nothing to test on Normal/Heroic")
+  local n = 0
+  for _, it in ipairs(A.blocks.special.Entries({ encounterID = 9003, group = "nh", reason = "encounter" })) do
+    if it.special == "veil" then n = n + 1 end
+  end
+  assert(n == 0, "a Heroic pull plays none of the Mythic times: " .. n)
+  -- a run's own ability timeline still wins (a rehearsal's)
+  local mythicRef = CRT.AlertReminders.ReferenceFor(9003, {}, "mythic")
+  assert(#S:Times(9003, veil, "nh", mythicRef) == 2, "a run's own ability timeline is read as given")
+  -- your reminder on the same row: the boss's first, as before
+  local times, from = CRT.AlertReminders:Times(9003, { text = "Veil" }, nil, "nh")
+  assert(from == "reference" and #times == 2, "your reminder on Normal/Heroic keeps the Mythic times: " .. tostring(from))
+  S.dev[9003] = nil
   assert(#errors == 0, tostring(errors[1]))
 end)
 

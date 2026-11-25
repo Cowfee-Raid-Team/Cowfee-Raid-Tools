@@ -79,9 +79,11 @@ local ADDON, CRT = ...
 --     barHeight = 24, barWidth = 160,   optional: each bar's size (BAR_RANGE) }
 --   It has no when, who, show, bar, ticks, absorb or markers: it is never on the alerts engine. Its times, items and
 --   covers are empty, so the rest of the special alert code can read it as an alert that never fires.
--- No double alerts: an alert covers its when.spellID, its when.row's spell and its covers. When you have it on
--- and your own reminder on for one of those spells, the engine leaves out your reminder's alert for any cast
+-- No double alerts: an alert covers its when.spellID, its when.row's spell and its covers, and an alert on a when.row
+-- covers that row by its name too (its item's mech), so a row with no spell is covered. When you have it on and your
+-- own reminder on for one of those spells or on that row, the engine leaves out your reminder's alert for any cast
 -- the special one also alerts (the same phase, within Alerts.COVER_WINDOW seconds); the rest still come.
+-- Times: an alert reads its own difficulty group's ability timeline only, never another's (referenceFor below).
 -- Only the players of a cast's step get its alert ("mine", as the note's tags say); everyone else gets
 -- nothing, unless the mode is everyone. A step's words are cut at spaces before they are read as tags, so
 -- "Group 3" and "Demon Hunter" read as in a note. Unknown fields are ignored. An entry that doesn't read is
@@ -802,6 +804,20 @@ local function bossName(encounterID)
     return def and def.name or nil
 end
 
+-- The boss's ability timeline a special alert reads for group: the group's own (Timeline:ReferenceFor), never another
+-- difficulty's, so with none for the group the entry has no times and plays nothing. Your reminders keep their
+-- fallback to the boss's first (Reminders.ReferenceFor). With no group known (a run with no difficulty), that
+-- fallback, as before: there is no other difficulty to borrow from.
+local function referenceFor(encounterID, group)
+    local name = bossName(encounterID)
+    if group == "mythic" or group == "nh" then
+        local T = CRT.Timeline
+        local entry = T and T.ReferenceFor and T:ReferenceFor(encounterID, group, name)
+        return entry and entry.ref or nil
+    end
+    return CRT.AlertReminders.ReferenceFor(encounterID, { boss = name }, group)
+end
+
 -- The ability timeline row of an entry: by its name, else by its spell (as reminders find theirs).
 local function rowOf(ref, encounterID, when)
     if when.row then
@@ -819,7 +835,7 @@ end
 
 -- An entry's times as { { ph, t } } in cast order (the rotation counts them): the row's casts placed as the
 -- Timeline draws them (Reminders.FromReference, the reminders' placement), on ref or the boss's ability
--- timeline for group (Reminders.ReferenceFor), or the typed times, in phase order. {} when none.
+-- timeline for group (referenceFor: the group's own only), or the typed times, in phase order. {} when none.
 function Special:Times(encounterID, entry, group, ref)
     local Reminders = CRT.AlertReminders
     local out = {}
@@ -841,7 +857,7 @@ function Special:Times(encounterID, entry, group, ref)
         end)
         return out
     end
-    ref = ref or Reminders.ReferenceFor(encounterID, { boss = bossName(encounterID) }, group)
+    ref = ref or referenceFor(encounterID, group)
     local row = ref and rowOf(ref, encounterID, entry.when)
     if not row then
         return out
@@ -858,7 +874,7 @@ local function rowSpell(encounterID, entry, group, ref)
     if not (entry.when.row and Lanes and Lanes.RowSpell) then
         return nil
     end
-    ref = ref or CRT.AlertReminders.ReferenceFor(encounterID, { boss = bossName(encounterID) }, group)
+    ref = ref or referenceFor(encounterID, group)
     local row = ref and rowOf(ref, encounterID, entry.when)
     local ok, id = false, nil
     if row then

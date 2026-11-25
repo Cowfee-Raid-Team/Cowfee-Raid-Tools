@@ -326,11 +326,22 @@ local function replaced(self, run, rep, item)
 end
 
 -- No double alerts: an item may carry covers = { [spellID] = true }, the spells it stands for (a special alert,
--- Alerts/Special.lua). An item of a block marked coverable (your reminders) on one of those spells, in the same
--- phase and within COVER_WINDOW seconds of a covering item that shows anywhere, is left out: that cast is
--- alerted once, by the covering one. Your reminder's other casts still come, and so does every other block's
--- line (the raid note, your personal note). coverable[item] marks the items of coverable blocks.
+-- Alerts/Special.lua). A covering item that follows an ability timeline row (mech, the row's name) stands for that
+-- row too, so a row with no spell is covered by its name. An item of a block marked coverable (your reminders) on
+-- one of those spells or on that row (its own mech), in the same phase and within COVER_WINDOW seconds of a
+-- covering item that shows anywhere, is left out: that cast is alerted once, by the covering one. Your reminder's
+-- other casts still come, and so does every other block's line (the raid note, your personal note).
+-- coverable[item] marks the items of coverable blocks.
 Alerts.COVER_WINDOW = 1
+
+-- A row's name as rows are matched by name (trimmed, any case), or nil.
+local function rowKey(name)
+    if type(name) ~= "string" then
+        return nil
+    end
+    local key = name:match("^%s*(.-)%s*$"):lower()
+    return key ~= "" and key or nil
+end
 
 -- Whether an item shows anywhere: an alert, a bar, speech, or the text, icon, circle or timeline areas.
 -- Anyone else's note timers have none; they only show in the timers window, which reads the note itself.
@@ -352,9 +363,12 @@ local function uncovered(out, coverable)
     local kept = {}
     for _, it in ipairs(out) do
         local drop = false
-        if coverable[it] and type(it.spellID) == "number" then
+        local spell = type(it.spellID) == "number" and it.spellID or nil
+        local row = rowKey(it.mech)
+        if coverable[it] and (spell or row) then
             for _, c in ipairs(covering) do
-                if c.covers[it.spellID] and c.ph == it.ph and math.abs(c.time - it.time) <= Alerts.COVER_WINDOW then
+                local same = (spell and c.covers[spell]) or (row and rowKey(c.mech) == row)
+                if same and c.ph == it.ph and math.abs(c.time - it.time) <= Alerts.COVER_WINDOW then
                     drop = true
                     break
                 end
