@@ -113,6 +113,10 @@ local TEXT = {
     reopen = "You can change the raid note now. Close this line and open it again to edit it.",
     noteLineTitle = "Raid note line",
     copyToMine = "Copy to my reminders",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    readOnlyWhy = "Only the raid leader or an assistant can change the raid note. Copy to my reminders makes it your own.",
+    customColoursWhy = "Tick Use custom colours on Raid Notes > Alerts to colour your own alerts.",
+    copyNoBossWhy = "This line has no boss, so there is nothing to save a copy for.",
 }
 
 local Alerts = CRT.Alerts
@@ -193,8 +197,22 @@ local function readOnly()
     return ctx ~= nil and ctx.readOnly == true
 end
 
+-- ok, reason (UX rule 5)
 local function editable()
-    return not readOnly()
+    if readOnly() then
+        return false, TEXT.readOnlyWhy
+    end
+    return true
+end
+
+-- A control greyed by hand says why (UX rule 5): a cover made the first time, then set (UI.DisabledCover).
+local function greyWhy(el, ok, reason, title)
+    if not el.why then
+        el.why = UI.DisabledCover(el, function()
+            return title
+        end)
+    end
+    el.why:Set(ok, reason)
 end
 
 -- The Color row: a raid note line's colour is the raid leader's and always shows; your own alert's (Only me, as
@@ -503,8 +521,11 @@ local function colourRow()
         return
     end
     local colourOn = not readOnly() and colourEditable()
+    local why = readOnly() and TEXT.readOnlyWhy or TEXT.customColoursWhy
     frame.colorSwatch:SetEnabled(colourOn)
     frame.colorDefault:SetEnabled(colourOn)
+    greyWhy(frame.colorSwatch, colourOn, why, TEXT.color)
+    greyWhy(frame.colorDefault, colourOn, why, TEXT.colorDefault)
     frame.colorSwatch:SetAlpha(colourOn and 1 or 0.4)
     frame.colorLabel:SetAlpha(colourOn and 1 or 0.5)
 end
@@ -546,11 +567,15 @@ local function refresh(rows)
     frame.saveBtn:SetShown(not locked)
     frame.copyBtn:SetShown(locked)
     -- a copy needs a boss to be saved for
-    frame.copyBtn:SetEnabled(locked and type(ctx.encounterID) == "number")
+    local canCopy = locked and type(ctx.encounterID) == "number"
+    frame.copyBtn:SetEnabled(canCopy)
+    greyWhy(frame.copyBtn, canCopy or not locked, TEXT.copyNoBossWhy, TEXT.copyToMine)
     -- why Raid note is greyed out (a saved alert may keep Raid note: it changes no note by itself)
     frame.saveAsHelp:SetShown(not savedMode and not canEditRaid())
+    local titles = { [frame.textEdit] = TEXT.text, [frame.timeEdit] = TEXT.time, [frame.idEdit] = TEXT.icon }
     for _, el in ipairs({ frame.textEdit, frame.timeEdit, frame.idEdit }) do
         el:SetEnabled(not locked)
+        greyWhy(el, not locked, TEXT.readOnlyWhy, titles[el])
     end
     colourRow()
     if locked then
@@ -558,6 +583,9 @@ local function refresh(rows)
     end
     for _, k in ipairs(SHOW_KEYS) do
         frame.checks[k]:SetEnabled(not locked)
+        if frame.checks[k].why then
+            frame.checks[k].why:Set(not locked, TEXT.readOnlyWhy)
+        end
     end
     if rows then
         for _, row in ipairs(frame.rows) do

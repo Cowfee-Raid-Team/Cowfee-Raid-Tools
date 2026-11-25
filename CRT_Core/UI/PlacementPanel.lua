@@ -387,8 +387,15 @@ local function build()
                 refresh()
             end
         end,
+        -- ok, reason (UX rule 5): the panel shows for one element; one holding the game's buttons stays on the screen
         enabledIf = function()
-            return shown ~= nil and shown.spec.canAnchor ~= false
+            if shown == nil then
+                return false
+            end
+            if shown.spec.canAnchor == false then
+                return false, TEXT.fixedHelp
+            end
+            return true
         end,
     })
     f.anchorRow:SetPoint("TOPLEFT", c, "TOPLEFT", 0, L.rowY[4])

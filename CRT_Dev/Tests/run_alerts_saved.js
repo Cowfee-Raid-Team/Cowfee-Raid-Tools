@@ -6,7 +6,7 @@ const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = `
 local sources = { ... }
 local frames, fontStrings = {}, {}
-local NOT_METHODS = { Left = true, Middle = true, Right = true, Background = true, Arrow = true, SetupMenu = true, CloseButton = true, tex = true }
+local NOT_METHODS = { Left = true, Middle = true, Right = true, Background = true, Arrow = true, SetupMenu = true, CloseButton = true, tex = true, why = true }
 local function mock(kind, parent, template)
   local m = { kind = kind, parent = parent, template = template, shown = true, enabled = true, checked = false, text = "",
     pts = {}, w = 0, h = 0, regions = {}, children = {} }
@@ -167,6 +167,9 @@ UI.RegisterLayer = function(_, key, f) layers[key] = f end
 UI.RegisterPreview = function(_, key, fn) previews[key] = fn end
 UI.ResetButtonWidth = function() return 44 end; UI.ResetButton = function(parent, fn) local b = mock("Button", parent) rawset(b, "onReset", fn) rawset(b, "isReset", true) return b end
 UI.SetFrameTitle = function(f, t) f.title = t end
+-- as CRT_Core/UI/Controls.lua's: enabledIf's ok, reason; a greyed control's cover keeps what it was set to
+UI.Usable = function(f, ...) if not f then return true end local ok, why = f(...) if ok then return true end return false, why end
+UI.DisabledCover = function() return { Set = function(self, ok, why) self.ok, self.reason = ok, why end } end
 UI.Help = function(parent, title, text) local b = mock("Button", parent) rawset(b, "helpTitle", title) rawset(b, "helpText", text) helps[#helps + 1] = b return b end
 UI.Dropdown = function(parent, label, opts) local r = mock("Row", parent) rawset(r, "label", label) rawset(r, "opts", opts)
   rawset(r, "refresh", function() rawset(r, "refreshed", (rawget(r, "refreshed") or 0) + 1) end) dropdowns[label] = r return r end

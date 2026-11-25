@@ -18,6 +18,8 @@ local TEXT = {
     sampleNow = "Spread",
     sampleSoon = "Stack on the boss",
     sampleLater = "Soak",
+    -- why a greyed row can't be used (UX rule 5), on its tooltip
+    showTextWhy = "Tick Show the text below to change this.",
 }
 
 local MIN_ICON, MAX_ICON, DEFAULT_ICON = 24, 96, 44
@@ -199,7 +201,7 @@ local function settings(panel, s)
     panel:Dropdown(TEXT.font, {
         options = Areas.FontOptions,
         enabledIf = function()
-            return showText(s)
+            return showText(s), TEXT.showTextWhy
         end,
         get = function()
             return s.font
@@ -212,7 +214,7 @@ local function settings(panel, s)
         min = MIN_FONT,
         max = MAX_FONT,
         enabledIf = function()
-            return showText(s)
+            return showText(s), TEXT.showTextWhy
         end,
         get = function()
             return fontSize(s)

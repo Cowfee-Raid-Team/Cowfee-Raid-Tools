@@ -48,6 +48,8 @@ local TEXT = {
             .. "A colour the raid leader put on a raid note line always shows.",
     },
     custom = "Use custom colours",
+    -- why a greyed control can't be used (UX rule 5), on its tooltip
+    areaOffWhy = "Tick Show these alerts for %s under Configuration first.",
 
     tryIt = "Try it",
     tryHelp = {
@@ -156,7 +158,8 @@ local function heading(parent, x, y, text)
     return fs
 end
 
--- A checkbox. enabledIf, when given, greys it out while it returns false.
+-- A checkbox. enabledIf, when given, returns ok, reason: it greys the box out while not ok, and hovering it then
+-- says the reason.
 local function makeCheck(parent, x, y, label, enabledIf, get, set)
     local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
     check:SetSize(24, 24)
@@ -172,11 +175,19 @@ local function makeCheck(parent, x, y, label, enabledIf, get, set)
     check.refresh = function()
         check:SetChecked(get() and true or false)
         if enabledIf then
-            local on = enabledIf() and true or false
+            local on, reason = UI.Usable(enabledIf)
             check:SetEnabled(on)
             local c = on and WHITE or GREY
             text:SetTextColor(c[1], c[2], c[3])
+            check.why:Set(on, reason)
         end
+    end
+    -- greyed, hovering it says why (UI.DisabledCover)
+    if enabledIf then
+        check.why = UI.DisabledCover(check, function()
+            return label
+        end, text)
+        check.why.state = enabledIf
     end
     controls[#controls + 1] = check
     return check
@@ -198,7 +209,17 @@ end
 local function areaOn(key)
     return function()
         local area = CRT.AlertAreas.Find(key)
-        return area and area:Settings().shown and true or false
+        if area and area:Settings().shown then
+            return true
+        end
+        -- why it is greyed (UX rule 5), naming the area as the Configuration list does
+        local name = key
+        for _, kind in ipairs(KINDS) do
+            if kind.key == key then
+                name = kind.label
+            end
+        end
+        return false, TEXT.areaOffWhy:format(name)
     end
 end
 

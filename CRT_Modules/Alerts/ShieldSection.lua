@@ -47,6 +47,10 @@ local TEXT = {
     lastPullNever = "Last pull: no pull of this boss yet.",
     useUnit = "Use Boss %d",
     default = "Default",
+    -- why a greyed part can't be used (UX rule 5), on its tooltip
+    barWhy = "Tick Bar under Show as first: the shield shows on the alert's bar.",
+    onWhy = "Tick Shield bar first.",
+    anyWhy = "This alert plays on every difficulty, so this has nothing to add.",
 }
 ShieldSection.TEXT = TEXT
 
@@ -126,7 +130,34 @@ local function makeCheck(parent, label, onClick)
     check:SetScript("OnClick", function(self)
         onClick(self:GetChecked() and true or false)
     end)
+    -- greyed, hovering it says why (UX rule 5): Refresh sets it
+    check.why = UI.DisabledCover(check, function()
+        return label
+    end, text)
     return check
+end
+
+-- The host's editable: ok, reason (true without one).
+local function editableOf(o)
+    if not o.editable then
+        return true
+    end
+    return UI.Usable(o.editable)
+end
+
+-- Whether the Shield bar box can be ticked: ok, reason (editable, and the alert's Bar ticked).
+local function barUsable(o, v)
+    local ok, why = editableOf(o)
+    if not ok then
+        return false, why
+    end
+    if v == nil then
+        return false
+    end
+    if not o.barOn() then
+        return false, TEXT.barWhy
+    end
+    return true
 end
 
 -- A button as the editor's and the Mech Alerts panels' own (their makeButton): the game's panel button in CRT's button
@@ -214,10 +245,17 @@ function ShieldSection.Build(parent, o)
         end
         return row
     end
+    -- ok, reason: the rows under the box are usable (UX rule 5: the reason shows on their tooltips)
     function s.IsOn()
         local v = o.get()
-        local editable = not o.editable or o.editable()
-        return editable and v ~= nil and v.on and o.barOn() and true or false
+        local ok, why = barUsable(o, v)
+        if not ok then
+            return false, why
+        end
+        if not v.on then
+            return false, TEXT.onWhy
+        end
+        return true
     end
 
     s.check = at(makeCheck(parent, TEXT.shieldBar, function(on) o.set("on", on) end), 0, 0)
@@ -279,13 +317,14 @@ end
 function ShieldSection.Refresh(s, rows)
     local o = s.opts
     local v = o.get()
-    local editable = not o.editable or o.editable()
-    local barOn = editable and v ~= nil and o.barOn() and true or false
-    local on = s.IsOn()
+    local editable = editableOf(o)
+    local barOn, barWhy = barUsable(o, v)
+    local on, onWhy = s.IsOn()
     v = v or EMPTY
     s.check:SetChecked(v.on and true or false)
     s.check:SetEnabled(barOn)
     s.check.label:SetAlpha(barOn and 1 or 0.5)
+    s.check.why:Set(barOn, barWhy)
     if s.note then
         s.note:SetAlpha(barOn and 1 or 0.5)
         local before = L.CHECK + L.CHECK_GAP + textWidth(s.check.label) + UI.HELP_GAP + UI.HELP_SIZE + L.NOTE_GAP
@@ -295,6 +334,7 @@ function ShieldSection.Refresh(s, rows)
     local anyOn = on and (not o.anyApplies or o.anyApplies()) and true or false
     s.any:SetEnabled(anyOn)
     s.any.label:SetAlpha(anyOn and 1 or 0.5)
+    s.any.why:Set(anyOn, not on and onWhy or TEXT.anyWhy)
     if s.anyX > 0 then
         -- beside Shield on: its label is cut to the column (a large text size), its (?) after it
         local room = o.width - s.anyX - L.CHECK - L.CHECK_GAP - UI.HELP_GAP - UI.HELP_SIZE

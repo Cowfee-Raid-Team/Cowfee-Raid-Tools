@@ -69,6 +69,7 @@ local TEXT = {
     opens = "Opens %s.",
     notLoaded = "This page isn't loaded.",
     interruptsOff = "Tick Enable Interrupts to show its page.",
+    pageHidden = "This page is hidden right now.",
     interruptsHelp = "Kick numbers above a boss's adds, a countdown before your kick and the leader's kick list. Off for everyone until they tick this. The Interrupts page lists the bosses it works on.",
 }
 
@@ -196,7 +197,7 @@ local function canOpen(row)
         return false, TEXT.notLoaded
     end
     if p.hidden then
-        return false, row.key == "interrupts" and TEXT.interruptsOff or nil
+        return false, row.key == "interrupts" and TEXT.interruptsOff or TEXT.pageHidden
     end
     return true
 end

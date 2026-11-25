@@ -107,6 +107,8 @@ local TEXT = {
     position = "Tooltip position",
     window = "The window",
     auto = "Each on its own side",
+    -- why the spot picker is greyed (UX rule 5): a click on a spot still works, and switches to Outside the window
+    pickOutside = "Used with Outside the window above. Click a spot to switch to it.",
 }
 
 -- The saved table for General Settings (area nil) or an area; nil before the saved data loads, or for an
@@ -283,13 +285,14 @@ end
 -- side"); on a greyed picker, a click on the lit spot picks it. While an area is on Use the general
 -- setting, its picker shows General Settings' spot, the one in use. opts: labelWidth, width (the
 -- dropdown's), beside (the picker right of the dropdown, for a page with no room under it), pickerLabel (the
--- picker box's text, "The window" by default) and enabledIf (greys both while it returns false). Place the
+-- picker box's text, "The window" by default) and enabledIf (returns ok, reason: greys both while not ok, with its reason). Place the
 -- dropdown with group.row:SetPoint; the picker follows it. Returns group = { row, picker, refresh }.
 function UI.TooltipPositionSetting(parent, area, opts)
     opts = opts or {}
     local labelWidth = opts.labelWidth or 140
+    -- ok, reason: the caller's enabledIf, its reason kept
     local function usable()
-        return not opts.enabledIf or opts.enabledIf() and true or false
+        return UI.Usable(opts.enabledIf)
     end
     local group = {}
     group.row = UI.Dropdown(parent, TEXT.position, {
@@ -320,7 +323,14 @@ function UI.TooltipPositionSetting(parent, area, opts)
             group.row.refresh()
         end,
         enabledIf = function()
-            return UI.TooltipChoice(area) == "spot" and usable()
+            local ok, reason = usable()
+            if not ok then
+                return false, reason
+            end
+            if UI.TooltipChoice(area) ~= "spot" then
+                return false, TEXT.pickOutside
+            end
+            return true
         end,
     })
     if opts.beside then

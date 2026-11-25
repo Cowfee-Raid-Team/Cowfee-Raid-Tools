@@ -70,6 +70,14 @@ local TEXT = {
     ticks = "Impact ticks",
     barFill = "Bar fill",
     countTo = "Count down to",
+    -- why a greyed setting can't be used (UX rule 5), on its tooltip
+    speakWhy = "Tick Speak the text first.",
+    countWhy = "Tick Count down from first.",
+    beforeWhy = "Pick Before 0 under Speak at first.",
+    auraLivesWhy = "Only your own alerts have this: a raid note line or a saved alert can't carry it.",
+    auraSpellWhy = "Needs the alert's spell. Set it on the Looks tab.",
+    auraSoundWhy = "Pick a sound above first.",
+    auraGameWhy = "The game's aura sounds aren't available right now.",
 }
 Fields.TEXT = TEXT
 
@@ -77,8 +85,27 @@ Fields.TEXT = TEXT
 Fields.SHOW_LABELS = { alert = TEXT.callout, text = TEXT.showText, icon = TEXT.showIcon, bar = TEXT.bar, circle = TEXT.circle,
     timeline = TEXT.timeline }
 
+-- ok, reason: the host's editable (false, and its reason, on a read-only note line)
 local function editable(h)
-    return not (h and h.editable) or h.editable() and true or false
+    if not (h and h.editable) then
+        return true
+    end
+    return UI.Usable(h.editable)
+end
+
+-- An entry's enabledIf: editable first, then each condition, reason pair in turn; the first that fails says why.
+local function usableIf(h, ...)
+    local ok, why = editable(h)
+    if not ok then
+        return false, why
+    end
+    for i = 1, select("#", ...), 2 do
+        local cond, reason = select(i, ...)
+        if not cond then
+            return false, reason
+        end
+    end
+    return true
 end
 
 -- Whether a setting can be kept where the host's draft is (its entry's lives, by the host's kind()).
@@ -98,10 +125,25 @@ end
 
 -- Also when it lands on me needs the alert's spell, a sound and the game's aura sounds (Sound/Auras.lua), and somewhere
 -- that keeps it: your own reminder, never a template or a note line (its entry's lives).
+-- ok, reason
 local function auraOK(d, h)
     local Auras = CRT.SoundAuras
-    return d ~= nil and livesHere("auraSound", h) and d.spellID ~= nil and CRT.Sound ~= nil and CRT.Sound.Normalize(d.sound) ~= nil
-        and Auras ~= nil and Auras:Available() and true or false
+    if d == nil then
+        return false
+    end
+    if not livesHere("auraSound", h) then
+        return false, TEXT.auraLivesWhy
+    end
+    if d.spellID == nil then
+        return false, TEXT.auraSpellWhy
+    end
+    if not (CRT.Sound ~= nil and CRT.Sound.Normalize(d.sound) ~= nil) then
+        return false, TEXT.auraSoundWhy
+    end
+    if not (Auras ~= nil and Auras:Available()) then
+        return false, TEXT.auraGameWhy
+    end
+    return true
 end
 
 local function beforeZero(d)
@@ -137,32 +179,32 @@ Fields.LIST = {
         note = "countto:impact", lives = NO_TEMPLATE, meaning = "The bar's number counts to each hit (Mech Alerts only)." },
     -- Sound and speech
     { key = "sound", tab = "sound", kind = "sound", label = TEXT.sound, default = "none", saved = "sound", note = "sound:name",
-        lives = ALL, enabledIf = function(_, h) return editable(h) end, meaning = "A sound played at 0." },
+        lives = ALL, enabledIf = function(_, h) return usableIf(h) end, meaning = "A sound played at 0." },
     { key = "auraSound", tab = "sound", kind = "check", label = TEXT.auraSound, help = TEXT.auraSoundHelp, default = false,
         saved = "auraSound", lives = { reminder = true, share = true },
-        enabledIf = function(d, h) return editable(h) and auraOK(d, h) end,
+        enabledIf = function(d, h) local ok, why = usableIf(h) if not ok then return false, why end return auraOK(d, h) end,
         meaning = "The sound also plays when the spell's debuff lands on you." },
     { key = "speak", tab = "sound", kind = "check", label = TEXT.speak, default = true, saved = "speech", note = "tts:1",
-        lives = ALL, enabledIf = function(_, h) return editable(h) end, meaning = "Reads the text out." },
+        lives = ALL, enabledIf = function(_, h) return usableIf(h) end, meaning = "Reads the text out." },
     { key = "speakText", tab = "sound", kind = "edit", label = TEXT.sayInstead, help = TEXT.sayInsteadHelp, default = "empty",
-        saved = "speakText", note = "say:words", lives = ALL, enabledIf = function(d, h) return editable(h) and speaks(d) end,
+        saved = "speakText", note = "say:words", lives = ALL, enabledIf = function(d, h) return usableIf(h, speaks(d), TEXT.speakWhy) end,
         meaning = "Words said in place of the text." },
     { key = "count", tab = "sound", kind = "check", label = TEXT.count, help = TEXT.countDownHelp, default = false,
-        saved = "speech", note = "count:1", lives = ALL, enabledIf = function(_, h) return editable(h) end,
+        saved = "speech", note = "count:1", lives = ALL, enabledIf = function(_, h) return usableIf(h) end,
         meaning = "Counts down to 0." },
     { key = "countFrom", tab = "sound", kind = "slider", label = TEXT.count, range = Reminders.COUNT_FROM,
         default = Reminders.COUNT_FROM.default, saved = "countFrom", note = "countfrom:N", lives = ALL,
-        enabledIf = function(d, h) return editable(h) and counts(d) end, meaning = "The number the count starts from." },
+        enabledIf = function(d, h) return usableIf(h, counts(d), TEXT.countWhy) end, meaning = "The number the count starts from." },
     { key = "speakAt", tab = "sound", kind = "dropdown", label = TEXT.speakAt, help = TEXT.speakAtHelp, default = "On show",
         saved = "speakAt", note = "ttsat:0 (At 0), ttsbefore:N (Before 0)", lives = ALL,
-        enabledIf = function(d, h) return editable(h) and speaks(d) end,
+        enabledIf = function(d, h) return usableIf(h, speaks(d), TEXT.speakWhy) end,
         meaning = "When the text is said: On show, At 0 or Before 0." },
     { key = "speakBefore", tab = "sound", kind = "slider", label = TEXT.secondsBefore, range = Reminders.SPEAK_BEFORE,
         default = Reminders.SPEAK_BEFORE.default, saved = "speakBefore", note = "ttsbefore:N", lives = ALL,
-        enabledIf = function(d, h) return editable(h) and speaks(d) and beforeZero(d) end,
+        enabledIf = function(d, h) return usableIf(h, speaks(d), TEXT.speakWhy, beforeZero(d), TEXT.beforeWhy) end,
         shownIf = function(d) return beforeZero(d) end, meaning = "Before 0's seconds before the time." },
     { key = "glow", tab = "sound", kind = "check", label = TEXT.glow, default = false, saved = "glow", note = "glow:1",
-        lives = ALL, enabledIf = function(_, h) return editable(h) end, meaning = "The alert glows at 0." },
+        lives = ALL, enabledIf = function(_, h) return usableIf(h) end, meaning = "The alert glows at 0." },
     -- Shield bar
     { key = "shield", tab = "shield", kind = "section", label = CRT.AlertSubTabs.TEXT.shield, default = "off", saved = "absorb",
         note = "shield:boss2,15,any", lives = ALL, meaning = "The bar shows a boss's absorb shield (Alerts/Absorb.lua)." },
@@ -173,10 +215,10 @@ for _, f in ipairs(Fields.LIST) do
     Fields.BY_KEY[f.key] = f
 end
 
--- Whether a setting is on for the draft on a host (its enabledIf; none: always).
+-- Whether a setting is on for the draft on a host (its enabledIf; none: always): ok, and the reason when not.
 function Fields.Enabled(key, d, h)
     local f = Fields.BY_KEY[key]
-    return not (f and f.enabledIf) or f.enabledIf(d, h) and true or false
+    return UI.Usable(f and f.enabledIf, d, h)
 end
 
 -- The layout of the Sound and speech tab, the alert editor's approved one (Alex, 2026-10-31), from the tab's top left:
@@ -203,6 +245,10 @@ local function makeCheck(p, label, x, y, onClick)
     check:SetScript("OnClick", function(self)
         onClick(self:GetChecked() and true or false)
     end)
+    -- greyed, hovering it says why (UX rule 5): Set by DrawSound with the reason
+    check.why = UI.DisabledCover(check, function()
+        return label
+    end, fs)
     return check
 end
 
@@ -303,6 +349,9 @@ function Fields.BuildSound(p, h)
     }
     makeLabel(p, TEXT.sayInstead, cx + S.INDENT, rowY(3) - 4)
     c.sayInstead = makeEdit(p, h, "speakText", cx + S.SAY_DX, rowY(3), S.SAY_W)
+    c.sayInstead.why = UI.DisabledCover(c.sayInstead, function()
+        return TEXT.sayInstead, B.speakText.help
+    end)
     UI.HelpRight(c.sayInstead, TEXT.sayInstead, B.speakText.help)
     c.countFrom = UI.Slider(p, "", {
         min = B.countFrom.range.min, max = B.countFrom.range.max, step = B.countFrom.range.step, labelWidth = 0,
@@ -325,17 +374,21 @@ function Fields.DrawSound(c, h)
     if not (c and d) then
         return
     end
-    local on = editable(h)
+    local on, why = editable(h)
     for key, check in pairs(c.also) do
         check:SetChecked(d[key] and true or false)
         check:SetEnabled(on)
+        check.why:Set(on, why)
     end
-    local aura = Fields.Enabled("auraSound", d, h)
+    local aura, auraWhy = Fields.Enabled("auraSound", d, h)
     c.auraSound:SetChecked(d.auraSound and true or false)
     c.auraSound:SetEnabled(aura)
+    c.auraSound.why:Set(aura, auraWhy)
     local v = aura and 1 or 0.5
     c.auraSound.label:SetTextColor(v, v, v)
-    c.sayInstead:SetEnabled(Fields.Enabled("speakText", d, h))
+    local say, sayWhy = Fields.Enabled("speakText", d, h)
+    c.sayInstead:SetEnabled(say)
+    c.sayInstead.why:Set(say, sayWhy)
     c.speakBefore:SetShown(Fields.BY_KEY.speakBefore.shownIf(d, h))
 end
 

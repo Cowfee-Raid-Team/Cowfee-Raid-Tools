@@ -60,6 +60,9 @@ local TEXT = {
     noBorder = "No border",
     thin = "Thin (1 px)",
     thick = "Thick (2 px)",
+    -- why a greyed row can't be used (UX rule 5), on its tooltip
+    offWhy = "Tick Show these alerts above to change this.",
+    customWhy = "Tick Use custom colours to choose your own colours.",
 }
 
 local ICON_GAP = 4 -- between the icon and the text, and at the edges
@@ -798,7 +801,10 @@ end
 
 local function settingsRows(panel, s)
     local function on()
-        return s.shown and true or false
+        if s.shown then
+            return true
+        end
+        return false, TEXT.offWhy
     end
     panel:Slider(TEXT.ahead, {
         min = 5,
@@ -885,7 +891,13 @@ local function settingsRows(panel, s)
     end, TEXT.showTypeHelp)
     -- greyed and unused without Use custom colours; what is saved stays
     local function custom()
-        return on() and Areas.CustomColors()
+        if not s.shown then
+            return false, TEXT.offWhy
+        end
+        if not Areas.CustomColors() then
+            return false, TEXT.customWhy
+        end
+        return true
     end
     local function colorRow(label, key, default)
         panel:Color(label, function()
