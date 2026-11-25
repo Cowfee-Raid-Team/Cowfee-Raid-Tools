@@ -12,7 +12,7 @@ local ADDON, CRT = ...
 -- 0:07 to 3:40)") and says how many are an Assign block's ("2 of these are in Orb Carriers P1."): a block line deleted
 -- is that cast left out for its row, which the block keeps (a cast with no lines is deliberate, #1288). Every delete is
 -- Check.RemoveLines on the session's text through Editor.ApplyText: every other line byte for byte, nothing written
--- until Save. A delete goes by line number, so it first checks that each line is the session's own row (a kick block
+-- until Save, one step for Undo (Notes/EditorUndo.lua). A delete goes by line number, so it first checks that each line is the session's own row (a kick block
 -- changed in place is written whole and can move the lines: EditorWindow's Editor.Resync makes a new session after
 -- such a change; should one slip through, the delete is refused and the session made again). The selection goes with
 -- any change to the text, and on Save. A note you can't change: no selection, and the menu's items greyed with the
@@ -144,6 +144,7 @@ local function delete(list, ask)
         if not (W.session and not readOnly() and W.session:Text() == text) then
             return
         end
+        Editor.Step("delete", #list) -- one step for Undo (Notes/EditorUndo.lua)
         Editor.ApplyText(Check.RemoveLines(text, list))
         ELn.Clear()
         W.notice = UI.GoodText(#list == 1 and TEXT.deletedOne or string.format(TEXT.deleted, #list))

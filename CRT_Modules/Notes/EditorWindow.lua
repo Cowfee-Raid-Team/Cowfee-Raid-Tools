@@ -25,6 +25,8 @@ local ADDON, CRT = ...
 -- players no row lists, with Remove old lines.
 -- A timed line can be deleted (Notes/EditorLines.lua): right-click it for Delete line or Delete all lines like it; click,
 -- Shift-click and Ctrl-click select lines for Delete selected in the footer.
+-- Undo and Redo (Notes/EditorUndo.lua), in the title bar left of History, and Ctrl+Z / Ctrl+Y step through every change
+-- made before Save: each Refresh takes a changed text as a step, named by the action first (Editor.Step).
 
 local Notes = CRT.Notes
 local Model = CRT.NoteEditModel
@@ -52,6 +54,28 @@ end
 -- Deleting timed lines (Notes/EditorLines.lua, loaded after this file), or nil without it.
 local function lines()
     return CRT.NoteEditorLines
+end
+
+-- Undo and Redo (Notes/EditorUndo.lua, loaded after this file), or nil without them.
+local function undo()
+    return CRT.NoteEditorUndo
+end
+
+-- Names the next change for Undo's list ("Delete 3 lines": Notes/EditorUndo.lua's TEXT[kind], formatted with the rest).
+function Editor.Step(kind, ...)
+    local u = undo()
+    if u then
+        u.Label(kind, ...)
+    end
+end
+
+-- The same for typing: burst { key, first, last } joins typing in the same box that pauses no longer than a moment.
+function Editor.StepTyping(burst, kind, ...)
+    local u = undo()
+    if u then
+        u.Label(kind, ...)
+        u.Typing(burst)
+    end
 end
 
 -- Some keys below format two or more values (%s, %d) in a fixed order: a translation keeps that order (see Locale.lua).
@@ -114,6 +138,8 @@ local TEXT = CRT.Locale("Notes.EditorWindow", {
             .. "a line to select it, Shift-click to select a range, Ctrl-click to add or remove one, then Delete "
             .. "selected. Nothing is saved until Save." },
         { "Raw text", "shows the note as it will be saved." },
+        { "Undo", "Undo and Redo in the title bar, or Ctrl+Z and Ctrl+Y, step back and forward through your changes. "
+            .. "Save, Push note or closing the editor clears them." },
         { "Add assignment", "adds a heading and rows of players, with timer lines from one of the boss's mechanics, "
             .. "typed times, or none. Click a row of an assignment first to change that one." },
     },
@@ -528,10 +554,15 @@ local function makeDrag()
                 W.session:CancelDrag()
             end
         end,
-        drop = function(_, target)
+        drop = function(source, target)
             -- drawn again either way, so a refused drop leaves nothing half shown
             local row, at = rowAndChip()
             local why
+            if source and source.row then
+                Editor.Step("move", W.session:Names(source.row)[source.index] or "")
+            elseif source then
+                Editor.Step("add", source.token or "")
+            end
             edit(function()
                 local ok, no = W.session:Drop(target, row == target and at or nil)
                 why = no
@@ -543,6 +574,7 @@ local function makeDrag()
         click = function(source)
             if source.token then
                 local why
+                Editor.Step("add", source.token)
                 local ok = edit(function()
                     local added, no = W.session:PaletteClick(source.token, source.kind, source.full)
                     why = no
@@ -559,6 +591,9 @@ local function makeDrag()
         end,
         remove = function(chip)
             local src = chip.source
+            if src and src.row and W.session then
+                Editor.Step("remove", W.session:Names(src.row)[src.index] or "")
+            end
             if src and src.row and W.session and edit(function()
                 return W.session:Remove(src.row, src.index)
             end) then
@@ -626,6 +661,9 @@ function Editor.Refresh()
     if not (W.window and W.session) then
         return
     end
+    if undo() then
+        undo().Track() -- a changed text is a step to undo
+    end
     W.classOf = CRT.NoteRender and CRT.NoteRender.SharedLookup and CRT.NoteRender.SharedLookup() or nil
     -- from the window's own size (set by UI.Window), which is known before the layout runs
     local inset = UI.WINDOW_DEFAULTS and UI.WINDOW_DEFAULTS.inset or 8
@@ -665,6 +703,9 @@ function Editor.Refresh()
     W.status:SetPoint("RIGHT", del and W.deleteButton or W.assignButton, "LEFT", -8, 0)
     W.roster:SetChecked(rosterOn())
     refreshPush()
+    if undo() then
+        undo().Refresh()
+    end
     local status = ""
     if W.notice then
         status = W.notice
@@ -754,6 +795,9 @@ local function loadSession()
     W.notice, W.refused = nil, nil
     if lines() then
         lines().Clear() -- a new session (opened, saved, changed from elsewhere): no lines selected
+    end
+    if undo() then
+        undo().Reset() -- and nothing to undo
     end
     if W.source.personal then
         W.window.strip:SetTitle(TEXT.personalTitle)
@@ -863,6 +907,9 @@ function Editor.Push()
     end
     local sent, line = CRT.NotesPage.ShareNote(W.source.id)
     W.rosterStatus = line and (sent and UI.GoodText(line) or UI.WarnText(line)) or nil
+    if undo() then
+        undo().Reset() -- pushed: as Save, nothing to undo
+    end
     Editor.Refresh()
     return true
 end
@@ -878,16 +925,37 @@ local function onNotesChange()
         Editor.Refresh()
     elseif text ~= W.session.base or editable == W.session.readOnly then
         local quick = W.session.quickFill
+        local before = W.restoring
+        W.restoring = nil
         loadSession()
+        -- History's restore, made while the editor showed this note: one step, its text before put back by Undo
+        if before and undo() and editable and before ~= W.session:Text() then
+            undo().Push(before, "restore")
+        end
         W.session:SetQuickFill(quick and editable)
         Editor.Refresh()
         followInvite()
     end
 end
 
+-- History restores a version of note id (Notes/HistoryWindow.lua calls it just before, and with nil just after): while
+-- the editor shows that note with nothing unsaved, the text before is kept for Undo (onNotesChange).
+function Editor.Restoring(id)
+    local s = W.session
+    W.restoring = nil
+    if id ~= nil and s and not s.readOnly and W.window and W.window:IsShown() and W.source and not W.source.personal
+        and W.source.id == id and not s:Dirty() then
+        W.restoring = s:Text()
+    end
+end
+
 local function onHide(win)
     Editor.CancelDrag()
-    if W.discarding or not (W.session and W.session:Dirty()) then
+    local closed = W.discarding or not (W.session and W.session:Dirty())
+    if undo() then
+        undo().Hidden(closed) -- closed for good: nothing to undo; asking first: the steps stay
+    end
+    if closed then
         return
     end
     -- unsaved: back up at once, and ask, the question lifted over the editor (UI.LiftOver)
@@ -915,6 +983,9 @@ end
 function Editor.Discard()
     W.discarding = true
     W.session = nil
+    if undo() then
+        undo().Reset()
+    end
     if W.window then
         W.window:Hide()
     end
@@ -1142,6 +1213,9 @@ local function build()
     buildPalette(c)
     buildFooter(c)
     buildHistory(win)
+    if undo() then
+        undo().Build(win) -- Undo and Redo left of History, and the keys
+    end
     makeDrag()
     layoutLeft()
     win.refresh = function() -- a theme switch repaints it (UI:RepaintTheme)
@@ -1164,6 +1238,9 @@ local function build()
     win:SetScript("OnEvent", function(_, event)
         if event ~= "GROUP_ROSTER_UPDATE" then
             W.fight = event == "PLAYER_REGEN_DISABLED" or event == "ENCOUNTER_START"
+            if undo() then
+                undo().Combat(event) -- the keys let go in combat, taken back after
+            end
             if win:IsShown() then
                 refreshPush()
             end

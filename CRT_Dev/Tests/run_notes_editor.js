@@ -63,6 +63,7 @@ local function mock(kind, name)
     if k == "GetEffectiveScale" then return function() return 1 end end
     if k == "SetScript" then return function(self, n, fn) self.scripts[n] = fn end end
     if k == "GetScript" then return function(self, n) return self.scripts[n] end end
+    if k == "GetParent" then return function(self) return rawget(self, "parent") end end
     if k == "HookScript" then return function(self, n, fn) local old = self.scripts[n] self.scripts[n] = function(...) if old then old(...) end fn(...) end end end
     if k == "RegisterEvent" then return function(self, e) events[e] = self end end
     return function() end end })
@@ -520,9 +521,13 @@ CRT.UI.PanelButton = function(parent, label, h, fn)
   local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate") b:SetText(label) b:SetScript("OnClick", fn) return b
 end
 -- the title bar's History button (run_notes_history.js tests it)
-CRT.UI.HeaderButton = function(parent, label, fn)
+CRT.UI.HeaderButton = function(parent, label, fn, opts)
   local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate") b:SetText(label) b:SetScript("OnClick", fn)
   b.SetLabel = function(self, t) self:SetText(t) end
+  -- as the real one: its tooltip from opts, read at each hover
+  if opts and opts.tipTitle then
+    b:SetScript("OnEnter", function() GameTooltip:SetText(opts.tipTitle) GameTooltip:AddLine(opts.tipText) end)
+  end
   return b
 end
 assert(load(renderSrc, "Render.lua"))("CowfeeRaidTools", CRT)
@@ -542,6 +547,10 @@ if checkSrc then
 end
 if editorLinesSrc then
   assert(load(editorLinesSrc, "EditorLines.lua"))("CowfeeRaidTools", CRT)
+end
+local editorUndoSrc = select(21, ...)
+if editorUndoSrc then
+  assert(load(editorUndoSrc, "EditorUndo.lua"))("CowfeeRaidTools", CRT)
 end
 assert(load(settingsSrc, "Settings.lua"))("CowfeeRaidTools", CRT)
 assert(load(pageSrc, "Page.lua"))("CowfeeRaidTools", CRT)
@@ -2361,9 +2370,333 @@ do
   inRaid, leader = false, false
 end
 print("ok Send my roster: on by default, Push note sends the roster after the note and says how it went; off sends none")
+
+-- 16. #1309: Undo and Redo in the note editor, for every change before Save. Each change undone and redone gives the
+-- text back exactly and the tooltip names it; typing in Add assignment is one step per burst; a change after an undo
+-- drops the redo; past the cap the oldest step goes; Save, Push note, Close, Discard and another note clear it; History's
+-- restore is one step; the buttons grey with their reasons; Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z step, kept from the game only
+-- when they act, never in combat, and in the editor's own boxes too.
+do
+  local U = CRT.NoteEditorUndo
+  assert(U and U.Undo and U.Redo and U.state, "CRT.NoteEditorUndo")
+  local S = U.state
+  W.session = nil
+  W.window:Hide()
+  rawset(W.left, "height", 4000)
+  local tips = {}
+  GameTooltip = { SetOwner = function() end, ClearAllPoints = function() end, SetPoint = function() end, ClearLines = function() end,
+    SetText = function(_, t) tips = { t } end, AddLine = function(_, t) tips[#tips + 1] = t end, Show = function() end, Hide = function() tips = {} end }
+  local menu
+  CRT.UI.ContextMenu = function(owner, fill)
+    menu = { owner = owner, items = {} }
+    fill({ CreateButton = function(_, label, fn)
+      local d = { label = label, fn = fn }
+      function d:SetEnabled() end
+      function d:SetTooltip() end
+      menu.items[#menu.items + 1] = d
+      return d
+    end, CreateTitle = function() end })
+    return {}
+  end
+  local function item(label) for _, d in ipairs(menu and menu.items or {}) do if d.label:find(label, 1, true) then return d end end end
+  local shiftDown, ctrlDown = false, false
+  IsShiftKeyDown = function() return shiftDown end
+  IsControlKeyDown = function() return ctrlDown end
+  GetCurrentKeyBoardFocus = function() return focused end
+  local clock = 500
+  GetTime = function() return clock end
+  local function press(i, b) local f = W.rowFrames[i] assert(f and f.shown and f.index == i, "row " .. i .. " shown") f.scripts.OnMouseDown(f, b or "LeftButton") end
+  local undoB, redoB = W.undoButton, W.redoButton
+  local function why(b) local c = rawget(b, "why") return (c and not c.ok) and c.reason or nil end
+  local function tip(b) b.scripts.OnEnter(b) return tips[1] end
+  local cid = Notes:Import(COILED)
+  local saved = Notes:Get(cid).raw
+  assert(Editor.Open({ id = cid }), "opened Alex's note")
+  assert(undoB and redoB and undoB:GetText() == "Undo" and redoB:GetText() == "Redo", "Undo and Redo in the title strip")
+  assert(rawget(undoB, "parent") == W.window.strip and rawget(redoB, "parent") == W.window.strip, "header buttons on the strip")
+  assert(not undoB:IsEnabled() and why(undoB) == "Nothing to undo yet." and not redoB:IsEnabled() and why(redoB) == "Nothing to redo.",
+    "greyed, saying why: " .. tostring(why(undoB)) .. " / " .. tostring(why(redoB)))
+
+  -- one change, undone and redone: the text exactly as before and after, the step named, said on the status line;
+  -- back: undone once more at the end, so the next change starts from the same text
+  local function trip(what, want, act, back)
+    local before = W.session:Text()
+    act()
+    local after = W.session:Text()
+    assert(after ~= before, what .. ": a change")
+    assert(undoB:IsEnabled() and why(undoB) == nil, what .. ": Undo on")
+    local name = tip(undoB)
+    assert(name == "Undo: " .. want, what .. ": the tooltip names it: " .. tostring(name))
+    undoB.scripts.OnClick(undoB)
+    assert(W.session:Text() == before, what .. ": undone exactly")
+    assert(W.status:GetText():find("Undone: " .. want, 1, true), what .. ": said: " .. W.status:GetText())
+    assert(redoB:IsEnabled() and tip(redoB) == "Redo: " .. want, what .. ": Redo names it")
+    redoB.scripts.OnClick(redoB)
+    assert(W.session:Text() == after, what .. ": redone exactly")
+    assert(W.status:GetText():find("Redone: " .. want, 1, true), what .. ": said: " .. W.status:GetText())
+    assert(not redoB:IsEnabled() and why(redoB) == "Nothing to redo.", what .. ": nothing left to redo")
+    if back then
+      undoB.scripts.OnClick(undoB)
+      assert(W.session:Text() == before, what .. ": back")
+    end
+  end
+  local curse, ghost
+  for i, r in ipairs(W.session.rows) do
+    if r.kind == "label" and r.label == "Curse Add" then curse = i end
+    if r.kind == "label" and r.label == "Soak Ghost at {cross}" then ghost = i end
+  end
+  assert(curse and ghost, "the rows")
+  -- Delete line, Delete all, Delete selected, Remove stale lines, Make all, Make an Assign block, each from the note as saved
+  trip("Delete line", "Delete 1 line", function() press(48, "RightButton") item("Delete line").fn() end, true)
+  trip("Delete all", "Delete 6 lines", function() press(48, "RightButton") item("Delete all").fn() confirm.callback() end, true)
+  trip("Delete selected", "Delete 2 lines", function() press(36) ctrlDown = true press(37) ctrlDown = false
+    W.deleteButton.scripts.OnClick(W.deleteButton) confirm.callback() end, true)
+  local EC = CRT.NoteEditorCheck
+  trip("Remove stale lines", "Remove 18 stale lines", function() local b = EC.state.banner.stale.button b.scripts.OnClick(b) confirm.callback() end, true)
+  local ab = EA.state.banner
+  trip("Make all", "Make all (5 blocks)", function() ab.all.scripts.OnClick(ab.all) confirm.callback() end, true)
+  assert(ab.shown, "the lists back after Undo: the banner offers them again")
+  trip("Make an Assign block", "Make an Assign block from Orb Carriers", function() ab.make.scripts.OnClick(ab.make) confirm.callback() end, true)
+  EA.Close()
+  assert(W.session:Text() == saved, "each one back")
+  -- a chip dropped from the palette (the timer lines that follow the row change with it, and back)
+  local follows = select(2, saved:gsub("tag:Durayn;", ""))
+  trip("a drop", "Add Rixxy", function() drag(paletteChip("Rixxy"), curse) end)
+  assert(follows > 0 and select(2, W.session:Text():gsub("tag:Durayn Rixxy;", "")) == follows, "the lines that follow it changed with it")
+  -- a row's chip moved to another row
+  trip("a move", "Move Rixxy", function() drag(W.rowFrames[curse].chips[2], ghost) end)
+  -- x
+  trip("x", "Remove Durayn", function() local x = W.rowFrames[curse].chips[1].remove x.scripts.OnClick(x) end)
+  -- Quick fill
+  W.quick:SetChecked(true) W.quick.scripts.OnClick(W.quick)
+  press(curse)
+  trip("Quick fill", "Add Kip", function() click(paletteChip("Kip")) end)
+  W.quick:SetChecked(false) W.quick.scripts.OnClick(W.quick)
+
+  -- a new change after an undo drops the redo
+  undoB.scripts.OnClick(undoB)
+  assert(redoB:IsEnabled(), "something to redo")
+  drag(paletteChip("Abu"), curse)
+  assert(not redoB:IsEnabled() and why(redoB) == "Nothing to redo." and #S.future == 0, "a new change: nothing to redo")
+  -- every step back, in order, gives the note as saved; Undo greys at the end
+  local n = 0
+  while undoB:IsEnabled() do undoB.scripts.OnClick(undoB) n = n + 1 assert(n < 100, "ends") end
+  assert(W.session:Text() == saved and not W.session:Dirty() and not W.save:IsEnabled(), "all the way back: the saved text, " .. n .. " steps")
+  assert(why(undoB) == "Nothing to undo yet.", "and Undo says why")
+  -- every step forward again
+  while redoB:IsEnabled() do redoB.scripts.OnClick(redoB) end
+  assert(table.concat(W.session:Names(curse), " ") == "Abu" and W.session:Dirty(), "all the way forward: " .. table.concat(W.session:Names(curse), " "))
+
+  -- Save clears it
+  assert(Editor.Save() and #S.past == 0 and #S.future == 0 and not undoB:IsEnabled(), "Save: nothing to undo")
+  -- History's restore, made while the editor shows the note clean: one step, the text before back unsaved
+  local now = W.session:Text()
+  Editor.Restoring(cid)
+  assert(Notes:Restore(cid, 1), "restored")
+  Editor.Restoring(nil)
+  assert(W.session:Text() == saved and #S.past == 1 and tip(undoB) == "Undo: Restore from History", "the restore is one step")
+  undoB.scripts.OnClick(undoB)
+  assert(W.session:Text() == now and W.session:Dirty() and Notes:Get(cid).raw == saved, "undone: the text before, unsaved")
+  redoB.scripts.OnClick(redoB)
+  assert(W.session:Text() == saved and not W.session:Dirty(), "redone")
+  Editor.Discard()
+  assert(#S.past == 0 and #S.future == 0, "Discard: nothing to undo")
+  -- a change from elsewhere (not a restore) is no step
+  assert(Editor.Open({ id = cid }) and not undoB:IsEnabled(), "opened again: a fresh list")
+  Notes:UpdateRaw(cid, now)
+  assert(#S.past == 0 and W.session:Text() == now, "a change from elsewhere is no step")
+  -- Close, clean: cleared; Close with changes asks and keeps them until Discard
+  drag(paletteChip("Rixxy"), curse)
+  undoB.scripts.OnClick(undoB)
+  assert(#S.future == 1 and not W.session:Dirty(), "back at the saved text, one to redo")
+  W.window:Hide()
+  assert(#S.past == 0 and #S.future == 0, "closed: nothing to redo")
+  assert(Editor.Open({ id = cid }))
+  drag(paletteChip("Rixxy"), curse)
+  W.window:Hide()
+  runTimers()
+  assert(#S.past == 1, "asked first: the step stays")
+  Editor.Discard()
+  assert(#S.past == 0, "discarded: gone")
+  -- another note clears it
+  local other = Notes:Import("EncounterID:4900;Difficulty:Mythic;Name:Other\\nSoak: Abu")
+  assert(Editor.Open({ id = cid }))
+  drag(paletteChip("Gadios"), curse)
+  assert(Editor.Save() and #S.past == 0, "saved")
+  drag(paletteChip("Kip"), curse)
+  undoB.scripts.OnClick(undoB)
+  assert(#S.future == 1 and W.window.shown, "one to redo, still open")
+  assert(Editor.Open({ id = other }) and #S.past == 0 and #S.future == 0 and not redoB:IsEnabled(), "another note: a fresh list")
+  Editor.Discard()
+
+  -- the cap: the oldest step goes
+  local cap = Notes:Import("EncounterID:4901;Difficulty:Mythic;Name:Cap\\nSoak:")
+  assert(Editor.Open({ id = cap }))
+  local soak = rowOf(W.session, "label", 1)
+  for k = 1, U.MAX + 5 do
+    Editor.Step("add", "P" .. k)
+    assert(W.session:Add(soak, "P" .. k))
+    Editor.Refresh()
+  end
+  assert(#S.past == U.MAX, "kept: " .. #S.past)
+  for k = 1, U.MAX do undoB.scripts.OnClick(undoB) end
+  assert(not undoB:IsEnabled() and W.session:LineText(soak) == "Soak: P1, P2, P3, P4, P5", "the oldest five went: " .. W.session:LineText(soak))
+  Editor.Discard()
+
+  -- typing in Add assignment: one step per burst
+  assert(Editor.Open({ id = cap }))
+  W.assignButton.scripts.OnClick(W.assignButton)
+  local ui = W.assignUI
+  blockDrag(W, ui, paletteChip("Abu"), 1)
+  assert(#S.past == 1 and tip(undoB) == "Undo: Change Assignment 1", "a block's drop: " .. tostring(tip(undoB)))
+  local written = W.session:Text()
+  focused = nil
+  ui.nameEdit:SetFocus()
+  typeInto(ui.nameEdit, "Orbs")
+  clock = clock + 0.3
+  typeInto(ui.nameEdit, "Orbs A")
+  ui:Flush() -- the pause
+  assert(#S.past == 2 and tip(undoB) == "Undo: Typing in Orbs A", "typing: one step: " .. tostring(tip(undoB)))
+  clock = clock + 0.8
+  typeInto(ui.nameEdit, "Orbs AB")
+  ui:Flush()
+  assert(#S.past == 2, "a short pause: the same step")
+  clock = clock + 2
+  typeInto(ui.nameEdit, "Orbs ABC")
+  ui:Flush()
+  assert(#S.past == 3, "a long pause: a new step")
+  clock = clock + 0.2
+  typeInto(ui.nameEdit, "Orbs ABCD")
+  ui.nameEdit:ClearFocus() -- the box lets go: written, and the step ends
+  assert(#S.past == 3 and W.session:Text():find("name:Orbs ABCD;", 1, true), "joined, then ended")
+  ui.nameEdit:SetFocus()
+  clock = clock + 0.2
+  typeInto(ui.nameEdit, "Orbs ABCDE")
+  ui:Flush()
+  assert(#S.past == 4, "after the box let go: a new step")
+  -- Ctrl+Z in the box: its typing written (joining its burst) and ended, then that burst undone
+  clock = clock + 0.2
+  typeInto(ui.nameEdit, "Orbs ABCDEF")
+  ctrlDown = true
+  ui.nameEdit.scripts.OnKeyDown(ui.nameEdit, "Z")
+  ctrlDown = false
+  assert(not ui.nameEdit:HasFocus() and W.session:Text():find("name:Orbs ABCD;", 1, true) and ui.nameEdit:GetText() == "Orbs ABCD",
+    "Ctrl+Z in the box: the burst undone: " .. ui.nameEdit:GetText())
+  assert(#S.past == 3 and #S.future == 1, "one step undone")
+  undoB.scripts.OnClick(undoB)
+  assert(ui.nameEdit:GetText() == "Orbs AB" and W.session:Text():find("name:Orbs AB;", 1, true), "back a burst: " .. ui.nameEdit:GetText())
+  undoB.scripts.OnClick(undoB)
+  assert(W.session:Text() == written and ui.nameEdit:GetText() == "Assignment 1" and EA.state.key == "assignment 1", "back to the block before typing")
+  undoB.scripts.OnClick(undoB)
+  assert(not W.session:Dirty() and EA.state.key == nil and ui.nameEdit:GetText() == "Assignment 1", "back to a new block, not written yet")
+  redoB.scripts.OnClick(redoB)
+  assert(W.session:Text() == written and EA.state.key == "assignment 1" and table.concat(EA.state.block.rows[1].tokens, ",") == "Abu", "redone: the block shown again")
+  -- + Row, Remove assignment
+  trip("+ Row", "Change Assignment 1", function() ui.addRow.scripts.OnClick(ui.addRow) end)
+  trip("Remove assignment", "Remove Assignment 1", function() EA.AskRemove() confirm.callback() end)
+  EA.Close()
+  Editor.Discard()
+
+  -- the Link banner's fix
+  local CENTER = "Cheoeqar Thisisfartaa Skarghan"
+  local ls = { "EncounterID:9998;Difficulty:Heroic;Name:Fix boss", "Groups", "Center: " .. CENTER:gsub(" ", ", ") }
+  for _, t in ipairs({ 61, 122, 216 }) do ls[#ls + 1] = "time:" .. t .. ";ph:1;tag:Notkvr " .. CENTER .. ";text:Soak;" end
+  local fid = Notes:Import(table.concat(ls, "\\n"))
+  assert(Editor.Open({ id = fid }) and W.banner.fix.shown, "the fix offered")
+  trip("the fix", "Add Notkvr to Center", function() W.banner.fix.scripts.OnClick(W.banner.fix) end)
+  Editor.Discard()
+  -- Remove old lines
+  local T4 = { { ph = 1, t = 30 }, { ph = 1, t = 90 } }
+  local blk = table.concat(Assign.Lines({ name = "Orbs", times = T4, rows = { { label = "{cross} orb", text = "", tokens = { "Abu" }, casts = { 1, 2 } } } }, T4), "\\n")
+  local oid = Notes:Import("EncounterID:3470;Difficulty:Mythic;Name:Old\\n" .. blk .. "\\ntime:30;ph:1;tag:Abu;text:Grab {cross} orb;\\ntime:90;ph:1;tag:Abu;text:Grab {cross} orb;")
+  assert(Editor.Open({ id = oid }) and EC.state.banner.doubles.button.shown, "Remove old lines offered")
+  trip("Remove old lines", "Remove 2 old lines", function() local b = EC.state.banner.doubles.button b.scripts.OnClick(b) confirm.callback() end)
+  Editor.Discard()
+  -- a kick block's drop (a new session over its text)
+  inRaid, leader = true, true
+  local kid = Notes:Import("EncounterID:4747;Difficulty:Mythic;Name:Kicks\\nintstart\\nAbu Gadios\\nintend\\n")
+  assert(Editor.Open({ id = kid }))
+  trip("a kick drop", "Add Rixxy", function() drag(paletteChip("Rixxy"), 6) end)
+  -- Push note clears it
+  local comm = { CanShare = CRT.NoteComm.CanShare, Share = CRT.NoteComm.Share }
+  CRT.NoteComm.CanShare = function() return true end
+  CRT.NoteComm.Share = function() return true end
+  undoB.scripts.OnClick(undoB)
+  assert(#S.future == 1 and not W.session:Dirty(), "nothing unsaved, one to redo")
+  W.push.scripts.OnClick(W.push)
+  assert(#S.past == 0 and #S.future == 0, "Push note: nothing to undo or redo")
+  CRT.NoteComm.CanShare, CRT.NoteComm.Share = comm.CanShare, comm.Share
+  Editor.Discard()
+  -- read-only: greyed with the reason
+  leader = false
+  assert(Editor.Open({ id = kid }) and W.session.readOnly)
+  local _, lockedWhy = Notes:CanEditRaid()
+  assert(not undoB:IsEnabled() and why(undoB) == lockedWhy and why(redoB) == lockedWhy, "read-only: " .. tostring(why(undoB)))
+  Editor.Discard()
+  inRaid = false
+
+  -- the keys: Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z on the window, kept from the game only when they act
+  local props = {}
+  rawset(W.window, "SetPropagateKeyboardInput", function(_, on) props[#props + 1] = on end)
+  assert(Editor.Open({ id = cap }), "opened")
+  assert(rawget(W.window, "keyboard") == true and props[#props] == true, "the window takes the keys, passing them on")
+  local text0 = W.session:Text()
+  drag(paletteChip("Abu"), soak)
+  local text1 = W.session:Text()
+  props = {}
+  W.window.scripts.OnKeyDown(W.window, "Z")
+  assert(props[1] == true and W.session:Text() == text1, "Z alone: passed on, nothing undone")
+  ctrlDown = true
+  W.window.scripts.OnKeyDown(W.window, "Z")
+  assert(props[2] == false and W.session:Text() == text0, "Ctrl+Z: kept, undone")
+  runTimers()
+  assert(props[3] == true, "then keys pass on again")
+  W.window.scripts.OnKeyDown(W.window, "Z")
+  assert(props[4] == true, "Ctrl+Z with nothing to undo: passed on")
+  W.window.scripts.OnKeyDown(W.window, "Y")
+  assert(props[5] == false and W.session:Text() == text1, "Ctrl+Y: redone")
+  runTimers()
+  W.window.scripts.OnKeyDown(W.window, "Z")
+  shiftDown = true
+  W.window.scripts.OnKeyDown(W.window, "Z")
+  shiftDown = false
+  assert(W.session:Text() == text1, "Ctrl+Shift+Z: redone")
+  runTimers()
+  -- a box with the keyboard: the window leaves the keys alone
+  props = {}
+  focused = ui.nameEdit
+  W.window.scripts.OnKeyDown(W.window, "Z")
+  focused = nil
+  assert(props[1] == true and W.session:Text() == text1, "a box focused: passed on, nothing undone")
+  -- Raw text: Ctrl+Z steps there too
+  W.raw:SetFocus()
+  W.raw.scripts.OnKeyDown(W.raw, "Z")
+  assert(not W.raw:HasFocus() and W.session:Text() == text0, "Ctrl+Z in Raw text")
+  -- combat: the keys let go as it starts, nothing kept or done, taken back after
+  props = {}
+  W.window.scripts.OnEvent(W.window, "PLAYER_REGEN_DISABLED")
+  assert(rawget(W.window, "keyboard") == false, "combat: the window lets go of the keys")
+  combat = true
+  W.window.scripts.OnKeyDown(W.window, "Y")
+  assert(#props == 0 and W.session:Text() == text0, "in combat: nothing called, nothing done")
+  W.window.scripts.OnEvent(W.window, "PLAYER_REGEN_ENABLED")
+  assert(rawget(W.window, "keyboard") == false, "still in combat: not taken")
+  combat = false
+  W.window.scripts.OnEvent(W.window, "PLAYER_REGEN_ENABLED")
+  assert(rawget(W.window, "keyboard") == true, "after combat: taken back")
+  ctrlDown = false
+  W.window:Hide()
+  assert(rawget(W.window, "keyboard") == false, "hidden: the keys go")
+  rawset(W.window, "SetPropagateKeyboardInput", nil)
+  Editor.Discard()
+  rawset(W.left, "height", 900)
+  GetTime = function() return 100 end
+  GetCurrentKeyBoardFocus = nil
+end
+print("ok Undo and Redo: every change undone and redone exactly, named; typing bursts; redo dropped; the cap; cleared by Save, Push, Close, Discard and another note; History's restore one step; greyed with reasons; the keys")
 `;
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
-const files = process.argv.slice(2, 22);
+const files = process.argv.slice(2, 23);
 lua.lua_checkstack(L, files.length + 4);
 // Alex's Coiled Altar note (#1288), for the note check and the line deletes (#1294)
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(require('path').join(__dirname, 'coiled_altar_note.txt'), 'utf8').replace(/\r\n/g, '\n')));

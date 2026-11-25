@@ -170,6 +170,8 @@ local function fixClick()
         return
     end
     local all = indices(m, true)
+    -- one step for Undo (Notes/EditorUndo.lua): the names added; the links saved stay
+    Editor.Step("linkFix", nameList(fix.add), fix.row.label)
     EL.Edit(function()
         local any = false
         for _, name in ipairs(fix.add) do
