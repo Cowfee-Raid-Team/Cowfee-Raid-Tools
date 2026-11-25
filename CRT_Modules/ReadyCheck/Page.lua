@@ -236,7 +236,7 @@ local function buildAuto(f)
     controls[#controls + 1] = lowEdit
     local minutes = label(f, "minutes left", "CRTFontSmall")
     minutes:SetPoint("LEFT", lowEdit, "RIGHT", 6, 0)
-    UI.HelpRight(minutes, "Warn under", "An icon gets gold marching ants when its buff or weapon oil has less time left than this, 1 to 240 minutes.")
+    UI.HelpRight(minutes, "Warn under", "An icon gets a clock and a moving dashed edge when its buff or weapon oil has less time left than this, 1 to 240 minutes.")
 
     -- Work in progress: shown but greyed out until the cauldron flasks' and an unlimited rune's
     -- item IDs are in the built-in list (the season pack's GameIDs.lua).

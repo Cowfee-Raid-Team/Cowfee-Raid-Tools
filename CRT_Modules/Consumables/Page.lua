@@ -103,7 +103,11 @@ local function buildBar(pf)
     local label = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     label:SetPoint("TOPLEFT", 8, -44)
     label:SetText("Your bar")
-    UI.HelpRight(label, "Your bar", "Your own bar of consumable icons, shown during a ready check. It starts with a built-in list: drag an item from your bags onto an icon to add it, click an icon to see its items, and drag the rows below to change the order. When it shows is on the Settings tab.")
+    UI.HelpRight(label, "Your bar", {
+        "Your own bar of consumable icons, shown during a ready check. It starts with a built-in list: drag an item from your bags onto an icon to add it, click an icon to see its items, and drag the rows below to change the order. When it shows is on the Settings tab.",
+        { "! and a solid edge", "missing." },
+        { "Clock and a moving dashed edge", "running low." },
+    })
 
     local count = #Consumables.CATEGORIES
     barFrame = CreateFrame("Frame", nil, pf, "BackdropTemplate")

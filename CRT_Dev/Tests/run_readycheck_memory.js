@@ -1,5 +1,6 @@
 // Memory over many ready checks: loads the real ready check modules (ReadyCheck/Report.lua, Window.lua, BuffLock.lua,
-// EarlyPull.lua) and the ready check bar (Consumables/Data.lua, Ants.lua, Bar.lua, Display.lua) on mock frames, then runs
+// EarlyPull.lua) and the ready check bar (Consumables/Data.lua, Ants.lua, Bar.lua, Display.lua, with
+// CRT_Core/UI/StatusMark.lua for its marks) on mock frames, then runs
 // a 20-player raid through many ready checks: READY_CHECK, the game's window, durability and weapon oil replies,
 // answers, UNIT_AURA bursts while people buff (the Ready lock on), READY_CHECK_FINISHED, a pull timer every other check,
 // and the window timing out, then a quiet minute.
@@ -295,7 +296,7 @@ CRT_THEME(CRT, UI)
 assert(load(SRC.fade, "Fade"))("CowfeeRaidTools", CRT)
 assert(load(SRC.themed, "Themed"))("CowfeeRaidTools", CRT)
 CRT_PLACEMENT(CRT)
-for _, f in ipairs({ "data", "ants", "bar", "display", "report", "window", "bufflock", "earlypull" }) do
+for _, f in ipairs({ "data", "mark", "ants", "bar", "display", "report", "window", "bufflock", "earlypull" }) do
   assert(load(SRC[f], f))("CowfeeRaidTools", CRT)
 end
 check(CRT.ReadyCheckWindow and CRT.BuffLock and CRT.EarlyPull and CRT.ConsumablesDisplay, "the ready check modules load")
@@ -605,7 +606,7 @@ lua.lua_newtable(L);
 const SRC = {
   fade: slice('local fades = {}', 'function UI.SetFrameTitle'),
   themed: slice('UI.themed = {}', "-- The game's grey stone"),
-  data: read('CRT_Modules/Consumables/Data.lua'), ants: read('CRT_Modules/Consumables/Ants.lua'),
+  mark: read('CRT_Core/UI/StatusMark.lua'), data: read('CRT_Modules/Consumables/Data.lua'), ants: read('CRT_Modules/Consumables/Ants.lua'),
   bar: read('CRT_Modules/Consumables/Bar.lua'), display: read('CRT_Modules/Consumables/Display.lua'),
   report: read('CRT_Modules/ReadyCheck/Report.lua'), window: read('CRT_Modules/ReadyCheck/Window.lua'),
   bufflock: read('CRT_Modules/ReadyCheck/BuffLock.lua'), earlypull: read('CRT_Modules/ReadyCheck/EarlyPull.lua'),
