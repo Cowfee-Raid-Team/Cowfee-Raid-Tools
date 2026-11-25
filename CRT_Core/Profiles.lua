@@ -22,8 +22,9 @@ CRT.Profiles = Profiles
 local Share = CRT.Share -- CRT_Core/Share.lua, loaded just before this file
 
 local DEFAULT = "Default"
--- whatsNew: the installed addon version is the account's, so What's new shows once whatever the profile
-local SHARED = { classCache = true, roleCache = true, specCache = true, macros = true, whatsNew = true }
+-- whatsNew: the installed addon version is the account's, so What's new shows once whatever the profile; welcome:
+-- a fresh install is the account's too, so the Welcome opens once whatever the profile
+local SHARED = { classCache = true, roleCache = true, specCache = true, macros = true, whatsNew = true, welcome = true }
 local EXPORT_PREFIX = "CRTP1:"
 local SHARE_PREFIX = "CRTS1:"
 local SHARE_VERSION = 1
@@ -139,6 +140,7 @@ Profiles.SHARE = {
     },
     importBackup = false, -- the backup Undo last import puts back
     whatsNew = false, -- Show after updates and the last version seen: personal
+    welcome = false, -- whether the Welcome still opens by itself, and its place: personal
 }
 
 -- Window places and sizes: "Keep my window positions" leaves these as they are. Most are saved only once

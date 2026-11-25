@@ -340,7 +340,7 @@ local function slash(msg)
 end
 
 -- every page is registered, in the page order and in the menu
-local PAGES = { "settings", "qol", "timeline", "notes", "pace", "readycheck", "groups", "gearcheck", "late",
+local PAGES = { "start", "settings", "qol", "timeline", "notes", "pace", "readycheck", "groups", "gearcheck", "late",
   "lootmaster", "loot", "requests", "seasonstats", "tattle" }
 local inMenu = {}
 for _, g in ipairs(UI.MenuGroups()) do for _, k in ipairs(g.keys) do inMenu[k] = true end end
@@ -367,23 +367,100 @@ for word, page in pairs(WORDS) do
   check(shownPages[before + 1] == page, "/crt " .. word .. " opens " .. page .. ", got " .. tostring(shownPages[before + 1]))
   check(help:find("/crt " .. word .. "|r", 1, true) ~= nil, "/crt help lists /crt " .. word)
 end
--- /crt interrupts: the optional module is off on a fresh install, so the word says so and opens General Settings;
--- switched on, its page is the first in the menu's Modules group and the word opens it
+-- /crt interrupts: the optional module is off on a fresh install, so the word says so and opens Start here, where its
+-- switch is (What's on); switched on, its page is the first in the menu's Extras group and the word opens it
 do
   check(CRT.Slash.words.interrupts ~= nil, "/crt interrupts is registered")
   check(help:find("/crt interrupts|r", 1, true) ~= nil, "/crt help lists /crt interrupts")
   check(UI.pages.interrupts ~= nil and UI.pages.interrupts.hidden, "the Interrupts page is there, hidden while the module is off")
   local before = #shownPages
   local out = slash("interrupts")
-  check(shownPages[before + 1] == "settings" and out:find("Enable Interrupts", 1, true) ~= nil, "/crt interrupts while off opens General Settings: " .. out)
+  check(shownPages[before + 1] == "start" and out:find("Enable Interrupts on Start here > What's on", 1, true) ~= nil, "/crt interrupts while off opens Start here: " .. out)
   CRT.Interrupts:SetEnabled(true)
   local group, at = nil, nil
   for _, g in ipairs(UI.MenuGroups()) do for i, k in ipairs(g.keys) do if k == "interrupts" then group, at = g.label, i end end end
-  check(group == "Modules" and at == 1, "the Interrupts page is first in Modules, got " .. tostring(group) .. " " .. tostring(at))
+  check(group == "Extras" and at == 1, "the Interrupts page is first in Extras, got " .. tostring(group) .. " " .. tostring(at))
   before = #shownPages
   slash("interrupts")
   check(shownPages[before + 1] == "interrupts", "/crt interrupts opens the page once it is on")
   CRT.Interrupts:SetEnabled(false)
+end
+-- Start here > What's on (UI/StartPage.lua), with the real modules: every row writes its feature's own saved field
+-- through the feature's own setter, and reads back what the feature's own page reads, both ways, so the two
+-- switches stay in step; Enable Interrupts there shows and hides the Interrupts page (job 20261124-ux-welcome)
+do
+  local S = CRT.StartPage
+  check(S ~= nil and UI.pages.start ~= nil and UI.pages.start.title == "Start here", "the Start here page is there")
+  local function area(key) return function()
+    for _, a in ipairs(CRT.AlertAreas.list) do if a.def.key == key then return a:Settings().shown end end
+  end end
+  -- what each feature's own page shows its switch from
+  local READ = {
+    consumables = function() return CRT.db.consumables.enabled end, -- ReadyCheck/Page.lua's Your bar
+    readyWindow = function() return CRT.db.readycheck.window.enabled end,
+    debuffs = function() return CRT.Debuffs:Enabled() end,
+    callout = function() return CRT.Notes:Alert().enabled end,
+    timers = function() return CRT.Notes:WindowSettings("window").shown end,
+    assignments = function() return CRT.Notes:WindowSettings("assignments").shown end,
+    personal = function() return CRT.Notes:WindowSettings("personal").shown end,
+    highlights = function() return CRT.NoteHighlights:Enabled() end,
+    pace = function() return CRT.db.pace.shown ~= false end,
+    battleRes = function() return CRT.db.qol.battleRes.enabled end,
+    lowHealth = function() return CRT.db.qol.lowHealth.enabled end,
+    interrupts = function() return CRT.Interrupts:Enabled() end,
+    whatsNew = function() return CRT.db.whatsNew.show ~= false end,
+    minimap = function() return not CRT.db.minimap.hide end,
+    alertIcons = area("icons"), alertTexts = area("texts"), alertBars = area("bars"), alertCircles = area("circles"), alertTimeline = area("timeline"),
+    speech = function() return CRT.Notes:Alert().tts end,
+    report = function() return CRT.db.readycheck.auto end,
+    earlyPull = function() return CRT.db.readycheck.earlyPull end,
+    tattle = function() return CRT.Tattle:Settings().enabled end,
+    timeline = function() return CRT.Timeline:Settings().record end,
+    combatLog = function() return CRT.db.qol.combatLog.enabled end,
+  }
+  -- the features on from a fresh install, and the ones a player switches on
+  local ON = { consumables = true, readyWindow = true, debuffs = true, callout = true, timers = true, assignments = true,
+    personal = true, highlights = true, pace = true, whatsNew = true, minimap = true, alertIcons = true, alertTexts = true,
+    alertBars = true, alertCircles = true, alertTimeline = true, speech = true, report = true, earlyPull = true, tattle = true,
+    timeline = true, battleRes = false, lowHealth = false, interrupts = false, combatLog = false }
+  local rows = 0
+  for _, section in ipairs(S and S.WHATS_ON or {}) do
+    for _, row in ipairs(section) do
+      rows = rows + 1
+      local read = READ[row.key]
+      check(read ~= nil, "What's on " .. row.key .. ": this check knows how its own page reads it")
+      check(row.open ~= nil or UI.pages[row.page] ~= nil, "What's on " .. row.key .. ": its link opens a page there is (" .. tostring(row.page) .. ")")
+      if read then
+        check(S.Get(row) == ON[row.key] and (read() and true or false) == ON[row.key], "What's on " .. row.key .. " starts " .. tostring(ON[row.key]))
+        local ok, err = pcall(function()
+          for _, on in ipairs({ not ON[row.key], ON[row.key] }) do
+            S.Set(row, on)
+            check((read() and true or false) == on, "What's on " .. row.key .. " set " .. tostring(on) .. ": its own page reads " .. tostring(on))
+            check(S.Get(row) == on, "What's on " .. row.key .. " set " .. tostring(on) .. ": the row reads it back")
+          end
+        end)
+        check(ok, "What's on " .. row.key .. " switches without an error: " .. tostring(err))
+      end
+    end
+  end
+  check(rows == 25, "What's on has 25 rows, got " .. rows)
+  -- the other way: the feature's own setter, and the row follows
+  local function rowOf(key) for _, s in ipairs(S.WHATS_ON) do for _, r in ipairs(s) do if r.key == key then return r end end end end
+  CRT.Debuffs:SetEnabled(false)
+  check(S.Get(rowOf("debuffs")) == false, "the debuff panel switched off on its own page: What's on shows it off")
+  CRT.Debuffs:SetEnabled(true)
+  CRT.db.consumables.enabled = false
+  check(S.Get(rowOf("consumables")) == false, "Your bar's Show my bar unticked: What's on shows the consumables bar off")
+  CRT.db.consumables.enabled = true
+  -- Enable Interrupts on What's on shows and hides the Interrupts page, and its link says why it can't open
+  local kicks = rowOf("interrupts")
+  S.Set(kicks, true)
+  check(UI.pages.interrupts.hidden == false and S.CanOpen(kicks) == true, "Enable Interrupts ticked on What's on: the Interrupts page shows and its link opens it")
+  S.Set(kicks, false)
+  local ok, why = S.CanOpen(kicks)
+  check(UI.pages.interrupts.hidden == true and ok == false and type(why) == "string" and why ~= "", "unticked: the page hides, and the link is greyed with a reason")
+  -- /crt welcome
+  check(CRT.Slash.words.welcome ~= nil and help:find("/crt welcome|r", 1, true) ~= nil, "/crt welcome is registered and in /crt help")
 end
 -- /crt wishlist: your Loot Master wishlist window (LootMaster/WishlistWindow.lua; its dropdowns need more of the game's
 -- frames than these stand-ins have, so the window itself is checked in run_loot_wishlist.js)
@@ -394,7 +471,7 @@ do
 end
 local count = 0
 for _ in pairs(CRT.Slash.words) do count = count + 1 end
-check(count == 9, "nine registered words (the six above, loot, interrupts and wishlist), got " .. count)
+check(count == 10, "ten registered words (the six above, loot, interrupts, wishlist and welcome), got " .. count)
 check(not help:find("turned off", 1, true), "/crt help names nothing turned off")
 for _, def in pairs(CRT.Slash.words) do
   check(def.module == nil and def.raider == nil and def.raiderHelp == nil, "a registered word has only run, help and top")

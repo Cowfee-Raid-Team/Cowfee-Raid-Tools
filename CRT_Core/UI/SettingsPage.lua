@@ -62,9 +62,6 @@ local TEXT = {
     acceptImport = "Import and reload",
     confirmUndo = "Put back the settings you had before importing from %s?\n\nYour interface reloads.",
     acceptUndo = "Undo and reload",
-    modules = "Modules",
-    interrupts = "Enable Interrupts",
-    interruptsHelp = "Kick numbers above a boss's adds, a countdown before your kick and the leader's kick list. Off for everyone until they tick this. The Interrupts page lists the bosses it works on.",
     teamTitle = "Team raids",
     teamTonight = "Tonight's team",
     teamPush = "Push to raid",
@@ -535,17 +532,6 @@ local function buildLeft(pf)
             refresh()
         end,
     }), x, -258)
-
-    -- the optional modules each raider switches on for themselves (Interrupts/Data.lua)
-    heading(pf, x, -306, TEXT.modules)
-    local interrupts = checkbox(pf, x, -324, TEXT.interrupts, function()
-        return CRT.Interrupts and CRT.Interrupts:Enabled()
-    end, function(on)
-        if CRT.Interrupts then
-            CRT.Interrupts:SetEnabled(on)
-        end
-    end)
-    UI.HelpRight(interrupts, TEXT.interrupts, TEXT.interruptsHelp)
 
     x = MIDDLE_X
     heading(pf, x, -44, "Sound", "Every sound the addon plays uses this game sound channel and follows its volume and mute. Text to speech has its own volume, on Raid Notes > Alert Settings > Configuration (Note callout/assignments), and the game's low-health pulse its own in the game's Options > Accessibility > Combat Audio Alerts.")
