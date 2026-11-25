@@ -190,5 +190,34 @@ check(at > 0, 'the .toc loads CRT_Core/Locale.lua');
 const early = users.filter((rel) => { const i = toc.indexOf(rel); return i >= 0 && i < at; });
 check(early.length === 0, 'the .toc loads Locale.lua before every file with a TEXT table' + (early.length ? ': before it ' + early.join(', ') : ''));
 
+// every file that calls CRT.Locale loads: it is in the .toc or in a Season.xml the .toc lists (a file nothing loads
+// would keep a TEXT table no one reads, and its namespace would hide a typo)
+function xmlScripts(xmlRel) {
+  const p = path.join(dir, xmlRel);
+  if (!fs.existsSync(p)) return [];
+  const base = path.posix.dirname(xmlRel);
+  const xml = fs.readFileSync(p, 'utf8').replace(/<!--[\s\S]*?-->/g, '');
+  const out = [];
+  const re = /<Script\s+file="([^"]+)"/g;
+  let m;
+  while ((m = re.exec(xml))) out.push(path.posix.join(base, m[1].replace(/\\/g, '/')));
+  return out;
+}
+function loadedFiles(tocLines) {
+  const set = new Set();
+  for (const l of tocLines) {
+    if (!l || l.startsWith('#')) continue;
+    if (l.endsWith('.xml')) for (const f of xmlScripts(l)) set.add(f);
+    else set.add(l);
+  }
+  return set;
+}
+const unlisted = (callers, loaded) => callers.filter((rel) => !loaded.has(rel));
+check(unlisted(['A/B.lua', 'A/C.lua'], new Set(['A/B.lua'])).join() === 'A/C.lua', 'lint: finds a planted CRT.Locale caller nothing loads');
+const loaded = loadedFiles(toc);
+check(loaded.has('CRT_Data/Seasons/Midnight-S2/Season.lua') || [...loaded].some((f) => /^CRT_Data\/Seasons\//.test(f)), 'lint: reads the season packs\' Season.xml files');
+const stray = unlisted(users, loaded);
+check(stray.length === 0, 'every file that calls CRT.Locale is in the .toc or a Season.xml' + (stray.length ? ': not loaded ' + stray.join(', ') : ''));
+
 console.log(passes + ' passed, ' + fails + ' failed');
 if (fails > 0) process.exit(1);
