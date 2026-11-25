@@ -4,12 +4,13 @@ local ADDON, CRT = ...
 -- Abilities | Healer CDs. Two tab-styled halves side by side (UI:RegisterTab styles them in every look), each
 -- as wide as its label plus padding, never under a minimum; the caller places them and lights one.
 --   local t = UI.Toggle2(parent, { { key, label }, { key, label } }, onPick, opts)
---     onPick(key) runs on a click; opts: pad (each side of a label, 10), minW (60), gap (between the halves, 4),
---     h (the height, 18), font ("CRTFontSmall")
+--     onPick(key) runs on a click; opts: pad (each side of a label, 10), minPad (the least it tightens to, 4), minW (60),
+--     gap (between the halves, 4), h (the height, 18), font ("CRTFontSmall")
 --   t.buttons[1], t.buttons[2]  the halves (b.key, b.text)
---   t:Size(room)          sizes both from their labels; when room (the width for both and the gap) is too small,
---                         both shrink in proportion and their labels are cut. Measured on each call, so a changed
---                         text size or label is followed. Returns the width used.
+--   t:Size(room)          sizes both from their labels; when room (the width for both and the gap) is too small, the
+--                         padding tightens first (to minPad, the gap to 2), so the labels still fit whole (UX rule 7);
+--                         only when even that is too wide do both shrink in proportion and their labels are cut.
+--                         Measured on each call, so a changed text size or label is followed. Returns the width used.
 --   t:PlaceLeft(x, y)     the first half's top left at x, y in the parent, the second after it
 --   t:PlaceRight(rel, x)  the second half's right edge x from rel's left edge, the first before it
 --   t:Select(key, skin)   lights the half with that key: skin true through UI:SetTabSelected (which also skins the
@@ -17,7 +18,8 @@ local ADDON, CRT = ...
 
 local UI = CRT.UI
 
-local DEFAULTS = { pad = 10, minW = 60, gap = 4, h = 18, font = "CRTFontSmall" }
+local DEFAULTS = { pad = 10, minPad = 4, minW = 60, gap = 4, h = 18, font = "CRTFontSmall" }
+local TIGHT_GAP = 2 -- the gap between the halves once the padding tightens
 local BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 }
 
 local function textWidth(fs)
@@ -46,6 +48,7 @@ function UI.Toggle2(parent, halves, onPick, opts)
         b.text:SetPoint("CENTER")
         b.text:SetText(half.label)
         b.key = half.key
+        b.crtFixedWidth = true -- t:Size sizes the halves, not UI:FitTab
         b:SetScript("OnClick", function()
             onPick(half.key)
         end)
@@ -56,18 +59,36 @@ function UI.Toggle2(parent, halves, onPick, opts)
 end
 
 function Toggle:Size(room)
-    local o, want, total = self.opts, {}, 0
+    local o, want, total, labels = self.opts, {}, 0, 0
     for i, b in ipairs(self.buttons) do
-        want[i] = math.max(o.minW, textWidth(b.text) + 2 * o.pad)
+        local w = textWidth(b.text)
+        labels = labels + w
+        want[i] = math.max(o.minW, w + 2 * o.pad)
         total = total + want[i]
     end
-    local gaps = o.gap * (#self.buttons - 1)
+    local n = #self.buttons
+    local gaps = o.gap * (n - 1)
+    local pad = o.pad
+    self.gap = o.gap
+    if room and total + gaps > room then
+        -- tighter padding and gap, as much as the room allows, before any label is cut
+        local tightGaps = math.min(o.gap, TIGHT_GAP) * (n - 1)
+        local fit = math.floor((room - tightGaps - labels) / (2 * n))
+        if fit >= o.minPad then
+            pad, gaps, self.gap = math.min(o.pad, fit), tightGaps, math.min(o.gap, TIGHT_GAP)
+            total = 0
+            for i, b in ipairs(self.buttons) do
+                want[i] = textWidth(b.text) + 2 * pad
+                total = total + want[i]
+            end
+        end
+    end
     local scale = (room and total + gaps > room) and math.max(0, room - gaps) / total or 1
     local used = gaps
     for i, b in ipairs(self.buttons) do
         local w = math.floor(want[i] * scale)
         b:SetSize(w, o.h)
-        b.text:SetWidth(math.max(1, w - 2 * o.pad))
+        b.text:SetWidth(math.max(1, w - 2 * pad))
         b.text:SetWordWrap(false)
         b.w = w
         used = used + w
@@ -79,7 +100,7 @@ function Toggle:PlaceLeft(x, y)
     for _, b in ipairs(self.buttons) do
         b:ClearAllPoints()
         b:SetPoint("TOPLEFT", x, y)
-        x = x + (b.w or b:GetWidth() or 0) + self.opts.gap
+        x = x + (b.w or b:GetWidth() or 0) + (self.gap or self.opts.gap)
     end
 end
 
@@ -89,7 +110,7 @@ function Toggle:PlaceRight(rel, x)
         local b = self.buttons[i]
         b:ClearAllPoints()
         if after then
-            b:SetPoint("RIGHT", after, "LEFT", -self.opts.gap, 0)
+            b:SetPoint("RIGHT", after, "LEFT", -(self.gap or self.opts.gap), 0)
         else
             b:SetPoint("RIGHT", rel, "LEFT", x, 0)
         end

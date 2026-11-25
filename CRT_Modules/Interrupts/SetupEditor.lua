@@ -257,8 +257,8 @@ local function button(parent, text, onClick)
     b:SetHighlightFontObject(CRTFontButtonSmallHighlight)
     b:SetDisabledFontObject(CRTFontButtonSmallDisable)
     b:SetText(text)
-    local fs = b:GetFontString()
-    b:SetSize(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0), L.buttonH)
+    b:SetHeight(L.buttonH)
+    UI.FitButton(b)
     b:SetScript("OnClick", onClick)
     return b
 end

@@ -150,6 +150,7 @@ local SHOW_GAP = 10     -- between one Show as label and the next box
 local SHOW_ROW = 26     -- between Show as's two rows
 local SAVED_SHIFT = 34 -- a saved alert has no Relative to / Time row: Show from and Linger move up by this
 local BOTTOM, BUTTON_H, MESSAGE_GAP = 14, 24, 8 -- the buttons above the window's bottom edge; the message above them
+local BUTTON_GAP = 8 -- between two buttons side by side, and between their two rows
 local EXPORT_CHROME = 56 -- the copy window above and below its text box
 local EXPORT_PAD, EXPORT_MIN_TEXT, EXPORT_MAX_TEXT = 6, 16, 180
 local EXPORT_WIDTH = WIDTH - 88 -- the text box
@@ -1096,13 +1097,15 @@ end })
 
 -- The window ------------------------------------------------------------------------------------
 
-local function makeButton(parent, label, width)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+local function makeButton(parent, label)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontNormal)
     b:SetHighlightFontObject(CRTFontHighlight)
     b:SetDisabledFontObject(CRTFontDisable)
-    b:SetSize(width, 24)
     b:SetText(label)
+    b:SetHeight(24)
+    UI.FitButton(b)
     return b
 end
 
@@ -1552,7 +1555,7 @@ local function lookRows(f, p, row)
     f.colorSwatch.tex:SetPoint("TOPLEFT", 1, -1)
     f.colorSwatch.tex:SetPoint("BOTTOMRIGHT", -1, 1)
     f.colorSwatch:SetScript("OnClick", pickColor)
-    f.colorDefault = makeButton(p, TEXT.colorDefault, 80)
+    f.colorDefault = makeButton(p, TEXT.colorDefault)
     lay(f.colorDefault, FIELD_X + 28, C - 122)
     f.colorDefault:SetScript("OnClick", function()
         if draft and not readOnly() and colourEditable() then
@@ -1760,8 +1763,10 @@ local function build()
     f.messageText:SetJustifyH("LEFT")
 
     -- Buttons
-    f.deleteBtn = makeButton(f, TEXT.delete, 80)
-    f.deleteBtn:SetPoint("BOTTOMLEFT", LEFT, 14)
+    -- each as wide as its label: Delete, Export and Save as saved (or Copy to mine) from the left, Save, Cancel and
+    -- Test from the right; placeButtons puts the right three a row up when the text size leaves no room for one row
+    f.deleteBtn = makeButton(f, TEXT.delete)
+    f.deleteBtn:SetPoint("BOTTOMLEFT", LEFT, BOTTOM)
     f.deleteBtn:SetScript("OnClick", function()
         if not (ctx and (ctx.id or ctx.noteID or ctx.savedID)) then
             return
@@ -1803,36 +1808,46 @@ local function build()
             end,
         })
     end)
-    f.exportBtn = makeButton(f, TEXT.export, 80)
-    f.exportBtn:SetPoint("BOTTOMLEFT", LEFT + 88, 14)
+    f.exportBtn = makeButton(f, TEXT.export)
+    f.exportBtn:SetPoint("LEFT", f.deleteBtn, "RIGHT", BUTTON_GAP, 0)
     f.exportBtn:SetScript("OnClick", function()
         Editor:Export()
     end)
-    f.saveSavedBtn = makeButton(f, TEXT.saveAsSaved, 134)
-    f.saveSavedBtn:SetPoint("BOTTOMLEFT", LEFT + 176, 14)
+    f.saveSavedBtn = makeButton(f, TEXT.saveAsSaved)
+    f.saveSavedBtn:SetPoint("LEFT", f.exportBtn, "RIGHT", BUTTON_GAP, 0)
     f.saveSavedBtn:SetScript("OnClick", askSavedName)
     -- in its place on a read-only raid note line
-    f.copyBtn = makeButton(f, TEXT.copyToMine, 134)
-    f.copyBtn:SetPoint("BOTTOMLEFT", LEFT + 176, 14)
+    f.copyBtn = makeButton(f, TEXT.copyToMine)
+    f.copyBtn:SetPoint("LEFT", f.exportBtn, "RIGHT", BUTTON_GAP, 0)
     f.copyBtn:SetScript("OnClick", function()
         Editor:CopyToMine()
     end)
     f.copyBtn:Hide()
-    f.saveBtn = makeButton(f, TEXT.save, 80)
-    f.saveBtn:SetPoint("BOTTOMRIGHT", -LEFT, 14)
+    f.saveBtn = makeButton(f, TEXT.save)
+    f.saveBtn:SetPoint("BOTTOMRIGHT", -LEFT, BOTTOM)
     f.saveBtn:SetScript("OnClick", function()
         Editor:Save()
     end)
-    f.cancelBtn = makeButton(f, TEXT.cancel, 80)
-    f.cancelBtn:SetPoint("BOTTOMRIGHT", -LEFT - 88, 14)
+    f.cancelBtn = makeButton(f, TEXT.cancel)
+    f.cancelBtn:SetPoint("RIGHT", f.saveBtn, "LEFT", -BUTTON_GAP, 0)
     f.cancelBtn:SetScript("OnClick", function()
         Editor:Close()
     end)
-    f.testBtn = makeButton(f, TEXT.test, 80)
-    f.testBtn:SetPoint("BOTTOMRIGHT", -LEFT - 176, 14)
+    f.testBtn = makeButton(f, TEXT.test)
+    f.testBtn:SetPoint("RIGHT", f.cancelBtn, "LEFT", -BUTTON_GAP, 0)
     Editor:BindTest(f.testBtn, "editor", function()
         Editor:Test()
     end)
+    local function placeButtons()
+        local left = f.deleteBtn:GetWidth() + f.exportBtn:GetWidth() + math.max(f.saveSavedBtn:GetWidth(), f.copyBtn:GetWidth())
+        local right = f.saveBtn:GetWidth() + f.cancelBtn:GetWidth() + f.testBtn:GetWidth()
+        local up = left + right + 5 * BUTTON_GAP > WIDTH - 2 * LEFT
+        local y = up and (BOTTOM + BUTTON_H + BUTTON_GAP) or BOTTOM
+        f.saveBtn:SetPoint("BOTTOMRIGHT", -LEFT, y)
+        f.messageText:SetPoint("BOTTOMLEFT", LEFT, y + BUTTON_H + MESSAGE_GAP)
+    end
+    placeButtons()
+    UI:OnFonts(placeButtons)
     UI:SkinTree(f)
     f:Hide()
 end

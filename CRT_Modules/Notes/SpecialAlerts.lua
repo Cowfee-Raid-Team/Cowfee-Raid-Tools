@@ -283,10 +283,12 @@ end
 -- The toggle ---------------------------------------------------------------------------------------
 
 -- UI.Toggle2 (CRT_Core/UI/Toggle.lua). Each half as wide as its label (the count changes the first), side by
--- side. When both and the (?) after them don't fit the list's width (a large text size), both shrink in
--- proportion and their labels are cut with "...". Measured on every draw, so a text size changed since is followed.
+-- side. The (?) after them may reach into the gap before the panel, less 4. When they don't fit (a
+-- large text size), their padding tightens; only past that do both shrink and their labels get cut with "...".
+-- Measured on every draw, so a text size changed since is followed.
 local function layToggle()
-    ui.toggle:Size(L.LIST_W - UI.HELP_GAP - UI.HELP_SIZE)
+    local gutter = math.max(0, (L.PANEL_X or 0) - (L.X or 0) - L.LIST_W - 4) -- the gap before the panel, less 4
+    ui.toggle:Size(L.LIST_W + gutter - UI.HELP_GAP - UI.HELP_SIZE)
     ui.toggle:PlaceLeft(L.X, L.Y)
 end
 

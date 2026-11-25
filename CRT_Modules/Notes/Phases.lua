@@ -150,13 +150,15 @@ local function refresh()
     bossDrop.refresh()
 end
 
-local function makeButton(parent, label, width, height)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+local function makeButton(parent, label, height)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontNormal)
     b:SetHighlightFontObject(CRTFontHighlight)
     b:SetDisabledFontObject(CRTFontDisable)
-    b:SetSize(width, height or 22)
     b:SetText(label)
+    b:SetHeight(height or 22)
+    UI.FitButton(b)
     return b
 end
 
@@ -250,7 +252,7 @@ local function makeRow(f, i)
     row.marker:SetWidth(56)
     row.marker:SetJustifyH("LEFT")
 
-    row.useShipped = makeButton(frame, TEXT.useShipped, 80, 20)
+    row.useShipped = makeButton(frame, TEXT.useShipped, 20)
     row.useShipped:SetPoint("RIGHT", 0, 0)
     row.useShipped:SetScript("OnClick", function()
         if row.ph and selected then

@@ -105,6 +105,7 @@ CRT.UI = { PAGE_W = 1026, PAGE_H = 560,
   LiftOver = function() end, ShownPopup = function(ret) return ret end,
   PreviewButton = function(_, label, keys) local b = mock("Button") rawset(b, "previewLabel", label) rawset(b, "previewKeys", keys) return b end,
 }
+CRT_TEXT_FIT(CRT.UI) -- the real UI.FitButton (CRT_Core/UI/Panel.lua)
 
 assert(load(engineSrc, "CRT_Core/Macros.lua"))("CowfeeRaidTools", CRT)
 assert(load(setSrc, "CRT_Modules/Markers/Macros.lua"))("CowfeeRaidTools", CRT)
@@ -141,10 +142,10 @@ local listed = false for _, o in ipairs(opts) do if o.key == 3420 then listed = 
 check(listed, "the Boss dropdown lists the route's bosses")
 check(Tab.Boss() == 3420, "it starts on the first boss with a marker display (Sszorak)")
 check(hasText("How it works on this boss") and hasText("Marker display") and hasText("Your macros"), "the three headings")
-check(helps["How it works on this boss"] and helps["Your macros"] and helps["Test markers"], "each heading and the test have a (?)")
+check(helps["How it works on this boss"] and helps["Your macros"] and helps["Test"], "each heading and the test have a (?)")
 check(type(helps["Your macros"]) == "table" and type(helps["Your macros"][1]) == "string" and helps["Your macros"][1]:find("again to remove", 1, true) ~= nil, "Your macros' (?) says a second click removes it")
-check(button("Generate all macros") and button("Remove macros") and button("Test markers") and button("Stop test"), "Generate all macros, Remove macros, Test markers and Stop test")
-for _, label in ipairs({ "Generate all macros", "Remove macros", "Test markers", "Stop test" }) do
+check(button("Generate all macros") and button("Remove macros") and button("Test") and button("Stop test"), "Generate all macros, Remove macros, Test and Stop test")
+for _, label in ipairs({ "Generate all macros", "Remove macros", "Test", "Stop test" }) do
   local b = button(label)
   check(b and b.w == #label * 7 + 28, label .. " is as wide as its label")
 end
@@ -172,7 +173,7 @@ check(noDisplay and not noDisplay.shown, "Sszorak has a display: no empty line")
 dropdowns.Boss.set(OTHER)
 check(hasText("Stand on your marker."), "boss switch: the help text follows")
 check(noDisplay.shown and facts.text == "", "boss switch: no display, so the empty line and no facts")
-check(button("Test markers").enabled == false, "boss switch: Test markers is off without a display")
+check(button("Test").enabled == false, "boss switch: Test is off without a display")
 dropdowns.Boss.set(3420)
 check(not noDisplay.shown and facts.text:find("Slots  4", 1, true), "back to Sszorak: the preview and facts again")
 
@@ -275,11 +276,11 @@ combat = false
 for _, f in ipairs(frames) do if rawget(f, "events").PLAYER_REGEN_ENABLED and rawget(f, "OnEvent") then f.OnEvent(f, "PLAYER_REGEN_ENABLED") end end
 check(button("Generate all macros").enabled == true, "after combat they come back")
 
--- Test markers: the display listens to /say; clicking an icon sends its marker there.
+-- Test: the display listens to /say; clicking an icon sends its marker there.
 local displayEvents
 for _, f in ipairs(frames) do if rawget(f, "events").CHAT_MSG_SAY then displayEvents = f end end
-button("Test markers").OnClick(button("Test markers"))
-check(M:Testing() and button("Stop test").enabled == true and button("Test markers").enabled == false, "Test markers starts the display's test")
+button("Test").OnClick(button("Test"))
+check(M:Testing() and button("Stop test").enabled == true and button("Test").enabled == false, "Test starts the display's test")
 local skull = cellButton(8)
 skull.OnEnter(skull)
 check(table.concat(GameTooltip.lines, " "):find("/say", 1, true) ~= nil, "while testing, the tooltip says a click sends to /say")

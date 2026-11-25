@@ -47,8 +47,18 @@ local TEXT = {
 -- Every place and size, from the heading's top left.
 local ICON = 36
 local ICONS_Y = -24 -- the icons' top, under the heading
-local BUTTONS_Y = ICONS_Y - ICON - 62 -- the buttons, under the name, body and state lines
+local BUTTONS_GAP = 62 -- from the icons' bottom to the buttons at the default text size: the name, body and state lines
+local LINE_GAPS = 4 + 2 + 2 + 8 -- above each of the three lines and under the last
 local BUTTON_H = 24
+
+-- The buttons' top: under the three lines at the text size now (a line is its font's size plus 3).
+local function buttonsY()
+    local font, size = _G.CRTFontSmall, nil -- Core.lua's; a harness without it takes the default size
+    if font and font.GetFont then
+        size = select(2, font:GetFont())
+    end
+    return ICONS_Y - ICON - math.max(BUTTONS_GAP, LINE_GAPS + 3 * ((tonumber(size) or 12) + 3))
+end
 
 -- UI.PanelButton (Panel.lua: the template, skinned), in the page's font as the tab's buttons were, and as wide as
 -- its label in that font.
@@ -57,8 +67,7 @@ local function makeButton(parent, label)
     b:SetNormalFontObject(CRTFontNormal)
     b:SetHighlightFontObject(CRTFontHighlight)
     b:SetDisabledFontObject(CRTFontDisable)
-    local fs = b:GetFontString()
-    b:SetSize(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0), BUTTON_H)
+    UI.FitButton(b) -- measured again in the new font
     return b
 end
 
@@ -220,7 +229,7 @@ end
 
 local function buildButtons(block, parent)
     local generate = makeButton(parent, TEXT.generate)
-    generate:SetPoint("TOPLEFT", block.x, block.y + BUTTONS_Y)
+    generate:SetPoint("TOPLEFT", block.x, block.y + buttonsY())
     generate:SetScript("OnClick", function()
         run(block, "Create")
         local st = CRT.Macros:Status(block.set)
@@ -300,6 +309,10 @@ function UI.MacroSet(parent, setKey, opts)
         block.cells[i] = makeCell(block, parent, i)
     end
     buildButtons(block, parent)
+    -- a text size change: the buttons move under the taller (or shorter) lines
+    UI:OnFonts(function()
+        block.generate:SetPoint("TOPLEFT", block.x, block.y + buttonsY())
+    end)
     block.refresh = function()
         refresh(block)
     end

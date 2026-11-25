@@ -332,15 +332,18 @@ check("tab: drag box titles are measured again when Previews turn on", function(
 end)
 
 check("tab: five tabs fit", function()
-  local names = {}
+  -- each tab as wide as its label (UI.TabStrip, UI:FitTab), side by side UI.TAB_GAP apart from x 8
+  local names, x = {}, 8
   for i, b in ipairs(tabs) do
     names[i] = b.text.text
-    assert(b.w == 164 and b.h == 26, "tab size " .. b.w)
-    assert(b.pts[1][2] == 8 + (i - 1) * 168, "tab x " .. tostring(b.pts[1][2]))
+    local want = math.max(CRT.UI.TAB_MIN_W, math.ceil(b.text:GetStringWidth()) + 2 * CRT.UI.TAB_PAD)
+    assert(b.w == want and b.h == 26, "tab size " .. tostring(b.w) .. ", want " .. want)
+    assert(b.pts[1][4] == x, "tab x " .. tostring(b.pts[1][4]))
+    x = x + b.w + CRT.UI.TAB_GAP
   end
   assert(table.concat(names, ",") == "Notes,Mech Alerts,Marker macros,Alert Settings,Notes Settings", table.concat(names, ","))
   local last = tabs[#tabs]
-  assert(last.pts[1][2] + last.w <= CRT.UI.PAGE_W, "right edge " .. (last.pts[1][2] + last.w))
+  assert(last.pts[1][4] + last.w <= CRT.UI.PAGE_W, "right edge " .. (last.pts[1][4] + last.w))
   CRT.NotesPage.Open("settings")
   assert(tabs[5].selected and not tabs[4].selected)
   CRT.NotesPage.Open("alerts")

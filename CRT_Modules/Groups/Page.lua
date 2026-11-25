@@ -111,10 +111,12 @@ local function styleButton(b)
     return b
 end
 
-local function makeButton(parent, label, width, height)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+local function makeButton(parent, label, height)
     local b = styleButton(CreateFrame("Button", nil, parent, "UIPanelButtonTemplate"))
-    b:SetSize(width, height or 26)
     b:SetText(label)
+    b:SetHeight(height or 26)
+    UI.FitButton(b)
     return b
 end
 
@@ -198,8 +200,10 @@ local function getDialog()
     end)
     d.scroll:SetScrollChild(d.multi)
 
+    -- OK and Cancel each as wide as its label (UI.FitButton), either side of the middle (openDialog places them)
     d.ok = styleButton(CreateFrame("Button", nil, d, "UIPanelButtonTemplate"))
-    d.ok:SetSize(110, 26)
+    d.ok:SetHeight(26)
+    UI.FitButton(d.ok)
     d.ok:SetScript("OnClick", function()
         local value
         if d.mode == "name" then
@@ -214,9 +218,10 @@ local function getDialog()
     end)
 
     d.cancel = styleButton(CreateFrame("Button", nil, d, "UIPanelButtonTemplate"))
-    d.cancel:SetSize(110, 26)
+    d.cancel:SetHeight(26)
     d.cancel:SetText(CANCEL)
-    d.cancel:SetPoint("BOTTOM", d, "BOTTOM", 60, 12)
+    UI.FitButton(d.cancel)
+    d.cancel:SetPoint("BOTTOMLEFT", d, "BOTTOM", 4, 12)
     d.cancel:SetScript("OnClick", function()
         d:Hide()
     end)
@@ -235,7 +240,11 @@ local function openDialog(mode, title, text, okLabel, onAccept)
     d.ok:SetText(okLabel)
     d.cancel:SetShown(onAccept ~= nil)
     d.ok:ClearAllPoints()
-    d.ok:SetPoint("BOTTOM", d, "BOTTOM", onAccept and -60 or 0, 12)
+    if onAccept then
+        d.ok:SetPoint("BOTTOMRIGHT", d, "BOTTOM", -4, 12)
+    else
+        d.ok:SetPoint("BOTTOM", d, "BOTTOM", 0, 12)
+    end
 
     if mode == "name" then
         d:SetSize(360, 130)
@@ -743,7 +752,7 @@ end
 
 -- The Invite missing button beside anchor (Use This Group's (?)), and the status line above that row.
 local function buildInvites(pf, anchor)
-    inviteButton = makeButton(pf, format(TEXT.inviteMissing, 0), 120, 32)
+    inviteButton = makeButton(pf, format(TEXT.inviteMissing, 0), 32)
     inviteButton:SetPoint("LEFT", anchor, "RIGHT", 10, 0)
     inviteButton:SetScript("OnClick", function()
         inviteKeys(CRT.Invite.Missing(Groups:Working()))
@@ -904,9 +913,7 @@ local function buildSort(pf, apply)
     })
     sideRow:SetPoint("LEFT", sortRow, "RIGHT", SORT.gap, 0)
 
-    sortButton = makeButton(pf, TEXT.sortGrid, 80)
-    local fs = sortButton:GetFontString()
-    sortButton:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
+    sortButton = makeButton(pf, TEXT.sortGrid)
     sortButton:SetScript("OnClick", sortGrid)
     if sortButton.SetMotionScriptsWhileDisabled then
         sortButton:SetMotionScriptsWhileDisabled(true) -- the tooltip says why while it is greyed
@@ -1197,7 +1204,7 @@ local function buildPage(pf)
 
 
     -- Bottom left buttons
-    local setRoster = makeButton(pf, "Set current roster", SLOT_W)
+    local setRoster = makeButton(pf, "Set current roster")
     setRoster:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 48)
     setRoster:SetScript("OnClick", function()
         local roster = Groups:ReadRoster()
@@ -1242,7 +1249,7 @@ local function buildPage(pf)
     end)
 
     -- Clear grid: at once, with Undo; an empty grid has nothing to clear
-    local clear = makeButton(pf, "Clear grid", SLOT_W)
+    local clear = makeButton(pf, "Clear grid")
     clear:SetPoint("LEFT", setRoster, "RIGHT", COL_GAP, 0)
     clear:SetScript("OnClick", function(self)
         local saved, n = {}, 0
@@ -1280,7 +1287,7 @@ local function buildPage(pf)
 
     -- Use This Group: the open layout becomes the raid's active roster (tagged active in Quick Load),
     -- which the Late Tracker expects.
-    local useGroup = makeButton(pf, "Use This Group", 2 * SLOT_W + COL_GAP, 32)
+    local useGroup = makeButton(pf, "Use This Group", 32)
     useGroup:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 84)
     useGroup:SetScript("OnClick", function()
         local preset = gdb().selected and Groups:Find(gdb().selected)
@@ -1294,7 +1301,7 @@ local function buildPage(pf)
     local useHelp = UI.HelpRight(useGroup, "Use This Group", "Makes the open layout the raid's active roster, marked active in Quick Load; the Late Tracker expects the people in it. During a raid night, tonight's list updates at once and everyone's clock keeps running.")
     buildInvites(pf, useHelp)
 
-    local apply = makeButton(pf, "Arrange Groups", 2 * SLOT_W + COL_GAP, 32)
+    local apply = makeButton(pf, "Arrange Groups", 32)
     apply:SetPoint("BOTTOMLEFT", pf, "BOTTOMLEFT", 8, 8)
     apply:SetScript("OnClick", function()
         CRT.Apply:Start(Groups:Working())
@@ -1345,7 +1352,7 @@ local function buildPage(pf)
     emptyText:SetPoint("TOP", listBox, "TOP", 0, -12)
     emptyText:SetText("No saved layouts yet.")
 
-    local import = makeButton(pf, "Import", RIGHT_W)
+    local import = makeButton(pf, "Import")
     import:SetPoint("BOTTOMRIGHT", pf, "BOTTOMRIGHT", -8, 8)
     import:SetScript("OnClick", function()
         openDialog("text", "Import: paste names (one per line) or an export", "", "Import", function(text)
@@ -1359,8 +1366,8 @@ local function buildPage(pf)
         end)
     end)
 
-    local export = makeButton(pf, "Export current groups", RIGHT_W)
-    export:SetPoint("BOTTOM", import, "TOP", 0, 6)
+    local export = makeButton(pf, "Export current groups")
+    export:SetPoint("BOTTOMRIGHT", import, "TOPRIGHT", 0, 6)
     export:SetScript("OnClick", function()
         local g = gdb()
         local preset = g.selected and Groups:Find(g.selected)
@@ -1368,8 +1375,8 @@ local function buildPage(pf)
     end)
 
     -- Delete layout asks once, naming the layout and how many names go with it
-    local delete = makeButton(pf, TEXT.delete, RIGHT_W)
-    delete:SetPoint("BOTTOM", export, "TOP", 0, 6)
+    local delete = makeButton(pf, TEXT.delete)
+    delete:SetPoint("BOTTOMRIGHT", export, "TOPRIGHT", 0, 6)
     delete:SetScript("OnClick", function()
         local id = gdb().selected
         local preset = id and Groups:Find(id)
@@ -1392,8 +1399,8 @@ local function buildPage(pf)
             end })
     end)
 
-    local saveNew = makeButton(pf, "Save current roster as new", RIGHT_W)
-    saveNew:SetPoint("BOTTOM", delete, "TOP", 0, 6)
+    local saveNew = makeButton(pf, "Save current roster as new")
+    saveNew:SetPoint("BOTTOMRIGHT", delete, "TOPRIGHT", 0, 6)
     saveNew:SetScript("OnClick", function()
         openDialog("name", "Save layout", "", "Save", function(text)
             text = strtrim(text)

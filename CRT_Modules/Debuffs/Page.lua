@@ -182,7 +182,8 @@ local function placeTooltipRow(check, row)
     if x + width <= UI.PAGE_W then
         row:SetPoint("TOPLEFT", x, TOOLTIP_Y)
     else
-        row:SetPoint("TOPLEFT", TOOLTIP_UNDER_X, TOOLTIP_UNDER_Y)
+        -- under the box, right of the Spell ID row's Add however wide the text makes that row
+        row:SetPoint("TOPLEFT", math.max(TOOLTIP_UNDER_X, CRT.DebuffsIgnore.RowRight() + TOOLTIP_GAP), TOOLTIP_UNDER_Y)
     end
 end
 
@@ -371,6 +372,7 @@ local function build(pf)
 
     pf:SetScript("OnShow", refresh)
     Debuffs:OnChange(refresh)
+    UI:OnFonts(refresh) -- the Tooltip position row is placed again for the text size
 end
 
 CRT.DebuffsPage = { Build = build }

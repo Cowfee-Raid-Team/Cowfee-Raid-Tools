@@ -2980,13 +2980,16 @@ check("mech special (" .. LOOK .. "): the toggle sits over the list, Special on 
   assert(a[1] >= lr[1] and b[3] + 24 <= lr[3], "inside the list's width, its (?) too")
   assert(math.abs(a[3] - a[1] - (#"Special (0)" * 6 + 20)) < 1, "sized from its label")
   assert(s.toggleHelp and rawget(s.toggleHelp, "helpTarget") == s.mechBtn, "the (?) after the toggle, right of Mechanics")
-  -- the largest text size: both halves shrink, cut with "...", so they and the (?) still fit the list
+  -- the largest text size: the halves' padding tightens (UI.Toggle2) so their whole labels and the (?) fit the list and
+  -- the gap before the panel (less 4); the labels are never wider than their buttons
   TEXT_SCALE = 1.75
   CRT.NoteReminders.Refresh()
   rects = {}
   a, b, lr = rect(s.specialBtn, f), rect(s.mechBtn, f), rect(s.list, f)
-  assert(a[3] <= b[1] and b[3] + 24 <= lr[3], "at 1.75 the toggle and its (?) fit 250: " .. b[3] .. " of " .. lr[3])
-  assert(s.specialBtn.text.wordWrap == false and s.specialBtn.text.w <= a[3] - a[1], "its label is cut to the button")
+  local pr0 = rect(s.panel, f)
+  assert(a[3] <= b[1] and b[3] + 24 <= pr0[1] - 4, "at 1.75 the toggle and its (?) end 4 short of the panel: " .. b[3] .. " of " .. pr0[1])
+  assert(s.specialBtn.text.wordWrap == false and s.specialBtn.text.w <= a[3] - a[1], "its label fits its button")
+  assert(a[3] - a[1] >= #"Special (0)" * 6 * 1.75 + 8, "the whole label, with 4 each side: " .. (a[3] - a[1]))
   TEXT_SCALE = nil
   CRT.NoteReminders.Refresh()
   -- a redraw only restyles the toggle; SetTabSelected (which skins the whole tab) only when the view changes

@@ -25,7 +25,8 @@ local function mock(kind)
     if k == "SetShown" then return function(self, on) if on then self:Show() else self:Hide() end end end
     if k == "IsShown" then return function(self) return self.shown end end
     if k == "HasFocus" then return function() return false end end
-    if k == "GetWidth" then return function() return 378 end end
+    if k == "GetWidth" then return function(self) return rawget(self, "w") or 378 end end -- a frame given a width (a button sized from its label) has it
+    if k == "SetWidth" then return function(self, w) rawset(self, "w", w) end end
     if k == "GetStringHeight" then return function() return 14 end end
     if k == "GetVerticalScroll" then return function() return 0 end end
     if k == "SetScript" then return function(self, name, fn) rawset(self, name, fn) end end

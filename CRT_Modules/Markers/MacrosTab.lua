@@ -6,7 +6,7 @@ local ADDON, CRT = ...
 --           (UI.PreviewButton) shows the display on screen to place it
 --   Left    How it works on this boss: the boss file's markerHelp (Markers:Help), or a line saying there is none
 --   Right   Marker display: a small live copy of the boss's display, drawn from its own settings with
---           Markers.Geometry, and what it does (slots, layout, fill order, what clears it). Test markers starts the
+--           Markers.Geometry, and what it does (slots, layout, fill order, what clears it). Test starts the
 --           display's test (Markers:Test), which listens to /say, party and raid chat; Stop test ends it
 --   Bottom  Your macros: the Marker calls set (Markers/Macros.lua, made by CRT.Macros) in the shared block,
 --           UI.MacroSet (CRT_Core/UI/MacroSet.lua, also on Interrupts > Macros): one icon per marker with its name,
@@ -31,9 +31,9 @@ local TEXT = {
     noHelp = "No marker calls are planned on this boss yet.",
     display = "Marker display",
     noDisplay = "This boss has no marker display.",
-    test = "Test markers",
+    test = "Test",
     stop = "Stop test",
-    testHelp = "Test markers turns on this boss's marker display outside a raid. It listens to /say, party and raid chat, and only marker codes fill it.\n\n"
+    testHelp = "Test turns on this boss's marker display outside a raid. It listens to /say, party and raid chat, and only marker codes fill it.\n\n"
         .. "The macros send to /raid, which only works in a raid group. So while the test runs, click a marker under Your macros to send it to /say, or type /say {rt1}.\n\n"
         .. "Stop test ends it.",
     macros = "Your macros",
@@ -76,9 +76,9 @@ local function makeButton(parent, label)
     b:SetHighlightFontObject(CRTFontHighlight)
     b:SetDisabledFontObject(CRTFontDisable)
     b:SetText(label)
-    -- as wide as its label (UI.PanelButtonWidth: the label and the template's end caps)
-    local fs = b:GetFontString()
-    b:SetSize(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0), 24)
+    -- as wide as its label, measured again when its label or the text size changes (UI.FitButton)
+    b:SetHeight(24)
+    UI.FitButton(b)
     return b
 end
 

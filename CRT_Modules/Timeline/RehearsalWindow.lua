@@ -152,13 +152,15 @@ local function fontString(parent, font)
     return parent:CreateFontString(nil, "OVERLAY", font)
 end
 
-local function button(parent, text, width)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+local function button(parent, text)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontButtonSmall)
     b:SetHighlightFontObject(CRTFontButtonSmallHighlight)
     b:SetDisabledFontObject(CRTFontButtonSmallDisable)
-    b:SetSize(width, 20)
     b:SetText(text)
+    b:SetHeight(20)
+    CRT.UI.FitButton(b)
     return b
 end
 
@@ -359,12 +361,12 @@ end
 
 local function buildControls(f)
     local UI = CRT.UI
-    f.play = button(f, TEXT.play, 70)
+    f.play = button(f, TEXT.play)
     f.play:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -270 - CAST_GROW)
     f.play:SetScript("OnClick", function()
         RehearsalWindow:TogglePlay()
     end)
-    f.restart = button(f, TEXT.restart, 70)
+    f.restart = button(f, TEXT.restart)
     f.restart:SetPoint("LEFT", f.play, "RIGHT", 6, 0)
     f.restart:SetScript("OnClick", function()
         RehearsalWindow:Restart()

@@ -18,7 +18,7 @@ local LM = CRT.LootMaster
 local UI = CRT.UI
 
 local L = {
-    tabW = 150, tabH = 26, tabTop = -36, body = -66,
+    tabH = 26, tabTop = -36, body = -66,
     col1 = 8, col2 = 430, col3 = 724,
     respRow = 30, respTop = -30,
     label = 104, weight = 40, icon = 120,
@@ -151,13 +151,15 @@ local function skin(frame, alpha)
     frame:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
 end
 
-local function makeButton(parent, label, width)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+local function makeButton(parent, label)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontStandard)
     b:SetHighlightFontObject(CRTFontStandardHighlight)
     b:SetDisabledFontObject(CRTFontStandardDisable)
-    b:SetSize(width, 24)
     b:SetText(label)
+    b:SetHeight(24)
+    UI.FitButton(b)
     return b
 end
 
@@ -636,8 +638,8 @@ local function buildSettings(f)
         h:SetTextColor(0.7, 0.7, 0.7)
         h:SetText(c[1])
     end
-    local add = makeButton(f, TEXT.add, 80)
-    local reset = makeButton(f, TEXT.reset, 90)
+    local add = makeButton(f, TEXT.add)
+    local reset = makeButton(f, TEXT.reset)
     add:SetScript("OnClick", function()
         LM:AddResponse()
     end)
@@ -993,22 +995,8 @@ local function build(pf)
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText(TEXT.title)
     UI.HelpRight(title, TEXT.title, TEXT.help)
-    for i, tab in ipairs(TABS) do
-        local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        b:SetSize(L.tabW, L.tabH)
-        b:SetPoint("TOPLEFT", 8 + (i - 1) * (L.tabW + 4), L.tabTop)
-        skin(b, 0.4)
-        b.sel = b:CreateTexture(nil, "ARTWORK")
-        b.sel:SetAllPoints()
-        b.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
-        b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-        b.text:SetPoint("CENTER")
-        b.text:SetText(tab.label)
-        b:SetScript("OnClick", function()
-            selectTab(tab.key)
-        end)
-        tabButtons[tab.key] = b
-        UI:RegisterTab(b)
+    tabButtons = UI.TabStrip(pf, TABS, 8, L.tabTop, selectTab, { h = L.tabH })
+    for _, tab in ipairs(TABS) do
         local f = CreateFrame("Frame", nil, pf)
         f:SetPoint("TOPLEFT", 0, L.body)
         f:SetPoint("BOTTOMRIGHT", 0, 0)

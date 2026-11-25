@@ -55,6 +55,7 @@ local CRT = {
     StyleWindow = function() styled = styled + 1 end, RegisterLayer = function(_, k) layers[#layers + 1] = k end,
     SetFrameTitle = function(f, text) titles[#titles + 1] = text end, SkinTree = function() end },
 }
+CRT_TEXT_FIT(CRT.UI) -- the real UI.FitButton (CRT_Core/UI/Panel.lua), which sizes the buttons from their labels
 CRT.Timeline = { Settings = function() return CRT.db.timeline end, WithoutIgnored = function(_, lanes) return lanes, {} end }
 CRT.TimelineReference = { TYPES = { soak = { label = "Soak", color = { 1, 0.5, 0.82 } } } }
 CRT.TimelineJournal = { Rows = function(_, eid) return { "rows of " .. tostring(eid) } end }

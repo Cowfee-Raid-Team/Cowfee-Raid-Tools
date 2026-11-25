@@ -1334,13 +1334,15 @@ local function pickColor()
     end })
 end
 
-local function makeButton(parent, label, width, height)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+local function makeButton(parent, label, height)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontNormal)
     b:SetHighlightFontObject(CRTFontHighlight)
     b:SetDisabledFontObject(CRTFontDisable)
-    b:SetSize(width, height or L.BUTTON_H)
     b:SetText(label)
+    b:SetHeight(height or L.BUTTON_H)
+    UI.FitButton(b)
     return b
 end
 
@@ -1915,7 +1917,7 @@ local function buildPanel(f)
         end
     end)
     panel.timesHelp = UI.HelpRight(panel.timesEdit, TEXT.times, TEXT.timesHelp)
-    panel.timelineBtn = makeButton(p, TEXT.showOnTimeline, L.TIMELINE_W)
+    panel.timelineBtn = makeButton(p, TEXT.showOnTimeline)
     panel.timelineBtn:SetPoint("TOPLEFT", L.INSET, L.TIMELINE_Y)
     panel.timelineBtn:SetScript("OnClick", showOnTimeline)
 
@@ -2005,7 +2007,7 @@ local function buildPanel(f)
     panel.colorSwatch.tex:SetPoint("TOPLEFT", 1, -1)
     panel.colorSwatch.tex:SetPoint("BOTTOMRIGHT", -1, 1)
     panel.colorSwatch:SetScript("OnClick", pickColor)
-    panel.colorDefault = makeButton(p, TEXT.colorDefault, L.DEFAULT_W)
+    panel.colorDefault = makeButton(p, TEXT.colorDefault)
     panel.colorDefault:SetPoint("TOPLEFT", L.COL2_X + L.LABEL_W + 32, L.COL_Y - 81)
     panel.colorDefault:SetScript("OnClick", change(function()
         if CRT.Alerts:CustomColors() then
@@ -2025,7 +2027,7 @@ local function buildPanel(f)
     panel.message:SetJustifyH("LEFT")
 
     -- Bottom right: Test, Save as template
-    panel.templateBtn = makeButton(p, TEXT.template, L.TEMPLATE_W)
+    panel.templateBtn = makeButton(p, TEXT.template)
     panel.templateBtn:SetPoint("BOTTOMRIGHT", -L.INSET, L.BOTTOM_Y)
     panel.templateBtn:SetScript("OnClick", function()
         if not cur.draft then
@@ -2042,7 +2044,7 @@ local function buildPanel(f)
     end)
     -- Delete: a reminder of your own, after a confirmation; a new one not saved yet is just dropped. The
     -- row after it (else before it) is selected next. Shown by drawPanel only for your own reminders.
-    panel.deleteBtn = makeButton(p, TEXT.delete, L.DELETE_W)
+    panel.deleteBtn = makeButton(p, TEXT.delete)
     panel.deleteBtn:SetPoint("BOTTOMRIGHT", -L.INSET - L.TEMPLATE_W - L.BUTTON_GAP - L.TEST_W - L.BUTTON_GAP, L.BOTTOM_Y)
     panel.deleteBtn:SetScript("OnClick", function()
         local item = cur.item
@@ -2101,7 +2103,7 @@ local function buildPanel(f)
         }), "GENERIC_CONFIRMATION"))
     end)
 
-    panel.testBtn = makeButton(p, TEXT.test, L.TEST_W)
+    panel.testBtn = makeButton(p, TEXT.test)
     panel.testBtn:SetPoint("BOTTOMRIGHT", -L.INSET - L.TEMPLATE_W - L.BUTTON_GAP, L.BOTTOM_Y)
     CRT.AlertEditor:BindTest(panel.testBtn, "mechanics", function()
         -- typing still waiting is saved first, so the test (and the Rehearsal's saved copy) has it
@@ -2230,7 +2232,7 @@ local function build(f)
     end)
     f.scroll = scrollBy
 
-    ownButton = makeButton(f, TEXT.ownReminder, L.LIST_W, L.OWN_H)
+    ownButton = makeButton(f, TEXT.ownReminder, L.OWN_H)
     ownButton:SetPoint("TOPLEFT", L.PAD, L.LIST_Y - L.LIST_H - L.OWN_GAP)
     ownButton:SetScript("OnClick", function()
         saveTyped()

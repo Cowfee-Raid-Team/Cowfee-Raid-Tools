@@ -80,13 +80,15 @@ local function settings()
     return CRT.db.qol.lowHealth
 end
 
-local function makeButton(parent, label, width, height)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+local function makeButton(parent, label, height)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontNormal)
     b:SetHighlightFontObject(CRTFontHighlight)
     b:SetDisabledFontObject(CRTFontDisable)
-    b:SetSize(width, height or 24)
     b:SetText(label)
+    b:SetHeight(height or 24)
+    UI.FitButton(b)
     return b
 end
 
@@ -101,9 +103,9 @@ end
 
 -- Both sliders line up: the labels share one width. The sliders are Edit Mode sliders (UI/Controls.lua).
 local SLIDER_LABEL_W = 230
--- The preview buttons: Low health's under its sound line (at top - 80, up to two lines of SOUND_LINE_W), Break
--- timer's under the bridge row.
-local LOWHEALTH_PREVIEW_Y = 124
+-- The preview buttons: Low health's under its sound line (at top - 80, as many lines of SOUND_LINE_W as the text
+-- size wraps it onto), Break timer's under the bridge row.
+local LOWHEALTH_PREVIEW_GAP = 16
 local SOUND_LINE_W = 520
 local BREAK_PREVIEW_GAP = 44
 
@@ -113,10 +115,11 @@ end
 
 -- A small button in the game's small font, the size of the Previews button's text.
 local function smallButton(pf, text)
-    local b = makeButton(pf, text, 110, 20)
+    local b = makeButton(pf, text, 20)
     b:SetNormalFontObject(CRTFontButtonSmall)
     b:SetHighlightFontObject(CRTFontButtonSmallHighlight)
     b:SetDisabledFontObject(CRTFontButtonSmallDisable)
+    UI.FitButton(b) -- measured again in the small font
     return b
 end
 
@@ -174,7 +177,8 @@ local function buildLowHealth(pf, top)
     UI.HelpRight(soundLine, TEXT.lowHealthSound, TEXT.lowHealthSoundNote)
 
     local preview = UI.PreviewButton(pf, TEXT.lowHealthPreview, { "lowhealth" }, { tooltip = TEXT.lowHealthPreviewTip })
-    preview:SetPoint("TOPLEFT", 8, top - LOWHEALTH_PREVIEW_Y)
+    -- under the sound line, however many lines the text size wraps it onto
+    preview:SetPoint("TOPLEFT", soundLine, "BOTTOMLEFT", -2, -LOWHEALTH_PREVIEW_GAP)
 end
 
 -- Your sound files (Sound/Engine.lua) --------------------------------------------------------
@@ -203,7 +207,6 @@ local function buildVoice(pf, top)
     controls[#controls + 1] = row
 
     local test = smallButton(pf, TEXT.voiceTest)
-    test:SetWidth(test:GetFontString():GetStringWidth() + 24)
     test:SetPoint("LEFT", row, "RIGHT", 8, 0)
     test:SetScript("OnClick", function()
         -- the alert speech's own path, so text to speech uses the Raid Notes rate and volume
@@ -253,7 +256,6 @@ local function buildSounds(pf, top)
         self:ClearFocus()
     end)
     local add = smallButton(pf, TEXT.soundsAdd)
-    add:SetWidth(60)
     add:SetPoint("LEFT", edit, "RIGHT", 8, 0)
     local function addTyped()
         local ok, message = Engine:AddCustom(edit:GetText())
@@ -285,10 +287,8 @@ local function buildSounds(pf, top)
         row.source = pf:CreateFontString(nil, "OVERLAY", "CRTFontDisableSmall")
         row.source:SetPoint("TOPLEFT", 236, y - 4)
         row.test = smallButton(pf, TEXT.soundsTest)
-        row.test:SetWidth(60)
         row.test:SetPoint("TOPLEFT", 346, y)
         row.remove = smallButton(pf, TEXT.soundsRemove)
-        row.remove:SetWidth(70)
         row.remove:SetPoint("LEFT", row.test, "RIGHT", 6, 0)
         row.result = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
         row.result:SetPoint("LEFT", row.remove, "RIGHT", 10, 0)
@@ -544,22 +544,8 @@ local function build(pf)
 
     UI.HelpRight(title, TEXT.title, TEXT.hint)
 
-    for i, tab in ipairs(TABS) do
-        local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        b:SetSize(160, 26)
-        b:SetPoint("TOPLEFT", 8 + (i - 1) * 164, -36)
-        b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-        b.sel = b:CreateTexture(nil, "ARTWORK")
-        b.sel:SetAllPoints()
-        b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-        b.text:SetPoint("CENTER")
-        b.text:SetText(tab.label)
-        b:SetScript("OnClick", function()
-            selectTab(tab.key)
-        end)
-        tabButtons[tab.key] = b
-        UI:RegisterTab(b)
-
+    tabButtons = UI.TabStrip(pf, TABS, 8, -36, selectTab)
+    for _, tab in ipairs(TABS) do
         local f = CreateFrame("Frame", nil, pf)
         f:SetPoint("TOPLEFT", 0, -66)
         f:SetPoint("BOTTOMRIGHT", 0, 0)

@@ -653,21 +653,28 @@ CRT.MODERN_FONT = "Fonts\\ARIALN.TTF"
 -- Shared font objects: Blizzard's fonts scaled up so every label, button and list is easier to read.
 -- Every text the addon draws uses one of these, so CRT:ApplyFonts changes all of it at once.
 CRT.FONT_SCALE = 1.2
+-- The smallest any shared font is drawn, in points, at every text size (UX rule 9: no text under 10 pt). At the
+-- smallest text size (8) the body, small and button fonts all sit on it; the large font is 11 (12 in Modern).
+CRT.FONT_FLOOR = 10
+-- The most the large font (page titles, CRTFontLarge) grows to, so a title stays above its page's tabs at the largest
+-- text size (UX rule 7). The outlined large font (CRTFontLargeOutline) has no ceiling.
+CRT.FONT_LARGE_MAX = 26
 local fonts = {} -- { object, path, size, flags }: each font object and the game font it started as
 
--- minSize, when given, is the smallest it is ever drawn, whatever the text size setting (a small font that
--- must stay readable). outline, when given ("OUTLINE"), replaces the source's flags: an outlined font keeps
--- its outline unless the General Settings outline picks another.
-local function makeFont(name, source, scale, minSize, outline)
+-- minSize, when given, is the smallest it is ever drawn, whatever the text size setting (never under
+-- CRT.FONT_FLOOR); maxSize, when given, the largest. outline, when given ("OUTLINE"), replaces the source's flags: an
+-- outlined font keeps its outline unless the General Settings outline picks another.
+local function makeFont(name, source, scale, minSize, outline, maxSize)
     local font = CreateFont(name)
     font:CopyFontObject(source)
     local path, size, flags = font:GetFont()
     flags = outline or flags
-    size = math.max(minSize or 0, math.floor(size * (scale or CRT.FONT_SCALE) + 0.5))
+    minSize = math.max(minSize or 0, CRT.FONT_FLOOR)
+    size = math.max(minSize, math.floor(size * (scale or CRT.FONT_SCALE) + 0.5))
     -- SetFont's third argument is no longer optional (12.0.5), so pass "" when there are no flags.
     font:SetFont(path, size, flags or "")
     local r, g, b = font:GetTextColor()
-    fonts[#fonts + 1] = { object = font, path = path, size = size, flags = flags or "", color = { r, g, b }, min = minSize }
+    fonts[#fonts + 1] = { object = font, path = path, size = size, flags = flags or "", color = { r, g, b }, min = minSize, max = maxSize }
     return font
 end
 
@@ -679,7 +686,7 @@ function CRT:ApplyFonts()
         return
     end
     -- Text size is fontSize, the body text size in points (8 to 22); headings and small text keep
-    -- their sizes relative to it. Before 0.17.2 it was textSize, a percent, which becomes the nearest
+    -- their sizes relative to it, never under CRT.FONT_FLOOR (titles never over CRT.FONT_LARGE_MAX). Before 0.17.2 it was textSize, a percent, which becomes the nearest
     -- point size the first time.
     if not s.fontSize then
         s.fontSize = math.max(8, math.min(22, math.floor(self.BODY_SIZE * (s.textSize or 100) / 100 + 0.5)))
@@ -695,7 +702,7 @@ function CRT:ApplyFonts()
             flags = f.flags
         end
         local size = f.size * factor * (modernDefault and 1.1 or 1)
-        f.object:SetFont(path, math.max(f.min or 0, math.floor(size + 0.5)), flags)
+        f.object:SetFont(path, math.min(f.max or math.huge, math.max(f.min or self.FONT_FLOOR, math.floor(size + 0.5))), flags)
         -- Modern: the game's gold text turns the label colour and its white text the text colour; grey stays grey.
         local r, g, b = f.color[1], f.color[2], f.color[3]
         if modern and r and r > 0.9 then
@@ -719,6 +726,10 @@ function CRT:ApplyFonts()
         for _, control in ipairs(UI.skinned) do
             control.crtSkin(modern)
         end
+    end
+    -- Every button and tab sized from its label measures again, and the rows they sit in re-flow (UI/Fonts.lua).
+    if UI and UI.RefitText then
+        UI:RefitText()
     end
 end
 
@@ -744,7 +755,7 @@ makeFont("CRTFontSmall", GameFontHighlightSmall)
 makeFont("CRTFontDisableSmall", GameFontDisableSmall)
 -- a step under the small text, for fine print such as the Raid Notes note's details
 makeFont("CRTFontDisableTiny", GameFontDisableSmall, CRT.FONT_SCALE * 0.85)
-makeFont("CRTFontLarge", GameFontNormalLarge)
+makeFont("CRTFontLarge", GameFontNormalLarge, nil, nil, nil, CRT.FONT_LARGE_MAX)
 -- the large font outlined, for text drawn over a coloured bar in any theme (the break timer)
 makeFont("CRTFontLargeOutline", GameFontNormalLarge, nil, nil, "OUTLINE")
 -- The game's own sizes, unscaled, for the small title-bar and page buttons, the standard buttons,
@@ -829,7 +840,7 @@ end
 
 function CRT.SeedCalloutLook(db)
     local alert = db.notes.alert
-    local _, size = CRTFontLarge:GetFont()
+    local _, size = CRTFontLargeOutline:GetFont() -- the large font's size without the titles' ceiling
     alert.fontSize = math.max(CALLOUT_MIN, math.min(CALLOUT_MAX, math.floor((tonumber(size) or 20) + 0.5)))
     local outline = type(db.ui) == "table" and db.ui.outline
     alert.outline = CALLOUT_OUTLINES[outline] and outline or ""

@@ -68,13 +68,15 @@ local function label(parent, text, font)
     return fs
 end
 
-local function button(parent, text, width)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+local function button(parent, text)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontButtonSmall)
     b:SetHighlightFontObject(CRTFontButtonSmallHighlight)
     b:SetDisabledFontObject(CRTFontButtonSmallDisable)
-    b:SetSize(width, 20)
     b:SetText(text)
+    b:SetHeight(20)
+    UI.FitButton(b)
     return b
 end
 
@@ -717,7 +719,7 @@ function ReferencePage.Build(f, ctx)
         end
     end
 
-    local save = button(f, "Save", 80)
+    local save = button(f, "Save")
     save:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 0, -6)
     save:SetScript("OnClick", function()
         edit:ClearFocus()
@@ -770,7 +772,7 @@ function ReferencePage.Build(f, ctx)
         end
         showMode()
     end)
-    local clear = button(f, "Clear", 80)
+    local clear = button(f, "Clear")
     clear:SetPoint("LEFT", save, "RIGHT", 8, 0)
     clear:SetScript("OnClick", function()
         fill("", nil)
@@ -810,7 +812,7 @@ function ReferencePage.Build(f, ctx)
         return selectedJournalID(), ctx.bossName()
     end
 
-    local fillIDs = button(f, "Fill spell IDs", 110)
+    local fillIDs = button(f, "Fill spell IDs")
     fillIDs:SetPoint("LEFT", clear, "RIGHT", 8, 0)
     fillIDs:SetScript("OnClick", function()
         edit:ClearFocus()
@@ -855,13 +857,13 @@ function ReferencePage.Build(f, ctx)
         l.kind = label(l, "", "CRTFontSmall")
         l.kind:SetPoint("TOPLEFT", 154, -2)
         l.kind:SetTextColor(0.6, 0.6, 0.6)
-        l.delete = button(l, "Delete", 52)
+        l.delete = button(l, "Delete")
         l.delete:SetPoint("BOTTOMRIGHT", 0, 2)
-        l.edit = button(l, "Edit", 44)
+        l.edit = button(l, "Edit")
         l.edit:SetPoint("RIGHT", l.delete, "LEFT", -4, 0)
-        l.copy = button(l, "Copy", 52)
+        l.copy = button(l, "Copy")
         l.copy:SetPoint("BOTTOMRIGHT", 0, 2)
-        l.copyTo = button(l, "", 128)
+        l.copyTo = button(l, "")
         l.copyTo:SetPoint("RIGHT", l.edit, "LEFT", -4, 0)
         l.copyTo:SetScript("OnClick", function(self)
             local entry = Reference:Find(self.key)

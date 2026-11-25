@@ -30,6 +30,12 @@ local function mock(kind, parent, template)
     if k == "IsEnabled" then return function(self) return self.enabled end end
     if k == "SetWidth" then return function(self, w) rawset(self, "w", w) end end
     if k == "SetSize" then return function(self, w, h) rawset(self, "w", w) rawset(self, "h", h) end end
+    if k == "SetHeight" then return function(self, h) rawset(self, "h", h) end end
+    if k == "GetWidth" then return function(self) return rawget(self, "w") or 0 end end
+    if k == "GetHeight" then return function(self) return rawget(self, "h") or 0 end end
+    -- a label measures 6 a character; a button's label is the button itself here (UI.FitButton reads its width)
+    if k == "GetStringWidth" or k == "GetUnboundedStringWidth" then return function(self) return #(rawget(self, "text") or "") * 6 end end
+    if k == "GetFontString" then return function(self) return self end end
     if k == "SetPoint" then return function(self, ...) table.insert(self.pts, { ... }) end end
     if k == "ClearAllPoints" then return function(self) self.pts = {} end end
     if k == "GetParent" then return function(self) return self.parent end end
@@ -175,11 +181,14 @@ check("tabs: five tabs, settings last", function()
   local names = {}
   for i, b in ipairs(tabs) do names[i] = b.text.text end
   assert(table.concat(names, ",") == "Notes,Mech Alerts,Marker macros,Alert Settings,Notes Settings", table.concat(names, ","))
+  -- each as wide as its label (UI.TabStrip, UI:FitTab), side by side from x 8
+  local x = 8
   for i, b in ipairs(tabs) do
-    assert(b.w == 164 and b.h == 26, "tab size")
-    assert(b.pts[1][2] == 8 + (i - 1) * 168, "tab x " .. tostring(b.pts[1][2]))
+    assert(b.w == math.max(CRT.UI.TAB_MIN_W, #b.text.text * 6 + 2 * CRT.UI.TAB_PAD) and b.h == 26, "tab size " .. tostring(b.w))
+    assert(b.pts[1][4] == x, "tab x " .. tostring(b.pts[1][4]))
+    x = x + b.w + CRT.UI.TAB_GAP
   end
-  assert(#tabs == 5 and tabs[5].pts[1][2] + tabs[5].w <= CRT.UI.PAGE_W, "fits the page")
+  assert(#tabs == 5 and tabs[5].pts[1][4] + tabs[5].w <= CRT.UI.PAGE_W, "fits the page")
 end)
 
 check("tabs: open reminders tab by name", function()
@@ -358,10 +367,11 @@ check("notes page: Next phase names the phase it starts", function()
   CRT.NotesPage.Open("notes")
   local b = findText("^Next phase")
   assert(b and b.text == "Next phase", "idle label: " .. tostring(b and b.text))
-  assert(b.w >= 130, "wide enough for the phase: " .. tostring(b.w))
+  assert(b.w == CRT.UI.PanelButtonWidth(#"Next phase" * 6), "as wide as its label: " .. tostring(b.w))
   peek = 1.5
   CRT.NotesPage.Open("notes")
   assert(b.text == "Next phase (1.5)", b.text)
+  assert(b.w == CRT.UI.PanelButtonWidth(#"Next phase (1.5)" * 6), "and wider for the phase: " .. tostring(b.w))
   peek = nil
   CRT.NotesPage.Open("notes")
   assert(b.text == "Next phase", b.text)

@@ -306,7 +306,7 @@ do
   format = format or string.format
   local B = { PALETTE = CRT.PALETTE, UI = CRT.UI, Consumables = { QUESTION_MARK = 1 },
     Ants = { Start = function(_, slot, r, g, b) ants[slot] = { r, g, b } end, Stop = function(_, slot) ants[slot] = nil end, Attach = function() end } }
-  assert(load(markSrc, "StatusMark.lua"))("CowfeeRaidTools", B) -- UI.CapFontSize, which Bar.Apply uses
+  assert(load(markSrc, "StatusMark.lua"))("CowfeeRaidTools", B) -- with Fonts.lua: UI.CapFontSize, which Bar.Apply uses
   assert(load(barSrc, "Bar.lua"))("CowfeeRaidTools", B)
   local function fs() local f = mock("FontString") rawset(f, "SetTextColor", function(self, r, g, b) rawset(self, "rgb", { r, g, b }) end) return f end
   local slot = mock("Button")
@@ -467,7 +467,8 @@ if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Modules/Consumables/Display.lua'), 'utf8')));
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Modules/Consumables/Bar.lua'), 'utf8')));
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Modules/Consumables/Ants.lua'), 'utf8')));
-lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Core/UI/StatusMark.lua'), 'utf8')));
+// StatusMark.lua with CRT_Core/UI/Fonts.lua after it: UI.CapFontSize, which Bar.Apply uses
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Core/UI/StatusMark.lua'), 'utf8') + '\n' + fs.readFileSync(path.join(dir, 'CRT_Core/UI/Fonts.lua'), 'utf8')));
 if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
 // #1300: the (?) texts name the marks, not only a colour
 const pageText = fs.readFileSync(path.join(dir, 'CRT_Modules/Consumables/Page.lua'), 'utf8');

@@ -26,7 +26,7 @@ const themedEnd = panel.indexOf("-- The game's grey stone");
 if (themedStart < 0 || themedEnd < themedStart) { console.error('FAIL UI:RegisterThemed not found in Panel.lua'); process.exit(1); }
 const themed = 'local ADDON, CRT = ...\nlocal UI = CRT.UI\n' + panel.slice(themedStart, themedEnd);
 
-const harness = `
+const harness = require('./theme_stub').textFitLua(process.argv.slice(2)) + `
 local SRC = ...
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
@@ -208,6 +208,7 @@ local UI = { PAGE_W = 1026, PAGE_H = 560,
   DisabledReason = function() return true end,
 }
 CRT.UI = UI
+CRT_TEXT_FIT(UI) -- the real UI.FitButton and UI.TabStrip (CRT_Core/UI/Panel.lua)
 function UI:RegisterPreview(key, fn) previews[key] = fn end
 local modern = false
 function UI:IsModern() return modern end

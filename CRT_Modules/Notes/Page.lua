@@ -20,6 +20,8 @@ local TEXT = {
     shared = "Shared",
     personal = "Personal",
     toPersonal = "Make my personal note",
+    import = "Import",
+    newNote = "New note",
     difficulty = "Difficulty",
     allDifficulties = "All",
     otherDifficulty = "Other",
@@ -47,7 +49,8 @@ local TEXT = {
     sendTo = "Send to",
     crtHelp = "CRT shares the note with CRT's own raid note and makes it everyone's active note. In a raid you must be the leader or an assistant.\n\nYour active Raid Groups layout goes with it and becomes everyone's active group. To turn that off, untick \"Send my roster with the note\" in the note editor (Pop out editor).",
     allHelp = "All available sends with CRT and with every other addon on the list that is loaded, and says in chat how each one went.",
-    importTitle = "Import a raid note, or paste any text for a new one",
+    importTitle = "Import a raid note",
+    newTitle = "New note",
     boss = "Boss",
     noBoss = "No boss",
     bossNumber = "Boss %d",
@@ -150,8 +153,10 @@ local function shareHelp()
 end
 
 local ROW_H = 24
--- the note buttons and Send to (a UI.Dropdown row, UI.CONTROL_ROW_H high), at the bottom of the list's column
+-- the note buttons and Send to (a UI.Dropdown row, UI.CONTROL_ROW_H high), at the bottom of the list's column: their
+-- height before the first layout (the row's own height after it)
 local BUTTONS_H = 4 * (24 + 4) + (UI.CONTROL_ROW_H or 32)
+local BUTTON_GAP = 6 -- between two buttons side by side
 local LIST_SCROLL_W = 22 -- the list's scroll bar
 -- The Notes tab in three columns across the page (UI.PAGE_W): the notes list, the note text, and your
 -- personal note with Try it. The tab is UI.PAGE_H - 66 high, under the tabs.
@@ -167,7 +172,7 @@ local STATUS_LINE_H = 12
 local STATUS_LINES = 4
 local NOTE_BOX_TOP = 36
 local NOTE_BOX_H = TAB_H - NOTE_BOX_TOP - 8 - STATUS_LINES * STATUS_LINE_H
--- The Import/New dialog: the Boss and Difficulty row under the title, the Read from line under it, then
+-- The Import and New note dialog: the Boss and Difficulty row under the title, the Read from line under it, then
 -- the text box down to Save and Cancel.
 local IMPORT = { W = 560, PAD = 14, ROW_Y = -30, BOSS_LABEL_W = 34, BOSS_W = 220, DIFF_GAP = 14, DIFF_LABEL_W = 62,
     DIFF_W = 110, READ_H = 12, SCROLL_BOTTOM = 46 }
@@ -192,9 +197,13 @@ local followedActive
 local kindTabs, toPersonal = {}, nil -- the Shared and Personal tabs, and Make my personal note
 local makeRow -- makes the notes list's i-th row (set in build)
 local diffDropdown, diffChips = nil, {} -- the list's difficulty filter, for the Dropdown and Chips styles
+local kindRow, chipRow -- the Shared and Personal tabs' row and the chips' row (UI.Flow)
+local KIND_H = 20 -- the Shared and Personal tabs' height
+local KIND_LINE_H = 26 -- the Notes heading's line, which the tabs share or go under
 local LIST_TOP = -36 -- where the notes list starts; a filter row takes one row of it
 local listScroll, listChild -- the notes list scrolls, from the top down to the note buttons
 local useButton, shareButton -- Use this note and Share to raid, for shared notes only
+local noteButtons, noteButtonRow -- the note buttons' frame at the bottom of the list's column, and their row (UI.Flow)
 local controls = {}
 local importDialog
 local refresh
@@ -222,21 +231,15 @@ local function clickToType(box, scroll, edit)
     end
 end
 
-local function makeButton(parent, label, width, height)
+-- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
+local function makeButton(parent, label, height)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     b:SetNormalFontObject(CRTFontNormal)
     b:SetHighlightFontObject(CRTFontHighlight)
     b:SetDisabledFontObject(CRTFontDisable)
-    b:SetSize(width, height or 24)
     b:SetText(label)
-    return b
-end
-
--- A button as wide as its label (UI.PanelButtonWidth: the label and the template's end caps).
-local function fitButton(b)
-    local fs = b.GetFontString and b:GetFontString()
-    local w = fs and fs:GetStringWidth() or 0
-    b:SetWidth(UI.PanelButtonWidth and UI.PanelButtonWidth(w) or (math.ceil(w) + 28))
+    b:SetHeight(height or 24)
+    UI.FitButton(b)
     return b
 end
 
@@ -339,7 +342,6 @@ local function getImportDialog()
     d:SetScript("OnDragStart", function(self) self:StartMoving(true) end)
     d:SetScript("OnDragStop", d.StopMovingOrSizing)
     tinsert(UISpecialFrames, "CowfeeRaidToolsNoteImport")
-    UI.SetFrameTitle(d, TEXT.importTitle)
 
     -- Boss and Difficulty, greyed while the text's EncounterID line says them (pick.read)
     d.bossRow = UI.Dropdown(d, TEXT.boss, {
@@ -412,8 +414,10 @@ local function getImportDialog()
     -- a click anywhere in the scroll area types; the dialog itself is not passed (it drags)
     clickToType(scroll, scroll, d.edit)
 
-    -- Opens it empty, on No boss.
-    d.Open = function()
+    -- Opens it empty, on No boss: mode "import" (paste a raid note; its EncounterID line picks the boss) or "new" (a
+    -- note for the boss you pick). Both save the text as it is (saveImport), so pasting a note under New note works too.
+    d.Open = function(mode)
+        UI.SetFrameTitle(d, mode == "new" and TEXT.newTitle or TEXT.importTitle)
         pick.boss = "none"
         d.edit:SetText("")
         pick.read = nil
@@ -422,8 +426,8 @@ local function getImportDialog()
         d.edit:SetFocus()
     end
 
-    local ok = makeButton(d, "Save", 110, 26)
-    ok:SetPoint("BOTTOM", -60, 12)
+    local ok = makeButton(d, "Save", 26)
+    ok:SetPoint("BOTTOMRIGHT", d, "BOTTOM", -4, 12)
     ok:SetScript("OnClick", function()
         local id, message = saveImport(d)
         CRT:Print(message)
@@ -433,8 +437,8 @@ local function getImportDialog()
             refresh()
         end
     end)
-    local cancel = makeButton(d, CANCEL, 110, 26)
-    cancel:SetPoint("BOTTOM", 60, 12)
+    local cancel = makeButton(d, CANCEL, 26)
+    cancel:SetPoint("BOTTOMLEFT", d, "BOTTOM", 4, 12)
     cancel:SetScript("OnClick", function()
         d:Hide()
     end)
@@ -488,7 +492,10 @@ refresh = function()
     local all = Notes:List(listKind)
     local style = Notes:ListStyle()
     local filter = Notes:ListDifficulty()
-    local items, top = {}, LIST_TOP
+    -- the list's filter row and the list start under the Shared and Personal tabs (a line lower when they wrapped)
+    local wrapped = (kindRow.height or 0) > KIND_LINE_H
+    local listTop = wrapped and (LIST_TOP - (kindRow.height - KIND_LINE_H + 6)) or LIST_TOP
+    local items, top = {}, listTop
     if style == "grouped" then
         local groups = {}
         for _, e in ipairs(all) do
@@ -508,13 +515,14 @@ refresh = function()
             end
         end
     else
-        top = LIST_TOP - ROW_H
+        top = listTop - ROW_H
         for _, e in ipairs(all) do
             if filter == "All" or Notes.DifficultyGroup(e.record) == filter then
                 items[#items + 1] = { entry = e, short = filter ~= "All" }
             end
         end
     end
+    diffDropdown:SetPoint("TOPLEFT", 8, listTop)
     diffDropdown:SetShown(style == "dropdown")
     if style == "dropdown" then
         diffDropdown.refresh()
@@ -528,7 +536,12 @@ refresh = function()
             end
         end
         chip:SetText((key == "All" and "All" or key:sub(1, 1)) .. " " .. n)
+        UI:FitTab(chip)
         UI:SetTabSelected(chip, key == filter)
+    end
+    if style == "chips" then
+        chipRow.opts.y = listTop - 2
+        top = listTop - chipRow:Layout() - 6
     end
     local list = items
     for _, kind in ipairs({ "shared", "personal" }) do
@@ -537,10 +550,11 @@ refresh = function()
     toPersonal:SetShown(listKind == "shared")
     useButton:SetShown(listKind == "shared")
     shareButton:SetShown(listKind == "shared")
+    noteButtonRow:Layout() -- the buttons shown close up
     -- the list scrolls under its filter row (when there is one) down to the note buttons
     listScroll:ClearAllPoints()
     listScroll:SetPoint("TOPLEFT", 8, top)
-    listScroll:SetPoint("BOTTOMRIGHT", page, "TOPLEFT", 8 + LIST_W - LIST_SCROLL_W, -(TAB_H - BUTTONS_H - 6))
+    listScroll:SetPoint("BOTTOMRIGHT", noteButtons, "TOPLEFT", LIST_W - LIST_SCROLL_W, 6)
     for i = #rows + 1, #list do
         rows[i] = makeRow(i)
     end
@@ -640,17 +654,18 @@ local function buildNotes(pf)
     local listLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     listLabel:SetPoint("TOPLEFT", 8, -14)
     listLabel:SetText("Notes")
-    UI.HelpRight(listLabel, "Raid notes", {
+    local listHelp = UI.HelpRight(listLabel, "Raid notes", {
         "Import a note and share it with the raid before the pull; its timers count down from the start of the fight, and its other text goes to the Assignments window.",
         { "Mech Alerts", "boss mechanic alerts." },
         { "Alert Settings", "where your lines show." },
         { "Notes Settings", "the windows and sharing." },
     })
-    -- Shared and Personal: which notes the list shows
-    for i, kind in ipairs({ "shared", "personal" }) do
+    -- Shared and Personal: which notes the list shows, after the heading's (?) on its line, or on a line of their own
+    -- under it when the text is too large for both in the column (refresh moves the list down with them)
+    local kindList = {}
+    for _, kind in ipairs({ "shared", "personal" }) do
         local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        b:SetSize(68, 20)
-        b:SetPoint("TOPLEFT", 98 + (i - 1) * 72, -10)
+        b:SetHeight(KIND_H)
         skin(b, 0.4)
         b.sel = b:CreateTexture(nil, "ARTWORK")
         b.sel:SetAllPoints()
@@ -665,8 +680,13 @@ local function buildNotes(pf)
         end)
         UI:RegisterTab(b)
         kindTabs[kind] = b
+        kindList[#kindList + 1] = b
     end
-    -- the (?) just after the tabs, clear of the Note text heading at TEXT_X
+    -- the (?) just after the tabs, inside the column (clear of the Note text heading at TEXT_X)
+    kindRow = UI.Flow(pf, kindList, { x = 8, y = -10, gap = 4, width = LIST_W - UI.HELP_GAP - UI.HELP_SIZE, indentH = KIND_LINE_H,
+        indent = function()
+            return math.ceil(listLabel:GetStringWidth() or 0) + UI.HELP_GAP + (listHelp and listHelp:GetWidth() or 0) + 6
+        end })
     UI.HelpRight(kindTabs.personal, TEXT.personal, TEXT.kindHelp)
 
     -- the difficulty filter over the list, for the Dropdown and Chips styles (Notes Settings)
@@ -688,12 +708,12 @@ local function buildNotes(pf)
     })
     diffDropdown:SetPoint("TOPLEFT", 8, LIST_TOP)
     diffDropdown:Hide()
+    -- the chips: each as wide as its label and count, on as many lines as the column needs (refresh places them)
     local chipKeys = { "All", "Mythic", "Heroic", "Normal" }
-    local chipW = math.floor((LIST_W - 3 * 4) / #chipKeys)
-    for i, key in ipairs(chipKeys) do
+    local chipList = {}
+    for _, key in ipairs(chipKeys) do
         local c = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        c:SetSize(chipW, 18)
-        c:SetPoint("TOPLEFT", 8 + (i - 1) * (chipW + 4), LIST_TOP - 2)
+        c:SetHeight(18)
         skin(c, 0.4)
         c.sel = c:CreateTexture(nil, "ARTWORK")
         c.sel:SetAllPoints()
@@ -707,7 +727,9 @@ local function buildNotes(pf)
         UI:RegisterTab(c)
         c:Hide()
         diffChips[key] = c
+        chipList[#chipList + 1] = c
     end
+    chipRow = UI.Flow(pf, chipList, { x = 8, y = LIST_TOP - 2, gap = 4, width = LIST_W })
 
     -- the notes list: a scroll frame from under the tabs to the note buttons, holding a row per note or
     -- heading (made as the list grows), scrolled with the mouse wheel or its bar
@@ -737,14 +759,18 @@ local function buildNotes(pf)
         return row
     end
 
-    -- the note buttons, at the bottom of the column (BUTTONS_H high, Send to the last row)
-    local import = makeButton(pf, "Import/New", 122)
-    import:SetPoint("TOPLEFT", 8, -(TAB_H - BUTTONS_H))
+    -- the note buttons, at the bottom of the column: a row that goes onto as many lines as its labels need within
+    -- the column (UI.Flow), Send to under it; the list ends above them. A label longer than the column wraps.
+    -- Import pastes a raid note; New note starts one for a boss you pick. Both save through the same dialog.
+    local import = makeButton(pf, TEXT.import)
     import:SetScript("OnClick", function()
-        getImportDialog().Open()
+        getImportDialog().Open("import")
     end)
-    local delete = makeButton(pf, "Delete", 122)
-    delete:SetPoint("LEFT", import, "RIGHT", 6, 0)
+    local newNote = makeButton(pf, TEXT.newNote)
+    newNote:SetScript("OnClick", function()
+        getImportDialog().Open("new")
+    end)
+    local delete = makeButton(pf, "Delete")
     delete:SetScript("OnClick", function()
         local id = selected
         askDelete(id, function()
@@ -754,17 +780,15 @@ local function buildNotes(pf)
             refresh()
         end)
     end)
-    local active = makeButton(pf, "Use this note", 122)
+    local active = makeButton(pf, "Use this note")
     useButton = active
-    active:SetPoint("TOPLEFT", import, "BOTTOMLEFT", 0, -4)
     active:SetScript("OnClick", function()
         if selected then
             Notes:SetActive(selected)
         end
     end)
-    local share = makeButton(pf, "Share to raid", 122)
+    local share = makeButton(pf, "Share to raid")
     shareButton = share
-    share:SetPoint("LEFT", active, "RIGHT", 6, 0)
     share:SetScript("OnClick", function()
         -- through the table, so it is the one function the note editor's Push note calls too; the page's share
         -- results go to chat, the roster's line with them
@@ -774,8 +798,7 @@ local function buildNotes(pf)
         end
         refresh()
     end)
-    local roster = makeButton(pf, "Open roster in Raid Groups", LIST_W)
-    roster:SetPoint("TOPLEFT", active, "BOTTOMLEFT", 0, -4)
+    local roster = makeButton(pf, "Open roster in Raid Groups")
     roster:SetScript("OnClick", function()
         local record = selected and Notes:Get(selected)
         -- a note shared to you: the sender's layout; one you imported: its invite list's (Notes:RosterLayout)
@@ -800,8 +823,7 @@ local function buildNotes(pf)
         end,
     })
     -- Save to personal (on the Shared tab): a copy of this note, with your changes, kept as your own
-    toPersonal = makeButton(pf, TEXT.toPersonal, LIST_W)
-    toPersonal:SetPoint("TOPLEFT", roster, "BOTTOMLEFT", 0, -4)
+    toPersonal = makeButton(pf, TEXT.toPersonal)
     toPersonal:SetScript("OnClick", function()
         if not selected then
             return
@@ -815,7 +837,17 @@ local function buildNotes(pf)
             CRT:Print("This note has no boss (EncounterID), so there is no personal note to make for it.")
         end
     end)
-    sendTo:SetPoint("TOPLEFT", toPersonal, "BOTTOMLEFT", 0, -4)
+    noteButtons = CreateFrame("Frame", nil, pf)
+    noteButtons:SetPoint("BOTTOMLEFT", pf, "TOPLEFT", 8, -TAB_H)
+    noteButtons:SetSize(LIST_W, BUTTONS_H)
+    local buttonList = { import, newNote, delete, active, share, roster, toPersonal }
+    for _, b in ipairs(buttonList) do
+        UI.FitButton(b, LIST_W)
+    end
+    noteButtonRow = UI.Flow(noteButtons, buttonList, { width = LIST_W, gap = BUTTON_GAP, rowGap = 4, onLayout = function(row)
+        noteButtons:SetHeight(row.height + 4 + (UI.CONTROL_ROW_H or 32))
+    end })
+    sendTo:SetPoint("BOTTOMLEFT", noteButtons, "BOTTOMLEFT", 0, 0)
     controls[#controls + 1] = sendTo
     UI.HelpRight(sendTo, TEXT.sendTo, shareHelp)
 
@@ -859,7 +891,7 @@ local function buildNotes(pf)
     end)
     -- Pop out editor, over the box's right end: the selected note's names to drag and drop (read-only for a raider
     -- who can't change the raid note, as the raw text is)
-    local popOut = fitButton(makeButton(pf, TEXT.popOut, 120, 20))
+    local popOut = makeButton(pf, TEXT.popOut, 20)
     popOut:SetPoint("BOTTOMRIGHT", box, "TOPRIGHT", 0, 3)
     popOut:SetScript("OnClick", function()
         if selected then
@@ -872,7 +904,7 @@ local function buildNotes(pf)
     end
     controls[#controls + 1] = popOut
     -- History, left of Pop out editor: the note's earlier versions (Notes/HistoryWindow.lua); greyed with none
-    local history = fitButton(makeButton(pf, format(TEXT.history, 0), 120, 20))
+    local history = makeButton(pf, format(TEXT.history, 0), 20)
     history:SetPoint("RIGHT", popOut, "LEFT", -6, 0)
     history:SetScript("OnClick", function()
         if selected and CRT.NoteHistory then
@@ -895,12 +927,17 @@ local function buildNotes(pf)
     history.refresh = function()
         local n = selected and Notes:Get(selected) and Notes:HistoryCount(selected) or 0
         history:SetText(format(TEXT.history, n))
-        fitButton(history)
+        -- at a large text size the count gives way, so both buttons stay clear of the Note text heading and its two (?)
+        -- (the footer line still says how many)
+        local room = TEXT_W - math.ceil(tonumber((textLabel:GetStringWidth())) or 0) - 2 * (UI.HELP_GAP + UI.HELP_SIZE) - 8
+        if (tonumber((popOut:GetWidth())) or 0) + BUTTON_GAP + (tonumber((history:GetWidth())) or 0) > room then
+            history:SetText(TEXT.historyLabel)
+        end
         history:SetEnabled(n > 0)
     end
     controls[#controls + 1] = history
 
-    local save = makeButton(pf, TEXT.saveText, 170)
+    local save = makeButton(pf, TEXT.saveText)
     save:SetPoint("TOPRIGHT", box, "BOTTOMRIGHT", 0, -6)
     save:SetScript("OnClick", function()
         if selected then
@@ -991,8 +1028,7 @@ local function buildNotes(pf)
     end
     controls[#controls + 1] = personal
 
-    local psave = fitButton(makeButton(pf, "Save personal note", 170))
-    psave:SetPoint("TOPLEFT", pbox, "BOTTOMLEFT", 0, -6)
+    local psave = makeButton(pf, "Save personal note")
     psave:SetScript("OnClick", function()
         if personal.loaded ~= nil and Notes:Personal() ~= personal.loaded then
             personal.loaded = Notes:Personal() -- seen: a second Save is your choice to replace it
@@ -1004,16 +1040,22 @@ local function buildNotes(pf)
         Notes:SetPersonal(personal:GetText())
         CRT:Print("Personal note saved.")
     end)
-    -- the short label, so both buttons fit the column; right-aligned to the box, never past the page
-    local ppop = fitButton(makeButton(pf, TEXT.popOutShort, 80))
-    ppop:SetPoint("TOPRIGHT", pbox, "BOTTOMRIGHT", 0, -6)
+    -- the short label, so both buttons fit the column; Pop out goes under Save when the text is too large for both
+    local ppop = makeButton(pf, TEXT.popOutShort)
     ppop:SetScript("OnClick", function()
         openEditor({ personal = true })
     end)
+    local personalButtons = CreateFrame("Frame", nil, pf)
+    personalButtons:SetPoint("TOPLEFT", pbox, "BOTTOMLEFT", 0, -6)
+    personalButtons:SetSize(RIGHT_W, 24)
+    UI.FitButton(psave, RIGHT_W)
+    UI.Flow(personalButtons, { psave, ppop }, { width = RIGHT_W, gap = BUTTON_GAP, onLayout = function(row)
+        personalButtons:SetHeight(row.height)
+    end })
     -- Display my notes first: what you typed above your Mech Alerts reminders in the personal window
     local first = CreateFrame("CheckButton", nil, pf, "UICheckButtonTemplate")
     first:SetSize(24, 24)
-    first:SetPoint("TOPLEFT", psave, "BOTTOMLEFT", -2, -2)
+    first:SetPoint("TOPLEFT", personalButtons, "BOTTOMLEFT", -2, -2)
     local firstText = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     firstText:SetPoint("LEFT", first, "RIGHT", 2, 0)
     firstText:SetText("Display my notes first")
@@ -1027,9 +1069,8 @@ local function buildNotes(pf)
     controls[#controls + 1] = first
     -- Right, under the personal note: try the note in use. Next phase has its own row, since its text
     -- grows with the phase it starts ("Next phase (1.5)").
-    top = top - 22 - 220 - 6 - 26 - 26 - 20
     local runLabel = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-    runLabel:SetPoint("TOPLEFT", RIGHT_X, top)
+    runLabel:SetPoint("TOPLEFT", first, "BOTTOMLEFT", 2, -18)
     runLabel:SetText("Try it")
     UI.HelpRight(runLabel, "Try it", {
         { "Test run", "starts the selected note now, as if the boss was pulled." },
@@ -1037,8 +1078,8 @@ local function buildNotes(pf)
         { "Stop", "ends it." },
     })
 
-    local testRun = makeButton(pf, "Test run", 100)
-    testRun:SetPoint("TOPLEFT", RIGHT_X, top - 24)
+    local testRun = makeButton(pf, "Test run")
+    testRun:SetPoint("TOPLEFT", runLabel, "BOTTOMLEFT", 0, -8)
     testRun:SetScript("OnClick", function()
         local id = selected or Notes:Active()
         if id then
@@ -1047,7 +1088,7 @@ local function buildNotes(pf)
         end
     end)
     -- Named after the phase it starts, e.g. "Next phase (1.5)", so an intermission is not a surprise.
-    local nextPhase = makeButton(pf, "Next phase", 176)
+    local nextPhase = makeButton(pf, "Next phase")
     nextPhase:SetPoint("TOPLEFT", testRun, "BOTTOMLEFT", 0, -6)
     nextPhase:SetScript("OnClick", function()
         local ph = Engine:NextPhase()
@@ -1058,7 +1099,7 @@ local function buildNotes(pf)
         nextPhase:SetText(ph and ("Next phase (" .. tostring(ph) .. ")") or "Next phase")
     end
     controls[#controls + 1] = nextPhase
-    local stop = makeButton(pf, "Stop", 70)
+    local stop = makeButton(pf, "Stop")
     stop:SetPoint("LEFT", testRun, "RIGHT", 6, 0)
     stop:SetScript("OnClick", function()
         Engine:Stop()
@@ -1067,6 +1108,7 @@ local function buildNotes(pf)
     pf:SetScript("OnShow", refresh)
     Notes:OnChange(refresh)
     CRT.Bosses:OnRouteChange(refresh) -- the raid route, the note list's order
+    UI:OnFonts(refresh) -- a text size change: the list moves under the tabs' and chips' rows again
 end
 
 -- Tabs ---------------------------------------------------------------------------------------
@@ -1114,24 +1156,8 @@ local function build(pf)
     title:SetPoint("TOPLEFT", 8, -8)
     title:SetText("Raid Notes")
 
-    for i, tab in ipairs(TABS) do
-        local b = CreateFrame("Button", nil, pf, "BackdropTemplate")
-        -- Five tabs across the page (UI.PAGE_W), Settings last.
-        b:SetSize(164, 26)
-        b:SetPoint("TOPLEFT", 8 + (i - 1) * 168, -36)
-        skin(b, 0.4)
-        b.sel = b:CreateTexture(nil, "ARTWORK")
-        b.sel:SetAllPoints()
-        b.sel:SetColorTexture(UI.Color("heading", 0.18)) -- UI:RegisterTab styles it from here on
-        b.text = b:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
-        b.text:SetPoint("CENTER")
-        b.text:SetText(tab.label)
-        b:SetScript("OnClick", function()
-            selectTab(tab.key)
-        end)
-        tabButtons[tab.key] = b
-        UI:RegisterTab(b)
-
+    tabButtons = UI.TabStrip(pf, TABS, 8, -36, selectTab)
+    for _, tab in ipairs(TABS) do
         local f = CreateFrame("Frame", nil, pf)
         f:SetPoint("TOPLEFT", 0, -66)
         f:SetPoint("BOTTOMRIGHT", 0, 0)
@@ -1158,7 +1184,7 @@ CRT.NotesPage = {
     TAB_H = TAB_H,
     -- the Notes tab's note text box and the detail lines under it, for the layout checks
     NOTE_BOX_TOP = NOTE_BOX_TOP, NOTE_BOX_H = NOTE_BOX_H, STATUS_LINE_H = STATUS_LINE_H, STATUS_LINES = STATUS_LINES,
-    IMPORT = IMPORT, -- the Import/New dialog's layout
+    IMPORT = IMPORT, -- the Import and New note dialog's layout
     ShareNote = shareNote, -- shares a note to the Send to choice (Share to raid, the note editor's Push note)
     AskDelete = askDelete, -- Delete's confirm: askDelete(id, done)
     Open = function(tab)

@@ -11,6 +11,8 @@
 // loads right after MarkerText.lua; CRT_NAMES(CRT) loads only that.
 // CRT_THEME also puts the real greyed controls' reason helpers on UI (CRT_REASONS(UI): UI.Usable, UI.DisabledReason,
 // UI.DisabledTooltip, UI.DisabledCover, UI.GreyWhy from CRT_Core/UI/Controls.lua) unless the harness has its own.
+// CRT_THEME also puts the real text-fit helpers and tab strip on UI (CRT_TEXT_FIT(UI): UI.FitButton, UI:FitTab, UI.Flow,
+// UI.TabStrip from CRT_Core/UI/Panel.lua) unless the harness has its own.
 // It also defines CRT_HELP_PLAIN(text), the real UI.TooltipPlain (Panel.lua, between its [tooltip plain] markers): a
 // list-form help text (UI.AddTooltipText) as one string, for checks that search a (?)'s text. CRT_THEME puts it on UI
 // as UI.TooltipPlain when the harness has none.
@@ -50,6 +52,15 @@ function reasonBlock(root) {
   return controls.slice(controls.indexOf('\n', start) + 1, end);
 }
 
+// A block of CRT_Core/UI/Panel.lua between its -- [name] and -- [/name] markers.
+function panelBlock(root, name) {
+  const panel = fs.readFileSync(path.join(root, 'CRT_Core/UI/Panel.lua'), 'utf8');
+  const start = panel.indexOf('-- [' + name + ']');
+  const end = panel.indexOf('-- [/' + name + ']');
+  if (start < 0 || end < start) throw new Error('theme_stub: the [' + name + '] markers are missing from Panel.lua');
+  return panel.slice(panel.indexOf('\n', start) + 1, end);
+}
+
 // UI.TooltipPlain from CRT_Core/UI/Panel.lua, between its [tooltip plain] markers.
 function plainBlock(root) {
   const panel = fs.readFileSync(path.join(root, 'CRT_Core/UI/Panel.lua'), 'utf8');
@@ -68,7 +79,9 @@ module.exports = function themeLua(where) {
   const markers = fs.readFileSync(path.join(root, 'CRT_Core/MarkerText.lua'), 'utf8');
   const names = fs.readFileSync(path.join(root, 'CRT_Core/Names.lua'), 'utf8');
   const reasons = reasonBlock(root);
-  for (const s of [src, helpers, plain, tooltip, markers, names, reasons]) if (s.includes(']====]')) throw new Error('theme_stub: a source holds the long-string closer');
+  const textFit = panelBlock(root, 'text fit');
+  const tabStrip = panelBlock(root, 'tab strip');
+  for (const s of [src, helpers, plain, tooltip, markers, names, reasons, textFit, tabStrip]) if (s.includes(']====]')) throw new Error('theme_stub: a source holds the long-string closer');
   return `
 -- CRT_HELP_PLAIN(text): the real UI.TooltipPlain, a list-form help text as one string
 CRT_HELP_PLAIN = assert(load("local UI = {} " .. [====[${plain}]====] .. " return UI.TooltipPlain", "Panel.lua UI.TooltipPlain"))()
@@ -94,9 +107,26 @@ function CRT_REASONS(UI)
     assert(load("local UI = ... " .. [====[${reasons}]====], "Controls.lua disabled reason"))(UI)
   end
 end
+-- CRT_TEXT_FIT(UI): the real text-fit helpers (Panel.lua's [text fit] block: UI.FitButton, UI:FitTab, UI.Flow) and
+-- tab strip (its [tab strip] block: UI.TabStrip) onto UI, unless it has its own. A stubbed UI:RegisterTab that does
+-- nothing leaves a strip's tabs unsized; the real one is tested in run_textfit.js.
+function CRT_TEXT_FIT(UI)
+  -- the game's hooksecurefunc, when the harness has none: runs fn after the method (UI.FitButton refits on SetText)
+  hooksecurefunc = hooksecurefunc or function(t, name, fn) if type(t) == "string" then t, name, fn = _G, t, name end local old = t[name] if type(old) ~= "function" then return end rawset(t, name, function(...) local r = { old(...) } fn(...) return (unpack or table.unpack)(r) end) end
+  UI.PanelButtonWidth = UI.PanelButtonWidth or function(w) return math.max(40, math.ceil(w or 0) + 28) end
+  UI.RegisterTab = UI.RegisterTab or function() end
+  UI.OnFonts = UI.OnFonts or function() end
+  if not UI.FitButton then
+    assert(load("local UI = ... " .. [====[${textFit}]====], "Panel.lua text fit"))(UI)
+  end
+  if not UI.TabStrip then
+    assert(load("local UI = ... " .. [====[${tabStrip}]====], "Panel.lua tab strip"))(UI)
+  end
+end
 function CRT_THEME(CRT, UI)
   UI = UI or {} -- a harness with no CRT.UI yet takes the palette only
   CRT_REASONS(UI)
+  CRT_TEXT_FIT(UI)
   local own = CRT.PALETTE
   assert(load([====[${src}]====], "Themes.lua"))("CowfeeRaidTools", CRT)
   CRT_MARKERS(CRT)
@@ -152,6 +182,28 @@ function CRT_THEME(CRT, UI)
       end
       return b
     end
+  end
+end
+`;
+};
+
+// Only CRT_TEXT_FIT(UI), for a harness with its own CRT.UI and no CRT_THEME: textFitLua(where) returns the Lua code
+// that defines it (the real UI.FitButton, UI:FitTab, UI.Flow, UI:OnFonts and UI.TabStrip from CRT_Core/UI/Panel.lua).
+module.exports.textFitLua = function textFitLua(where) {
+  const root = findRoot(where);
+  const textFit = panelBlock(root, 'text fit');
+  const tabStrip = panelBlock(root, 'tab strip');
+  return `
+function CRT_TEXT_FIT(UI)
+  -- the game's hooksecurefunc, when the harness has none: runs fn after the method (UI.FitButton refits on SetText)
+  hooksecurefunc = hooksecurefunc or function(t, name, fn) if type(t) == "string" then t, name, fn = _G, t, name end local old = t[name] if type(old) ~= "function" then return end rawset(t, name, function(...) local r = { old(...) } fn(...) return (unpack or table.unpack)(r) end) end
+  UI.PanelButtonWidth = UI.PanelButtonWidth or function(w) return math.max(40, math.ceil(w or 0) + 28) end
+  UI.RegisterTab = UI.RegisterTab or function() end
+  if not UI.FitButton then
+    assert(load("local UI = ... " .. [====[${textFit}]====], "Panel.lua text fit"))(UI)
+  end
+  if not UI.TabStrip then
+    assert(load("local UI = ... " .. [====[${tabStrip}]====], "Panel.lua tab strip"))(UI)
   end
 end
 `;

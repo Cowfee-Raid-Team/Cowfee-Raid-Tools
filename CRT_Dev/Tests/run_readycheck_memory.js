@@ -606,7 +606,8 @@ lua.lua_newtable(L);
 const SRC = {
   fade: slice('local fades = {}', 'function UI.SetFrameTitle'),
   themed: slice('UI.themed = {}', "-- The game's grey stone"),
-  mark: read('CRT_Core/UI/StatusMark.lua'), data: read('CRT_Modules/Consumables/Data.lua'), ants: read('CRT_Modules/Consumables/Ants.lua'),
+  mark: read('CRT_Core/UI/StatusMark.lua') + '\n' + read('CRT_Core/UI/Fonts.lua'), // with Fonts.lua: UI.CapFontSize
+  data: read('CRT_Modules/Consumables/Data.lua'), ants: read('CRT_Modules/Consumables/Ants.lua'),
   bar: read('CRT_Modules/Consumables/Bar.lua'), display: read('CRT_Modules/Consumables/Display.lua'),
   report: read('CRT_Modules/ReadyCheck/Report.lua'), window: read('CRT_Modules/ReadyCheck/Window.lua'),
   bufflock: read('CRT_Modules/ReadyCheck/BuffLock.lua'), earlypull: read('CRT_Modules/ReadyCheck/EarlyPull.lua'),

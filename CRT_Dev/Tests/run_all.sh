@@ -137,6 +137,8 @@ g "drag starts from the mouse" && { bad=$(grep -rn "StartMoving" --include=*.lua
 g "tooltips through UI.TooltipOwner" && { bad=$(grep -rnE '[:.]SetOwner\b|GameTooltip_SetDefaultAnchor\b' --include=*.lua --exclude-dir=.claude --exclude-dir=node_modules "$W" | sed 's#\\#/#g' | grep -vE "$NOT_TESTS" | grep -v "/CRT_Core/UI/Tooltip\.lua:"); if [ -n "$bad" ]; then echo "FAIL a tooltip placed outside UI.TooltipOwner (CRT_Core/UI/Tooltip.lua):"; echo "$bad"; else echo "all passed"; fi; }
 g "two looks, no third" && { bad=$(grep -rnE 'IsFlat|ui\.style|"minimal"|Minimal black' --include=*.lua --exclude-dir=.claude --exclude-dir=node_modules "$W" | grep -vE "$NOT_TESTS"); if [ -n "$bad" ]; then echo "FAIL code still reads the removed third look:"; echo "$bad"; else echo "all passed"; fi; }
 g "fit text" && { node run_fittext.js "$W" 2>&1 | tail -1; }
+g "text fits at 22 pt" && { node run_textfit.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }
+g "text buttons size from their labels" && { node run_textfit_lint.js "$W" 2>&1 | tail -40; echo "exit ${PIPESTATUS[0]}"; }
 g "gear" && { node run_gear.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "gearchecker data" && { node run_gearchecker_data.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "gearchecker comm" && { node run_gearchecker_comm.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }

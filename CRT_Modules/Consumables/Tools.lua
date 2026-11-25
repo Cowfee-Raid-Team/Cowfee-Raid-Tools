@@ -75,7 +75,8 @@ function Tools:ShowText(title, text, action)
     w.edit:SetText(text)
     if action and not w.action then
         w.action = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
-        w.action:SetSize(140, 22)
+        w.action:SetHeight(22)
+        UI.FitButton(w.action) -- as wide as its label, set below
         w.action:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", -24, 8)
     end
     -- the text stops above the action button (and the button sits over it), so the whole button takes clicks

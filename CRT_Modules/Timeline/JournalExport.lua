@@ -200,9 +200,10 @@ local function build()
     end
     -- the boss panel holds it, so it hides with the panel; it sits under the Journal's bottom right corner
     button = CreateFrame("Button", nil, info, "UIPanelButtonTemplate")
-    button:SetSize(140, 24)
+    button:SetHeight(24)
     button:SetPoint("TOPRIGHT", EncounterJournal, "BOTTOMRIGHT", -6, -2)
     button:SetText(TEXT.button)
+    CRT.UI.FitButton(button) -- as wide as its label
     button:SetScript("OnClick", function()
         Export:Run()
     end)
