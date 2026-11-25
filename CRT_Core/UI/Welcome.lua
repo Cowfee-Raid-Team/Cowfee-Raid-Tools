@@ -30,9 +30,12 @@ W.TEXT = TEXT
 -- The next steps for each choice: the step's text, its button's label and where the button goes.
 local STEPS = {
     raider = {
+        -- label() is the button's text while it follows a state; it reads like the title bar's Previews button
         { text = "Place your windows where you want them.", button = "Previews", go = function()
             UI:Show()
-            UI:SetPreviews(true)
+            UI:TogglePreviews()
+        end, label = function()
+            return UI:AnyPreview() and "Previews: ON" or "Previews"
         end },
         { text = "Pick the voice that reads your alerts out.", button = "Alert settings", go = function()
             CRT.NotesPage.Open("alerts")
@@ -126,6 +129,13 @@ local function build()
         end
     end)
     view.win = win
+    -- previews turned on or off anywhere (title bar, /crt previews, the main window closing): the button's label
+    -- follows, and the row is placed again for its new width
+    UI:OnPreviewChange(function()
+        if win:IsShown() and view.picked then
+            fill()
+        end
+    end)
 end
 
 local function textHeight(fs)
@@ -157,7 +167,7 @@ fill = function()
         local r = stepRow(i, c)
         r.go = step.go
         r.number:SetText(i .. ".")
-        r.button:SetText(step.button)
+        r.button:SetText(step.label and step.label() or step.button)
         local fs = r.button:GetFontString()
         r.button:SetWidth(UI.PanelButtonWidth(fs and fs:GetStringWidth() or 0))
         r.text:SetWidth(math.max(1, inner - L.number - L.buttonGap - r.button:GetWidth()))
