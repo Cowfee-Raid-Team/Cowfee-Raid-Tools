@@ -78,6 +78,10 @@ local function buildTicks(pf, top, controls, refresh)
     end
     controls[#controls + 1] = enable
     UI.HelpRight(enable.label, TEXT.enable, TEXT.enableNote)
+    -- Start here's Combat logging link spotlights it (UI:RegisterSpot, UI/Spotlight.lua)
+    if UI.RegisterSpot then
+        UI:RegisterSpot("qol", "combatlog", enable)
+    end
 
     local y = top - 32
     for _, group in ipairs({ { key = "raid", title = TEXT.raids }, { key = "dungeon", title = TEXT.dungeons } }) do

@@ -1212,6 +1212,16 @@ end
 
 UI:RegisterPage("timeline", "Timeline", build)
 
+-- Opens the page on a tab: "review" or "settings" (Start here's Timeline recording link).
+CRT.TimelinePage = {
+    Open = function(tab)
+        UI:Show("timeline")
+        if page then
+            selectTab(tab)
+        end
+    end,
+}
+
 -- /crt timeline, timeline pop, timeline rehearse (CRT_Core/Slash.lua's registry)
 if CRT.Slash then
     CRT.Slash:Register("timeline", {

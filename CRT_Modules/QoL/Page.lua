@@ -81,6 +81,15 @@ local function settings()
     return CRT.db.qol.lowHealth
 end
 
+-- Names a switch for Start here's links (UI:RegisterSpot, UI/Spotlight.lua): "lowhealth", "brez"; the debuff panel's
+-- and combat logging's are named by their own tabs (Debuffs/Page.lua, QoL/CombatLogTab.lua).
+local function spot(key, control)
+    if UI.RegisterSpot then
+        UI:RegisterSpot("qol", key, control)
+    end
+    return control
+end
+
 -- A button as wide as its label, measured again when its label or the text size changes (UI.FitButton).
 local function makeButton(parent, label, height)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
@@ -138,6 +147,8 @@ local function buildLowHealth(pf, top)
     local checkText = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     checkText:SetPoint("LEFT", check, "RIGHT", 1, 0)
     checkText:SetText(TEXT.lowHealthEnable)
+    check.label = checkText
+    spot("lowhealth", check)
     check:SetScript("OnClick", function(self)
         LowHealth:SetEnabled(self:GetChecked())
         refresh()
@@ -442,6 +453,7 @@ local function buildBattleRes(pf, top)
         enable:SetChecked(on() and true or false)
     end
     controls[#controls + 1] = enable
+    spot("brez", enable)
     UI.HelpRight(enable.label, TEXT.brezEnable, TEXT.brezNote)
 
     local show = UI.Dropdown(pf, TEXT.brezShow, {

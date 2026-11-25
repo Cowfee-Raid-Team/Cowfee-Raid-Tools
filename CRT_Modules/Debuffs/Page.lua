@@ -224,6 +224,10 @@ local function build(pf)
     enabledCheck = makeCheck(pf, "Show the debuff panel", -30, function(checked)
         Debuffs:SetEnabled(checked)
     end)
+    -- Start here's Debuff panel link spotlights it (UI:RegisterSpot, UI/Spotlight.lua)
+    if UI.RegisterSpot then
+        UI:RegisterSpot("qol", "debuffs", enabledCheck)
+    end
 
     local panelOn = panelUsable
     sizeEdit = UI.Slider(pf, "Icon size", { min = Debuffs.MIN_SIZE, max = Debuffs.MAX_SIZE, step = 2, labelWidth = 130, width = 200, enabledIf = panelOn, get = function()

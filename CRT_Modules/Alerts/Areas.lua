@@ -680,6 +680,7 @@ local function buildCommon(panel)
         }),
     }
     panel.growRow = panel.common[3]
+    panel.showCheck = panel.common[1] -- Show these alerts (Start here's alert links spotlight it)
     for _, row in ipairs(panel.common) do
         row:Hide()
     end

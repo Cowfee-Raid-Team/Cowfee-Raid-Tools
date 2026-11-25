@@ -234,11 +234,15 @@ function SettingsTab.Build(f, ctx)
     recordingHeading:SetPoint("TOPLEFT", f, "TOPLEFT", LEFT_X, RECORDING_Y)
     UI.HelpRight(recordingHeading, "Recording", "Pulls are saved on their own during raid boss fights, ten per boss, the oldest dropped first. Pulls shorter than the shortest pull are not kept.")
     y = RECORDING_Y - HEADING_GAP
-    checkbox(f, LEFT_X, y, "Record every pull", function()
+    local record = checkbox(f, LEFT_X, y, "Record every pull", function()
         return settings().record
     end, function(on)
         Timeline:Set("record", on)
     end)
+    -- Start here's Timeline recording link spotlights it (UI:RegisterSpot, UI/Spotlight.lua)
+    if UI.RegisterSpot then
+        UI:RegisterSpot("timeline", "record", record)
+    end
     y = y - CHECK_STEP
     settingSlider(f, LEFT_X, y, "Shortest pull (s)", "minPull", 5, 60, 1)
     y = y - ROW_STEP - DELETE_GAP
