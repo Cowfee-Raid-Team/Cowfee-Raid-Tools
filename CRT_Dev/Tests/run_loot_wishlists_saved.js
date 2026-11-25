@@ -543,6 +543,9 @@ CRT.UI.SortHeaders = function(parent, cols, opts) return { refresh = function() 
 CRT.UI.PanelButton = function(parent, label, h, fn) local b = mock("button") b.text = label b.scripts.OnClick = fn return b end
 CRT.UI.SkinScrollBar = function() end
 CRT.UI.SkinCloseButton = function() end
+-- the shared Undo (CRT_Core/UI/Confirm.lua, run_confirm.js tests it): what it was given
+SAVED_TOASTS = {}
+CRT.UI.UndoToast = function(o) SAVED_TOASTS[#SAVED_TOASTS + 1] = o return o end
 CRT.UI.Tint = function() end
 CRT.UI.TooltipOwner = function() end
 CRT.UI.OnTheme = function() end
@@ -635,12 +638,29 @@ eq(LM.WishlistAgeText({ age = 0 }), "today", "age: today")
 eq(LM.WishlistAgeText({ age = 1 }), "1 day", "age: 1 day")
 eq(LM.WishlistAgeText({ age = 7, old = false }), "7 days", "age: 7 days is not old")
 rl.view.init(rrow, haloRow)
+local haloCopy = store()["Halo-Sargeras"]
 rrow.forget.scripts.OnClick(rrow.forget)
 runTimers()
 eq(store()["Halo-Sargeras"], nil, "tab: the X forgets that list")
 local stillHalo = false
 for _, r in ipairs(rl.rows) do if r.name == "Halo-Sargeras" and not r.noList then stillHalo = true end end
 eq(stillHalo, false, "tab: and the rows are worked out again")
+-- the X offers Undo (UX rule 4: the list can be heard again, so it is a quick action), naming the raider without a
+-- realm; Undo puts the same saved copy back, only while no newer copy arrived since
+local ftoast = SAVED_TOASTS[#SAVED_TOASTS]
+eq(ftoast and ftoast.owner, rrow.forget, "tab: the X's Undo sits in its window")
+check(ftoast and ftoast.text:find("Halo", 1, true) and not ftoast.text:find("Sargeras", 1, true), "tab: the Undo names the raider, no realm: " .. tostring(ftoast and ftoast.text))
+ftoast.onUndo()
+eq(store()["Halo-Sargeras"], haloCopy, "tab: Undo puts the same copy back")
+rl.view.init(rrow, haloRow)
+rrow.forget.scripts.OnClick(rrow.forget)
+ftoast = SAVED_TOASTS[#SAVED_TOASTS]
+W.Keep("Halo-Sargeras", { [31] = "big" }, CLOCK + 50)
+local newer = store()["Halo-Sargeras"]
+ftoast.onUndo()
+eq(store()["Halo-Sargeras"], newer, "tab: Undo after a newer copy arrived keeps the newer one")
+W.Forget("Halo-Sargeras")
+runTimers()
 parts.forgetAll.scripts.OnClick()
 eq(#popups, 2, "tab: Forget all asks first")
 -- the Team filter on the tab

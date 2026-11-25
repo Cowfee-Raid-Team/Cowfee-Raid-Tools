@@ -7,7 +7,8 @@ local ADDON, CRT = ...
 --   [Name-Realm] = { items = { [itemID] = "big" | "small" | "off" }, at = <the raider's stamp: when their list last
 --                    changed>, got = <time() it arrived>, class = <class file, when known> }
 -- A newer stamp replaces the copy; an older or equal one is ignored. At most MAX raiders are kept: past that, the
--- copy that arrived longest ago goes. Forget (one raider) and Forget all (asks first) clear them. Nothing here
+-- copy that arrived longest ago goes. Forget (one raider, with Undo: W.Unforget) and Forget all (asks first) clear
+-- them. Nothing here
 -- draws: the Wishlists tab is LootMaster/WishlistTab.lua, its numbers LootMaster/WishlistViews.lua.
 
 local LM = CRT.LootMaster
@@ -102,12 +103,26 @@ function W.Keep(name, items, at)
     return true
 end
 
+-- Forgets one raider's copy. Returns true and the copy (for W.Unforget, the Wishlists tab's Undo), or false.
 function W.Forget(name)
     local store = W.Saved()
-    if store[name] == nil then
+    local was = store[name]
+    if was == nil then
         return false
     end
     store[name] = nil
+    LM:Fire("wishlists", name)
+    return true, was
+end
+
+-- Puts a forgotten copy back as it was. False when a copy of that raider arrived since.
+function W.Unforget(name, copy)
+    local store = W.Saved()
+    if type(name) ~= "string" or type(copy) ~= "table" or store[name] ~= nil then
+        return false
+    end
+    store[name] = copy
+    trim(store)
     LM:Fire("wishlists", name)
     return true
 end
