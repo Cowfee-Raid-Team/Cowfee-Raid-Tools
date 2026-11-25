@@ -99,6 +99,30 @@ CRT.NoteWindow = { rebuilds = { window = { changed = 2 }, assignments = {}, pers
 local button = frame(nil, CRT_PATH .. "CRT_Core/UI/StartPage.lua:90")
 local clickFn, showFn = grows(1.5), grows(20)
 button.scripts.OnClick, button.scripts.OnShow = clickFn, showFn
+-- round 3: a menu button's click changes the page, the page is built on its first show, and the dev layout editor
+-- runs after each change: each on its own line, so one-time builds tell from what every click repeats
+local built = {}
+CRT.UI.BuildPage = function(_, page) heap = heap + 200 end
+CRT.UI.SelectPage = function(self, key)
+  heap = heap + 2
+  if not built[key] then built[key] = true self:BuildPage({ key = key }) end
+  CRT.Dev:ApplyAll()
+end
+local uiSelect, uiBuild = CRT.UI.SelectPage, CRT.UI.BuildPage
+CRT.Dev = { ApplyAll = function() heap = heap + 4 end }
+local devApply = CRT.Dev.ApplyAll
+local menu = frame(nil, CRT_PATH .. "CRT_Core/UI/Panel.lua:2370")
+menu.scripts.OnClick = function() heap = heap + 1 CRT.UI:SelectPage("notes") end
+-- the game's tooltip: hiding it makes 25 KB (the game's and other addons' hooks)
+UIParent = {}
+GameTooltip = { shown = false }
+function GameTooltip:IsShown() return self.shown end
+function GameTooltip:SetOwner() end
+function GameTooltip:SetText() end
+function GameTooltip:Show() self.shown = true end
+function GameTooltip:Hide() if self.shown then heap = heap + 25 end self.shown = false end
+CRT.UI.TOOLTIP_KEEP = "keep"
+CRT.UI.TooltipOwner = function(tip, owner) tip:SetOwner(owner) end
 local said = {}
 function CRT:Print(s) said[#said + 1] = s end
 assert(load(SRC, "@CRT_Dev/Dev/MemProbe.lua"))("CowfeeRaidTools", CRT)
@@ -120,7 +144,7 @@ check(Probe:Command("dev mem lots") == true and not Probe.state.running and said
 
 -- start for 10 seconds
 check(Probe:Command("dev mem 10") == true and Probe.state.running, "/crt dev mem 10 starts it")
-check(said[#said]:find("10 s", 1, true) and said[#said]:find("3 of CRT", 1, true), "it says for how long, and how many of CRT's frames: " .. tostring(said[#said]))
+check(said[#said]:find("10 s", 1, true) and said[#said]:find("4 of CRT", 1, true), "it says for how long, and how many of CRT's frames: " .. tostring(said[#said]))
 check(notesWin.scripts.OnUpdate ~= nwUpdate and notesWin.scripts.OnEvent ~= nwEvent, "CRT's frame (by source location) is wrapped")
 check(named.scripts.OnUpdate ~= namedUpdate, "a CRT frame by its name is wrapped")
 check(other.scripts.OnUpdate == otherUpdate, "another addon's frame isn't")
@@ -149,6 +173,7 @@ button.scripts.OnClick(button, "LeftButton")
 button.scripts.OnShow(button)
 CRT.UI:Show("start")
 CRT.UI:Show("notes")
+for _ = 1, 3 do menu.scripts.OnClick(menu, "LeftButton") end
 CRT.NoteWindow.rebuilds.window.changed = 5
 CRT.NoteWindow.rebuilds.personal.live = 3
 -- CRT sets a new script on its frame meanwhile: that one stays after the probe
@@ -176,13 +201,27 @@ check(named0 and named0.calls == 30, "the named frame measured")
 local any999 = false
 for _, e in ipairs(list) do if e.kb >= 999 or e.key:find("Blizzard", 1, true) or e.key:find("OtherAddon", 1, true) then any999 = true end end
 check(not any999, "another caller's timer and another addon's frame aren't measured")
-check(list[1].key == "UI:Show" and list[2].key == "OnUpdate  CRT_Modules/Notes/Window.lua:1437", "the list is sorted by KB, the most first: " .. list[1].key)
+check(list[1].key == "UI:Show" and list[2].key == "UI:BuildPage notes (first build, once)" and list[3].key == "OnUpdate  CRT_Modules/Notes/Window.lua:1437", "the list is sorted by KB, the most first: " .. list[1].key)
 local click = byKey["OnClick  CRT_Core/UI/StartPage.lua:90"]
 check(click and click.calls == 2 and math.abs(click.kb - 3) < 0.01, "OnClick measured")
 check(byKey["OnShow  CRT_Core/UI/StartPage.lua:90"] ~= nil, "OnShow measured")
 local shows = byKey["UI:Show"]
 check(shows and shows.calls == 2 and math.abs(shows.kb - 340) < 0.01, "CRT.UI:Show measured: " .. tostring(shows and shows.kb))
 check(CRT.UI.Show == uiShow, "CRT.UI.Show put back")
+local function near(e, calls, kb) return e and e.calls == calls and math.abs(e.kb - kb) < 0.01 end
+local mclick = byKey["OnClick  CRT_Core/UI/Panel.lua:2370"]
+check(near(mclick, 3, 3), "a menu click counts only its own KB, not the page change in it: " .. tostring(mclick and mclick.kb))
+local sel = byKey["UI:SelectPage (page change, not the first build)"]
+check(near(sel, 3, 6), "a page change counts without the first build and the layout editor: " .. tostring(sel and sel.kb))
+local bld = byKey["UI:BuildPage notes (first build, once)"]
+check(near(bld, 1, 200), "the page's first build on its own line, by page: " .. tostring(bld and bld.kb))
+local apply = byKey["Dev:ApplyAll (dev layout editor, after a page change)"]
+check(near(apply, 3, 12), "the dev layout editor on its own line: " .. tostring(apply and apply.kb))
+check(CRT.UI.SelectPage == uiSelect and CRT.UI.BuildPage == uiBuild and CRT.Dev.ApplyAll == devApply, "SelectPage, BuildPage and ApplyAll put back")
+local tipLine
+for _, p in ipairs(printed) do if p:find("game's tooltip", 1, true) then tipLine = p end end
+check(tipLine and tipLine:find("25.0 KB", 1, true), "it says what hiding the game's tooltip alone makes: " .. tostring(tipLine))
+check(not GameTooltip.shown, "and leaves the tooltip hidden")
 check(button.scripts.OnClick == clickFn and button.scripts.OnShow == showFn, "OnClick and OnShow put back")
 local causes
 for _, p in ipairs(printed) do if p:find("Note window rebuilds", 1, true) then causes = p end end

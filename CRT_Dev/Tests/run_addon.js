@@ -704,8 +704,34 @@ do
   for _, rec in ipairs(frames) do firesOnShow(rec.frame) end
   local plainFrame = stubs.CreateFrame
   stubs.CreateFrame = function(...) local f = plainFrame(...) firesOnShow(f) return f end
+  -- A developer's saved dev layout changes (#1315 round 3), in the dev build: one on a piece that is there, and ones
+  -- whose piece is gone (a page, the panel) or whose page is gone. None may make a page change walk a page again.
+  if CRT.Dev then
+    CRT.db.dev = CRT.db.dev or {}
+    CRT.db.dev.overrides = {
+      ["dev.c4"] = { dx = -1, dy = -3, dw = 0, dh = 0, font = 0 },
+      ["timeline.c999"] = { dx = 1, dy = 0, dw = 0, dh = 0, font = 0 },
+      ["notes.c1.c999.r2"] = { dx = 1, dy = 0, dw = 0, dh = 0, font = 0 },
+      ["panel.c999"] = { dx = 1, dy = 0, dw = 0, dh = 0, font = 0 },
+      ["nopage.c1"] = { dx = 1, dy = 0, dw = 0, dh = 0, font = 0 },
+    }
+  end
   local ok, err = pcall(function() UI:Show("start") end)
   check(ok, "the main window opens: " .. tostring(err))
+  -- Each page's first build (#1315 round 3): the tables it makes, biggest first, for the log. A first build is
+  -- one-time; only a show of a built page counts against the budget below.
+  do
+    local built = {}
+    for _, key in ipairs(UI.order) do
+      local t0 = TABLES_MADE()
+      pcall(UI.Show, UI, key)
+      built[#built + 1] = { key = key, n = TABLES_MADE() - t0 }
+    end
+    table.sort(built, function(a, b) return a.n > b.n end)
+    local parts = {}
+    for _, b in ipairs(built) do parts[#parts + 1] = b.key .. " " .. b.n end
+    print("  measure " .. name .. ": first build tables per page: " .. table.concat(parts, ", "))
+  end
   local function shownUpTo(frame, page)
     local f = frame
     for _ = 1, 30 do
@@ -769,7 +795,39 @@ do
       check(v == before[k], "page shows add nothing to UI." .. k .. ": " .. before[k] .. " -> " .. v)
     end
     print("  measure " .. name .. ": " .. math.floor(perRound) .. " tables a round of every page (" .. #UI.order .. " pages)")
-    check(perRound <= 5000, "a round of every page's show makes at most 5000 tables, got " .. math.floor(perRound))
+    -- round 3: the dev build carries saved dev layout changes whose piece or page is gone (above); a round of 45135
+    -- tables here before Dev:ApplyAll looked changes up by path
+    check(perRound <= 1500, "a round of every built page's show makes at most 1500 tables, got " .. math.floor(perRound))
+    local shows = {}
+    for _, key in ipairs(UI.order) do
+      local t0 = TABLES_MADE()
+      pcall(UI.Show, UI, key)
+      shows[#shows + 1] = { key = key, n = TABLES_MADE() - t0 }
+    end
+    table.sort(shows, function(a, b) return a.n > b.n end)
+    local parts = {}
+    for i = 1, math.min(5, #shows) do parts[#parts + 1] = shows[i].key .. " " .. shows[i].n end
+    print("  measure " .. name .. ": a built page's show, the most tables: " .. table.concat(parts, ", "))
+    -- hovering the menu and leaving it (#1315 round 3): CRT's part is the page's tip, then a hide
+    local hovers, enterT, leaveT = 0, 0, 0
+    for _ = 1, 5 do
+      for _, key in ipairs(UI.order) do
+        local b = UI.pages[key].button
+        local enter, leave = b and b.scripts.OnEnter, b and b.scripts.OnLeave
+        if enter and leave then
+          local t0 = TABLES_MADE()
+          local okE, errE = pcall(enter, b)
+          local t1 = TABLES_MADE()
+          local okL, errL = pcall(leave, b)
+          if not (okE and okL) then check(false, "a menu button's hover and leave run: " .. tostring(errE or errL)) end
+          enterT, leaveT, hovers = enterT + (t1 - t0), leaveT + (TABLES_MADE() - t1), hovers + 1
+        end
+      end
+    end
+    check(hovers > 0, "the menu buttons have OnEnter and OnLeave")
+    print(string.format("  measure %s: a menu hover makes %.1f tables, a leave %.1f", name, enterT / math.max(1, hovers), leaveT / math.max(1, hovers)))
+    check(leaveT == 0, "leaving a menu button makes no tables, got " .. leaveT)
+    check(enterT / math.max(1, hovers) <= 20, string.format("hovering a menu button makes at most 20 tables, got %.1f", enterT / math.max(1, hovers)))
   end
   -- the stand-ins put back as they were: Show without OnShow, CreateFrame, the skins and UI.Show
   stubs.CreateFrame = plainFrame
