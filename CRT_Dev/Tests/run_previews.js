@@ -125,7 +125,7 @@ UI:SetPreviews(false)
 eq(calls.placement[1], false, "SetPreviews(false) stops placement even with nothing on")
 eq(calls.debuffs[1], false, "and tells every display off")
 local src = panelSrc
-check(src:find('SetScript%("OnHide", function%(%)%s*UI:SetPreviews%(false%)') ~= nil, "the main window's OnHide calls UI:SetPreviews(false)")
+check(src:find('SetScript%("OnHide", function%(%)%s*if not UI%.keepPreviews then%s*UI:SetPreviews%(false%)') ~= nil, "the main window's OnHide calls UI:SetPreviews(false) unless the Welcome hid it")
 
 -- 7. combat refuses on, and allows off
 UI:SetPreview("debuffs", true)

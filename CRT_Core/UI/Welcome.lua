@@ -33,8 +33,7 @@ local STEPS = {
     raider = {
         -- label() is the button's text while it follows a state; it reads like the title bar's Previews button
         { text = "Place your windows where you want them.", button = "Previews", go = function()
-            UI:Show()
-            UI:TogglePreviews()
+            W.TogglePreviews()
         end, label = function()
             return UI:AnyPreview() and "Previews: ON" or "Previews"
         end },
@@ -73,6 +72,36 @@ end
 
 local view = { steps = {} }
 W.view = view
+
+-- The Previews step: turning them on steps the main window aside (view.hidMain remembers it did), so they show
+-- uncovered; turning them off brings it back. A main window the player opened since is theirs: left alone.
+function W.TogglePreviews()
+    if UI:AnyPreview() then
+        local hid = view.hidMain
+        view.hidMain = false
+        UI:SetPreviews(false)
+        if hid and not (UI.frame and UI.frame:IsShown()) then
+            UI:Show()
+        end
+        return
+    end
+    UI:SetPreviews(true)
+    if UI:AnyPreview() then -- in combat they refuse, and the main window stays
+        view.hidMain = UI:HideKeepingPreviews()
+    end
+end
+
+-- The Welcome closing: previews it turned on go off and the main window it hid comes back. If the player opened
+-- the main window meanwhile, the previews belong to it (its title bar) and stay.
+local function restoreMain()
+    local hid = view.hidMain
+    view.hidMain = false
+    if not hid or (UI.frame and UI.frame:IsShown()) then
+        return
+    end
+    UI:SetPreviews(false)
+    UI:Show()
+end
 
 -- A frame's edges on screen (its own units times its effective scale), or nil before it is laid out.
 local function screenRect(f)
@@ -175,6 +204,7 @@ local function build()
     -- closed any way (Got it, X, Escape): it no longer opens by itself
     win:HookScript("OnHide", function(self)
         if not self:IsShown() then
+            restoreMain()
             local d = db()
             if d then
                 d.pending = false
@@ -185,6 +215,9 @@ local function build()
     -- previews turned on or off anywhere (title bar, /crt previews, the main window closing): the button's label
     -- follows, and the row is placed again for its new width
     UI:OnPreviewChange(function()
+        if not UI:AnyPreview() then
+            view.hidMain = false
+        end
         if win:IsShown() and view.picked then
             fill()
         end
