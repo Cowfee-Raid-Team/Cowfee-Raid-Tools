@@ -581,8 +581,9 @@ end
 -- are then always that row's casts (FromReference), never typed ones, so the Timeline, the Rehearsal, the
 -- Mech Alerts list and the alerts agree. Your own reminders keep typed times, and so does an imported one
 -- (KeepsTypedTimes), whatever its text names.
-local function castSource(encounterID, r, ref, group)
-    if type(r) ~= "table" or Reminders.KeepsTypedTimes(r) then
+-- rowSource is the same match for any reminder, an imported one too: the row it names (Mechanic).
+local function rowSource(encounterID, r, ref, group)
+    if type(r) ~= "table" then
         return nil
     end
     local spell = type(r.spellID) == "number" and r.spellID > 0
@@ -607,6 +608,13 @@ local function castSource(encounterID, r, ref, group)
     return ref, row, refGroup(ref)
 end
 
+local function castSource(encounterID, r, ref, group)
+    if Reminders.KeepsTypedTimes(r) then
+        return nil
+    end
+    return rowSource(encounterID, r, ref, group)
+end
+
 -- Whether a reminder (or a draft's probe) is on a boss ability whose casts it follows (see castSource).
 function Reminders.FollowsCasts(encounterID, r, ref, group)
     return castSource(encounterID, r, ref, group) ~= nil
@@ -614,8 +622,10 @@ end
 
 -- The name of the ability row a reminder follows (castSource), or nil: the mechanic it alerts, as the Timeline
 -- ignores it by name. A reminder on no row is still matched by its spell (Alerts/Engine.lua, Ignored mechanics).
+-- An imported one (KeepsTypedTimes) follows no row's casts, but gets the row its spell or text names by the same
+-- match (rowSource), so a special alert on that row covers it at a cast (#1313); free text names no row.
 function Reminders.Mechanic(encounterID, r, ref, group)
-    local _, row = castSource(encounterID, r, ref, group)
+    local _, row = rowSource(encounterID, r, ref, group)
     return row and type(row.name) == "string" and row.name or nil
 end
 

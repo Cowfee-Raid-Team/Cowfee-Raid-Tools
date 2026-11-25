@@ -550,6 +550,42 @@ check("special: no double alerts by row: a special alert on a row with no spell 
   assert(#errors == 0, tostring(errors[1]))
 end)
 
+-- #1313: an imported reminder keeps its typed times (KeepsTypedTimes), so it follows no row's casts, but its text still
+-- names the spell-less row exactly as your own reminder's does: it carries the row's mech, and the special alert on
+-- that row covers its typed time when that is within the window of a cast. Free text names no row and stays.
+check("special: no double alerts by row: an imported reminder naming a spell-less row is covered at a cast", function()
+  fresh()
+  S.dev[9001] = { { key = "orbs", label = "Orbs", default = true, when = { row = "Orb Burst" }, text = "Orbs" } }
+  CRT.db.alerts.special[9001] = { everyone = { on = false } }
+  local imp = { source = "test" }
+  CRT.db.alerts.reminders[9001] = {
+    [1] = { text = "Orb Burst", times = "0:30", import = imp, outputs = { alert = true }, enabled = true },   -- at a cast
+    [2] = { text = "orb burst", times = "1:30", import = imp, outputs = { alert = true }, enabled = true },   -- far from any
+    [3] = { text = "Stack on me", times = "0:30", import = imp, outputs = { alert = true }, enabled = true }, -- free text
+    [4] = { text = "Mine", times = "0:30", outputs = { alert = true }, enabled = true },                     -- typed, on no row
+  }
+  local R = CRT.AlertReminders
+  assert(R.KeepsTypedTimes(CRT.db.alerts.reminders[9001][1]), "an import keeps its typed times")
+  assert(R.Mechanic(9001, CRT.db.alerts.reminders[9001][1]) == "Orb Burst", "it still names its row")
+  assert(R.Mechanic(9001, CRT.db.alerts.reminders[9001][3]) == nil, "free text names no row")
+  assert(not R.FollowsCasts(9001, CRT.db.alerts.reminders[9001][1]), "but it never follows the row's casts")
+  local function ids()
+    local out = {}
+    for _, x in ipairs(A.items) do if x.block == "mine" or x.block == "special" then out[#out + 1] = x.id end end
+    table.sort(out) return table.concat(out, ",")
+  end
+  A:Start(9001, "Mythic", "encounter", { difficultyID = 16 })
+  assert(ids() == "mine:2:1,mine:3:1,mine:4:1,special:orbs:1,special:orbs:2,special:orbs:3,special:orbs:4",
+    "the import at 0:30 once, by the special alert; the one at 1:30, free text and typed keep theirs: " .. ids())
+  -- the special alert off: the import on the row alerts again
+  S:SetChoice(9001, S:Get(9001, "orbs"), "on", false)
+  A:Start(9001, "Mythic", "encounter", { difficultyID = 16 })
+  assert(ids() == "mine:1:1,mine:2:1,mine:3:1,mine:4:1", "special off: every import alerts: " .. ids())
+  A:Stop(true)
+  CRT.db.alerts.reminders = {}
+  assert(#errors == 0, tostring(errors[1]))
+end)
+
 check("special: a per-alert icon: icon is a spell, iconFile a texture file; else when's spell; unreadable left out", function()
   fresh()
   local SECRET = setmetatable({}, { __tostring = function() return "SECRET" end })
