@@ -13,7 +13,7 @@ const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const harness = `
-local themesSrc, panelSrc, controlsSrc, windowSrc, scrollSrc, gearSrc, dataSrc, inspectSrc, commSrc, pageSrc, tooltipSrc, namesSrc = ...
+local themesSrc, panelSrc, controlsSrc, windowSrc, scrollSrc, gearSrc, dataSrc, inspectSrc, commSrc, pageSrc, tooltipSrc, namesSrc, markSrc = ...
 unpack = unpack or table.unpack -- the harness runs Lua 5.3
 local fails, passes = 0, 0
 local function check(ok, what) if ok then passes = passes + 1 else fails = fails + 1 print("FAIL " .. what) end end
@@ -189,7 +189,7 @@ IsShiftKeyDown = function() return shift end
 local CRT = { db = { ui = { modern = false, layers = {}, theme = "blizzard" }, window = { scale = 100 }, gearChecker = { filter = "all", popout = {} } } }
 function CRT:ApplyFonts() end
 function CRT:Print() end
-for _, src in ipairs({ namesSrc, themesSrc, panelSrc, tooltipSrc, controlsSrc, windowSrc, scrollSrc, gearSrc, dataSrc, inspectSrc, commSrc, pageSrc }) do
+for _, src in ipairs({ namesSrc, themesSrc, panelSrc, tooltipSrc, controlsSrc, markSrc, windowSrc, scrollSrc, gearSrc, dataSrc, inspectSrc, commSrc, pageSrc }) do
   assert(load(src))("CowfeeRaidTools", CRT)
 end
 local UI, GC, Gear = CRT.UI, CRT.GearChecker, CRT.Gear
@@ -237,6 +237,7 @@ eq(P.extraButton.w, #"Extra filters" * 6 + 2 * Lt.chipPad, "sized from its label
 helpButton.scripts.OnEnter(helpButton)
 local helpText = table.concat(tip.lines, " ")
 check(helpText:find("an item 15 or more item levels under", 1, true) ~= nil, "the help says the low item level rule from GC.LOW_ILVL")
+check(helpText:find("Red edge and !", 1, true) and helpText:find("Orange edge and arrow", 1, true) and helpText:find("hollow ring", 1, true), "the help explains the marks: ! missing, arrow low, the hollow dot")
 page.scripts.OnShow(page)
 check(P.body ~= nil and P.box ~= nil, "the body and the list are built")
 check(Lt.rowW + Lt.barGap + Lt.barW <= UI.PAGE_W - 16, "a row and the scroll bar fit inside the page (" .. (Lt.rowW + Lt.barGap + Lt.barW) .. ")")
@@ -291,6 +292,20 @@ check(hands.flag[1].shown and near(hands.flag[1].color, WARN), "a low item: an o
 check(not cell(arrow, 2).dot.shown, "a neck has no enchant dot")
 check(not cell(arrow, 2).flag[1].shown, "and no outline")
 check(not cell(quick, 3).icon.shown, "an empty slot shows no icon")
+-- #1300, no status by colour alone: a mark besides the outline, and the enchant dot's two states differ in shape
+local function shapeOf(c) local s = {} for _, t in ipairs(c.mark.parts) do if t.shown then s[#s + 1] = t.w .. "x" .. t.h end end return table.concat(s, " ") end
+check(ring.mark:IsShown() and ring.mark.glyph == "alert" and ring.mark.disc.shown and near(ring.mark.disc.vertex, BAD), "a missing gem: a ! mark on a red disc")
+check(head.mark:IsShown() and head.mark.glyph == "alert", "a missing enchant: a ! mark")
+check(hands.mark:IsShown() and hands.mark.glyph == "down" and near(hands.mark.disc.vertex, WARN), "a low item: a down arrow mark on an orange disc")
+check(shapeOf(head) ~= shapeOf(hands) and shapeOf(head) ~= "" and shapeOf(hands) ~= "", "the ! and the arrow differ in shape (" .. shapeOf(head) .. " / " .. shapeOf(hands) .. ")")
+check(not cell(arrow, 2).mark:IsShown() and not cell(arrow, 2).mark.disc.shown, "no issue: no mark")
+check(not cell(quick, 3).mark:IsShown(), "an empty slot: no mark")
+local mp = hands.mark.disc.points[#hands.mark.disc.points]
+check(mp and mp[2] == hands.back and mp[3] == "LEFT", "the mark sits on the icon's left edge, clear of the track tag, the dot, the gems and the season square")
+check(Lt.mark <= Lt.icon - 2 * Lt.dot and Lt.mark >= 10, "the mark is big enough to read and fits between the tag and the dot (" .. Lt.mark .. ")")
+check(not ring.dotHole.shown, "an enchanted slot: a filled dot")
+check(head.dotHole.shown and head.dotHole.w < head.dot.w and head.dotHole.points[1][2] == head.dot, "a missing enchant: a hollow dot, a ring")
+check(not cell(arrow, 2).dotHole.shown, "no enchant dot: no hole either")
 check(not halo.cells[1].shown, "not seen: no cells")
 eq(halo.notSeen.text, "not seen yet", "not seen yet")
 check(not halo.badge.shown, "not seen: no badge")
@@ -355,6 +370,11 @@ for _, info in ipairs(CRT.THEME_LIST) do
   local arrowRow
   for _, r in ipairs(drawRows()) do if r.data.name == "Arrow-Sargeras" then arrowRow = r end end
   check(arrowRow and near(cell(arrowRow, 10).flag[1].color, th.warn), info.key .. ": a low item's outline in the theme's warn")
+  check(cell(f, 11).mark.glyph == "alert" and near(cell(f, 11).mark.disc.vertex, th.bad), info.key .. ": a missing gem's ! in the theme's bad")
+  check(arrowRow and cell(arrowRow, 10).mark.glyph == "down" and near(cell(arrowRow, 10).mark.disc.vertex, th.warn), info.key .. ": a low item's arrow in the theme's warn")
+  check(arrowRow and cell(arrowRow, 1).dotHole.shown and not cell(f, 11).dotHole.shown, info.key .. ": the enchant dot hollow when missing, filled when there")
+  local ink = cell(f, 11).mark.parts[1].vertex
+  check(ink and (ink[1] == 0 or ink[1] == 1) and ink[1] == UI.StatusMarkInk(th.bad[1], th.bad[2], th.bad[3]), info.key .. ": the !'s ink is black or white, whichever reads on the disc")
   check(arrowRow and near(arrowRow.badge.color, th.bad), info.key .. ": the issues badge in the theme's bad")
 end
 UI:SetTheme("blizzard")
@@ -850,6 +870,6 @@ const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 const files = ['CRT_Core/Themes.lua', 'CRT_Core/UI/Panel.lua', 'CRT_Core/UI/Controls.lua', 'CRT_Core/UI/Window.lua', 'CRT_Core/UI/ScrollBar.lua',
   'CRT_Core/Gear.lua', 'CRT_Modules/GearChecker/Data.lua', 'CRT_Modules/GearChecker/Inspect.lua', 'CRT_Modules/GearChecker/Comm.lua',
-  'CRT_Modules/GearChecker/Page.lua', 'CRT_Core/UI/Tooltip.lua', 'CRT_Core/Names.lua'];
+  'CRT_Modules/GearChecker/Page.lua', 'CRT_Core/UI/Tooltip.lua', 'CRT_Core/Names.lua', 'CRT_Core/UI/StatusMark.lua'];
 for (const f of files) lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, f), 'utf8')));
 if (lua.lua_pcall(L, files.length, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
