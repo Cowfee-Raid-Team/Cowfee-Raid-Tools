@@ -35,6 +35,7 @@ CRT_Core\UI\Panel.lua
 CRT_Core\UI\Fonts.lua
 CRT_Core\UI\Tooltip.lua
 CRT_Core\UI\Controls.lua
+CRT_Core\UI\Spotlight.lua
 CRT_Core\UI\MacroSet.lua
 CRT_Core\UI\Toggle.lua
 CRT_Core\UI\StatusMark.lua
