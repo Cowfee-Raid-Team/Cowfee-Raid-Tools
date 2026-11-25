@@ -259,6 +259,36 @@ check(table.concat(p.opened, " ", before + 1) == "? notes:alerts start", "the ra
 check(p.UI.previewing == true or next(p.UI.previews) == nil, "Previews turns the previews on")
 p.UI:SetPreviews(false)
 check(p.shown(), "a step's button leaves the Welcome open; Got it closes it")
+-- the Previews step toggles and follows the real state
+do
+  local shownFor = {}
+  p.UI:RegisterPreview("demo", function(on) shownFor.demo = on end)
+  local pb = wv.steps[1].button
+  check(pb.text == "Previews", "Previews: the button reads Previews while off")
+  click(pb)
+  check(p.UI.previewing == true and shownFor.demo == true, "Previews: a click turns the previews on")
+  check(pb.text == "Previews: ON", "Previews: the button reads Previews: ON while on, got " .. tostring(pb.text))
+  check(pb.w >= pb:GetFontString():GetStringWidth(), "Previews: the button is as wide as its longer label")
+  click(pb)
+  check(p.UI.previewing == false and shownFor.demo == false, "Previews: a second click turns them off")
+  check(pb.text == "Previews", "Previews: the button reads Previews again")
+  p.UI:SetPreviews(true)
+  check(pb.text == "Previews: ON", "Previews: turned on elsewhere (title bar, /crt previews), the button follows")
+  p.UI:SetPreviews(false)
+  check(pb.text == "Previews", "Previews: turned off elsewhere, the button follows")
+  p.UI:SetPreviews(true)
+  p.UI.frame:Hide()
+  check(pb.text == "Previews" and p.UI.previewing == false, "Previews: the main window closing turns them off and the button follows")
+  local realCombat = InCombatLockdown
+  InCombatLockdown = function() return true end
+  local n = #p.printed
+  click(pb)
+  InCombatLockdown = realCombat
+  check(p.UI.previewing == false and pb.text == "Previews", "Previews: in combat the click refuses and the button stays")
+  check(#p.printed == n + 1 and p.printed[#p.printed]:find("combat", 1, true) ~= nil, "Previews: in combat the refusal is printed")
+  p.UI:SetPreviews(false)
+  p.UI.previews.demo = nil
+end
 -- at the largest text size everything fits the window's width and the steps hold their text
 p.CRT.db.ui.fontSize = 22 p.CRT:ApplyFonts() W.Fill()
 local inner = W.LAYOUT.width - 2 * p.UI.WINDOW_DEFAULTS.inset
