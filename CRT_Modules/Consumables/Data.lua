@@ -472,18 +472,42 @@ function Consumables:AddFromCursor(key)
     return self:AddExtra(key, itemId)
 end
 
+-- Takes one of your own items off a category. Returns what Consumables:RestoreExtra needs to put it back (the Your bar
+-- tab's Undo), or nil when it wasn't one of yours. Its place in the order (itemOrder) is kept, so it comes back there.
 function Consumables:RemoveExtra(key, itemId)
     local list = cdb().extra[key]
     if not list then
-        return
+        return nil
     end
     for i, entry in ipairs(list) do
         if entry.item == itemId then
             table.remove(list, i)
-            break
+            self:Fire()
+            return { key = key, entry = entry, index = i }
         end
     end
+    return nil
+end
+
+-- Puts a removed item back as it was, at its place in your list. False when the category lists it again.
+function Consumables:RestoreExtra(undo)
+    local entry = undo and undo.entry
+    if not (entry and byKey[undo.key]) then
+        return false
+    end
+    for _, e in ipairs(self:Entries(undo.key)) do
+        if e.item == entry.item then
+            return false
+        end
+    end
+    local list = cdb().extra[undo.key]
+    if not list then
+        list = {}
+        cdb().extra[undo.key] = list
+    end
+    table.insert(list, math.min(undo.index or #list + 1, #list + 1), entry)
     self:Fire()
+    return true
 end
 
 -- Auras on you --------------------------------------------------------------------

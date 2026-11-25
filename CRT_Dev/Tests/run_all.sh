@@ -191,6 +191,7 @@ g "loot wishlist" && { node run_loot_wishlist.js "$W" 2>&1 | tail -250; echo "ex
 g "loot wishlists saved" && { node run_loot_wishlists_saved.js "$W" 2>&1 | tail -250; echo "exit ${PIPESTATUS[0]}"; }
 g "debuffs" && { node run_debuffs.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "consumables dock" && { node run_consumables_dock.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
+g "consumables page" && { node run_consumables_page.js "$W" 2>&1 | tail -12; echo "exit ${PIPESTATUS[0]}"; }
 g "game ids" && { node run_gameids.js "$W" 2>&1 | tail -60; echo "exit ${PIPESTATUS[0]}"; }
 # Class cooldowns the game took out stay out of every pack's GameIDs.lua (warcraft.wiki.gg, 2026-10-24): Holy Word: Salvation
 # 265202 and Rapture 47536 (removed in 11.1.0), Emerald Communion 370960 (a PvP talent since 12.0.0), Evangelism's old ID 246287.
