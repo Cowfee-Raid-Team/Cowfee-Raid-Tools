@@ -54,6 +54,7 @@ local TEXT = CRT.Locale("LootMaster.Window", {
     resend = "Show their popup again",
     rerollAsk = "Roll again for them",
     clear = "Clear their answer",
+    cleared = "Cleared %s's answer. Their popup opens again when Undo goes.",
     resendAll = "Show the popup again to everyone who hasn't answered (%d)",
     selected = "%d raiders",
 })
@@ -127,8 +128,13 @@ local function rowMenu(row)
         end)
         b:SetEnabled(canReroll > 0)
         if #picked == 1 then
+            -- at once, with Undo; the raider is asked again once the clear stands (LM:ClearAnswer)
             b = root:CreateButton(TEXT.clear, function()
-                LM:ClearAnswer(index, picked[1])
+                local h = LM:ClearAnswer(index, picked[1])
+                if h then
+                    UI.UndoToast({ text = string.format(TEXT.cleared, Ambiguate(picked[1], "short")), owner = row,
+                        onUndo = h.undo, onStand = h.ask })
+                end
             end)
             local pl = s.players[picked[1]]
             b:SetEnabled((pl and pl.answers[index] and pl.answers[index].response) and true or false)

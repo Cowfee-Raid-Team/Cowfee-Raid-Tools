@@ -795,13 +795,42 @@ function LM:Reroll(index, names)
     return n
 end
 
+-- The looter's Clear their answer: wipes it here at once and returns { undo, ask } (nil with no such raider). The
+-- raider is asked again (Q) only by ask(), once the clear stands (the window's Undo toast has gone, UI.UndoToast's
+-- onStand), so undo() puts the very answer back with no message to take back. Each does nothing once the other ran,
+-- or when the session or the raider's answer changed since (a new answer came in).
 function LM:ClearAnswer(index, name)
     local s = self.current
-    if s then
-        s:Clear(name, index)
-        send("Q", { s.id, index, name })
-        self:Fire("session")
+    local p = s and s.players[name]
+    if not p then
+        return nil
     end
+    local was = p.answers[index]
+    s:Clear(name, index)
+    local cleared = p.answers[index]
+    self:Fire("session")
+    local done = false
+    local function still()
+        return not done and self.current == s and s.players[name] == p and p.answers[index] == cleared
+            and not cleared.response
+    end
+    return {
+        undo = function()
+            if not still() then
+                return false
+            end
+            done = true
+            p.answers[index] = was
+            self:Fire("session")
+            return true
+        end,
+        ask = function()
+            if still() then
+                done = true
+                send("Q", { s.id, index, name })
+            end
+        end,
+    }
 end
 
 function LM:End()

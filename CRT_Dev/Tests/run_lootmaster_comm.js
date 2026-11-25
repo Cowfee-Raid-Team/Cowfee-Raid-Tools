@@ -115,6 +115,26 @@ eq(LM.incoming and LM.incoming.id, savedId, "the raider's session is back")
 eq(LM.current.players["Solex-Sargeras"].answers[1].roll, 99, "answers and rolls kept")
 eq(LM.incoming.items[2].shownAt, NOW, "the popup's clock starts again")
 eq(LM.current:Response("bis").label, "BiS", "buttons usable again")
+-- Clear their answer (the Master loot window's menu) clears at once and can be undone: the raider is asked again only
+-- once the clear stands (UI.UndoToast's onStand), so an Undo never needs a message
+do
+  local cur, incm = LM.current, LM.incoming
+  local me = "Solex-Sargeras"
+  local before = cur.players[me].answers[1]
+  local h = LM:ClearAnswer(1, me)
+  eq(cur.players[me].answers[1].response, nil, "clear their answer: cleared at once")
+  check(incm.mine[1] ~= nil, "clear their answer: the raider isn't asked again before it stands")
+  eq(h and h.undo(), true, "clear their answer: Undo")
+  check(cur.players[me].answers[1] == before and before.response == "up" and before.roll == 99, "clear their answer: Undo puts back the same answer and roll")
+  eq(h.undo(), false, "clear their answer: Undo only once")
+  h.ask()
+  check(incm.mine[1] ~= nil, "clear their answer: an undone clear never asks")
+  h = LM:ClearAnswer(1, me)
+  h.ask()
+  eq(incm.mine[1], nil, "clear their answer: once it stands, the raider is asked again")
+  eq(h.undo(), false, "clear their answer: no Undo once the raider was asked")
+  cur.players[me].answers[1] = before -- as it was, for the checks below
+end
 LM:End()
 eq(LM.current, nil, "session ended")
 eq(LM.incoming, nil, "popup session ended")
