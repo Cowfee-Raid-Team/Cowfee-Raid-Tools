@@ -31,6 +31,125 @@ local function makeRow(parent, text, labelWidth)
     return row
 end
 
+-- A greyed-out control says why (UX rule 5). A control's enabledIf returns ok, reason: reason is a short line in the
+-- player's words saying what to do, such as "Tick Read them out above to change this.". While greyed, hovering the
+-- control shows its tooltip (its title, then its help) and then the reason on its own line in the game's error red
+-- (RED_FONT_COLOR, as GameTooltip_AddErrorLine, Blizzard_SharedXML/SharedTooltipTemplates.lua). A boolean-only
+-- enabledIf keeps working: with no reason, a control with no tooltip of its own says UI.NOT_AVAILABLE, and one with a
+-- tooltip adds nothing.
+UI.NOT_AVAILABLE = "Not available right now."
+
+-- enabledIf's answer as ok (true or false), reason; no enabledIf is always ok. Extra arguments go to enabledIf.
+function UI.Usable(enabledIf, ...)
+    if not enabledIf then
+        return true, nil
+    end
+    local ok, reason = enabledIf(...)
+    if ok then
+        return true, nil
+    end
+    return false, reason
+end
+
+local function errorRGB()
+    local c = RED_FONT_COLOR
+    if c and c.GetRGB then
+        return c:GetRGB()
+    end
+    return 1, 0.125, 0.125
+end
+
+-- The one reason line every greyed control's tooltip ends with: reason in red, wrapped. With no reason, the generic
+-- UI.NOT_AVAILABLE when hasTip is false (the tooltip has nothing else to say), else nothing. Returns whether it added
+-- a line.
+function UI.DisabledReason(tooltip, reason, hasTip)
+    if reason == nil or reason == "" then
+        if hasTip then
+            return false
+        end
+        reason = UI.NOT_AVAILABLE
+    end
+    local r, g, b = errorRGB()
+    tooltip:AddLine(reason, r, g, b, true)
+    return true
+end
+
+-- The whole tooltip of a greyed control on owner: title in white and text (its help: a string or a list, as
+-- UI.AddTooltipText takes) when given, then the reason line. Without a title the reason is the tooltip's one line.
+function UI.DisabledTooltip(owner, title, text, reason, anchor)
+    local tip = GameTooltip
+    if not tip then
+        return
+    end
+    if UI.TooltipOwner then
+        UI.TooltipOwner(tip, owner, anchor or "ANCHOR_RIGHT")
+    else
+        tip:SetOwner(owner, anchor or "ANCHOR_RIGHT")
+    end
+    if title and title ~= "" then
+        tip:SetText(title, 1, 1, 1)
+        if text and UI.AddTooltipText then
+            UI.AddTooltipText(tip, text)
+        end
+        UI.DisabledReason(tip, reason, text ~= nil)
+    else
+        local r, g, b = errorRGB()
+        tip:SetText((reason ~= nil and reason ~= "") and reason or UI.NOT_AVAILABLE, r, g, b, 1, true)
+    end
+    tip:Show()
+end
+
+-- A see-through cover over a greyed control, so the mouse over it shows UI.DisabledTooltip: a disabled button or
+-- slider gets no OnEnter of its own. It takes the clicks (the control under it is greyed and takes none) and lets
+-- the mouse wheel through to the page. owner: the frame to cover; right: optional, a region whose right edge the
+-- cover reaches (a checkbox's label); tip(): optional, returns title, text. cover:Set(ok, reason) shows it while not
+-- ok; cover.state(), when set, is asked again on hover, so the reason is the one that holds now.
+function UI.DisabledCover(owner, tip, right)
+    local cover = CreateFrame("Frame", nil, owner)
+    if right then
+        cover:SetPoint("TOPLEFT", owner, "TOPLEFT")
+        cover:SetPoint("BOTTOM", owner, "BOTTOM")
+        cover:SetPoint("RIGHT", right, "RIGHT")
+    else
+        cover:SetAllPoints(owner)
+    end
+    if cover.SetFrameLevel and owner.GetFrameLevel then
+        cover:SetFrameLevel((owner:GetFrameLevel() or 0) + 20)
+    end
+    cover:EnableMouse(true)
+    cover:Hide()
+    cover.ok = true
+    function cover:Set(ok, reason)
+        self.ok, self.reason = ok and true or false, reason
+        self:SetShown(not self.ok)
+    end
+    -- what the tooltip says now: the reason that holds as the mouse comes over it, or the last one Set kept
+    function cover:Tip()
+        local reason = self.reason
+        if self.state then
+            local ok, now = self.state()
+            if not ok then
+                reason = now
+            end
+        end
+        local title, text
+        if tip then
+            title, text = tip()
+        end
+        return title, text, reason
+    end
+    cover:SetScript("OnEnter", function(self)
+        local title, text, reason = self:Tip()
+        UI.DisabledTooltip(self, title, text, reason)
+    end)
+    cover:SetScript("OnLeave", function()
+        if GameTooltip then
+            GameTooltip:Hide()
+        end
+    end)
+    return cover
+end
+
 local function greyLabel(row, on)
     if on then
         row.Label:SetTextColor(row.labelColor[1], row.labelColor[2], row.labelColor[3])
@@ -141,7 +260,9 @@ end
 --              picks nothing, and the closed dropdown reads "<its label>: <the pick's label>".
 --   get()      the selected key
 --   set(key)   called when a choice is picked
---   width, labelWidth, enabledIf() (greys the row out while it returns false)
+--   width, labelWidth, enabledIf() (returns ok, reason: greys the row out while not ok, and hovering it then shows
+--              the label, tipText when given, and the reason in red: UI.DisabledCover)
+--   tipTitle, tipText  optional: the greyed row's tooltip title (default the label) and help
 --   maxHeight  optional: the open menu, and each submenu, scrolls past this many pixels, for a long list
 --   onClose()  optional: called when the open list closes
 --   decorate(button, option)  optional: adds to each item in the open menu, such as a Play button.
@@ -214,13 +335,23 @@ function UI.Dropdown(parent, text, opts)
         end
     end
 
+    -- greyed, a cover over the row shows its label and the reason (UI.DisabledCover)
+    if opts.enabledIf then
+        row.why = UI.DisabledCover(row, function()
+            return opts.tipTitle or row.Label:GetText(), opts.tipText
+        end)
+        row.why.state = function()
+            return UI.Usable(opts.enabledIf)
+        end
+    end
     row.refresh = function()
         -- Rebuilds the menu, which also updates the text shown on the closed dropdown.
         dropdown:GenerateMenu()
         if opts.enabledIf then
-            local on = opts.enabledIf() and true or false
+            local on, reason = UI.Usable(opts.enabledIf)
             dropdown:SetEnabled(on)
             greyLabel(row, on)
+            row.why:Set(on, reason)
         end
     end
     -- A new width for the closed dropdown, its row following (the label kept), for a row that shares its line.
@@ -687,8 +818,8 @@ end
 --   toDisplay(value), fromDisplay(number)   optional, for a format in another unit (seconds shown
 --                       as minutes): the number box in Modern opens with toDisplay(value), and a
 --                       typed number goes through fromDisplay before it is kept in range on a step
---   width, labelWidth, enabledIf()
---   tipTitle, tipText   a hover tooltip on the label
+--   width, labelWidth, enabledIf()   enabledIf returns ok, reason, as UI.Dropdown's
+--   tipTitle, tipText   a hover tooltip on the label (and the greyed row's tooltip, before the reason)
 -- Returns the row, with row.refresh() and row.SetMax(high), a new top of the range (such as a saved value above the
 -- usual max, so it shows as it is). row.Slider is the game's slider (Classic), row.modern the
 -- track and knob (built the first time the Modern look shows).
@@ -713,6 +844,15 @@ function UI.Slider(parent, text, opts)
             GameTooltip:Hide()
         end)
         row.labelHit = hit
+    end
+    -- greyed, a cover over the row (and over the label's tooltip) shows the tooltip with the reason
+    if opts.enabledIf then
+        row.why = UI.DisabledCover(row, function()
+            return opts.tipTitle or row.Label:GetText(), opts.tipText
+        end)
+        row.why.state = function()
+            return UI.Usable(opts.enabledIf)
+        end
     end
 
     -- updating: the value is being set from the saved setting, so it is not saved back.
@@ -850,10 +990,11 @@ function UI.Slider(parent, text, opts)
             end
         end
         if opts.enabledIf then
-            local on = opts.enabledIf() and true or false
+            local on, reason = UI.Usable(opts.enabledIf)
             slider:SetEnabled(on)
             greyLabel(row, on)
             s.enabled = on
+            row.why:Set(on, reason)
         end
         local m = s.modern
         if m then
@@ -881,8 +1022,9 @@ end
 --   min, max, step (default 1)
 --   get(), set(value)   value is always a whole step in range
 --   format(value)       the text on the pill, by default the number
---   enabledIf()         optional: greys the pill (half alpha) while it returns false; greyed, it takes no
---                       clicks and lets the mouse wheel through to the page under it
+--   enabledIf()         optional, returns ok, reason: greys the pill (half alpha) while not ok; greyed, it takes no
+--                       clicks, lets the mouse wheel through to the page under it, and hovering it shows the reason
+--   tipTitle, tipText   optional: the greyed pill's tooltip, before the reason (without them the reason is its one line)
 -- Click it to type a number: Enter or a click elsewhere saves it, kept in range on a step; Escape keeps
 -- the old one. The mouse wheel moves one step (Ctrl + wheel is the window's scale). Returns the pill (a
 -- Button sized to the widest value), with pill.refresh(), pill.text and pill.edit.
@@ -956,8 +1098,20 @@ function UI.ValuePill(parent, opts)
         pill:SetSize(width, k.knobH)
         k.text:SetText(format(current()))
     end
+    if opts.enabledIf then
+        pill.why = UI.DisabledCover(pill, function()
+            return opts.tipTitle, opts.tipText
+        end)
+        pill.why.state = function()
+            return UI.Usable(opts.enabledIf)
+        end
+    end
     pill.refresh = function()
-        enabled = not opts.enabledIf or (opts.enabledIf() and true or false)
+        local reason
+        enabled, reason = UI.Usable(opts.enabledIf)
+        if pill.why then
+            pill.why:Set(enabled, reason)
+        end
         if not enabled then
             closeEdit(false)
         end
@@ -988,8 +1142,9 @@ end
 --   clear        optional: clicking the lit spot again calls set(clear), such as "auto"; without it, or
 --                while greyed (the lit spot then picks itself), the lit spot stays
 --   spots        optional: the keys to show (the rest are hidden); all twelve by default
---   enabledIf()  optional: greys the picker (half alpha) while it returns false. A greyed picker still
---                takes a click, since picking a spot is how the setting that owns it turns spots on
+--   enabledIf()  optional, returns ok, reason: greys the picker (half alpha) while not ok. A greyed picker still
+--                takes a click, since picking a spot is how the setting that owns it turns spots on; each spot's
+--                tooltip and the box's then end with the reason in red (UI.DisabledReason)
 -- The picker is UI.SPOT_PICKER_W x UI.SPOT_PICKER_H. Returns the frame, with picker.refresh() and
 -- picker.spots[key] (each spot's button).
 local SPOT_SIZE, SPOT_PAD = 12, 3 -- a spot, and the gap between the spots and the box
@@ -1090,6 +1245,9 @@ function UI.SpotPicker(parent, opts)
             -- right of the spot, whatever spot is picked (UI/Tooltip.lua's UI.TOOLTIP_KEEP)
             UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT", nil, nil, UI.TOOLTIP_KEEP)
             GameTooltip:SetText(s.label, 1, 1, 1)
+            if not p.enabled then
+                UI.DisabledReason(GameTooltip, p.reason, true)
+            end
             GameTooltip:Show()
         end)
         b:SetScript("OnLeave", function()
@@ -1099,8 +1257,18 @@ function UI.SpotPicker(parent, opts)
         p.spots[s.key] = b
     end
 
+    -- greyed, the box says why too (it takes no clicks, so the spots stay clickable around it)
+    box:EnableMouse(true)
+    box:SetScript("OnEnter", function(self)
+        if not p.enabled then
+            UI.DisabledTooltip(self, opts.label, nil, p.reason)
+        end
+    end)
+    box:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
     p.refresh = function()
-        p.enabled = not opts.enabledIf or (opts.enabledIf() and true or false)
+        p.enabled, p.reason = UI.Usable(opts.enabledIf)
         paintSpotPicker(p)
     end
     -- a look or theme switch repaints it (UI:ApplyStyle runs every crtSkin)
@@ -1335,7 +1503,7 @@ end
 -- for a new text size).
 --   local b = UI.LinkButton(parent, text, opts)
 --     opts: onClick, tipTitle, tipText, enabledIf (returns ok, reason: while not ok the ">" hides, the button is at
---     half alpha, a click does nothing and the tooltip says the reason)
+--     half alpha, a click does nothing and the tooltip ends with the reason in red: UI.DisabledReason)
 --   b.refresh()  reads enabledIf again; b.label, b.arrow
 local LINK = { gap = 3, pad = 2, h = 18, offAlpha = 0.5, more = ">" }
 UI.LINK_BUTTON = LINK
@@ -1356,11 +1524,7 @@ function UI.LinkButton(parent, text, opts)
         return UI.HeadingText(LINK.more)
     end)
     local function state()
-        if not opts.enabledIf then
-            return true
-        end
-        local ok, reason = opts.enabledIf()
-        return ok and true or false, reason
+        return UI.Usable(opts.enabledIf)
     end
     function b:Fit()
         local w = math.ceil(self.label:GetStringWidth() or 0) + LINK.gap + math.ceil(self.arrow:GetStringWidth() or 0)
@@ -1377,12 +1541,11 @@ function UI.LinkButton(parent, text, opts)
         local ok, reason = state()
         UI.TooltipOwner(GameTooltip, self, "ANCHOR_RIGHT")
         GameTooltip:SetText(opts.tipTitle or text, 1, 1, 1)
-        if ok then
-            if opts.tipText then
-                UI.AddTooltipText(GameTooltip, opts.tipText)
-            end
-        elseif reason then
-            UI.AddTooltipText(GameTooltip, reason)
+        if opts.tipText then
+            UI.AddTooltipText(GameTooltip, opts.tipText)
+        end
+        if not ok then
+            UI.DisabledReason(GameTooltip, reason, opts.tipText ~= nil)
         end
         GameTooltip:Show()
     end)
