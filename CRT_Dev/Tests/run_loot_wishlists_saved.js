@@ -97,7 +97,10 @@ local CRT = { UI = {
   Color = function(key) local c = ({ good = { 0, 1, 0 }, warn = { 1, 0.5, 0 }, muted = { 0.5, 0.5, 0.5 } })[key] or { 1, 1, 1 } return c[1], c[2], c[3], 1 end,
   ColorText = function(text, key) return "<" .. key .. ">" .. text end,
   LiftOver = function() end, ShownPopup = function(f) return f end,
+  -- the shared confirm (CRT_Core/UI/Confirm.lua, run_confirm.js tests it): what it was asked
+  Confirm = function(o) CONFIRMS[#CONFIRMS + 1] = o return true end,
 } }
+CONFIRMS = {}
 StaticPopup_ShowCustomGenericConfirmation = function(info) popups[#popups + 1] = info return {} end
 local function settings() return { responseSeconds = 60, authority = { leader = true, names = {} }, sort = {}, wishlists = {}, wishlistsAsked = 0, wishlistsTab = {} } end
 CRT.db = { lootmaster = settings(), classCache = { ["gild-sargeras"] = "MAGE" } }
@@ -189,10 +192,12 @@ eq(W.Forget("R2-Sargeras"), true, "forget: one raider")
 eq(store()["R2-Sargeras"], nil, "forget: gone")
 eq(W.Forget("Nobody-Sargeras"), false, "forget: nobody to forget")
 W.AskForgetAll()
-eq(#popups, 1, "forget all: asks first")
+eq(#CONFIRMS, 1, "forget all: asks first, through the shared confirm")
+eq(#popups, 0, "forget all: never the game's generic confirm")
 check(next(store()) ~= nil, "forget all: nothing gone before the click")
-eq(popups[1].acceptText, "Forget all", "forget all: the button says Forget all")
-popups[1].callback()
+eq(CONFIRMS[1].accept, "Forget all", "forget all: the button says Forget all")
+check(CONFIRMS[1].text:find("every raider's saved wishlist", 1, true) and CONFIRMS[1].detail:find("can't be undone", 1, true), "forget all: says what goes")
+CONFIRMS[1].onAccept()
 check(next(store()) == nil, "forget all: everything gone after the click")
 CLOCK = 1790000000
 
@@ -662,7 +667,7 @@ eq(store()["Halo-Sargeras"], newer, "tab: Undo after a newer copy arrived keeps 
 W.Forget("Halo-Sargeras")
 runTimers()
 parts.forgetAll.scripts.OnClick()
-eq(#popups, 2, "tab: Forget all asks first")
+eq(#CONFIRMS, 2, "tab: Forget all asks first")
 -- the Team filter on the tab
 drops.Team.opts.set("raid")
 local hasFar = false

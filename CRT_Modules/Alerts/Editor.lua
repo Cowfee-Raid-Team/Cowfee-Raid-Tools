@@ -1284,10 +1284,6 @@ function Editor:Export()
     return line
 end
 
-local function confirm(info)
-    UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation(info), "GENERIC_CONFIRMATION"))
-end
-
 -- Delete's question, naming what goes (UX rule 4): a template by its name; an alert or note line by its saved text,
 -- else its spell's name; "this alert" when it has neither.
 local function deleteQuestion(c)
@@ -1792,12 +1788,12 @@ local function build()
             return
         end
         local from = ctx
-        confirm({
+        -- the shared confirm (UI.Confirm): its text is shown as it is, so a "%" in a name is safe
+        UI.Confirm({
             text = deleteQuestion(from),
-            acceptText = TEXT.delete,
-            cancelText = TEXT.cancel,
-            showAlert = true,
-            callback = function()
+            accept = TEXT.delete,
+            danger = true,
+            onAccept = function()
                 if from.savedMode then
                     if CRT.AlertSaved then
                         CRT.AlertSaved:Delete(from.savedID)

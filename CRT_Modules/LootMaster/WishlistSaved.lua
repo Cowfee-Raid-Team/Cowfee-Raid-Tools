@@ -7,7 +7,7 @@ local ADDON, CRT = ...
 --   [Name-Realm] = { items = { [itemID] = "big" | "small" | "off" }, at = <the raider's stamp: when their list last
 --                    changed>, got = <time() it arrived>, class = <class file, when known> }
 -- A newer stamp replaces the copy; an older or equal one is ignored. At most MAX raiders are kept: past that, the
--- copy that arrived longest ago goes. Forget (one raider, with Undo: W.Unforget) and Forget all (asks first) clear
+-- copy that arrived longest ago goes. Forget (one raider, with Undo: W.Unforget) and Forget all (asks first, UI.Confirm) clear
 -- them. Nothing here
 -- draws: the Wishlists tab is LootMaster/WishlistTab.lua, its numbers LootMaster/WishlistViews.lua.
 
@@ -19,8 +19,8 @@ W.SAVED_MAX = 200 -- raiders kept at most
 
 local TEXT = CRT.Locale("LootMaster.WishlistSaved", {
     forgetAll = "Forget every raider's saved wishlist?",
+    forgetAllDetail = "This can't be undone: a list comes back only when its raider sends it again.",
     forget = "Forget all",
-    cancel = "Cancel",
 })
 
 local function secret(v)
@@ -133,16 +133,10 @@ function W.ForgetAll()
     LM:Fire("wishlists")
 end
 
--- Forget all asks first: the game's generic confirm dialog (StaticPopup_ShowCustomGenericConfirmation, as
--- LootMaster/EndAll.lua uses it), lifted over CRT's windows. No dialog, nothing forgotten.
+-- Forget all asks first, through the shared confirm (UI.Confirm), saying what goes. No dialog, nothing forgotten.
 function W.AskForgetAll()
-    if not StaticPopup_ShowCustomGenericConfirmation then
-        return
-    end
-    UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation({
-        text = TEXT.forgetAll, acceptText = TEXT.forget, cancelText = TEXT.cancel, showAlert = true,
-        callback = function()
+    UI.Confirm({ text = TEXT.forgetAll, detail = TEXT.forgetAllDetail, accept = TEXT.forget, danger = true,
+        onAccept = function()
             W.ForgetAll()
-        end,
-    }), "GENERIC_CONFIRMATION"))
+        end })
 end

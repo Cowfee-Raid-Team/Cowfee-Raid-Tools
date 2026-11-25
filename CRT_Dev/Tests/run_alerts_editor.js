@@ -161,6 +161,19 @@ function CRT:Print(m) printed[#printed + 1] = m end
 function CRT:PlaySound() end
 assert(load(sources[1], "Panel"))("CowfeeRaidTools", CRT)
 local UI = CRT.UI
+-- the shared confirm (CRT_Core/UI/Confirm.lua, run_confirm.js tests it, a "%" in its text too): what it was asked, in
+-- the same list as the game's generic confirm, shown on StaticPopup1 and lifted over CRT's windows as the real one is
+GENERIC_ASKS = 0
+do
+  local generic = StaticPopup_ShowCustomGenericConfirmation
+  StaticPopup_ShowCustomGenericConfirmation = function(info) GENERIC_ASKS = GENERIC_ASKS + 1 return generic(info) end
+end
+UI.Confirm = function(o)
+  popups[#popups + 1] = { text = o.text, acceptText = o.accept, callback = o.onAccept, danger = o.danger, shared = true }
+  StaticPopup1.which, StaticPopup1.shown = "CRT_CONFIRM", true
+  UI.LiftOver(UI.ShownPopup(StaticPopup1, "CRT_CONFIRM"))
+  return true
+end
 assert(UI.StyleWindow and UI.ApplyStyle and UI.SkinTree, "Panel API")
 UI.RegisterLayer = function(_, key, f) layers[key] = f end
 UI.RegisterPreview = function(_, key, fn) previews[key] = fn end
@@ -805,6 +818,9 @@ do
   click(w.deleteBtn)
   assert(#popups == 1 and R:Get(ENC, 1), "asks first")
   assert(popups[1].text == 'Delete the alert "gone"?', "the ask names the alert: " .. tostring(popups[1].text))
+  -- through the shared confirm, whose text is shown as it is: the game's generic confirm formats its text, so a "%" in
+  -- an alert's name would break it
+  assert(popups[1].shared and popups[1].danger and popups[1].acceptText == "Delete" and GENERIC_ASKS == 0, "Delete asks through UI.Confirm, never the generic confirm")
   assert(StaticPopup1.strata == "FULLSCREEN_DIALOG" and StaticPopup1.raised, "popup above the editor")
   StaticPopup1:Hide()
   assert(StaticPopup1.strata == "DIALOG", "popup strata restored on hide")
@@ -813,6 +829,14 @@ do
   StaticPopup1:Hide()
   popups[1].callback()
   assert(R:Get(ENC, 1) == nil and not w.shown, "deleted after accept")
+  -- a "%" in the alert's text reaches the confirm as it is, and the delete still runs
+  R:Save(ENC, nil, { group = "nh", text = "Def at 50%", times = "5" })
+  local pid = R:List(ENC)[#R:List(ENC)].id
+  E:Open(ENC, pid)
+  click(w.deleteBtn)
+  assert(popups[#popups].text == 'Delete the alert "Def at 50%"?' and popups[#popups].shared, "a % in the name: " .. tostring(popups[#popups].text))
+  popups[#popups].callback()
+  assert(R:Get(ENC, pid) == nil, "a % in the name: deleted after accept")
   print("ok editor: delete asks first")
 end
 

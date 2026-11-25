@@ -288,7 +288,7 @@ function walk(d) {
 walk(path.join(dir, 'CRT_Core'));
 walk(path.join(dir, 'CRT_Modules'));
 // files moved onto UI.Confirm whole: no other confirm left in them
-for (const f of ['CRT_Modules/Loot/Page.lua', 'CRT_Modules/Interrupts/Page.lua']) {
+for (const f of ['CRT_Modules/Loot/Page.lua', 'CRT_Modules/Interrupts/Page.lua', 'CRT_Modules/Alerts/Editor.lua', 'CRT_Modules/LootMaster/WishlistSaved.lua']) {
   const src = fs.readFileSync(path.join(dir, f), 'utf8').replace(/--.*$/gm, '');
   if (/StaticPopup_ShowCustomGenericConfirmation|KickConfirm/.test(src)) hits.push(f + ': still has a confirm of its own (use UI.Confirm)');
 }
