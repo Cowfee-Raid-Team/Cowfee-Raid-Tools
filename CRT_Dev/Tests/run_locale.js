@@ -2,8 +2,8 @@
 // With no overrides for the client's language (or for the namespace, or with no GetLocale at all) it hands back the
 // English table itself; a fake CRT.LOCALE.xxXX override replaces one key and leaves the rest English, a table-valued
 // key is replaced whole, a key English lacks or an override of another type is ignored, and GetLocale erroring counts
-// as no language. Then the lint: every addon file (not the CRT_Dev/Tests fixtures) that keeps a TEXT table wraps it
-// in CRT.Locale (no plain "local TEXT = {"), no two files share a namespace, and the .toc loads Locale.lua before
+// as no language. Then the lint: every addon file (not the CRT_Dev/Tests fixtures) that keeps a text table wraps it
+// in CRT.Locale (no plain "local TEXT = {", "X.TEXT = {" or "X.SOMETHING_TEXT = {" holding strings), no two files share a namespace, and the .toc loads Locale.lua before
 // every file that calls CRT.Locale. The lint's first inputs are planted mistakes it must find.
 // Usage: node run_locale.js <addon folder>
 const fs = require('fs');
@@ -131,10 +131,25 @@ return CRT.got, type(CRT.LOCALE), kept.got, tostring(err)
 function code(src) {
   return src.replace(/--\[(=*)\[[\s\S]*?\]\1\]/g, (m) => m.replace(/[^\n]/g, ' ')).replace(/--[^\n]*/g, '');
 }
-// The plain TEXT tables in one file's code: "local TEXT = {" not wrapped in CRT.Locale.
+// The plain text tables in one file's code, by line: "local TEXT = {", "X.TEXT = {", "X.SOMETHING_TEXT = {" or
+// "local ROLE_TEXT = {" not wrapped in CRT.Locale, when the table holds a string (a colour or a size list is no text).
 function plainText(src) {
   const out = [];
-  code(src).split('\n').forEach((line, i) => { if (/^\s*local\s+TEXT\s*=\s*\{/.test(line)) out.push(i + 1); });
+  const c = code(src);
+  const re = /^[ ]*(?:local[ ]+)?(?:[A-Za-z_][\w]*\.)*(?:TEXT|[A-Za-z0-9_]*_TEXT)[ ]*=[ ]*\{/gm;
+  let m;
+  while ((m = re.exec(c))) {
+    let d = 0, i = m.index + m[0].length - 1, q = null;
+    const start = i;
+    for (; i < c.length; i++) {
+      const ch = c[i];
+      if (q) { if (ch === '\\') i++; else if (ch === q) q = null; continue; }
+      if (ch === '"' || ch === "'") { q = ch; continue; }
+      if (ch === '{') d++;
+      else if (ch === '}') { d--; if (d === 0) break; }
+    }
+    if (/["']/.test(c.slice(start, i + 1))) out.push(c.slice(0, m.index).split('\n').length);
+  }
   return out;
 }
 // The namespaces one file passes to CRT.Locale.
@@ -152,6 +167,11 @@ function usesLocale(src) { return /CRT\.Locale\(/.test(code(src)); }
 check(plainText('local ADDON, CRT = ...\nlocal TEXT = {\n  title = "x",\n}\n').length === 1, 'lint: finds a planted plain TEXT table');
 check(plainText('local TEXT = CRT.Locale("A.B", {\n  title = "x",\n})\n').length === 0, 'lint: a wrapped TEXT table passes');
 check(plainText('-- local TEXT = {\n').length === 0, 'lint: a commented-out TEXT table is not code');
+check(plainText('Check.TEXT = {\n  a = "x",\n}\n').length === 1, 'lint: finds a planted plain X.TEXT table');
+check(plainText('Team.LIST_TEXT = { add = "Add" }\n').length === 1, 'lint: finds a planted plain X.SOMETHING_TEXT table');
+check(plainText('local ROLE_TEXT = { T = "Tank" }\n').length === 1, 'lint: finds a planted plain local ROLE_TEXT table');
+check(plainText('Check.TEXT = CRT.Locale("A.B", {\n  a = "x",\n})\n').length === 0, 'lint: a wrapped X.TEXT table passes');
+check(plainText('LM.RED_TEXT = { r = 1, g = 0.12 }\nlocal ABSENT_TEXT = { 0.5, 0.5 }\n').length === 0, 'lint: a colour table is not text');
 check(namespaces('local TEXT = CRT.Locale("A.B", {})').join() === 'A.B', 'lint: reads a namespace');
 
 // every addon .lua file, leaving out the test fixtures under CRT_Dev/Tests (and node_modules, .git and worktrees)

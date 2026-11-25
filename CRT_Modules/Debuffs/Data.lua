@@ -160,7 +160,7 @@ Debuffs.EXCLUDED_SPELLS = {
 Debuffs.MAX_IGNORED = 200
 local MAX_SPELL_ID = 2147483647
 
-Debuffs.IGNORE_TEXT = {
+Debuffs.IGNORE_TEXT = CRT.Locale("Debuffs.Data", {
     notID = "Type a spell ID: a whole number.",
     notSpell = "The game has no spell with that ID.",
     builtIn = "That one is built in, so it's always ignored.",
@@ -168,7 +168,7 @@ Debuffs.IGNORE_TEXT = {
     full = "Your list is full. Remove one first.",
     -- shown on the tab and in the right-click menu for a spell Debuffs.CanHide says no to
     cantHide = "The game won't let addons hide this one on you, so it still shows.",
-}
+})
 
 -- A spell ID, typed or saved: a positive whole number (text of digits only), else nil.
 function Debuffs.SpellID(value)

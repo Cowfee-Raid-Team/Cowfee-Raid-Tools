@@ -617,7 +617,7 @@ end
 -- (CRT.ShortName). Nothing posts by itself.
 
 Check.URL = "https://www.curseforge.com/wow/addons/cowfee-raid-tools"
-Check.TEXT = {
+Check.TEXT = CRT.Locale("Core.AddonCheck", {
     missing = "Missing Cowfee Raid Tools: %s.",
     older = "Older version: %s.",
     get = "Get it: %s",
@@ -628,7 +628,7 @@ Check.TEXT = {
     whisperOlder = "[CRT] Your Cowfee Raid Tools is %s; the %s is on %s. Update it: %s",
     notSent = "Addon check: the whisper to %s could not be sent.",
     helloOnly = "This version can't report its modules. Modules show once they update.",
-}
+})
 
 local function reportName(row)
     return CRT.ShortName(row.full or row.name)

@@ -50,7 +50,7 @@ local TEXT = CRT.Locale("LootMaster.RaiderWindow", {
     noneYet = "No loot session yet tonight.",
 })
 
-local ROLE_TEXT = { T = "Tank", H = "Heal", D = "DPS", N = "" }
+local ROLE_TEXT = CRT.Locale("LootMaster.RaiderWindow.Roles", { T = "Tank", H = "Heal", D = "DPS", N = "" })
 
 local win, list, header, tabs
 local headings = {} -- the column headings, by key

@@ -460,12 +460,12 @@ end
 
 -- The status line --------------------------------------------------------------------------------------------------
 
-Team.TEXT = {
+Team.TEXT = CRT.Locale("Core.Team", {
     none = "Not in a raid group",
     pushed = "%s pushed to %d CRT %s",
     user = "user", users = "users",
     line = "Now: %s.",
-}
+})
 
 -- Other raid members heard running CRT.
 local function others()

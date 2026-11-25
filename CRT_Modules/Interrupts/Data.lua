@@ -33,9 +33,9 @@ local ADDON, CRT = ...
 local Interrupts = { listeners = {}, shipped = {} }
 CRT.Interrupts = Interrupts
 
-Interrupts.TEXT = {
+Interrupts.TEXT = CRT.Locale("Interrupts.Data", {
     timed = "This boss's kick numbers come from its timing, so its setup can't be changed here.",
-}
+})
 
 local Setup = CRT.InterruptSetup
 

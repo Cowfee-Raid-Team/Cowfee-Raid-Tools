@@ -24,21 +24,21 @@ local NOT_TEAM = "not a team raid" -- a pull's mark, beside its difficulty and l
 local SHOW_OPTIONS = { { key = "team", label = "Team raids" }, { key = "all", label = "All raids" } }
 -- History's Delete this night asks once (UI.Confirm); an own mechanic's Remove acts at once with Undo (UI.UndoToast)
 -- why a greyed control can't be used (UX rule 5), on its tooltip
-local WHY_TEXT = {
+local WHY_TEXT = CRT.Locale("Tattlebot.Page.Why", {
     tracking = "Tick Read the damage meter after each boss pull first.",
     noNight = "No raid night is being tracked right now.",
     noPulls = "No pulls tonight yet.",
     noneTicked = "Tick the mechanics to add first.",
-}
+})
 
-local DELETE_TEXT = {
+local DELETE_TEXT = CRT.Locale("Tattlebot.Page.Delete", {
     button = "Delete this night",
     ask = "Delete the night of %s?",
     pulls = "Its %d %s too, and the totals no longer count them. This can't be undone.",
     pull = "pull goes", pullsWord = "pulls go",
     accept = "Delete night",
     removed = "Removed %s from your own mechanics.",
-}
+})
 
 local page, tonightText, tonightChild, detailText, detailChild, listChild, listScroll
 local scrollToSelected -- set by ShowNight: the next list refresh scrolls the selected night into view, once

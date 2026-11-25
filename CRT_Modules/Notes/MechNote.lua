@@ -25,9 +25,9 @@ MechNote.FIELD = "mech"
 -- ROLE_WORDS), the first being the default.
 MechNote.ROLES = { "all", "tank", "healer", "melee", "ranged" }
 MechNote.VIA = "Mech Alerts" -- how a note made here came (a note's via, shown in the Raid Notes list)
-MechNote.TEXT = {
+MechNote.TEXT = CRT.Locale("Notes.MechNote", {
     busy = "Not during combat or a boss encounter. Change it after the pull.",
-}
+})
 
 local IS_ROLE = {}
 for _, w in ipairs(MechNote.ROLES) do

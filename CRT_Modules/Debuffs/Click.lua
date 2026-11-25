@@ -29,14 +29,14 @@ local UI = CRT.UI
 local Click = { catchers = {}, list = nil, dirty = true }
 CRT.DebuffClick = Click
 
-Click.TEXT = {
+Click.TEXT = CRT.Locale("Debuffs.Click", {
     ignore = "Ignore this debuff",
     cancel = "Cancel",
     later = "Try again after combat",
     unreadable = "Can't read this debuff right now",
     added = "Ignoring %s. Remove it on Quality of Life > Debuffs.",
     noMenu = "This game client has no menu for this.",
-}
+})
 
 -- Frame levels above the panel's own: over the buttons, their glow and their text (Panel.lua's
 -- GLOW_LEVEL and TEXT_LEVEL are above each button's own level).

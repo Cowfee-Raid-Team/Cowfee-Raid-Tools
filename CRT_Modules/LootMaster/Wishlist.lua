@@ -58,7 +58,7 @@ W.GUILD_ANSWER_SECONDS = 60 -- at most one answer to a guild ask this often
 W.LOGIN_ASK_DELAY = 20 -- seconds after login before an officer asks the guild (the guild's data is in by then)
 W.GUILD_ASK_SECONDS = 600 -- an officer asks the guild at most this often, across logins
 
-W.TEXT = {
+W.TEXT = CRT.Locale("LootMaster.Wishlist", {
     big = "Big upgrade",
     small = "Small upgrade",
     off = "Off spec",
@@ -74,7 +74,7 @@ W.TEXT = {
     fromDay = "From a list made 1 day ago.",
     fromDays = "From a list made %d days ago.",
     column = "Wishlist",
-}
+})
 local TEXT = W.TEXT
 
 local function secret(v)

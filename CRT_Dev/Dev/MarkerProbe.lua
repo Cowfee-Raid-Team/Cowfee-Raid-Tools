@@ -40,7 +40,7 @@ Probe.EVENTS = {
     "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER", "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER",
     "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER", "CHAT_MSG_SAY",
 }
-Probe.TEXT = {
+Probe.TEXT = CRT.Locale("Dev.MarkerProbe", {
     title = "Marker probe (dev)",
     help = "Type /raid 1 \226\128\166 /raid 8 and some normal chat. Hidden = the game hid the text. A star means the path trick drew it.\n\n"
         .. "A joins the text onto the marker file path and sets it on a texture. B builds the same path with string.format. "
@@ -61,7 +61,7 @@ Probe.TEXT = {
     copyEmpty = "The marker probe has no rows yet.",
     hiddenValue = "<hidden>",
     heads = { { 0, "Channel" }, { 90, "From" }, { 194, "Text" }, { 288, "A: path" }, { 406, "B: format" }, { 524, "C: atlas" } },
-}
+})
 local TEXT = Probe.TEXT
 
 local WIDTH, ROW_H, LIST_TOP = 668, 40, 54
