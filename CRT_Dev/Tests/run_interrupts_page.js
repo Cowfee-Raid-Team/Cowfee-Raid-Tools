@@ -5,7 +5,7 @@
 // layouts and the note read once, one refresh), the kick rows (the note editor's rows: kick order, class colours, your
 // own outlined, x, read-only for a raider), the palette (the note editor's: Search, Players from saved with its
 // fallback, Players, General, Groups and Classes of the chosen source only), drops from the palette (a General, Group or
-// Class chip adding every matching player as one change), along a row and onto another, a full row refusing, Add name, Clear list asking first, Use the raid's list,
+// Class chip adding every matching player as one change), along a row and onto another, a full row refusing, Add name, Clear list with Undo, Use the raid's list asking first,
 // Who has it in its pop-out from the Addon check, How the numbers are worked out in the Kick list's (?), Test on trash,
 // Test reminder, the Settings tab's
 // sliders and colours, every control inside the page area, /crt interrupts, and the General Settings switch hiding and
@@ -621,12 +621,30 @@ local ask = KICK_CONFIRMS[#KICK_CONFIRMS]
 check(ask ~= nil and ask.accept == "Use the raid's list", "use raid: asks first, the button naming the action")
 if ask then ask.onAccept() end
 eq(I:Own(id)[2][1], "Other", "use raid: the raid's list copied over your own")
-P.clear.scripts.OnClick(P.clear)
-ask = KICK_CONFIRMS[#KICK_CONFIRMS]
-check(ask and plain(ask.text):find("Empty every name", 1, true) and ask.accept == "Clear list", "clear: asks first")
-eq(I:Own(id)[1][1], "R11", "clear: nothing cleared before it is accepted (Cancel keeps it)")
-if ask then ask.onAccept() end
-eq(I:Own(id)[1][1], "", "clear: accepting empties your own list")
+-- Clear list is a quick clear with Undo (UX rule 4, #1310): no confirm; Undo puts back every name, only while the list
+-- is still empty
+do
+  local function flat(list) local out = {} for _, col in ipairs(list or {}) do for _, n in ipairs(col) do out[#out + 1] = n end end return table.concat(out, ",") end
+  local asked, ownBefore = #KICK_CONFIRMS, flat(I:Own(id))
+  local _, srcBefore = I:List(id)
+  KICK_TOASTS = {}
+  P.clear.scripts.OnClick(P.clear)
+  eq(#KICK_CONFIRMS, asked, "clear: no confirm")
+  eq(I:Own(id)[1][1], "", "clear: empties your own list at once")
+  local t = KICK_TOASTS[#KICK_TOASTS]
+  check(t and t.owner == P.clear and plain(t.text):find(I:BossName(id), 1, true) and type(t.onUndo) == "function", "clear: offers Undo naming the boss: " .. tostring(t and t.text))
+  t.onUndo()
+  eq(flat(I:Own(id)), ownBefore, "clear: Undo puts every name back in its slot")
+  eq(select(2, I:List(id)), srcBefore, "clear: and the same list in use")
+  P.clear.scripts.OnClick(P.clear)
+  t = KICK_TOASTS[#KICK_TOASTS]
+  I:SetName(id, 1, 1, "Newer")
+  t.onUndo()
+  eq(I:Own(id)[1][1], "Newer", "clear: Undo after a name was typed since changes nothing")
+  P.clear.scripts.OnClick(P.clear)
+  P.clear.scripts.OnClick(P.clear)
+  eq(#KICK_TOASTS, 3, "clear: an empty list has nothing to clear and no Undo")
+end
 check(not pageSrc or not pageSrc:find("KickConfirm", 1, true), "no confirm window of its own")
 
 -- Who has it: a pop-out window opened by its button, and How the numbers are worked out in a (?)
