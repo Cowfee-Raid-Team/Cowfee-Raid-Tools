@@ -1,13 +1,11 @@
 local ADDON, CRT = ...
 
 -- The team dialogs (CRT.TeamDialogs), shared by General Settings > Appearance > Team raids and the new raid group popup
--- (TeamPopup.lua): one UI.Window dialog on the popups layer, in one of three modes.
+-- (TeamPopup.lua): one UI.Window dialog on the popups layer, in one of two modes. Remove team asks once through the
+-- shared confirm instead (UI.Confirm, CRT_Core/UI/Confirm.lua): 'Delete the team "<name>"?', its Season Stats pulls
+-- going too, [Delete team] [Cancel]; accepted, it calls Team:RemoveTeam.
 --   add      Add team: a name box, [Add] [Cancel]. The name goes through Team:AddTeam (TeamList.lua); a refused one
 --            shows why in red under the box. Added, done(name) runs, so the caller picks it.
---   remove   the first warning: "Remove <name>? Season Stats for <name> (N pulls) will be deleted too."
---            [Remove] [Cancel]. Remove goes on to confirm.
---   confirm  the second: "This can't be undone. Type the team name to delete it and its N pulls." A box,
---            [Delete for good] (only while the box holds the name, any case) [Cancel]. It calls Team:RemoveTeam.
 --   merge    Merge teams: "Merge [Before teams while it has pulls, your saved teams]" and "into [Pug and your saved
 --            teams but the one above]",
 --            the summary under them (rebuilt on every pick), [Merge] [Cancel]. Merge calls Team:Merge
@@ -27,11 +25,9 @@ local TEXT = {
     addTitle = "Add team",
     addLabel = "Team name",
     add = "Add",
-    removeTitle = "Remove team",
-    remove = "Remove",
-    removeAsk = "Remove %s? Season Stats for %s (%s) will be deleted too.",
-    confirm = "Delete for good",
-    confirmAsk = "This can't be undone. Type the team name to delete it and its %s.",
+    removeAsk = "Delete the team \"%s\"?",
+    removeDetail = "Its Season Stats (%s) go too. This can't be undone.",
+    remove = "Delete team",
     cancel = "Cancel",
     pull = "%d pull", pulls = "%d pulls",
     mergeTitle = "Merge teams",
@@ -48,14 +44,6 @@ local function pullsText(n)
     return (n == 1 and TEXT.pull or TEXT.pulls):format(n)
 end
 D.PullsText = pullsText
-
--- Whether the typed text is the team's name (trimmed, any case).
-function D.Matches(typed, name)
-    if type(typed) ~= "string" or type(name) ~= "string" then
-        return false
-    end
-    return typed:gsub("^%s+", ""):gsub("%s+$", ""):lower() == name:lower()
-end
 
 local function build()
     local win = UI.Window("CowfeeRaidToolsTeamDialog", { kind = "dialog", title = TEXT.addTitle, width = L.width, height = L.height })
@@ -75,7 +63,7 @@ local function build()
     D.error = c:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
     D.error:SetPoint("TOP", D.edit, "BOTTOM", 0, -4)
     D.error:SetWidth(L.width - 2 * L.pad)
-    D.ok = UI.PanelButton(c, TEXT.confirm, L.buttonH, function()
+    D.ok = UI.PanelButton(c, TEXT.add, L.buttonH, function()
         D.Accept()
     end)
     D.cancel = UI.PanelButton(c, TEXT.cancel, L.buttonH, function()
@@ -203,11 +191,9 @@ local function label(okText)
     D.cancel:SetWidth(w)
 end
 
--- The OK button follows the box: in confirm, enabled only while it holds the team's name.
+-- The OK button: in merge, enabled only for a pair Team:CanMerge takes.
 function D.Refresh()
-    if D.mode == "confirm" then
-        D.ok:SetEnabled(D.Matches(D.edit:GetText() or "", D.name))
-    elseif D.mode == "merge" then
+    if D.mode == "merge" then
         D.ok:SetEnabled(Team:CanMerge(D.from, D.into) ~= nil)
     else
         D.ok:SetEnabled(true)
@@ -248,14 +234,19 @@ function D.AskName(done)
     open("add", TEXT.addTitle, TEXT.addLabel, TEXT.add, true)
 end
 
--- Remove team: the first warning, then the typed confirm; done() runs once it is removed.
+-- Remove team: asks once (UI.Confirm), naming the team and its Season Stats pulls; done() runs once it is removed.
+-- False when the team can't be removed (Team, Pug) or nothing could ask.
 function D.AskRemove(name, done)
     if not Team:CanRemove(name) then
-        return
+        return false
     end
-    D.done, D.name = done, Team:Find(name)
-    local pulls = pullsText(Team:TeamPulls(D.name))
-    open("remove", TEXT.removeTitle, TEXT.removeAsk:format(D.name, D.name, pulls), TEXT.remove, false)
+    local team = Team:Find(name)
+    return UI.Confirm({ text = TEXT.removeAsk:format(team), detail = TEXT.removeDetail:format(pullsText(Team:TeamPulls(team))),
+        accept = TEXT.remove, danger = true, onAccept = function()
+            if Team:RemoveTeam(team) and done then
+                done()
+            end
+        end })
 end
 
 -- Merge teams: from and into start on the ones given (else the first source, Before teams or your first saved
@@ -313,16 +304,6 @@ function D.Accept()
         D.win:Hide()
         if D.done then
             D.done(name)
-        end
-    elseif D.mode == "remove" then
-        open("confirm", TEXT.removeTitle, TEXT.confirmAsk:format(pullsText(Team:TeamPulls(D.name))), TEXT.confirm, true)
-    elseif D.mode == "confirm" then
-        if not D.Matches(D.edit:GetText() or "", D.name) then
-            return
-        end
-        D.win:Hide()
-        if Team:RemoveTeam(D.name) and D.done then
-            D.done()
         end
     elseif D.mode == "merge" then
         local summary = D.Merge()
