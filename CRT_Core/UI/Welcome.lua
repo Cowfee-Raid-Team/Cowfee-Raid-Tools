@@ -27,7 +27,8 @@ local TEXT = CRT.Locale("UI.Welcome", {
 })
 W.TEXT = TEXT
 
--- The next steps for each choice: the step's text, its button's label and where the button goes.
+-- The next steps for each choice: the step's text, its button's label and where the button goes; spot, for a step
+-- that names one setting, the page and key it is registered under (UI:RegisterSpot), spotlighted once there.
 local STEPS = {
     raider = {
         -- label() is the button's text while it follows a state; it reads like the title bar's Previews button
@@ -39,7 +40,7 @@ local STEPS = {
         end },
         { text = "Pick the voice that reads your alerts out.", button = "Alert settings", go = function()
             CRT.NotesPage.Open("alerts")
-        end },
+        end, spot = { "notes", "voice" } },
         { text = "See what's on, and switch off what you don't need.", button = "What's on", go = function()
             UI:Show("start")
         end },
@@ -86,6 +87,9 @@ local function stepRow(i, c)
         r.button = UI.PanelButton(c, "", L.button, function()
             if r.go then
                 r.go()
+            end
+            if r.spot and UI.GoToSpot then
+                UI:GoToSpot(r.spot[1], r.spot[2])
             end
         end)
         view.steps[i] = r
@@ -165,7 +169,7 @@ fill = function()
     end
     for i, step in ipairs(steps or {}) do
         local r = stepRow(i, c)
-        r.go = step.go
+        r.go, r.spot = step.go, step.spot
         r.number:SetText(i .. ".")
         r.button:SetText(step.label and step.label() or step.button)
         local fs = r.button:GetFontString()

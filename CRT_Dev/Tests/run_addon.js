@@ -331,6 +331,7 @@ end
 local UI = CRT.UI
 -- the main window isn't drawn here (run_menu.js tests it): UI:Show only says which page it was asked for
 local shownPages = {}
+local realShow = UI.Show
 UI.Show = function(_, key) shownPages[#shownPages + 1] = key or "?" end
 local function slash(msg)
   local before = #printed
@@ -678,6 +679,76 @@ do
   fireIn("CRT_Modules/Pace/Display.lua", "ENCOUNTER_END", id)
 end
 for i = errorsBefore + 1, #errors do check(false, "a Lua error while driving the raider side: " .. errors[i]) end
+-- Start here's links with the real pages (#1311): every row's link opens its page on its tab and spotlights the real
+-- switch there, bound to the same saved field (set from the row, the switch reads it back), with its label; a row
+-- whose switch can't be found is logged here and fails
+do
+  local S = CRT.StartPage
+  UI.Show = realShow
+  -- the skins reach into the game's templates, which these stand-ins don't have; the pages are built bare
+  for _, k in ipairs({ "SkinTree", "SkinDropdown", "SkinButton", "SkinEditBox", "SkinCheckButton", "SkinScrollBar", "SkinCloseButton" }) do
+    UI[k] = function() end
+  end
+  -- shown, a frame runs its OnShow, as in the game (the pages pick their tab there)
+  local function firesOnShow(f)
+    rawset(f, "Show", function(self) local was = self.shown self.shown = true if not was and self.scripts.OnShow then self.scripts.OnShow(self) end end)
+    rawset(f, "SetShown", function(self, on) if on then self:Show() else self:Hide() end end)
+  end
+  for _, rec in ipairs(frames) do firesOnShow(rec.frame) end
+  local plainFrame = stubs.CreateFrame
+  stubs.CreateFrame = function(...) local f = plainFrame(...) firesOnShow(f) return f end
+  local ok, err = pcall(function() UI:Show("start") end)
+  check(ok, "the main window opens: " .. tostring(err))
+  local function shownUpTo(frame, page)
+    local f = frame
+    for _ = 1, 30 do
+      if f == nil then return false end
+      if not f.shown then return false end
+      if f == page then return true end
+      f = f.parent
+    end
+    return false
+  end
+  local spotted = 0
+  for _, section in ipairs(S.WHATS_ON) do
+    for _, row in ipairs(section) do
+      if row.spot then
+        UI.ClearSpotlight()
+        local opened, oerr = pcall(S.OpenRow, row)
+        check(opened, "What's on " .. row.key .. ": its link opens without an error: " .. tostring(oerr))
+        local page = UI.pages[row.page]
+        check(page and page.frame and page.frame.shown, "What's on " .. row.key .. ": its page " .. row.page .. " shows")
+        local target, label = UI.spotlight.target, UI.spotlight.label
+        if not target then
+          print("  log addon: What's on " .. row.key .. ": no switch registered as " .. row.page .. " " .. row.spot .. " (the page opened with no box)")
+        end
+        check(target ~= nil and target:GetObjectType() == "CheckButton", "What's on " .. row.key .. ": a real switch is spotlighted (" .. row.page .. " " .. row.spot .. ")")
+        if target then
+          spotted = spotted + 1
+          check(label ~= nil and type(label:GetText()) == "string" and label:GetText() ~= "", "What's on " .. row.key .. ": the box takes in the switch's label")
+          check(shownUpTo(target, page and page.frame), "What's on " .. row.key .. ": the switch shows on the tab that opened")
+          check(UI.spotlight.box.shown, "What's on " .. row.key .. ": the box shows")
+          if target.refresh then
+            local was = S.Get(row)
+            for _, on in ipairs({ not was, was }) do
+              S.Set(row, on)
+              target.refresh()
+              check(target:GetChecked() == on, "What's on " .. row.key .. " set " .. tostring(on) .. ": the spotlighted switch reads it, the same setting")
+            end
+          else
+            print("  log addon: What's on " .. row.key .. ": its switch has no refresh of its own, label " .. tostring(label and label:GetText()))
+          end
+        end
+      end
+    end
+  end
+  check(spotted == 23, "23 rows spotlight their switch, got " .. spotted)
+  -- the Welcome's voice step: Alert settings, the callout picked, its Voice row
+  local voice = UI:FindSpot("notes", "voice")
+  check(voice ~= nil and voice.GetObjectType ~= nil, "the Welcome's voice step finds the Voice row on Alert settings")
+  UI.ClearSpotlight()
+  UI.Show = function(_, key) shownPages[#shownPages + 1] = key or "?" end
+end
 
 print(passes .. " passed, " .. fails .. " failed")
 ADDON_FAILS = fails

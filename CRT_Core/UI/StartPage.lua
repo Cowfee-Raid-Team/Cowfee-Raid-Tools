@@ -4,7 +4,10 @@ local ADDON, CRT = ...
 -- It has no tabs: the title with a line and the Welcome button (UI/Welcome.lua) beside it, then What's on.
 -- What's on has one checkbox, in sections, for everything CRT draws on screen, plays or says.
 -- Each checkbox reads and writes the same saved field as the switch on the feature's own page, through the feature's own setter where it has one, so both stay in step.
--- The page name on its right (UI.LinkButton) opens that page on the tab that holds it.
+-- The page name on its right (UI.LinkButton, underlined) opens that page on the tab that holds it and spotlights the
+-- same switch there (UI:GoToSpot, UI/Spotlight.lua: the page registers it under the row's spot key).
+-- One visible help line beside the What's on heading (under it when it doesn't fit) says so: the one exception to
+-- "(?) not grey paragraphs", for new players (Alex, 2026-11-25, #1311).
 -- A feature that draws, plays or speaks adds its row to WHATS_ON below, in the same job (the UX rules).
 
 local UI = CRT.UI
@@ -16,6 +19,8 @@ local UI = CRT.UI
 --            opposite (minimap.hide)
 --   set      function(on), the feature's own setter; without it the field is written as it is
 --   page     the page key the link opens, tab its tab (for a page with an Open(tab), OPENERS below)
+--   spot     the key the page registered the same switch under (UI:RegisterSpot), spotlighted once the page opens;
+--            none for Enable Interrupts (its only switch is this row) and What's new (it opens a window)
 --   where    the page and tab as the link's tooltip names it; open, a function used instead of the page
 --   linkText the link's text, when it isn't the page's title
 --   help     a (?) on the row: { title, text }
@@ -62,6 +67,7 @@ local TEXT = CRT.Locale("UI.StartPage", {
     welcome = "Welcome",
     welcomeTip = "Opens the Welcome again: next steps for raiders and for leaders.",
     whatsOn = "What's on",
+    whatsOnLine = "Tick to turn a feature on or off. Click a page name to go to its settings.",
     whatsOnHelp = {
         "Everything Cowfee Raid Tools draws on screen, plays or says. Untick one to switch it off.",
         { "The page on the right", "opens the page with the same switch and the rest of its settings. Both stay in step." },
@@ -75,68 +81,69 @@ local TEXT = CRT.Locale("UI.StartPage", {
 
 local WHATS_ON = {
     { title = "On screen",
-        { key = "consumables", label = "Consumables bar", path = "consumables.enabled", page = "readycheck", tab = "auto", where = "Ready Check > Settings",
+        { key = "consumables", label = "Consumables bar", path = "consumables.enabled", page = "readycheck", tab = "auto", spot = "bar", where = "Ready Check > Settings",
             set = function(on) CRT.Consumables:SetEnabled(on) readyCheckApply() end },
-        { key = "readyWindow", label = "Ready check window", path = "readycheck.window.enabled", page = "readycheck", tab = "window", where = "Ready Check > Window",
+        { key = "readyWindow", label = "Ready check window", path = "readycheck.window.enabled", page = "readycheck", tab = "window", spot = "window", where = "Ready Check > Window",
             set = function(on) db().readycheck.window.enabled = on readyCheckApply() end },
-        { key = "debuffs", label = "Debuff panel", path = "debuffs.enabled", page = "qol", tab = "debuffs", where = "Quality of Life > Debuffs",
+        { key = "debuffs", label = "Debuff panel", path = "debuffs.enabled", page = "qol", tab = "debuffs", spot = "debuffs", where = "Quality of Life > Debuffs",
             set = function(on) CRT.Debuffs:SetEnabled(on) end },
-        { key = "callout", label = "Note callout", path = "notes.alert.enabled", page = "notes", tab = "alerts", where = "Raid Notes > Alert settings",
+        { key = "callout", label = "Note callout", path = "notes.alert.enabled", page = "notes", tab = "alerts", spot = "callout", where = "Raid Notes > Alert settings",
             set = function(on) CRT.Notes:Set("alert", "enabled", on) end },
-        { key = "timers", label = "Note timers window", path = "notes.window.shown", page = "notes", tab = "settings", where = "Raid Notes > Notes settings",
+        { key = "timers", label = "Note timers window", path = "notes.window.shown", page = "notes", tab = "settings", spot = "window", where = "Raid Notes > Notes settings",
             set = noteWindowSet("window") },
-        { key = "assignments", label = "Assignments window", path = "notes.assignments.shown", page = "notes", tab = "settings", where = "Raid Notes > Notes settings",
+        { key = "assignments", label = "Assignments window", path = "notes.assignments.shown", page = "notes", tab = "settings", spot = "assignments", where = "Raid Notes > Notes settings",
             set = noteWindowSet("assignments") },
-        { key = "personal", label = "Personal note window", path = "notes.personal.shown", page = "notes", tab = "settings", where = "Raid Notes > Notes settings",
+        { key = "personal", label = "Personal note window", path = "notes.personal.shown", page = "notes", tab = "settings", spot = "personal", where = "Raid Notes > Notes settings",
             set = noteWindowSet("personal") },
-        { key = "highlights", label = "Assignment highlights", path = "highlights.enabled", page = "notes", tab = "settings", where = "Raid Notes > Notes settings",
+        { key = "highlights", label = "Assignment highlights", path = "highlights.enabled", page = "notes", tab = "settings", spot = "highlights", where = "Raid Notes > Notes settings",
             set = function(on) CRT.NoteHighlights:SetEnabled(on) end },
-        { key = "pace", label = "Pace window", path = "pace.shown", page = "pace", where = "Pace",
+        { key = "pace", label = "Pace window", path = "pace.shown", page = "pace", spot = "shown", where = "Pace",
             set = function(on)
                 db().pace.shown = on
                 if not on and CRT.Pace and CRT.Pace.Stop then
                     CRT.Pace:Stop()
                 end
             end },
-        { key = "battleRes", label = "Battle res icon", path = "qol.battleRes.enabled", page = "qol", tab = "brez", where = "Quality of Life > Battle res",
+        { key = "battleRes", label = "Battle res icon", path = "qol.battleRes.enabled", page = "qol", tab = "brez", spot = "brez", where = "Quality of Life > Battle res",
             set = function(on) db().qol.battleRes.enabled = on CRT.BattleRes:Apply() end },
-        { key = "lowHealth", label = "Low health alert", path = "qol.lowHealth.enabled", page = "qol", tab = "lowhealth", where = "Quality of Life > Low health",
+        { key = "lowHealth", label = "Low health alert", path = "qol.lowHealth.enabled", page = "qol", tab = "lowhealth", spot = "lowhealth", where = "Quality of Life > Low health",
             set = function(on) CRT.LowHealth:SetEnabled(on) end },
         { key = "interrupts", label = "Enable Interrupts", path = "interrupts.enabled", page = "interrupts", where = "Interrupts",
             help = { "Enable Interrupts", TEXT.interruptsHelp },
             set = function(on) CRT.Interrupts:SetEnabled(on) end },
         { key = "whatsNew", label = "What's new after updates", path = "whatsNew.show", linkText = "What's new", where = "the What's new window",
             open = function() CRT.WhatsNew:ShowNow() end },
-        { key = "minimap", label = "Minimap button", path = "minimap.hide", invert = true, page = "settings", tab = "appearance", where = "General Settings > Appearance",
+        { key = "minimap", label = "Minimap button", path = "minimap.hide", invert = true, page = "settings", tab = "appearance", spot = "minimap", where = "General Settings > Appearance",
             set = function(on) CRT.MinimapButton:SetHidden(not on) end },
     },
     { title = "Alerts",
-        { key = "alertIcons", label = "Alert icons", path = "alerts.areas.icons.shown", page = "notes", tab = "alerts", where = "Raid Notes > Alert settings", set = areaSet("icons") },
-        { key = "alertTexts", label = "Alert text", path = "alerts.areas.texts.shown", page = "notes", tab = "alerts", where = "Raid Notes > Alert settings", set = areaSet("texts") },
-        { key = "alertBars", label = "Alert bars", path = "alerts.bars.shown", page = "notes", tab = "alerts", where = "Raid Notes > Alert settings", set = areaSet("bars") },
-        { key = "alertCircles", label = "Alert circles", path = "alerts.areas.circles.shown", page = "notes", tab = "alerts", where = "Raid Notes > Alert settings", set = areaSet("circles") },
-        { key = "alertTimeline", label = "Alert timeline", path = "alerts.areas.timeline.shown", page = "notes", tab = "alerts", where = "Raid Notes > Alert settings", set = areaSet("timeline") },
+        { key = "alertIcons", label = "Alert icons", path = "alerts.areas.icons.shown", page = "notes", tab = "alerts", spot = "area:icons", where = "Raid Notes > Alert settings", set = areaSet("icons") },
+        { key = "alertTexts", label = "Alert text", path = "alerts.areas.texts.shown", page = "notes", tab = "alerts", spot = "area:texts", where = "Raid Notes > Alert settings", set = areaSet("texts") },
+        { key = "alertBars", label = "Alert bars", path = "alerts.bars.shown", page = "notes", tab = "alerts", spot = "area:bars", where = "Raid Notes > Alert settings", set = areaSet("bars") },
+        { key = "alertCircles", label = "Alert circles", path = "alerts.areas.circles.shown", page = "notes", tab = "alerts", spot = "area:circles", where = "Raid Notes > Alert settings", set = areaSet("circles") },
+        { key = "alertTimeline", label = "Alert timeline", path = "alerts.areas.timeline.shown", page = "notes", tab = "alerts", spot = "area:timeline", where = "Raid Notes > Alert settings", set = areaSet("timeline") },
     },
     { title = "Sound and speech",
-        { key = "speech", label = "Text to speech", path = "notes.alert.tts", page = "notes", tab = "alerts", where = "Raid Notes > Alert settings",
+        { key = "speech", label = "Text to speech", path = "notes.alert.tts", page = "notes", tab = "alerts", spot = "tts", where = "Raid Notes > Alert settings",
             set = function(on) CRT.Notes:Set("alert", "tts", on) end },
     },
     { title = "Chat and recording",
-        { key = "report", label = "Ready check report", path = "readycheck.auto", page = "readycheck", tab = "auto", where = "Ready Check > Settings",
+        { key = "report", label = "Ready check report", path = "readycheck.auto", page = "readycheck", tab = "auto", spot = "auto", where = "Ready Check > Settings",
             set = function(on) db().readycheck.auto = on readyCheckApply() end },
-        { key = "earlyPull", label = "Early pull report", path = "readycheck.earlyPull", page = "readycheck", tab = "auto", where = "Ready Check > Settings",
+        { key = "earlyPull", label = "Early pull report", path = "readycheck.earlyPull", page = "readycheck", tab = "auto", spot = "earlyPull", where = "Ready Check > Settings",
             set = function(on) db().readycheck.earlyPull = on readyCheckApply() end },
-        { key = "tattle", label = "Tattlebot", path = "tattle.enabled", page = "tattle", tab = "settings", where = "Tattlebot > Settings",
+        { key = "tattle", label = "Tattlebot", path = "tattle.enabled", page = "tattle", tab = "settings", spot = "enabled", where = "Tattlebot > Settings",
             set = function(on) CRT.Tattle:Set("enabled", on) end },
-        { key = "timeline", label = "Timeline recording", path = "timeline.record", page = "timeline", where = "Timeline",
+        { key = "timeline", label = "Timeline recording", path = "timeline.record", page = "timeline", tab = "settings", spot = "record", where = "Timeline > Settings",
             set = function(on) CRT.Timeline:Set("record", on) end },
-        { key = "combatLog", label = "Combat logging", path = "qol.combatLog.enabled", page = "qol", tab = "combatlog", where = "Quality of Life > Combat log",
+        { key = "combatLog", label = "Combat logging", path = "qol.combatLog.enabled", page = "qol", tab = "combatlog", spot = "combatlog", where = "Quality of Life > Combat log",
             set = function(on) CRT.CombatLog:SetEnabled(on) end },
     },
 }
 
 -- The pages that open on a tab, by their own Open(tab).
-local OPENERS = { readycheck = "ReadyCheckPage", qol = "QoLPage", notes = "NotesPage", settings = "SettingsPage", tattle = "TattlePage" }
+local OPENERS = { readycheck = "ReadyCheckPage", qol = "QoLPage", notes = "NotesPage", settings = "SettingsPage", tattle = "TattlePage",
+    timeline = "TimelinePage" }
 
 -- Every number the page is placed with, in px: the left margin; the right column's start (half the page) and the
 -- room before it; a row's least height and the room around its text; the checkbox and the space after it; the
@@ -202,10 +209,12 @@ local function canOpen(row)
     return true
 end
 
+-- Opens a row's page on its tab, then spotlights its switch there. Returns the switch spotlighted, or nil (the page
+-- opens with no box) when the page hasn't registered it.
 local function open(row)
     if row.open then
         row.open()
-        return
+        return nil
     end
     local api = row.tab and CRT[OPENERS[row.page] or ""]
     if api and api.Open then
@@ -213,6 +222,10 @@ local function open(row)
     else
         UI:Show(row.page)
     end
+    if row.spot and UI.GoToSpot then
+        return UI:GoToSpot(row.page, row.spot)
+    end
+    return nil
 end
 
 local Start = { WHATS_ON = WHATS_ON, TEXT = TEXT, LAYOUT = L, Get = get, Set = set, CanOpen = canOpen, OpenRow = open }
@@ -317,7 +330,22 @@ function Start.Layout()
     local y = -(top + lineH + L.whatsOnGap)
     v.whatsOn:ClearAllPoints()
     v.whatsOn:SetPoint("TOPLEFT", L.x, y)
-    y = y - height(v.whatsOn) - L.headingGap - L.sectionGap
+    -- the help line: beside the heading and its (?), or under the heading, wrapped to the page, when it doesn't fit
+    local headH = height(v.whatsOn)
+    local besideX = L.x + width(v.whatsOn) + UI.HELP_GAP + UI.HELP_SIZE + L.linkGap
+    v.whatsOnLine:SetWidth(0)
+    v.whatsOnLine:ClearAllPoints()
+    v.lineBeside = besideX + width(v.whatsOnLine) <= UI.PAGE_W - L.x
+    if v.lineBeside then
+        v.whatsOnLine:SetPoint("TOPLEFT", besideX, y - (headH - height(v.whatsOnLine)) / 2)
+        headH = math.max(headH, height(v.whatsOnLine))
+    else
+        v.whatsOnLine:SetWidth(UI.PAGE_W - 2 * L.x)
+        y = y - headH - L.headingGap
+        v.whatsOnLine:SetPoint("TOPLEFT", L.x, y)
+        headH = height(v.whatsOnLine)
+    end
+    y = y - headH - L.headingGap - L.sectionGap
     local left, right = {}, {}
     for i, s in ipairs(v.sections) do
         if i == 1 then
@@ -361,7 +389,12 @@ local function build(pf)
     end)
     v.whatsOn = pf:CreateFontString(nil, "OVERLAY", "CRTFontNormal")
     v.whatsOn:SetText(TEXT.whatsOn)
-    UI.HelpRight(v.whatsOn, TEXT.whatsOn, TEXT.whatsOnHelp)
+    v.whatsOnHelp = UI.HelpRight(v.whatsOn, TEXT.whatsOn, TEXT.whatsOnHelp)
+    -- in the body text's colour, never the muted grey: a new player has to read it
+    v.whatsOnLine = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall")
+    v.whatsOnLine:SetJustifyH("LEFT")
+    v.whatsOnLine:SetWordWrap(true)
+    v.whatsOnLine:SetText(TEXT.whatsOnLine)
     v.sections = {}
     for _, section in ipairs(WHATS_ON) do
         local s = { heading = pf:CreateFontString(nil, "OVERLAY", "CRTFontSmall"), rows = {} }
