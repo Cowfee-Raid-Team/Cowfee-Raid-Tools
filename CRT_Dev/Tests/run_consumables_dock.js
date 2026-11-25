@@ -9,7 +9,7 @@ const themeLua = require('./theme_stub');
 const { lua, lauxlib, lualib, to_luastring } = require('fengari');
 const L = lauxlib.luaL_newstate(); lualib.luaL_openlibs(L);
 const harness = themeLua(process.argv.slice(2)) + require('./placement_stub')(process.argv.slice(2)) + `
-local displaySrc, barSrc = ...
+local displaySrc, barSrc, antsSrc, markSrc = ...
 local passed, failed = 0, 0
 local function check(name, cond, detail)
   if cond then passed = passed + 1 print("ok " .. name)
@@ -306,10 +306,12 @@ do
   format = format or string.format
   local B = { PALETTE = CRT.PALETTE, UI = CRT.UI, Consumables = { QUESTION_MARK = 1 },
     Ants = { Start = function(_, slot, r, g, b) ants[slot] = { r, g, b } end, Stop = function(_, slot) ants[slot] = nil end, Attach = function() end } }
+  assert(load(markSrc, "StatusMark.lua"))("CowfeeRaidTools", B) -- UI.CapFontSize, which Bar.Apply uses
   assert(load(barSrc, "Bar.lua"))("CowfeeRaidTools", B)
   local function fs() local f = mock("FontString") rawset(f, "SetTextColor", function(self, r, g, b) rawset(self, "rgb", { r, g, b }) end) return f end
   local slot = mock("Button")
   rawset(slot, "icon", mock("Texture")) rawset(slot, "time", fs()) rawset(slot, "count", fs()) rawset(slot, "tag", fs())
+  rawset(slot, "mark", { Set = function() end, IsShown = function() return false end }) -- the real mark is checked below
   local function same(c, key) local m = CRT.PALETTE[key] return c and m and math.abs(c[1] - m[1]) < 1e-6 and math.abs(c[2] - m[2]) < 1e-6 and math.abs(c[3] - m[3]) < 1e-6 end
   for _, theme in ipairs({ "blizzard", "midnight", "nitro", "cowfee" }) do
     CRT.UI.SwitchTheme(theme)
@@ -322,6 +324,141 @@ do
   check("Default: Blizzard: missing is the game's red", CRT.UI.Hex("bad") == "ff2020")
 end
 
+-- #1300, no status by colour alone: missing has a solid edge and a "!" mark, running low a dashed (crawling)
+-- edge and a clock mark, fine has neither. The real Ants.lua and CRT_Core/UI/StatusMark.lua on a real slot
+-- (Bar.CreateSlot), in every theme, both looks.
+do
+  format = format or string.format
+  local realCreate = CreateFrame
+  local function rec(r)
+    rawset(r, "SetVertexColor", function(self, ...) rawset(self, "vc", { ... }) end)
+    rawset(r, "SetColorTexture", function(self, ...) rawset(self, "ct", { ... }) end)
+    rawset(r, "SetTextColor", function(self, ...) rawset(self, "rgb", { ... }) end)
+    rawset(r, "SetSize", function(self, w, h) rawset(self, "w", w) rawset(self, "h", h) end)
+    rawset(r, "SetFont", function(self, path, size) rawset(self, "fontSize", size) end)
+    rawset(r, "SetFontObject", function(self) rawset(self, "fontSize", nil) end) -- as in the game, a font object replaces a SetFont
+    rawset(r, "ClearAllPoints", function(self) self.pts = {} rawset(self, "clears", (rawget(self, "clears") or 0) + 1) end)
+    return r
+  end
+  CreateFrame = function(...)
+    local f = realCreate(...)
+    rawset(f, "CreateTexture", function(self) local r = rec(mock("Texture")) rawset(r, "parent", self) return r end)
+    rawset(f, "CreateFontString", function(self) local r = rec(mock("FontString")) rawset(r, "parent", self) return r end)
+    return f
+  end
+  local B = { PALETTE = CRT.PALETTE, UI = CRT.UI, Consumables = { QUESTION_MARK = 1 } }
+  assert(load(markSrc, "StatusMark.lua"))("CowfeeRaidTools", B)
+  assert(load(antsSrc, "Ants.lua"))("CowfeeRaidTools", B)
+  assert(load(barSrc, "Bar.lua"))("CowfeeRaidTools", B)
+  local Bar = B.ConsumablesBar
+  local slot = Bar.CreateSlot(mock("Frame"), 1)
+  CreateFrame = realCreate
+  local mark, ants = slot.mark, slot.ants
+  check("a slot has a status mark and ants", mark ~= nil and ants ~= nil)
+  local function anyShown(list) for _, t in ipairs(list) do if t.shown then return true end end return false end
+  local function allShown(list) for _, t in ipairs(list) do if not t.shown then return false end end return true end
+  local function same(c, key) local m = CRT.PALETTE[key] return c and m and math.abs(c[1] - m[1]) < 1e-6 and math.abs(c[2] - m[2]) < 1e-6 and math.abs(c[3] - m[3]) < 1e-6 end
+  local function shape() local s = {} for _, t in ipairs(mark.parts) do if t.shown then s[#s + 1] = rawget(t, "w") .. "x" .. rawget(t, "h") end end return table.concat(s, " ") end
+  local function lum(c) local function lin(x) return x <= 0.03928 and x / 12.92 or ((x + 0.055) / 1.055) ^ 2.4 end return 0.2126 * lin(c[1]) + 0.7152 * lin(c[2]) + 0.0722 * lin(c[3]) end
+  local function contrast(a, b) local la, lb = lum(a), lum(b) if la < lb then la, lb = lb, la end return (la + 0.05) / (lb + 0.05) end
+  -- the ink is black or white, whichever reads better on the disc
+  local function inkOk(key)
+    local c, p = CRT.PALETTE[key], rawget(mark.parts[1], "vc")
+    if not (p and (p[1] == 0 or p[1] == 1)) then return false end
+    local other = p[1] == 1 and { 0, 0, 0 } or { 1, 1, 1 }
+    return contrast(c, { p[1], p[1], p[1] }) >= contrast(c, other) and contrast(c, { p[1], p[1], p[1] }) >= 4.5
+  end
+  local size = rawget(mark.disc, "w")
+  check("the mark is sized from the icon (a third of it)", size == math.floor(Bar.ICON_SIZE / 3 + 0.5), size)
+  local dp = mark.disc.pts[#mark.disc.pts]
+  check("the mark sits on the icon's top right corner", dp and dp[1] == "TOPRIGHT" and dp[2] == slot and dp[3] == "TOPRIGHT")
+  local shapes = {}
+  for _, theme in ipairs({ "blizzard", "midnight", "nitro", "cowfee" }) do
+    CRT.UI.SwitchTheme(theme)
+    local look = theme .. (CRT.db.ui.modern and " (Modern)" or " (Classic)")
+    Bar.Apply(slot, { state = "missing", count = 0 })
+    check(look .. ": missing: a solid edge, no dashes", ants.style == "solid" and allShown(ants.edges) and not anyShown(ants.dashes))
+    check(look .. ": missing: the edge in the bad colour", same(rawget(ants.edges[1], "ct"), "bad"))
+    check(look .. ": missing: a ! mark on a bad disc", mark:IsShown() and mark.glyph == "alert" and mark.disc.shown and same(rawget(mark.disc, "vc"), "bad"))
+    check(look .. ": missing: the !'s ink reads on the disc", inkOk("bad"))
+    shapes.alert = shape()
+    local cp = slot.count.pts[#slot.count.pts]
+    check(look .. ": missing: the bag count moves under the mark", cp and cp[1] == "TOPRIGHT" and cp[4] == -3 and cp[5] <= -(size - 3), cp and cp[5])
+    check(look .. ": missing: the rim in the theme's outline colour", same(rawget(mark.rim, "vc"), "outline"))
+    check(look .. ": missing: no clock face on the !", not mark.face.shown)
+    local clears = rawget(slot.count, "clears") or 0
+    Bar.Apply(slot, { state = "missing", count = 3 })
+    check(look .. ": a refresh with the same mark doesn't move the bag count again", (rawget(slot.count, "clears") or 0) == clears)
+    Bar.Apply(slot, { state = "low", left = 60 })
+    check(look .. ": low: a dashed edge, no solid one", ants.style == "dashed" and allShown(ants.dashes) and not anyShown(ants.edges))
+    check(look .. ": low: the dashes in the warn colour", same(rawget(ants.dashes[1], "ct"), "warn"))
+    check(look .. ": low: a clock mark on a warn disc", mark:IsShown() and mark.glyph == "clock" and same(rawget(mark.disc, "vc"), "warn"))
+    check(look .. ": low: the clock's ink reads on the disc", inkOk("warn"))
+    check(look .. ": low: the minutes left stay", slot.time.text == "1m")
+    shapes.clock = shape()
+    check(look .. ": low: the clock has a face in the glyph's ink", mark.face.shown and rawget(mark.face, "vc") and rawget(mark.face, "vc")[1] == rawget(mark.parts[1], "vc")[1])
+    Bar.Apply(slot, { state = "active", left = 3000 })
+    check(look .. ": fine: no edge and no mark", not ants.active and not anyShown(ants.dashes) and not anyShown(ants.edges) and not mark:IsShown() and not mark.disc.shown and not anyShown(mark.parts))
+    local fp = slot.count.pts[#slot.count.pts]
+    check(look .. ": fine: the bag count back in the corner", fp and fp[1] == "TOPRIGHT" and fp[4] == -3)
+    Bar.Apply(slot, { state = "unset" })
+    check(look .. ": nothing listed: no mark", not mark:IsShown())
+  end
+  CRT.UI.SwitchTheme("blizzard")
+  check("the ! and the clock differ in shape, not only colour", shapes.alert ~= "" and shapes.clock ~= "" and shapes.alert ~= shapes.clock, shapes.alert .. " / " .. shapes.clock)
+  -- a solid edge stays still; the dashes crawl
+  Bar.Apply(slot, { state = "missing" })
+  B.Ants:Update(slot, 0.5)
+  check("a solid edge doesn't crawl", ants.offset == 0)
+  -- every glyph part on whole pixels, never under 1, centred so its edges fall on pixels too
+  for _, glyph in ipairs({ "alert", "clock", "down" }) do
+    for _, sz in ipairs({ 10, 11, 15 }) do
+      local m = B.UI.StatusMark(slot, sz)
+      m:SetPoint("CENTER")
+      m:Set(glyph, CRT.PALETTE.bad)
+      local ok = true
+      for _, t in ipairs(m.parts) do
+        if t.shown then
+          local w, h, p = rawget(t, "w"), rawget(t, "h"), t.pts[#t.pts]
+          local function onGrid(o, len) local e = o - len / 2 + sz / 2 return math.abs(e - math.floor(e + 0.5)) < 1e-9 end
+          if not (w >= 1 and h >= 1 and w == math.floor(w) and h == math.floor(h) and onGrid(p[4], w) and onGrid(p[5], h)) then ok = false end
+        end
+      end
+      check(glyph .. " at " .. sz .. " px: its parts on whole pixels", ok)
+    end
+  end
+  -- the corner labels at text size 8 and 22: held at 10 to 12 points; a two-digit count, under the mark, never
+  -- reaches the MH/OH tag at the top left (a label taken as 0.75 of its size wide per letter, as tall as its size)
+  local realSmall, realHighlight = CRTFontSmall, CRTFontHighlight
+  -- CRTFontHighlight (the timer) at the same text sizes: 8, 9, 22 and 24 points (Core.lua)
+  local HIGHLIGHT = { [7] = 8, [8] = 9, [19] = 22, [21] = 24 }
+  for _, size in ipairs({ 7, 8, 19, 21 }) do
+    CRTFontSmall = { GetFont = function() return "Fonts\FRIZQT__.TTF", size, "" end }
+    CRTFontHighlight = { GetFont = function() return "Fonts\FRIZQT__.TTF", HIGHLIGHT[size], "" end }
+    for _, state in ipairs({ "low", "active" }) do
+      Bar.Apply(slot, { state = state, left = state == "low" and 60 or 3000, count = 12, tag = "MH" })
+      local cs, ts = rawget(slot.count, "fontSize"), rawget(slot.tag, "fontSize")
+      check(size .. " pt, " .. state .. ": the corner labels at 10 to 12 points", cs and ts and cs >= 10 and cs <= 12 and ts >= 10 and ts <= 12, tostring(cs) .. "/" .. tostring(ts))
+      local cp, tp = slot.count.pts[#slot.count.pts], slot.tag.pts[#slot.tag.pts]
+      local countLeft = Bar.ICON_SIZE + cp[4] - #"12" * cs * 0.75
+      local countTop = cp[5]
+      local tagRight, tagBottom = 3 + #"MH" * ts * 0.75, -3 - ts
+      check(size .. " pt, " .. state .. ": a two-digit count clear of the MH tag", countLeft > tagRight or countTop < tagBottom, countLeft .. " / " .. tagRight)
+      if state == "low" then
+        check(size .. " pt: the count's top under the mark's bottom", countTop < -(Bar.MARK_SIZE - 3), countTop)
+      end
+      -- the timer grows up from the bottom: it never reaches the count, with or without a mark
+      local th = rawget(slot.time, "fontSize")
+      local timeTop = -(Bar.ICON_SIZE - 3 - (th or 99))
+      check(size .. " pt, " .. state .. ": the timer at 10 to 14 points", th and th >= 10 and th <= 14, tostring(th))
+      check(size .. " pt, " .. state .. ": the count (with charges) clear of the timer", countTop - cs > timeTop, (countTop - cs) .. " > " .. timeTop)
+      Bar.Apply(slot, { state = state, left = state == "low" and 60 or 3000, count = 12, tag = "MH" })
+      check(size .. " pt, " .. state .. ": a second refresh keeps the timer capped", rawget(slot.time, "fontSize") == th)
+    end
+  end
+  CRTFontSmall, CRTFontHighlight = realSmall, realHighlight
+end
+
 print(passed .. " passed, " .. failed .. " failed")
 if failed > 0 then error("consumables dock checks failed") end
 `;
@@ -329,4 +466,24 @@ const dir = process.argv[2];
 if (lauxlib.luaL_loadstring(L, to_luastring(harness)) !== lua.LUA_OK) { console.error(lua.lua_tojsstring(L, -1)); process.exit(1); }
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Modules/Consumables/Display.lua'), 'utf8')));
 lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Modules/Consumables/Bar.lua'), 'utf8')));
-if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Modules/Consumables/Ants.lua'), 'utf8')));
+lua.lua_pushstring(L, to_luastring(fs.readFileSync(path.join(dir, 'CRT_Core/UI/StatusMark.lua'), 'utf8')));
+if (lua.lua_pcall(L, 4, 0, 0) !== lua.LUA_OK) { console.error('LUA ERROR:', lua.lua_tojsstring(L, -1)); process.exit(1); }
+// #1300: the (?) texts name the marks, not only a colour
+const pageText = fs.readFileSync(path.join(dir, 'CRT_Modules/Consumables/Page.lua'), 'utf8');
+const rcText = fs.readFileSync(path.join(dir, 'CRT_Modules/ReadyCheck/Page.lua'), 'utf8');
+let helpBad = 0;
+if (!/\{ "! and a solid edge", "missing\." \}/.test(pageText) || !/\{ "Clock and a moving dashed edge", "running low\." \}/.test(pageText)) { console.log('FAIL Your bar\'s (?) does not explain the ! and clock marks'); helpBad++; }
+if (/marching ants/.test(rcText) || !/"Warn under", "An icon gets a clock and a moving dashed edge/.test(rcText)) { console.log('FAIL Warn under\'s (?) still says marching ants, or not the clock'); helpBad++; }
+// StatusMark's Mark:Set and the ink it picks make no closures on a refresh: lin is a file-level function, and no
+// function is written inside luminance, UI.StatusMarkInk or Mark:Set
+const markText = fs.readFileSync(path.join(dir, 'CRT_Core/UI/StatusMark.lua'), 'utf8').replace(/\r\n/g, '\n');
+if (!/^local function lin\(/m.test(markText)) { console.log('FAIL StatusMark.lua: lin is not a file-level function'); helpBad++; }
+for (const head of ['local function luminance(', 'function UI.StatusMarkInk(', 'function Mark:Set(']) {
+  const at = markText.indexOf(head);
+  const body = at < 0 ? '' : markText.slice(at + head.length, markText.indexOf('\nend', at));
+  if (at < 0 || /\bfunction\b/.test(body)) { console.log('FAIL StatusMark.lua: ' + head + ' is missing or makes a function'); helpBad++; }
+}
+if (/not a theme colour/.test(markText)) { console.log('FAIL StatusMark.lua: a fixed colour; the rim reads CRT.PALETTE.outline'); helpBad++; }
+if (helpBad) process.exit(1);
+console.log('ok the (?) texts explain the marks');

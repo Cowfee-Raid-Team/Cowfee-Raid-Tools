@@ -19,6 +19,17 @@ local ANT_COLORS = {
     missing = CRT.PALETTE.bad,
     low = CRT.PALETTE.warn,
 }
+-- The second cue besides the colour (UX rule 6): missing has a solid edge and a "!" mark, running low
+-- crawling dashes and a clock mark (UI.StatusMark), so the two differ in a colour-blind or greyscale view.
+local EDGE_STYLES = { missing = "solid", low = "dashed" }
+local MARKS = { missing = "alert", low = "clock" }
+Bar.MARK_SIZE = math.floor(Bar.ICON_SIZE / 3 + 0.5) -- the mark is a third of the icon, at any icon size
+local MARK_OUT = 3 -- how far the mark reaches past the icon's top right corner
+Bar.LABEL_MIN, Bar.LABEL_MAX = 10, 12 -- the corner labels' (bag count, MH/OH tag) size in points, at any text size
+-- the timer's size in points, at any text size: at 14 at most it ends under the bag count, even when the count sits
+-- under a mark
+Bar.TIME_MIN, Bar.TIME_MAX = 10, 14
+local UI = CRT.UI
 
 local BACKDROP = {
     bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -116,6 +127,8 @@ function Bar.CreateSlot(parent, index, secure)
     slot.tag:SetTextColor(0.3, 0.9, 1)
 
     Ants:Attach(slot)
+    slot.mark = UI.StatusMark(slot, Bar.MARK_SIZE) -- rim at OVERLAY 4, over the ants (3)
+    slot.mark:SetPoint("TOPRIGHT", slot, "TOPRIGHT", MARK_OUT, MARK_OUT)
     return slot
 end
 
@@ -130,16 +143,39 @@ function Bar.Apply(slot, status)
     slot.icon:SetDesaturated(dim)
     slot.icon:SetAlpha(dim and 0.6 or 1)
 
-    -- Ants for a missing or expiring consumable.
+    -- A solid edge and a "!" for a missing consumable, crawling ants and a clock for an expiring one.
     local color = ANT_COLORS[status.state]
     if color then
-        Ants:Start(slot, color[1], color[2], color[3])
+        Ants:Start(slot, color[1], color[2], color[3], EDGE_STYLES[status.state])
     else
         Ants:Stop(slot)
     end
+    slot.mark:Set(MARKS[status.state], color)
+    -- The corner labels stay small on the fixed-size icon, at any text size. The bag count sits in the top
+    -- right corner, or under the mark while one shows (moved only when that changes), clear of the top left tag.
+    UI.CapFontSize(slot.count, CRTFontSmall, Bar.LABEL_MIN, Bar.LABEL_MAX)
+    UI.CapFontSize(slot.tag, CRTFontSmall, Bar.LABEL_MIN, Bar.LABEL_MAX)
+    local beside = slot.mark:IsShown()
+    if slot.countUnderMark ~= beside then
+        slot.countUnderMark = beside
+        slot.count:ClearAllPoints()
+        if beside then
+            slot.count:SetPoint("TOPRIGHT", slot, "TOPRIGHT", -3, -(Bar.MARK_SIZE - MARK_OUT + 1))
+        else
+            slot.count:SetPoint("TOPRIGHT", slot, "TOPRIGHT", -3, -3)
+        end
+    end
 
     -- "no data" is too wide for one line under a 44 pixel icon, so it is two small lines.
-    slot.time:SetFontObject(status.state == "unset" and CRTFontSmall or CRTFontHighlight)
+    -- Set only when the font object changes (a font object replaces a capped size), then held at TIME_MIN to
+    -- TIME_MAX points so it never grows into the bag count.
+    local timeFont = status.state == "unset" and CRTFontSmall or CRTFontHighlight
+    if slot.timeFont ~= timeFont then
+        slot.timeFont = timeFont
+        slot.time:SetFontObject(timeFont)
+        slot.time.crtCapPath = nil -- the cap is set again for the new font
+    end
+    UI.CapFontSize(slot.time, timeFont, Bar.TIME_MIN, Bar.TIME_MAX)
     if status.state == "unknown" then
         slot.time:SetText("?")
     elseif status.state == "unset" then

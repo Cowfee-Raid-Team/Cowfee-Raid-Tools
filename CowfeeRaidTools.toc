@@ -35,6 +35,7 @@ CRT_Core\UI\Tooltip.lua
 CRT_Core\UI\Controls.lua
 CRT_Core\UI\MacroSet.lua
 CRT_Core\UI\Toggle.lua
+CRT_Core\UI\StatusMark.lua
 CRT_Core\UI\ScrollBar.lua
 CRT_Core\UI\Window.lua
 CRT_Core\UI\Confirm.lua
