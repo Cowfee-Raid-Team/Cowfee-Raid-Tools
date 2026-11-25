@@ -92,6 +92,8 @@ local TEXT = CRT.Locale("Alerts.Editor", {
     noTimes = "No times",
     delete = "Delete",
     deleteConfirm = "Delete this alert?",
+    deleteNamed = "Delete the alert \"%s\"?",
+    deleteSavedNamed = "Delete the template \"%s\"?",
     export = "Export",
     exportTitle = "Alert as a note line",
     test = "Test",
@@ -1286,6 +1288,23 @@ local function confirm(info)
     UI.LiftOver(UI.ShownPopup(StaticPopup_ShowCustomGenericConfirmation(info), "GENERIC_CONFIRMATION"))
 end
 
+-- Delete's question, naming what goes (UX rule 4): a template by its name; an alert or note line by its saved text,
+-- else its spell's name; "this alert" when it has neither.
+local function deleteQuestion(c)
+    if c.savedMode then
+        local name = type(c.savedName) == "string" and trim(c.savedName) or ""
+        return name ~= "" and string.format(TEXT.deleteSavedNamed, name) or TEXT.deleteSavedConfirm
+    end
+    local saved = c.reminder or c.timer or {}
+    local name = type(saved.text) == "string" and trim(saved.text) or ""
+    if name == "" then
+        name = Reminders.SpellName(validID(saved.spellID or saved.spellId)) or ""
+    elseif CRT.MarkerText then
+        name = CRT.MarkerText(name)
+    end
+    return name ~= "" and string.format(TEXT.deleteNamed, name) or TEXT.deleteConfirm
+end
+
 -- The name popup of Save as saved alert: an edit box with the default name in it. data = { fields, default }.
 local function acceptName(edit, data)
     local fields = data and data.fields
@@ -1774,7 +1793,7 @@ local function build()
         end
         local from = ctx
         confirm({
-            text = from.savedMode and TEXT.deleteSavedConfirm or TEXT.deleteConfirm,
+            text = deleteQuestion(from),
             acceptText = TEXT.delete,
             cancelText = TEXT.cancel,
             showAlert = true,

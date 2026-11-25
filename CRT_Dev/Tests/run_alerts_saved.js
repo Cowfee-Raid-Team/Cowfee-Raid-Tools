@@ -563,7 +563,7 @@ do
   -- Delete asks, then deletes
   E:EditSaved(id)
   click(w.deleteBtn)
-  assert(#popups == 1 and popups[1].text == "Delete this template?" and S:Get(id), "asks first")
+  assert(#popups == 1 and popups[1].text == 'Delete the template "Soak"?' and S:Get(id), "asks first, naming the template: " .. tostring(popups[1] and popups[1].text))
   assert(StaticPopup1.strata == "FULLSCREEN_DIALOG" and StaticPopup1.raised, "popup above the editor")
   popups[1].callback()
   assert(S:Get(id) == nil and not w.shown and S:Get(other), "deleted after accept")
