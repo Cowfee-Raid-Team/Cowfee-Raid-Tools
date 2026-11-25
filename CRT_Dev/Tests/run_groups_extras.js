@@ -60,7 +60,8 @@ local gridRef
 local CRT = { db = { groups = { presets = {}, nextId = 1, keepChanges = false, source = "raid", working = {} }, classCache = {}, roleCache = {}, ui = {} } }
 function CRT:Print(m) print("  [chat] " .. m) end
 local pages = {}
-CRT.UI = { SkinScrollBar = function() end, SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title, text) local m = mock("help") rawset(m, "helpTitle", title) rawset(m, "helpText", text) groupHelps[#groupHelps + 1] = m return m end, RegisterPage = function(_, k, t, fn) pages[k] = fn end,
+local confirms, toasts = {}, {} -- what UI.Confirm and UI.UndoToast were given
+CRT.UI = { Confirm = function(o) confirms[#confirms + 1] = o return true end, UndoToast = function(o) toasts[#toasts + 1] = o return o end,SkinScrollBar = function() end, SlotGrid = function() local g = { slots = {}, labels = {}, blockH = 143, slotW = 188 } for i = 1, 40 do local b = mock() rawset(b, "index", i) rawset(b, "icon", mock()) rawset(b, "text", mock()) rawset(b, "right", mock()) g.slots[i] = b end gridRef = g return g end, FitText = function() end, GoodText = function(t) return t end, ClipText = function() return mock() end, PAGE_W = 1026, PAGE_H = 560, Help = function(_, title, text) local m = mock("help") rawset(m, "helpTitle", title) rawset(m, "helpText", text) groupHelps[#groupHelps + 1] = m return m end, RegisterPage = function(_, k, t, fn) pages[k] = fn end,
   PanelButtonWidth = function(w) return w + 28 end,
   Dropdown = function(_, text, opts) local row = mock("dropdown") rawset(row, "label", text) rawset(row, "opts", opts)
     rawset(row, "refresh", function() rawset(row, "enabled", not opts.enabledIf or opts.enabledIf() and true or false) end) dropdowns[#dropdowns + 1] = row return row end, ContextMenu = function(owner, fill) local m = { owner = owner, fill = fill, Close = function(self) self.closed = true end } menus[#menus + 1] = m return m end }
@@ -354,6 +355,72 @@ do
   check(G.PresetNames and joined(G:PresetNames(mineId)) == joined(want), "a layout not in use reads its own names: " .. joined(G.PresetNames and G:PresetNames(mineId)))
   check(G.PresetNames and #G:PresetNames("no-such-layout") == 0 and #G:PresetNames(nil) == 0, "no such layout: no names")
   G:Delete(id)
+end
+-- Clear grid acts at once with Undo; Set current roster and Delete layout ask once through UI.Confirm (#1299)
+do
+  local function btn(text) for _, b in ipairs(buttons) do if rawget(b, "text") == text then return b end end end
+  local clearB, deleteB, rosterB = btn("Clear grid"), btn("Delete layout"), btn("Set current roster")
+  check(clearB and deleteB and rosterB, "the three grid and layout buttons")
+  local mineId = G:CreatePreset("Undo Test", { "Solex-Area52", "", "Abu-KelThuzad", "", "", "Gadios-Area52" })
+  G:Select(mineId)
+  CRT.db.groups.keepChanges = false
+  local before = {}
+  for i = 1, 40 do before[i] = G:Working()[i] end
+  toasts, confirms = {}, {}
+  clearB.OnClick(clearB)
+  local empty = true
+  for i = 1, 40 do if G:Working()[i] ~= "" then empty = false end end
+  check(empty and #confirms == 0, "Clear grid empties the grid at once, without asking")
+  local t = toasts[1]
+  check(t and t.text == "Cleared the grid (3 names).", "and offers Undo with the number of names: " .. tostring(t and t.text))
+  check(t and t.owner == clearB, "in the window the button is in")
+  check(G.dirty == true, "the cleared grid is an unsaved edit")
+  if t then t.onUndo() end
+  local same = true
+  for i = 1, 40 do if G:Working()[i] ~= before[i] then same = false end end
+  check(same, "Undo puts every name back in its slot")
+  check(G.dirty == false, "and the grid is as saved as it was")
+  toasts = {}
+  G:ReplaceWorking({})
+  clearB.OnClick(clearB)
+  check(#toasts == 0, "an empty grid: Clear grid does nothing")
+  -- Keep changes on: the clear saves into the layout, Undo saves it back
+  G:Select(mineId)
+  CRT.db.groups.keepChanges = true
+  toasts = {}
+  clearB.OnClick(clearB)
+  check(G:Find(mineId).slots[1] == "", "Keep changes on: the clear is saved into the layout")
+  if toasts[1] then toasts[1].onUndo() end
+  check(G:Find(mineId).slots[1] == "Solex-Area52" and G:Find(mineId).slots[6] == "Gadios-Area52", "and Undo saves the names back")
+  CRT.db.groups.keepChanges = false
+  -- Undo after another layout opened leaves that one alone
+  toasts = {}
+  clearB.OnClick(clearB)
+  local otherId = G:CreatePreset("Other", { "Kip-Area52" })
+  G:Select(otherId)
+  if toasts[1] then toasts[1].onUndo() end
+  check(G:Working()[1] == "Kip-Area52", "another layout open: Undo doesn't write over it")
+  -- Set current roster asks once, through UI.Confirm, naming the layout
+  confirms = {}
+  rosterB.OnClick(rosterB)
+  local c = confirms[1]
+  check(c and c.text == "Replace the grid with your current group?" and c.accept == "Replace grid", "Set current roster asks once: " .. tostring(c and c.text))
+  check(c and c.detail == 'The saved layout "Other" doesn\\'t change until you save it.', "naming the open layout: " .. tostring(c and c.detail))
+  check(G:Working()[1] == "Kip-Area52", "nothing changes until it is accepted")
+  if c then c.onAccept() end
+  check(G:Working()[1] == "Solex-Area52", "accepted: the grid is the current group: " .. tostring(G:Working()[1]))
+  -- Delete layout asks once, naming the layout and its names
+  confirms = {}
+  CRT.db.groups.selected = mineId
+  deleteB.OnClick(deleteB)
+  c = confirms[1]
+  check(c and c.text == 'Delete the layout "Undo Test"?' and c.accept == "Delete layout" and c.danger, "Delete layout asks once, naming it: " .. tostring(c and c.text))
+  check(c and c.detail == "Its 3 names go too. This can't be undone.", "and what goes with it: " .. tostring(c and c.detail))
+  check(G:Find(mineId) ~= nil, "nothing is deleted until it is accepted")
+  check(deleteB.text == "Delete layout", "the button never turns into a second click")
+  if c then c.onAccept() end
+  check(G:Find(mineId) == nil, "accepted: the layout is deleted")
+  G:Delete(otherId)
 end
 if fails > 0 then error(fails .. " groups invite checks failed") end
 `;
