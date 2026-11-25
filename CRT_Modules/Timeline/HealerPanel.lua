@@ -5,8 +5,8 @@ local ADDON, CRT = ...
 -- the whole row (name column and track) that takes the clicks:
 --   add healer        "+ Add healer", which adds a healer slot by spec (Timeline/HealerSlots.lua), for anyone, on a
 --                     boss with an encounter number
---   your moved casts  "You moved N casts from the raid note." with Reset mine and Send to raid lead, when you
---                     moved any of the shown notes' casts (Notes/Shifts.lua); hidden at none
+--   your moved casts  "You moved N casts from the raid note." with Reset mine (at once, with Undo) and Send to raid
+--                     lead, when you moved any of the shown notes' casts (Notes/Shifts.lua); hidden at none
 --   proposed changes  for the raid leader and assistants: "Proposed changes (N)" with the auto-accept check
 --                     box, then one row per change a healer sent (Notes/Proposals.lua), the first MAX_ROWS of
 --                     them (so only that many frames are ever made): who, the spell and both times, with
@@ -28,6 +28,7 @@ local TEXT = CRT.Locale("Timeline.HealerPanel", {
         { "Send to raid lead", "sends your times to the raid leader and assistants, who can accept them into the raid note." },
     },
     reset = "Reset mine",
+    resetDone = "Put %d cast%s back at the raid note's time.",
     send = "Send to raid lead",
     proposed = "Proposed changes (%d)",
     proposedMore = "Proposed changes (%d, the first %d shown)",
@@ -94,11 +95,36 @@ end
 
 -- Actions ----------------------------------------------------------------------------------------------
 
-function Panel.ResetMine(view)
+-- Reset mine: drops your times at once and offers Undo (UI.UndoToast under button's window). Your times are a few
+-- entries, cheap to keep, so Undo sets each again (Shifts:Set), only while you moved nothing since and only on a line
+-- that still reads as it did.
+function Panel.ResetMine(view, button)
     local Shifts = CRT.NoteShifts
-    if Shifts then
-        Shifts:ClearNotes(view.hvNoteIds)
+    if not Shifts then
+        return
     end
+    local ids, kept = view.hvNoteIds or {}, {}
+    for _, id in ipairs(ids) do
+        for n, e in pairs(Shifts:ByLine(id) or {}) do
+            kept[#kept + 1] = { id = id, n = n, ph = e.ph, t = e.t, raw = e.raw, occ = e.occ, spellID = e.spellID }
+        end
+    end
+    local gone = Shifts:ClearNotes(ids)
+    local UI = CRT.UI
+    if gone == 0 or #kept == 0 or not (UI and UI.UndoToast) then
+        return
+    end
+    UI.UndoToast({ text = string.format(TEXT.resetDone, gone, gone == 1 and "" or "s"), owner = button, onUndo = function()
+        if Shifts:Count(ids) > 0 then
+            return
+        end
+        for _, k in ipairs(kept) do
+            local occ, raw = Shifts.Occurrence(k.id, k.n)
+            if occ == k.occ and raw == k.raw then
+                Shifts:Set(k.id, k.n, k.ph, k.t, k.spellID)
+            end
+        end
+    end })
 end
 
 function Panel.Send(view)
@@ -181,8 +207,8 @@ local function barFrame(view)
     end
     local f = rowFrame(view)
     addButtons(f, {
-        { key = "reset", label = TEXT.reset, click = function()
-            Panel.ResetMine(view)
+        { key = "reset", label = TEXT.reset, click = function(b)
+            Panel.ResetMine(view, b)
         end },
         { key = "send", label = TEXT.send, click = function()
             Panel.Send(view)

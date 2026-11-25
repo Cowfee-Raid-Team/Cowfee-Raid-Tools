@@ -181,6 +181,9 @@ CRT_TOOLTIP(CRT)
 CRT_MARKERS(CRT) -- CRT.MarkerText, the real CRT_Core/MarkerText.lua
 CRT_NAMES(CRT) -- CRT.ShortName, the real CRT_Core/Names.lua
 run("CRT_Core/UI/Controls.lua", CRT)
+-- the shared Undo (CRT_Core/UI/Confirm.lua, run_confirm.js tests it): what it was given
+HEAL_TOASTS = {}
+CRT.UI.UndoToast = function(o) HEAL_TOASTS[#HEAL_TOASTS + 1] = o return o end
 run("CRT_Modules/Groups/Data.lua", CRT)
 run("CRT_Modules/Alerts/Roster.lua", CRT)
 run("CRT_Modules/Timeline/Data.lua", CRT)
@@ -893,9 +896,26 @@ do
   end
   check(shape, "healerRows[player key][spellID] = true or false")
   -- Reset to defaults
+  local picks = CRT.db.timeline.healerRows["halo-home"]
+  local nToasts = #HEAL_TOASTS
   last.fn()
   check(CRT.db.timeline.healerRows["halo-home"] == nil, "Reset forgets the player's picks")
   check(laneIndex(v, "healers:halo-home:64843") ~= nil and laneIndex(v, "healers:halo-home:47788") == nil, "and the default rows are back")
+  -- it offers Undo (UX rule 4: a player's few picks, cheap to keep), naming the player, in the Timeline's window
+  local rt = HEAL_TOASTS[#HEAL_TOASTS]
+  check(#HEAL_TOASTS == nToasts + 1 and rt.text:find("Halo", 1, true) and rt.owner ~= nil,"Reset to defaults offers Undo naming the player: " .. tostring(rt and rt.text))
+  rt.onUndo()
+  check(CRT.db.timeline.healerRows["halo-home"] == picks and picks[64843] == false and picks[47788] == true, "Undo puts the same picks back")
+  check(laneIndex(v, "healers:halo-home:64843") == nil and laneIndex(v, "healers:halo-home:47788") ~= nil, "and the rows as picked")
+  last.fn()
+  rt = HEAL_TOASTS[#HEAL_TOASTS]
+  box(root, 33206).fn() -- a pick since
+  rt.onUndo()
+  check(CRT.db.timeline.healerRows["halo-home"] and CRT.db.timeline.healerRows["halo-home"][64843] == nil, "Undo after a pick since changes nothing")
+  last.fn()
+  check(#HEAL_TOASTS == nToasts + 3, "each Reset with picks offers Undo")
+  last.fn()
+  check(#HEAL_TOASTS == nToasts + 3, "a Reset with no picks has nothing to undo")
   -- someone who may not change the raid note picks rows too (a view setting)
   group.leader = false
   v:Refresh()
@@ -1091,6 +1111,19 @@ do
   v.hvBar.buttons.reset.OnClick(v.hvBar.buttons.reset)
   check(Shifts:Count({ 1 }) == 0 and flagsOn(v, aura)[1].mark.t == 30 and not v.hvBar:IsShown(), "Reset mine puts every cast back")
   check(N:TimerAt(1, 3).time == 30, "the raid note never changed")
+  -- Reset mine offers Undo (UX rule 4: your own few times, cheap to keep): your times come back exactly, only while
+  -- you moved nothing since
+  local mt = HEAL_TOASTS[#HEAL_TOASTS]
+  check(mt and mt.owner == v.hvBar.buttons.reset and mt.text:find("1 cast", 1, true), "Reset mine offers Undo, saying how many: " .. tostring(mt and mt.text))
+  mt.onUndo()
+  check(Shifts:Find(1, 3) and Shifts:Find(1, 3).t == 50 and Shifts:Find(1, 3).ph == 1 and Shifts:Count({ 1 }) == 1, "Undo puts your time back exactly")
+  check(flagsOn(v, aura)[1].mark.t == 50, "and the cast is drawn at your time again")
+  v.hvBar.buttons.reset.OnClick(v.hvBar.buttons.reset)
+  mt = HEAL_TOASTS[#HEAL_TOASTS]
+  Shifts:Set(1, 3, 1, 44, 31821) -- moved again since
+  mt.onUndo()
+  check(Shifts:Find(1, 3).t == 44 and Shifts:Count({ 1 }) == 1, "Undo after you moved a cast since changes nothing")
+  Shifts:ClearNotes({ 1 })
   -- the raid note changes that line: your time goes, and chat says so
   Shifts:Set(1, 3, 1, 50, 31821)
   CRT.TimelineUndo:Quietly(function() N:ReplaceLine(1, 3, "time:35;ph:1;tag:Me;spellid:31821;", N:RawLines(1)[3]) end)

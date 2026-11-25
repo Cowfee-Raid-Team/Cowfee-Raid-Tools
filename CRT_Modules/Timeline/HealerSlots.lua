@@ -1027,7 +1027,7 @@ function Slots.HeaderMenu(view, owner, lane)
             local rows = root:CreateButton(TEXT.rows)
             Rows.Fill(rows, lane.hvMenu, function()
                 view:Refresh()
-            end)
+            end, owner)
         end
     end)
 end
@@ -1073,7 +1073,7 @@ function Slots.PlayerMenu(view, owner, lane)
         local Rows = CRT.TimelineHealerRows
         if Rows and Rows.Fill and lane.hvMenu then
             root:CreateDivider()
-            Rows.Fill(root, lane.hvMenu, refresh)
+            Rows.Fill(root, lane.hvMenu, refresh, owner)
         end
     end)
 end
