@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0 (2026-11-25)
+
+- **Start here and a Welcome:** new players open on Start here, and the first /crt shows a short Welcome with three next steps for raiders or for leaders. Reopen it any time from Start here or /crt welcome. Its Previews button toggles every preview and moves the main window out of the way while they show.
+- **What's on:** Start here has a switch for everything CRT draws, plays or speaks. Click the underlined page name to jump to its settings, with a box around the setting it names.
+- **Undo:** quick clears and removes offer about 10 seconds of Undo, and deleting something you can't get back asks once, naming what goes. The note editor has Undo and Redo (Ctrl+Z and Ctrl+Y).
+- **Greyed-out settings say why:** hover a greyed-out control to see what turns it on.
+- **Easier to read:** buttons and tabs fit their labels at every text size up to 22, labels are in sentence case, no text goes under 10 pt, and the consumables bar and Gear Checker mark missing and low items with a symbol as well as a colour.
+- **Easier to find:** CRT has an entry in Esc > Options > AddOns, every menu page has a tooltip, /crt help lists the everyday commands and /crt help all lists the rest.
+- **Fixes:** a special alert and your own or imported reminder for the same mechanic no longer both play, special alerts no longer use Mythic times on other difficulties, a "%" in an alert name no longer causes a Lua error, and the note windows no longer use memory while idle.
+
 ## 1.4.9 (2026-11-21)
 
 - **Names without realms:** player names now show without their realm across CRT, including Timeline death tooltips and death rows, Healer CDs, raid note messages, Tattlebot, the Addon check, Gear Checker, the Loot authority list and the share messages for kick lists, pace plans and healer orders. Raid Groups and the Late Tracker keep realms, and invites and whispers still reach the right player.

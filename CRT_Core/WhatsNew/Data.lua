@@ -6,6 +6,17 @@ local ADDON, CRT = ...
 -- CRT_Dev/Tests/run_whatsnew.js checks every entry.
 CRT.WhatsNewData = {
     {
+        version = "1.5.0",
+        lines = {
+            "Start here and a Welcome for new players",
+            "What's on: switch any display, sound or voice",
+            "Undo for removes, and in the note editor",
+            "Greyed-out settings say why",
+            "Buttons and text fit at every text size",
+        },
+        more = 3,
+    },
+    {
         version = "1.4.9",
         lines = {
             "Player names show without realms",
